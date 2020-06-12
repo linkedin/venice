@@ -32,7 +32,7 @@ public class VeniceSystemStoreUtils {
     return storeName.startsWith(Store.SYSTEM_STORE_NAME_PREFIX);
   }
 
-  public static VeniceSystemStore getSystemStore(String storeName) {
+  public static VeniceSystemStore getSystemStoreType(String storeName) {
     if (storeName.startsWith(METADATA_STORE.getPrefix())) {
       return METADATA_STORE;
     } else {
@@ -45,7 +45,7 @@ public class VeniceSystemStoreUtils {
    * @return the corresponding store name for shared Zookeeper if applicable. The same store name is returned otherwise.
    */
   public static String getZkStoreName(String storeName) {
-    VeniceSystemStore systemStore = getSystemStore(storeName);
+    VeniceSystemStore systemStore = getSystemStoreType(storeName);
     return systemStore != null && systemStore.isStoreZkShared() ? systemStore.getPrefix() : storeName;
   }
 

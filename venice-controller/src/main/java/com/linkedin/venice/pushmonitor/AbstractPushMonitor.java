@@ -621,7 +621,7 @@ public abstract class AbstractPushMonitor
       aggPushHealthStats.recordFailedPush(storeName, getDurationInSec(pushStatus));
       // If we met some error to delete error version, we should not throw the exception out to fail this operation,
       // because it will be collected once a new push is completed for this store.
-      if (VeniceSystemStoreUtils.getSystemStore(storeName) != VeniceSystemStore.METADATA_STORE) {
+      if (VeniceSystemStoreUtils.getSystemStoreType(storeName) != VeniceSystemStore.METADATA_STORE) {
         // Do not delete the store version for Zk shared stores upon a single failure
         storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
       }
@@ -633,7 +633,7 @@ public abstract class AbstractPushMonitor
   }
 
   private void updateStoreVersionStatus(String storeName, int versionNumber, VersionStatus status) {
-    if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE) {
+    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE) {
       // Do not update Zk shared store version status.
       return;
     }

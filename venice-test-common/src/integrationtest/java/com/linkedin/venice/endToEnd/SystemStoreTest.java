@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -18,6 +19,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -43,8 +45,10 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -235,6 +239,18 @@ public class SystemStoreTest {
 
     // Try to read from the metadata store
     venice.refreshAllRouterMetaData();
+
+    // Create MetadataStoreBasedStoreRepository
+    MetadataStoreBasedStoreRepository storeRepository = new MetadataStoreBasedStoreRepository(venice.getClusterName(), venice.getRandomRouterURL());
+    // Create test listener to monitor store repository changes.
+    AtomicInteger creationCount = new AtomicInteger(0);
+    AtomicInteger changeCount = new AtomicInteger(0);
+    AtomicInteger deletionCount = new AtomicInteger(0);
+    TestListener testListener = new TestListener();
+    storeRepository.registerStoreDataChangedListener(testListener);
+    // Verify initial state
+    assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.get(), "initialization");
+
     StoreMetadataKey storeAttributesKey = new StoreMetadataKey();
     storeAttributesKey.keyStrings = Arrays.asList(regularVeniceStoreName);
     storeAttributesKey.metadataType = StoreMetadataType.STORE_ATTRIBUTES.getValue();
@@ -270,6 +286,15 @@ public class SystemStoreTest {
           fail();
         }
       });
+
+      // We need to wait for store being fully populated before we subscribe to it.
+      storeRepository.subscribe(regularVeniceStoreName);
+      assertListenerCounts(testListener, creationCount.addAndGet(1), changeCount.get(), deletionCount.get(), "store creations");
+      Store store = storeRepository.getStore(regularVeniceStoreName);
+      assertEquals(store.getName(), regularVeniceStoreName);
+      assertEquals(store.getVersions().size(), 0);
+      assertEquals(store.getCurrentVersion(), 0);
+
       // Perform some checks to ensure the metadata store values are populated
       StoreAttributes storeAttributes  = (StoreAttributes) client.get(storeAttributesKey).get().metadataUnion;
       assertEquals(storeAttributes.sourceCluster.toString(), clusterName, "Unexpected sourceCluster");
@@ -301,6 +326,12 @@ public class SystemStoreTest {
       currentVersionStates = (CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion;
       assertEquals(currentVersionStates.currentVersionStates.get(0).status.toString(), ONLINE.name());
 
+      storeRepository.refreshOneStore(regularVeniceStoreName);
+      assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "change of a store-version");
+      store = storeRepository.getStore(regularVeniceStoreName);
+      assertEquals(store.getVersions().size(), 1);
+      assertEquals(store.getCurrentVersion(), 1);
+
       // Make sure keySchemaMap and valueSchemaMap has correct number of entries.
       StoreKeySchemas storeKeySchemas = (StoreKeySchemas) client.get(storeKeySchemasKey).get().metadataUnion;
       assertEquals(storeKeySchemas.keySchemaMap.size(), 1);
@@ -323,6 +354,21 @@ public class SystemStoreTest {
       assertNotNull(valueSchemaStr);
       assertEquals(valueSchemaStr.toString(), Schema.parse(USER_SCHEMA_STRING_WITH_DEFAULT).toString());
     }
+
+    // Verify deletion notification
+    storeRepository.unsubscribe(regularVeniceStoreName);
+    assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.addAndGet(1), "store deletion");
+
+    storeRepository.subscribe(regularVeniceStoreName);
+    assertListenerCounts(testListener, creationCount.addAndGet(1), changeCount.get(), deletionCount.get(), "store creations");
+
+    // Verify deletion notification
+    storeRepository.clear();
+    assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.addAndGet(1), "store deletion");
+
+    // Verify that refresh() does not double count notifications...
+    storeRepository.refresh();
+    assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.get(), "ReadOnly Repo refresh()");
 
     // Dematerialize the metadata store version and it should be cleaned up properly.
     controllerResponse = parentControllerClient.dematerializeMetadataStoreVersion(clusterName, regularVeniceStoreName,
@@ -357,6 +403,55 @@ public class SystemStoreTest {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
       assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
+    });
+  }
+  static class TestListener implements StoreDataChangedListener {
+    AtomicInteger creationCount = new AtomicInteger(0);
+    AtomicInteger changeCount = new AtomicInteger(0);
+    AtomicInteger deletionCount = new AtomicInteger(0);
+
+    @Override
+    public void handleStoreCreated(Store store) {
+      creationCount.incrementAndGet();
+    }
+
+    @Override
+    public void handleStoreDeleted(String storeName) {
+      deletionCount.incrementAndGet();
+    }
+
+    @Override
+    public void handleStoreChanged(Store store) {
+      logger.info("Received handleStoreChanged: " + store.toString());
+      changeCount.incrementAndGet();
+    }
+
+    public int getCreationCount() {
+      return creationCount.get();
+    }
+
+    public int getChangeCount() {
+      return changeCount.get();
+    }
+
+    public int getDeletionCount() {
+      return deletionCount.get();
+    }
+  }
+  private void assertListenerCounts(TestListener testListener,
+                                    int expectedCreationCount,
+                                    int expectedChangeCount,
+                                    int expectedDeletionCount,
+                                    String details) {
+    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(testListener.getCreationCount(), expectedCreationCount,
+              "Listener's creation count should be " + expectedCreationCount + " following: " + details);
+      Assert.assertEquals(testListener.getChangeCount(), expectedChangeCount,
+              "Listener's change count should be " + expectedChangeCount + " following: " + details);
+      Assert.assertEquals(testListener.getDeletionCount(), expectedDeletionCount,
+              "Listener's deletion count should be " + expectedDeletionCount + " following: " + details);
+
+      logger.info("Successfully asserted that notifications work after " + details);
     });
   }
 

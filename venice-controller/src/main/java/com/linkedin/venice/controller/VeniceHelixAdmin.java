@@ -421,7 +421,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException("Resource name: " + resourceName + " is invalid");
         }
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-        if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE) {
+        if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE) {
             // Use the regular Venice store name instead to get cluster information from StoreConfig.
             storeName = VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName);
         }
@@ -678,7 +678,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         if (store.getCurrentVersion() == versionNumber){
-            if (VeniceSystemStoreUtils.getSystemStore(storeName) != VeniceSystemStore.METADATA_STORE) {
+            if (VeniceSystemStoreUtils.getSystemStoreType(storeName) != VeniceSystemStore.METADATA_STORE) {
                 // This check should only apply to non Zk shared stores.
                 throw new VeniceHttpException(HttpStatus.SC_CONFLICT, "Cannot end push for version " + versionNumber + " that is currently being served");
             }
@@ -1784,7 +1784,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store == null) {
                 throw new VeniceNoStoreException(storeName);
             }
-            VeniceSystemStore systemStore = VeniceSystemStoreUtils.getSystemStore(storeName);
+            VeniceSystemStore systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
             if (systemStore != null && systemStore.isStoreZkShared()) {
                 deletedVersion = store.getVersion(versionNumber);
             } else {

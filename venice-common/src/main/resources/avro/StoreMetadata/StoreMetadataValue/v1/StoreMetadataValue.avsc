@@ -278,6 +278,14 @@
                     "default": null
                   },
                   {
+                    "name": "persistenceType",
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "default": null
+                  },
+                  {
                     "name": "readComputationEnabled",
                     "type": [
                       "null",
@@ -358,6 +366,13 @@
                     "name": "pushStreamSourceAddress",
                     "type": ["null", "string"],
                     "default": null
+                  },                  {
+                    "name": "writeComputationEnabled",
+                    "type": [
+                      "null",
+                      "boolean"
+                    ],
+                    "default": null
                   }
                 ]
               }
@@ -420,11 +435,27 @@
                       "type": "boolean"
                     },
                     {
+                      "name": "bufferReplayEnabledForHybrid",
+                      "type": "boolean"
+                    },
+                    {
                       "name": "pushType",
                       "type": "string"
                     },
                     {
+                      "name": "nativeReplicationEnabled",
+                      "type": "boolean"
+                    },
+                    {
                       "name": "status",
+                      "type": [
+                        "null",
+                        "string"
+                      ],
+                      "default": null
+                    },
+                    {
+                      "name": "pushStreamSourceAddress",
                       "type": [
                         "null",
                         "string"

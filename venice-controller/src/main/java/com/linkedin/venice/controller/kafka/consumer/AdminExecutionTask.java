@@ -323,7 +323,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     int versionNum = message.versionNum;
-    if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE) {
+    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE) {
       // Dematerialize a metadata store version.
       admin.dematerializeMetadataStoreVersion(clusterName, VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName), versionNum);
     } else {
@@ -521,7 +521,7 @@ public class AdminExecutionTask implements Callable<Void> {
       if (VeniceSystemStore.METADATA_STORE.getPrefix().equals(storeName)) {
         // New version for the Zk shared metadata store.
         admin.newZkSharedStoreVersion(clusterName, storeName);
-      } else if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE) {
+      } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE) {
         // Materialize a metadata store for a specific Venice store.
         admin.materializeMetadataStoreVersion(clusterName,
             VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName), versionNumber);
