@@ -7,7 +7,7 @@ package com.linkedin.venice.meta.systemstore.schemas;
 
 @SuppressWarnings("all")
 public class StoreVersionState extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreVersionState\",\"namespace\":\"com.linkedin.venice.meta.systemstore.schemas\",\"fields\":[{\"name\":\"versionNumber\",\"type\":\"int\"},{\"name\":\"pushJobId\",\"type\":\"string\"},{\"name\":\"partitionCount\",\"type\":\"int\"},{\"name\":\"creationTime\",\"type\":\"long\"},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\"},{\"name\":\"compressionStrategy\",\"type\":\"string\"},{\"name\":\"leaderFollowerModelEnabled\",\"type\":\"boolean\"},{\"name\":\"pushType\",\"type\":\"string\"},{\"name\":\"status\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfig\",\"fields\":[{\"name\":\"amplificationFactor\",\"type\":\"int\"},{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}}]}],\"default\":null}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreVersionState\",\"namespace\":\"com.linkedin.venice.meta.systemstore.schemas\",\"fields\":[{\"name\":\"versionNumber\",\"type\":\"int\"},{\"name\":\"pushJobId\",\"type\":\"string\"},{\"name\":\"partitionCount\",\"type\":\"int\"},{\"name\":\"creationTime\",\"type\":\"long\"},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\"},{\"name\":\"compressionStrategy\",\"type\":\"string\"},{\"name\":\"leaderFollowerModelEnabled\",\"type\":\"boolean\"},{\"name\":\"bufferReplayEnabledForHybrid\",\"type\":\"boolean\"},{\"name\":\"pushType\",\"type\":\"string\"},{\"name\":\"nativeReplicationEnabled\",\"type\":\"boolean\"},{\"name\":\"status\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"pushStreamSourceAddress\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfig\",\"fields\":[{\"name\":\"amplificationFactor\",\"type\":\"int\"},{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}}]}],\"default\":null}]}");
   public int versionNumber;
   public java.lang.CharSequence pushJobId;
   public int partitionCount;
@@ -15,8 +15,11 @@ public class StoreVersionState extends org.apache.avro.specific.SpecificRecordBa
   public boolean chunkingEnabled;
   public java.lang.CharSequence compressionStrategy;
   public boolean leaderFollowerModelEnabled;
+  public boolean bufferReplayEnabledForHybrid;
   public java.lang.CharSequence pushType;
+  public boolean nativeReplicationEnabled;
   public java.lang.CharSequence status;
+  public java.lang.CharSequence pushStreamSourceAddress;
   public com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig partitionerConfig;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
@@ -29,9 +32,12 @@ public class StoreVersionState extends org.apache.avro.specific.SpecificRecordBa
     case 4: return chunkingEnabled;
     case 5: return compressionStrategy;
     case 6: return leaderFollowerModelEnabled;
-    case 7: return pushType;
-    case 8: return status;
-    case 9: return partitionerConfig;
+    case 7: return bufferReplayEnabledForHybrid;
+    case 8: return pushType;
+    case 9: return nativeReplicationEnabled;
+    case 10: return status;
+    case 11: return pushStreamSourceAddress;
+    case 12: return partitionerConfig;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -46,9 +52,12 @@ public class StoreVersionState extends org.apache.avro.specific.SpecificRecordBa
     case 4: chunkingEnabled = (java.lang.Boolean)value$; break;
     case 5: compressionStrategy = (java.lang.CharSequence)value$; break;
     case 6: leaderFollowerModelEnabled = (java.lang.Boolean)value$; break;
-    case 7: pushType = (java.lang.CharSequence)value$; break;
-    case 8: status = (java.lang.CharSequence)value$; break;
-    case 9: partitionerConfig = (com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig)value$; break;
+    case 7: bufferReplayEnabledForHybrid = (java.lang.Boolean)value$; break;
+    case 8: pushType = (java.lang.CharSequence)value$; break;
+    case 9: nativeReplicationEnabled = (java.lang.Boolean)value$; break;
+    case 10: status = (java.lang.CharSequence)value$; break;
+    case 11: pushStreamSourceAddress = (java.lang.CharSequence)value$; break;
+    case 12: partitionerConfig = (com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

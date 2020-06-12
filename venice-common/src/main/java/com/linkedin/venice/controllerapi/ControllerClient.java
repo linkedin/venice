@@ -301,7 +301,7 @@ public class ControllerClient implements Closeable {
   }
 
   public NewStoreResponse createNewZkSharedStore(String storeName, String owner) {
-    VeniceSystemStore systemStore = VeniceSystemStoreUtils.getSystemStore(storeName);
+    VeniceSystemStore systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
     if (systemStore == null || !systemStore.isStoreZkShared()) {
       throw new VeniceException("Cannot create new Zk shared store, " + storeName + "is not a known Zk shared store");
     }

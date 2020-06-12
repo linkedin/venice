@@ -499,7 +499,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               + " because it does not contain a storeName field");
         }
     }
-    if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE
+    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE
         && !VeniceSystemStore.METADATA_STORE.getPrefix().equals(storeName)) {
       storeName = VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName);
     }

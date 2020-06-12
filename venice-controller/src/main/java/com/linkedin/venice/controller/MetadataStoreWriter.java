@@ -217,7 +217,8 @@ public class MetadataStoreWriter {
     storeProperties.systemStore = store.isSystemStore();
     storeProperties.nativeReplicationEnabled = store.isNativeReplicationEnabled();
     storeProperties.pushStreamSourceAddress = store.getPushStreamSourceAddress();
-
+    storeProperties.persistenceType = store.getPersistenceType().toString();
+    storeProperties.writeComputationEnabled = store.isWriteComputationEnabled();
     return storeProperties;
   }
 
@@ -234,6 +235,9 @@ public class MetadataStoreWriter {
       storeVersionState.pushType = version.getPushType().toString();
       storeVersionState.status = version.getStatus().toString();
       storeVersionState.partitionerConfig = parsePartitionerConfig(version.getPartitionerConfig());
+      storeVersionState.bufferReplayEnabledForHybrid = version.isBufferReplayEnabledForHybrid();
+      storeVersionState.nativeReplicationEnabled = version.isNativeReplicationEnabled();
+      storeVersionState.pushStreamSourceAddress = version.getPushStreamSourceAddress();
       return storeVersionState;
     }).collect(Collectors.toList());
   }

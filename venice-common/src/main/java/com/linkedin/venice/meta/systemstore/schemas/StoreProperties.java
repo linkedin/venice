@@ -7,7 +7,7 @@ package com.linkedin.venice.meta.systemstore.schemas;
 
 @SuppressWarnings("all")
 public class StoreProperties extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreProperties\",\"namespace\":\"com.linkedin.venice.meta.systemstore.schemas\",\"fields\":[{\"name\":\"accessControlled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"backupStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"batchGetLimit\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"batchGetRouterCacheEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"bootstrapToOnlineTimeoutInHours\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"chunkingEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"clientDecompressionEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"compressionStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"createdTime\",\"type\":\"long\"},{\"name\":\"currentVersion\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"enableReads\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"enableWrites\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"etlStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"ETLStoreConfig\",\"fields\":[{\"name\":\"etledUserProxyAccount\",\"type\":\"string\"},{\"name\":\"futureVersionETLEnabled\",\"type\":\"boolean\"},{\"name\":\"regularVersionETLEnabled\",\"type\":\"boolean\"}]}],\"default\":null},{\"name\":\"hybrid\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"hybridStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"HybridStoreConfig\",\"fields\":[{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"},{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"}]}],\"default\":null},{\"name\":\"hybridStoreDiskQuotaEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"incrementalPushEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"largestUsedVersionNumber\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"latestSuperSetValueSchemaId\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"leaderFollowerModelEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"migrating\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"numVersionsToPreserve\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"offLinePushStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"partitionCount\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfig\",\"fields\":[{\"name\":\"amplificationFactor\",\"type\":\"int\"},{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}}]}],\"default\":null},{\"name\":\"readComputationEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"readQuotaInCU\",\"type\":[\"null\",\"long\"],\"default\":null},{\"name\":\"readStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"routingStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"schemaAutoRegisterFromPushJobEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"singleGetRouterCacheEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"storageQuotaInByte\",\"type\":[\"null\",\"long\"],\"default\":null},{\"name\":\"superSetSchemaAutoGenerationForReadComputeEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"systemStore\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"nativeReplicationEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"pushStreamSourceAddress\",\"type\":[\"null\",\"string\"],\"default\":null}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreProperties\",\"namespace\":\"com.linkedin.venice.meta.systemstore.schemas\",\"fields\":[{\"name\":\"accessControlled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"backupStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"batchGetLimit\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"batchGetRouterCacheEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"bootstrapToOnlineTimeoutInHours\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"chunkingEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"clientDecompressionEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"compressionStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"createdTime\",\"type\":\"long\"},{\"name\":\"currentVersion\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"enableReads\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"enableWrites\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"etlStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"ETLStoreConfig\",\"fields\":[{\"name\":\"etledUserProxyAccount\",\"type\":\"string\"},{\"name\":\"futureVersionETLEnabled\",\"type\":\"boolean\"},{\"name\":\"regularVersionETLEnabled\",\"type\":\"boolean\"}]}],\"default\":null},{\"name\":\"hybrid\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"hybridStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"HybridStoreConfig\",\"fields\":[{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"},{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"}]}],\"default\":null},{\"name\":\"hybridStoreDiskQuotaEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"incrementalPushEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"largestUsedVersionNumber\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"latestSuperSetValueSchemaId\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"leaderFollowerModelEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"migrating\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"numVersionsToPreserve\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"offLinePushStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"partitionCount\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfig\",\"fields\":[{\"name\":\"amplificationFactor\",\"type\":\"int\"},{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}}]}],\"default\":null},{\"name\":\"persistenceType\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"readComputationEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"readQuotaInCU\",\"type\":[\"null\",\"long\"],\"default\":null},{\"name\":\"readStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"routingStrategy\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"schemaAutoRegisterFromPushJobEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"singleGetRouterCacheEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"storageQuotaInByte\",\"type\":[\"null\",\"long\"],\"default\":null},{\"name\":\"superSetSchemaAutoGenerationForReadComputeEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"systemStore\",\"type\":[\"null\",\"boolean\"],\"default\":null},{\"name\":\"nativeReplicationEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"pushStreamSourceAddress\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"writeComputationEnabled\",\"type\":[\"null\",\"boolean\"],\"default\":null}]}");
   public java.lang.Boolean accessControlled;
   public java.lang.CharSequence backupStrategy;
   public java.lang.Integer batchGetLimit;
@@ -35,6 +35,7 @@ public class StoreProperties extends org.apache.avro.specific.SpecificRecordBase
   public java.lang.CharSequence owner;
   public java.lang.Integer partitionCount;
   public com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig partitionerConfig;
+  public java.lang.CharSequence persistenceType;
   public java.lang.Boolean readComputationEnabled;
   public java.lang.Long readQuotaInCU;
   public java.lang.CharSequence readStrategy;
@@ -46,6 +47,7 @@ public class StoreProperties extends org.apache.avro.specific.SpecificRecordBase
   public java.lang.Boolean systemStore;
   public boolean nativeReplicationEnabled;
   public java.lang.CharSequence pushStreamSourceAddress;
+  public java.lang.Boolean writeComputationEnabled;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -77,17 +79,19 @@ public class StoreProperties extends org.apache.avro.specific.SpecificRecordBase
     case 24: return owner;
     case 25: return partitionCount;
     case 26: return partitionerConfig;
-    case 27: return readComputationEnabled;
-    case 28: return readQuotaInCU;
-    case 29: return readStrategy;
-    case 30: return routingStrategy;
-    case 31: return schemaAutoRegisterFromPushJobEnabled;
-    case 32: return singleGetRouterCacheEnabled;
-    case 33: return storageQuotaInByte;
-    case 34: return superSetSchemaAutoGenerationForReadComputeEnabled;
-    case 35: return systemStore;
-    case 36: return nativeReplicationEnabled;
-    case 37: return pushStreamSourceAddress;
+    case 27: return persistenceType;
+    case 28: return readComputationEnabled;
+    case 29: return readQuotaInCU;
+    case 30: return readStrategy;
+    case 31: return routingStrategy;
+    case 32: return schemaAutoRegisterFromPushJobEnabled;
+    case 33: return singleGetRouterCacheEnabled;
+    case 34: return storageQuotaInByte;
+    case 35: return superSetSchemaAutoGenerationForReadComputeEnabled;
+    case 36: return systemStore;
+    case 37: return nativeReplicationEnabled;
+    case 38: return pushStreamSourceAddress;
+    case 39: return writeComputationEnabled;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -122,17 +126,19 @@ public class StoreProperties extends org.apache.avro.specific.SpecificRecordBase
     case 24: owner = (java.lang.CharSequence)value$; break;
     case 25: partitionCount = (java.lang.Integer)value$; break;
     case 26: partitionerConfig = (com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig)value$; break;
-    case 27: readComputationEnabled = (java.lang.Boolean)value$; break;
-    case 28: readQuotaInCU = (java.lang.Long)value$; break;
-    case 29: readStrategy = (java.lang.CharSequence)value$; break;
-    case 30: routingStrategy = (java.lang.CharSequence)value$; break;
-    case 31: schemaAutoRegisterFromPushJobEnabled = (java.lang.Boolean)value$; break;
-    case 32: singleGetRouterCacheEnabled = (java.lang.Boolean)value$; break;
-    case 33: storageQuotaInByte = (java.lang.Long)value$; break;
-    case 34: superSetSchemaAutoGenerationForReadComputeEnabled = (java.lang.Boolean)value$; break;
-    case 35: systemStore = (java.lang.Boolean)value$; break;
-    case 36: nativeReplicationEnabled = (java.lang.Boolean)value$; break;
-    case 37: pushStreamSourceAddress = (java.lang.CharSequence)value$; break;
+    case 27: persistenceType = (java.lang.CharSequence)value$; break;
+    case 28: readComputationEnabled = (java.lang.Boolean)value$; break;
+    case 29: readQuotaInCU = (java.lang.Long)value$; break;
+    case 30: readStrategy = (java.lang.CharSequence)value$; break;
+    case 31: routingStrategy = (java.lang.CharSequence)value$; break;
+    case 32: schemaAutoRegisterFromPushJobEnabled = (java.lang.Boolean)value$; break;
+    case 33: singleGetRouterCacheEnabled = (java.lang.Boolean)value$; break;
+    case 34: storageQuotaInByte = (java.lang.Long)value$; break;
+    case 35: superSetSchemaAutoGenerationForReadComputeEnabled = (java.lang.Boolean)value$; break;
+    case 36: systemStore = (java.lang.Boolean)value$; break;
+    case 37: nativeReplicationEnabled = (java.lang.Boolean)value$; break;
+    case 38: pushStreamSourceAddress = (java.lang.CharSequence)value$; break;
+    case 39: writeComputationEnabled = (java.lang.Boolean)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
