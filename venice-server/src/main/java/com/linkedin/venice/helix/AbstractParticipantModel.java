@@ -215,8 +215,7 @@ public abstract class AbstractParticipantModel extends StateModel {
             + Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS + " hours instead");
         bootstrapToOnlineTimeoutInHours = Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
       }
-      notifier.waitConsumptionCompleted(resourceName, partition, bootstrapToOnlineTimeoutInHours,
-          storeIngestionService.getAggStoreIngestionStats(), storeIngestionService.getAggVersionedStorageIngestionStats());
+      notifier.waitConsumptionCompleted(resourceName, partition, bootstrapToOnlineTimeoutInHours, storeIngestionService);
     } catch (InterruptedException e) {
       String errorMsg =
           "Can not complete consumption for resource:" + resourceName + " partition:" + partition;

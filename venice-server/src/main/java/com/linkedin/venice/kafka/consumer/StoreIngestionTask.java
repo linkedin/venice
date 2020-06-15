@@ -2088,6 +2088,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     };
   }
 
+  public void reportError(String message, int partition, Exception e) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+
+    notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), message, e);
+  }
+
   /**
    * A function that would apply updates on the storage engine.
    */
