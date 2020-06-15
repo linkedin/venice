@@ -50,7 +50,7 @@ public class VenicePartitionStateModelTest
     testStateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
     verify(mockNotifier, times(1))
         .waitConsumptionCompleted(mockMessage.getResourceName(), testPartition,
-            Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, mockAggStoreIngestionStats, mockAggVersionedStorageIngestionStats);
+            Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, mockStoreIngestionService);
   }
 
   /**

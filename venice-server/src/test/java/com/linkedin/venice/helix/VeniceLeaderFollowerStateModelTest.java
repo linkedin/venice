@@ -25,11 +25,11 @@ public class VeniceLeaderFollowerStateModelTest
     when(mockStore.getCurrentVersion()).thenReturn(2);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
     verify(mockNotifier, never()).waitConsumptionCompleted(mockMessage.getResourceName(), testPartition,
-        Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, mockAggStoreIngestionStats, mockAggVersionedStorageIngestionStats);
+        Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, mockStoreIngestionService);
 
     when(mockStore.getCurrentVersion()).thenReturn(1);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
     verify(mockNotifier, only()).waitConsumptionCompleted(mockMessage.getResourceName(), testPartition,
-        Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, mockAggStoreIngestionStats, mockAggVersionedStorageIngestionStats);
+        Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, mockStoreIngestionService);
   }
 }
