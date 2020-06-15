@@ -1,6 +1,7 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -29,14 +30,13 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   public static VeniceProperties getServerProperties(PersistenceType persistenceType, long flushIntervalMs) {
-    String databasePath = TestUtils.getUniqueTempPath();
-    File dataBaseDir = new File(databasePath);
-    dataBaseDir.deleteOnExit();
+    File dataDirectory = TestUtils.getTempDataDirectory();
     return new PropertyBuilder()
         .put(CLUSTER_NAME, "test_offset_manager")
         .put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true")
         .put(OFFSET_MANAGER_TYPE, "bdb")
         .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs)
+        .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
         .put(ZOOKEEPER_ADDRESS, "localhost:2181")
         .put(PERSISTENCE_TYPE, persistenceType.toString())
         .put(KAFKA_BROKERS, "localhost")
@@ -45,7 +45,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(KAFKA_ZK_ADDRESS, "localhost:2181")
         .put(LISTENER_PORT , 7072)
         .put(ADMIN_PORT , 7073)
-        .put(DATA_BASE_PATH, databasePath)
+        .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
         .build();
   }
 
