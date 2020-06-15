@@ -182,6 +182,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final VeniceServerConfig serverConfig;
 
+  /** Used for reporting error when the {@link #partitionConsumptionStateMap} is empty */
+  protected final int partitionId;
+
   // use this checker to check whether ingestion completion can be reported for a partition
   protected final ReadyToServeCheck defaultReadyToServeChecker;
 
@@ -244,7 +247,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService kafkaConsumerService,
-      VeniceServerConfig serverConfig) {
+      VeniceServerConfig serverConfig,
+      int partitionId) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -313,6 +317,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     this.aggKafkaConsumerService = kafkaConsumerService;
+
+    this.partitionId = partitionId;
   }
 
   protected void validateState() {
@@ -737,11 +743,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // recovered, it will send STARTED message to controller again)
       if (t instanceof Exception) {
         logger.error(consumerTaskId + " failed with Exception.", t);
-        notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
+        reportError(partitionConsumptionStateMap.values(), partitionId,
             "Caught Exception during ingestion.", (Exception)t);
       } else {
         logger.error(consumerTaskId + " failed with Error!!!", t);
-        notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
+        reportError(partitionConsumptionStateMap.values(), partitionId,
             "Caught non-exception Throwable during ingestion in " + getClass().getSimpleName() + "'s run() function.", new VeniceException(t));
       }
       storeIngestionStats.recordIngestionFailure(storeName);
@@ -750,6 +756,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     } finally {
       internalClose();
+    }
+  }
+
+  private void reportError(Collection<PartitionConsumptionState> pcsList, int partitionId, String message, Exception consumerEx) {
+    if (pcsList.isEmpty()) {
+      notificationDispatcher.reportError(partitionId, message, consumerEx);
+    } else {
+      notificationDispatcher.reportError(pcsList, message, consumerEx);
     }
   }
 

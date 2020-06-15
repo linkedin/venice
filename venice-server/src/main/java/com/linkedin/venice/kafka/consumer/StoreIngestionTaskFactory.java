@@ -44,7 +44,8 @@ public class StoreIngestionTaskFactory {
       @NotNull VeniceStoreConfig storeConfig,
       boolean bufferReplayEnabledForHybrid,
       boolean isNativeReplicationEnabled,
-      @NotNull String nativeReplicationSourceAddress
+      @NotNull String nativeReplicationSourceAddress,
+      int partitionId
   ) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(
@@ -74,7 +75,8 @@ public class StoreIngestionTaskFactory {
           builder.aggKafkaConsumerService,
           builder.serverConfig,
           isNativeReplicationEnabled,
-          nativeReplicationSourceAddress);
+          nativeReplicationSourceAddress,
+          partitionId);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -101,7 +103,8 @@ public class StoreIngestionTaskFactory {
           builder.diskUsage,
           bufferReplayEnabledForHybrid,
           builder.aggKafkaConsumerService,
-          builder.serverConfig);
+          builder.serverConfig,
+          partitionId);
     }
   }
 

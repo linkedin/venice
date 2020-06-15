@@ -40,12 +40,10 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -140,7 +138,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       AggKafkaConsumerService aggKafkaConsumerService,
       VeniceServerConfig serverConfig,
       boolean isNativeReplicationEnabled,
-      String nativeReplicationSourceAddress) {
+      String nativeReplicationSourceAddress,
+      int partitionId) {
     super(
         writerFactory,
         consumerFactory,
@@ -166,7 +165,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         diskUsage,
         bufferReplayEnabledForHybrid,
         aggKafkaConsumerService,
-        serverConfig);
+        serverConfig,
+        partitionId);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
