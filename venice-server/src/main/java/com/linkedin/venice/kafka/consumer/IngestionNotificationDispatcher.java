@@ -179,6 +179,18 @@ class IngestionNotificationDispatcher {
         notifier -> notifier.topicSwitchReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
+  void reportError(int partition, String message, Exception consumerEx) {
+    for (VeniceNotifier notifier : notifiers) {
+      try {
+        notifier.error(topic, partition, message, consumerEx);
+      } catch (Exception ex) {
+        logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
+      }
+    }
+
+    logger.info("Reported " + ExecutionStatus.ERROR + " to " + notifiers.size() + " notifiers for partition: " + partition);
+  }
+
   void reportError(Collection<PartitionConsumptionState> pcsList, String message, Exception consumerEx) {
     for(PartitionConsumptionState pcs: pcsList) {
       report(pcs, ExecutionStatus.ERROR,

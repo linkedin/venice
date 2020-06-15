@@ -272,7 +272,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return true;
   }
 
-  private StoreIngestionTask createConsumerTask(VeniceStoreConfig veniceStoreConfig, boolean isLeaderFollowerModel) {
+  private StoreIngestionTask createConsumerTask(VeniceStoreConfig veniceStoreConfig, boolean isLeaderFollowerModel, int partitionId) {
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreConfig.getStoreName());
     int storeVersion = Version.parseVersionFromKafkaTopicName(veniceStoreConfig.getStoreName());
     Store store = metadataRepo.getStoreOrThrow(storeName);
@@ -310,7 +310,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String nativeReplicationSourceAddress = version.get().getPushStreamSourceAddress();
     return ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModel, kafkaProperties, isStoreVersionCurrent,
         hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStoreConfig, bufferReplayEnabledForHybrid,
-        nativeReplicationEnabled, nativeReplicationSourceAddress);
+        nativeReplicationEnabled, nativeReplicationSourceAddress, partitionId);
   }
 
   /**
@@ -368,7 +368,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String topic = veniceStore.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if(consumerTask == null || !consumerTask.isRunning()) {
-      consumerTask = createConsumerTask(veniceStore, isLeaderFollowerModel);
+      consumerTask = createConsumerTask(veniceStore, isLeaderFollowerModel, partitionId);
       topicNameToIngestionTaskMap.put(topic, consumerTask);
       versionedStorageIngestionStats.setIngestionTask(topic, consumerTask);
       if(!isRunning.get()) {

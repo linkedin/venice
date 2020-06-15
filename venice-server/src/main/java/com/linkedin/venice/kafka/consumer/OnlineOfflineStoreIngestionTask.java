@@ -63,7 +63,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService aggKafkaConsumerService,
-      VeniceServerConfig serverConfig) {
+      VeniceServerConfig serverConfig,
+      int partitionId) {
     super(
         writerFactory,
         consumerFactory,
@@ -89,7 +90,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         diskUsage,
         bufferReplayEnabledForHybrid,
         aggKafkaConsumerService,
-        serverConfig);
+        serverConfig,
+        partitionId);
   }
 
   @Override

@@ -392,7 +392,8 @@ public class StoreIngestionTaskTest {
         .setDiskUsage(diskUsage)
         .build();
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
-        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true, false, "");
+        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true,
+        false, "", PARTITION_FOO);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
     Future testSubscribeTaskFuture = null;
     try {
@@ -1345,6 +1346,17 @@ public class StoreIngestionTaskTest {
         verify(mockNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
     }, Optional.empty(), true, Optional.empty(), isLeaderFollowerModelEnabled);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testReportErrorWithEmptyPcsMap(boolean isLeaderFollowerModelEnabled) throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
+    doThrow(new VeniceException("fake exception")).when(mockVersionedStorageIngestionStats).resetIngestionTaskErroredGauge(anyString(), anyInt());
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+    }, isLeaderFollowerModelEnabled);
   }
 
   private static class TestVeniceWriter<K,V> extends VeniceWriter{
