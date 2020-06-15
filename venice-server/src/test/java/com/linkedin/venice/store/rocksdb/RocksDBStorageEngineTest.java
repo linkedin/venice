@@ -5,7 +5,6 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
@@ -15,13 +14,11 @@ import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
-import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import java.io.File;
 import java.util.Optional;
 import java.util.Set;
 
@@ -32,26 +29,24 @@ import static org.mockito.Mockito.*;
 public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
 
+  private String storeName;
   private StorageService storageService;
   private VeniceStoreConfig storeConfig;
   private VeniceClusterConfig clusterConfig;
-  private String storeName;
 
   @Override
   public void createStorageEngineForTest() {
     storeName = TestUtils.getUniqueString("rocksdb_store_test");
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProps);
     storageService = new StorageService(
-        configLoader,
+        AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
         s -> {},
         mock(AggVersionedBdbStorageEngineStats.class),
         mock(AggVersionedStorageEngineStats.class),
         null);
+    clusterConfig = new VeniceClusterConfig(serverProps);
     storeConfig = new VeniceStoreConfig(storeName, serverProps, PersistenceType.ROCKS_DB);
     testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
-    VeniceProperties clusterProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY, 1000L);
-    clusterConfig = new VeniceClusterConfig(clusterProps);
     createStoreForTest();
   }
 
@@ -62,9 +57,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
 
   @AfterClass
   public void tearDown() throws Exception {
-    if(storageService != null && storeConfig != null) {
-      storageService.dropStorePartition(storeConfig , PARTITION_ID);
-    }
+    storageService.dropStorePartition(storeConfig , PARTITION_ID);
+    storageService.stop();
   }
 
   @Test
@@ -167,20 +161,10 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
   }
 
-  private BdbStorageMetadataService getOffsetManager(VeniceClusterConfig clusterConfig) {
-    try {
-      FileUtils.deleteDirectory(new File(clusterConfig.getOffsetDatabasePath()));
-    } catch (Exception e) {
-      Assert.fail("Unable to cleanup BDB directory", e);
-    }
-    BdbStorageMetadataService metadataService = new BdbStorageMetadataService(clusterConfig);
-    metadataService.start();
-    return metadataService;
-  }
-
   @Test
   public void testBDBToRocksDBOffsetBootStrap() throws Exception {
-    BdbStorageMetadataService metadataService = getOffsetManager(clusterConfig);
+    BdbStorageMetadataService metadataService = new BdbStorageMetadataService(clusterConfig);
+    metadataService.start();
     try {
       AbstractStorageEngine testStorageEngine = getTestStoreEngine();
       String topic = testStorageEngine.getName();
