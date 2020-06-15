@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
@@ -31,8 +32,9 @@ public class StateModelNotifier implements VeniceNotifier {
   }
 
   void waitConsumptionCompleted(String resourceName, int partitionId, int bootstrapToOnlineTimeoutInHours,
-      AggStoreIngestionStats storeIngestionStats, AggVersionedStorageIngestionStats versionedStorageIngestionStats)
-      throws InterruptedException {
+      StoreIngestionService storeIngestionService) throws InterruptedException {
+   //   AggStoreIngestionStats storeIngestionStats, AggVersionedStorageIngestionStats versionedStorageIngestionStats)
+   //   throws InterruptedException {
     String stateModelId = getStateModelIdentification(resourceName , partitionId);
     CountDownLatch latch = stateModelToLatchMap.get(stateModelId);
     if (latch == null) {
@@ -49,9 +51,10 @@ public class StateModelNotifier implements VeniceNotifier {
         // Report ingestion_failure and ingestion_task_errored_gauge
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
         int versionNumber = Version.parseVersionFromKafkaTopicName(resourceName);
-        storeIngestionStats.recordIngestionFailure(storeName);
-        versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
-        throw new VeniceException(errorMsg);
+        storeIngestionService.getAggStoreIngestionStats().recordIngestionFailure(storeName);
+        storeIngestionService.getAggVersionedStorageIngestionStats().setIngestionTaskErroredGauge(storeName, versionNumber);
+        VeniceException veniceException =  new VeniceException(errorMsg);
+        storeIngestionService.getStoreIngestionTask(resourceName).reportError(errorMsg, partitionId, veniceException);
       }
       stateModelToLatchMap.remove(stateModelId);
       // If consumption is failed, throw an exception here, Helix will put this replcia to ERROR state.

@@ -706,4 +706,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public ByteBuffer getStoreVersionCompressionDictionary(String topicName) {
     return storageMetadataService.getStoreVersionCompressionDictionary(topicName);
   }
+
+  public StoreIngestionTask getStoreIngestionTask(String topicName) {
+    return topicNameToIngestionTaskMap.get(topicName);
+  }
 }

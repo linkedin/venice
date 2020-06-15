@@ -91,4 +91,6 @@ public interface StoreIngestionService {
    * @return an instance of {@link AggVersionedStorageIngestionStats}
    */
   AggVersionedStorageIngestionStats getAggVersionedStorageIngestionStats();
+
+  StoreIngestionTask getStoreIngestionTask(String topic);
 }
