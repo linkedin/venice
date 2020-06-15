@@ -14,51 +14,44 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.io.File;
-import java.util.Optional;
-import java.util.Set;
+
+import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import java.io.File;
+import java.util.Optional;
+import java.util.Set;
 
 import static com.linkedin.venice.store.AbstractStorageEngine.*;
 import static org.mockito.Mockito.*;
 
 
 public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
-  private StorageService service;
-  private VeniceStoreConfig storeConfig;
-  private BdbStorageMetadataService bdbStorageMetadataService;
-  private VeniceClusterConfig clusterConfig;
-  private File bdbDir;
-
-  private String storeName;
   private static final int PARTITION_ID = 0;
 
-
-  private BdbStorageMetadataService getOffsetManager(VeniceClusterConfig clusterConfig)   {
-    BdbStorageMetadataService offsetManager = new BdbStorageMetadataService(clusterConfig);
-    offsetManager.start();
-    return offsetManager;
-  }
+  private StorageService storageService;
+  private VeniceStoreConfig storeConfig;
+  private VeniceClusterConfig clusterConfig;
+  private String storeName;
 
   @Override
   public void createStorageEngineForTest() {
     storeName = TestUtils.getUniqueString("rocksdb_store_test");
-    VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
-    service = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
-        mock(AggVersionedStorageEngineStats.class), null);
-    storeConfig = new VeniceStoreConfig(storeName, serverProperties, PersistenceType.ROCKS_DB);
-    testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);
+    VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProps);
+    storageService = new StorageService(
+        configLoader,
+        s -> {},
+        mock(AggVersionedBdbStorageEngineStats.class),
+        mock(AggVersionedStorageEngineStats.class),
+        null);
+    storeConfig = new VeniceStoreConfig(storeName, serverProps, PersistenceType.ROCKS_DB);
+    testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
     VeniceProperties clusterProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY, 1000L);
-
     clusterConfig = new VeniceClusterConfig(clusterProps);
-    // delete the bdb offset dir from previous tests as it could lead to EnvironmentLockedException
-    bdbDir = new File(clusterConfig.getOffsetDatabasePath());
-    bdbDir.delete();
-    bdbStorageMetadataService = getOffsetManager(clusterConfig);
     createStoreForTest();
   }
 
@@ -69,9 +62,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
 
   @AfterClass
   public void tearDown() throws Exception {
-    if(service != null && storeConfig != null) {
-      service.dropStorePartition(storeConfig , PARTITION_ID);
-      bdbStorageMetadataService.stop();
+    if(storageService != null && storeConfig != null) {
+      storageService.dropStorePartition(storeConfig , PARTITION_ID);
     }
   }
 
@@ -145,26 +137,22 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @Test
-  public void testPartitioning()
-      throws Exception {
+  public void testPartitioning() throws Exception {
     super.testPartitioning();
   }
 
   @Test
-  public void testAddingAPartitionTwice()
-      throws Exception {
+  public void testAddingAPartitionTwice() throws Exception {
     super.testAddingAPartitionTwice();
   }
 
   @Test
-  public void testRemovingPartitionTwice()
-      throws Exception {
+  public void testRemovingPartitionTwice() throws Exception {
     super.testRemovingPartitionTwice();
   }
 
   @Test
-  public void testOperationsOnNonExistingPartition()
-      throws Exception {
+  public void testOperationsOnNonExistingPartition() throws Exception {
     super.testOperationsOnNonExistingPartition();
   }
 
@@ -179,38 +167,51 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
   }
 
+  private BdbStorageMetadataService getOffsetManager(VeniceClusterConfig clusterConfig) {
+    try {
+      FileUtils.deleteDirectory(new File(clusterConfig.getOffsetDatabasePath()));
+    } catch (Exception e) {
+      Assert.fail("Unable to cleanup BDB directory", e);
+    }
+    BdbStorageMetadataService metadataService = new BdbStorageMetadataService(clusterConfig);
+    metadataService.start();
+    return metadataService;
+  }
+
   @Test
   public void testBDBToRocksDBOffsetBootStrap() throws Exception {
-    AbstractStorageEngine testStorageEngine = getTestStoreEngine();
-    String topic = testStorageEngine.getName();
-    OffsetRecord expectedRecord = null, actualRecord =  null;
+    BdbStorageMetadataService metadataService = getOffsetManager(clusterConfig);
+    try {
+      AbstractStorageEngine testStorageEngine = getTestStoreEngine();
+      String topic = testStorageEngine.getName();
+      OffsetRecord expectedRecord = null, actualRecord = null;
 
-    for(int j = 0; j < 2; j ++) {
-      expectedRecord = TestUtils.getOffsetRecord(j);
-      bdbStorageMetadataService.put(testStorageEngine.getName(), PARTITION_ID, expectedRecord);
+      for (int j = 0; j < 2; j++) {
+        expectedRecord = TestUtils.getOffsetRecord(j);
+        metadataService.put(testStorageEngine.getName(), PARTITION_ID, expectedRecord);
+      }
+      StoreVersionState storeVersionState = new StoreVersionState();
+      storeVersionState.sorted = true;
+      metadataService.put(topic, storeVersionState);
+      actualRecord = metadataService.getLastOffset(topic, PARTITION_ID);
+      storeVersionState = metadataService.getStoreVersionState(topic).get();
+      testStoreEngine.bootStrapAndValidateOffsetRecordsFromBDB(metadataService);
+
+      Optional<OffsetRecord> record = testStoreEngine.getPartitionOffset(PARTITION_ID);
+      Assert.assertEquals(record.get(), actualRecord);
+
+      Optional<StoreVersionState> actualState = testStoreEngine.getStoreVersionState();
+      Assert.assertEquals(actualState.get(), storeVersionState);
+
+      // after validation BDB should be empty
+      Assert.assertFalse(metadataService.getStoreVersionState(topic).isPresent());
+
+      // calling it again will not bootstrap and validate again.
+      storeVersionState.sorted = false;
+      metadataService.put(topic, storeVersionState);
+      testStoreEngine.bootStrapAndValidateOffsetRecordsFromBDB(metadataService);
+    } finally {
+      metadataService.stop();
     }
-    StoreVersionState storeVersionState = new StoreVersionState();
-    storeVersionState.sorted = true;
-    bdbStorageMetadataService.put(topic, storeVersionState);
-    actualRecord = bdbStorageMetadataService.getLastOffset(topic, PARTITION_ID);
-    storeVersionState = bdbStorageMetadataService.getStoreVersionState(topic).get();
-    testStoreEngine.bootStrapAndValidateOffsetRecordsFromBDB(bdbStorageMetadataService);
-
-    Optional<OffsetRecord> record = testStoreEngine.getPartitionOffset(PARTITION_ID);
-    Assert.assertEquals(record.get(), actualRecord);
-
-    Optional<StoreVersionState> actualState = testStoreEngine.getStoreVersionState();
-    Assert.assertEquals(actualState.get(), storeVersionState);
-
-    // after validation BDB should be empty
-    Assert.assertFalse(bdbStorageMetadataService.getStoreVersionState(topic).isPresent());
-
-    // calling it again will not bootstrap and validate again.
-    storeVersionState.sorted = false;
-    bdbStorageMetadataService.put(topic, storeVersionState);
-    testStoreEngine.bootStrapAndValidateOffsetRecordsFromBDB(bdbStorageMetadataService);
-
-    bdbStorageMetadataService.stop();
-
   }
 }
