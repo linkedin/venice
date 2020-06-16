@@ -60,12 +60,13 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   /**
    * Mark that something is wrong with an entire host and it should not be used for queries.
    *
-   * @param hostName
+   * @param instance
    */
-  public void setHostAsUnhealthy(Instance hostName){
-    String identifier = hostName.getUrl();
+  public void setHostAsUnhealthy(Instance instance){
+    String identifier = instance.getUrl();
     unhealthyHosts.add(identifier);
     logger.info("Marking " + identifier + " as unhealthy until it passes the next health check.");
+    aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
   }
 
   /**
@@ -79,6 +80,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
     if (unhealthyHosts.contains(identifier)) {
       unhealthyHosts.remove(identifier);
       logger.info("Marking " + identifier + " back to healthy host");
+      aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
     }
   }
 
@@ -89,24 +91,29 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
       aggHostHealthStats.recordUnhealthyHostOfflineInstance(nodeId);
       return false;
     }
+
+    if (unhealthyHosts.contains(instance.getUrl())) {
+      aggHostHealthStats.recordUnhealthyHostHeartBeatFailure(instance.getNodeId());
+      return false;
+    }
+
     if (!storageNodeClient.isInstanceReadyToServe(nodeId)) {
       aggHostHealthStats.recordUnhealthyHostDelayJoin(nodeId);
       return false;
     }
+
     if (slowPartitionHosts.contains(hostPartitionString(instance, partitionName))) {
       aggHostHealthStats.recordUnhealthyHostSlowPartition(nodeId);
       return false;
     }
+
     if (isPendingRequestQueueUnhealthy(instance.getNodeId())) {
       aggHostHealthStats.recordUnhealthyHostTooManyPendingRequest(nodeId);
       // Record the unhealthy node count because of pending queue check
       aggHostHealthStats.recordUnhealthyHostCountCausedByPendingQueue(pendingRequestUnhealthyTimeMap.size());
       return false;
     }
-    if (unhealthyHosts.contains(instance.getUrl())) {
-      aggHostHealthStats.recordUnhealthyHostHeartBeatFailure(nodeId);
-      return false;
-    }
+
     return true;
   }
 

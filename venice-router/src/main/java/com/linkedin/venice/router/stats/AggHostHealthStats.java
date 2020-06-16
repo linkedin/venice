@@ -57,6 +57,10 @@ public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> 
     totalStats.recordUnhealthyHostCountCausedByPendingQueue(count);
   }
 
+  public void recordUnhealthyHostCountCausedByRouterHeartBeat(int count) {
+    totalStats.recordUnhealthyHostCountCausedByRouterHeartBeat(count);
+  }
+
   public void recordUnhealthyHostDelayJoin(String hostName) {
     totalStats.recordUnhealthyHostDelayJoin();
     getHostStats(hostName).recordUnhealthyHostDelayJoin();
