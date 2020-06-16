@@ -27,6 +27,8 @@ public class HostHealthStats extends AbstractVeniceStats {
   private final Sensor unhealthyPendingRateSensor;
   private final Sensor unhealthyHostDelayJoinSensor;
   private  Optional<Sensor> unhealthyHostCountCausedByPendingQueueSensor = Optional.empty();
+  private  Optional<Sensor> unhealthyHostCountCausedByHeartBeatSensor = Optional.empty();
+
 
   public HostHealthStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -43,6 +45,7 @@ public class HostHealthStats extends AbstractVeniceStats {
     if (name.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
       // This is trying to avoid emit unnecessary metrics per route
       this.unhealthyHostCountCausedByPendingQueueSensor = Optional.of(registerSensor("unhealthy_host_count_caused_by_pending_queue", new Avg(), new Min(), new Max()));
+      this.unhealthyHostCountCausedByHeartBeatSensor = Optional.of(registerSensor("unhealthy_host_count_caused_by_router_heart_beat", new Avg(), new Min(), new Max()));
     }
   }
 
@@ -76,9 +79,11 @@ public class HostHealthStats extends AbstractVeniceStats {
   }
 
   public void recordUnhealthyHostCountCausedByPendingQueue(int count) {
-    if (unhealthyHostCountCausedByPendingQueueSensor.isPresent()) {
-      unhealthyHostCountCausedByPendingQueueSensor.get().record(count);
-    }
+    unhealthyHostCountCausedByPendingQueueSensor.ifPresent(sensor -> sensor.record(count));
+  }
+
+  public void recordUnhealthyHostCountCausedByRouterHeartBeat(int count) {
+    unhealthyHostCountCausedByHeartBeatSensor.ifPresent(sensor -> sensor.record(count));
   }
 
   public void recordUnhealthyHostDelayJoin() {
