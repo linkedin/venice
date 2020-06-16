@@ -18,7 +18,6 @@ import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -48,7 +47,6 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
 import io.tehuti.metrics.MetricsRepository;
 
-import java.util.Collections;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
@@ -59,6 +57,7 @@ import org.apache.log4j.Logger;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -228,7 +227,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         if (isRemoteQueryAllowed()) {
           return veniceClient.get(key);
         }
-        return null;
+        return CompletableFuture.completedFuture(null);
       } else {
         V value = getValueFromStorageEngine(storageEngine, version, subPartitionId, keyBytes, reusableObjects, reusedValue);
         return CompletableFuture.completedFuture(value);
