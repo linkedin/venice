@@ -23,19 +23,23 @@ import java.util.function.Supplier;
  */
 public class VeniceWriterFactory {
   private final Properties properties;
-  private final String kafkaBootstrapServers;
+  private final String localKafkaBootstrapServers;
 
   public VeniceWriterFactory(Properties properties) {
     this.properties = properties;
     boolean sslToKafka = Boolean.valueOf(properties.getProperty(ConfigKeys.SSL_TO_KAFKA, "false"));
     if (!sslToKafka) {
       checkProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
-      kafkaBootstrapServers = properties.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+      localKafkaBootstrapServers = properties.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
     } else {
       checkProperty(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS);
-      kafkaBootstrapServers = properties.getProperty(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS);
+      localKafkaBootstrapServers = properties.getProperty(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS);
     }
   }
+
+  /**
+   * TODO: Consider adding a VeniceWriterConfig class, so that we have less function overloads in this class.
+   */
 
   /**
    * Create a basic venice writer with default serializer.
@@ -72,12 +76,17 @@ public class VeniceWriterFactory {
         Optional.of(chunkingEnabled), SystemTime.INSTANCE);
   }
 
+  protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, VeniceKafkaSerializer<K> keySerializer,
+      VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time) {
+    return createVeniceWriter(topic, this.localKafkaBootstrapServers, keySerializer, valueSerializer, writeComputeSerializer, chunkingEnabled, time);
+  }
+
   /**
    * Create a {@link VeniceWriter} which is used to communicate with the real-time topic.
    *
    * @param chunkingEnabled override the factory's default chunking setting.
    */
-  protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, VeniceKafkaSerializer<K> keySerializer,
+  protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, String kafkaBootstrapServers, VeniceKafkaSerializer<K> keySerializer,
       VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time) {
     Properties writerProperties = new Properties();
     writerProperties.putAll(this.properties);
@@ -93,6 +102,11 @@ public class VeniceWriterFactory {
 
   public VeniceWriter<KafkaKey, byte[], byte[]> createVeniceWriter(String topic) {
     return createVeniceWriter(topic, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
+        Optional.empty(), SystemTime.INSTANCE);
+  }
+
+  public VeniceWriter<KafkaKey, byte[], byte[]> createVeniceWriter(String topic, String kafkaBootstrapServers) {
+    return createVeniceWriter(topic, kafkaBootstrapServers, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
         Optional.empty(), SystemTime.INSTANCE);
   }
 

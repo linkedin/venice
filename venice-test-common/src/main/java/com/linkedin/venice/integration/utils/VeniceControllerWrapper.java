@@ -126,8 +126,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
               throw new IllegalArgumentException("child controller at index " + dataCenterIndex + " is null!");
             }
             builder.put(CHILD_CLUSTER_URL_PREFIX + "." + childDataCenterName, childController.getControllerUrl());
+            builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childDataCenterName, childController.getKafkaBootstrapServers(sslToKafka));
           }
           builder.put(CHILD_CLUSTER_WHITELIST, clusterWhiteList);
+          builder.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
         }
 
         VeniceProperties props = builder.build();
@@ -174,6 +176,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
    */
   public String getSecureControllerUrl() {
     return "https://" + getHost() + ":" + getSecurePort();
+  }
+
+  public String getKafkaBootstrapServers(boolean sslToKafka) {
+    if (sslToKafka) {
+      return configs.get(0).getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
+    }
+    return configs.get(0).getString(KAFKA_BOOTSTRAP_SERVERS);
   }
 
   @Override

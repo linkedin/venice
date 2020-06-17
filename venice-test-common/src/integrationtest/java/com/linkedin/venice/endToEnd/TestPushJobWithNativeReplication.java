@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -29,7 +30,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestPushJobWithNativeReplication {
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
+  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0", "venice-cluster1", ...];
@@ -61,7 +62,7 @@ public class TestPushJobWithNativeReplication {
         Optional.empty(),
         Optional.of(new VeniceProperties(serverProperties)),
         false,
-        "\"venice_admin_.*\"");
+        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
     childClusters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
