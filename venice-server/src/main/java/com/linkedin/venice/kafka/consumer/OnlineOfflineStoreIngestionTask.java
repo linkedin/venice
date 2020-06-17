@@ -147,7 +147,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected long measureHybridOffsetLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(kafkaTopic);
+    Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(
+        kafkaVersionTopic);
     Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
     if (!(storeVersionStateOptional.isPresent() && sobrDestinationOffsetOptional.isPresent())) {
       // In this case, we have a hybrid store which has received its EOP, but has not yet received its SOBR.
@@ -163,7 +164,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
      * partitionConsumptionState. This will cause storeVersionState to be recreated without startOfBufferReplay.
      */
     if (storeVersionStateOptional.get().startOfBufferReplay == null) {
-      throw new VeniceInconsistentStoreMetadataException("Inconsistent store metadata detected for topic " + kafkaTopic
+      throw new VeniceInconsistentStoreMetadataException("Inconsistent store metadata detected for topic " + kafkaVersionTopic
           + ", partition " + partitionConsumptionState.getPartition()
           +". Will clear the metadata and restart ingestion.");
     }
@@ -197,7 +198,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
 
       return lag;
     } else {
-      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(kafkaTopic, partition);
+      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, partition);
       long lag = storeVersionTopicLatestOffset - currentOffset;
       if (shouldLogLag) {
         logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Dest Latest [%d] - Dest Current [%d]) = Lag [%d]",
@@ -220,14 +221,15 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     String recordTopic = record.topic();
-    if(!kafkaTopic.equals(recordTopic)) {
-      throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.kafkaTopic + " Actual " + recordTopic);
+    if(!kafkaVersionTopic.equals(recordTopic)) {
+      throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.kafkaVersionTopic
+          + " Actual " + recordTopic);
     }
 
     int partitionId = record.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
     if(null == partitionConsumptionState) {
-      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaTopic + " Partition Id: " + partitionId);
+      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic + " Partition Id: " + partitionId);
       return false;
     }
     long lastOffset = partitionConsumptionState.getOffsetRecord()

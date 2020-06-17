@@ -308,7 +308,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (!bufferReplayEnabledForHybrid) {
             partitionConsumptionState.setLeaderState(LEADER);
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-            offsetRecord.setLeaderConsumptionState(this.kafkaTopic, offsetRecord.getOffset());
+            offsetRecord.setLeaderConsumptionState(this.kafkaVersionTopic, offsetRecord.getOffset());
 
             logger.info(consumerTaskId + " promoted to leader for partition " + partition);
 
@@ -316,14 +316,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             return;
           }
 
-          long lastTimestamp = getLastConsumedMessageTimestamp(kafkaTopic, partition);
+          long lastTimestamp = getLastConsumedMessageTimestamp(kafkaVersionTopic, partition);
           if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
             /**
              * There isn't any new message from the old leader for at least {@link newLeaderInactiveTime} minutes,
              * this replica can finally be promoted to leader.
              */
             // unsubscribe from previous topic/partition
-            consumerUnSubscribe(kafkaTopic, partitionConsumptionState);
+            consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
 
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
             if (null == offsetRecord.getLeaderTopic()) {
@@ -331,7 +331,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                * This replica is ready to actually switch to LEADER role, but it has been consuming from version topic
                * all the time, so set the leader consumption state to its version topic consumption state.
                */
-              offsetRecord.setLeaderConsumptionState(kafkaTopic, offsetRecord.getOffset());
+              offsetRecord.setLeaderConsumptionState(kafkaVersionTopic, offsetRecord.getOffset());
             }
 
             /**
@@ -393,10 +393,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            */
           if (partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived()) {
             // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
-            consumerUnSubscribe(kafkaTopic, partitionConsumptionState);
+            consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
             partitionConsumptionState.setConsumeRemotely(false);
             // Subscribe to local Kafka topic
-            consumerSubscribe(kafkaTopic, partitionConsumptionState, partitionConsumptionState.getOffsetRecord().getOffset());
+            consumerSubscribe(kafkaVersionTopic, partitionConsumptionState, partitionConsumptionState.getOffsetRecord().getOffset());
           }
 
           TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
@@ -448,7 +448,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
             consumerSubscribe(newSourceTopicName, partitionConsumptionState, upstreamStartOffset);
 
-            if (!kafkaTopic.equals(currentLeaderTopic)) {
+            if (!kafkaVersionTopic.equals(currentLeaderTopic)) {
               /**
                * This is for Samza grandfathering.
                *
@@ -456,7 +456,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                * producing the TS message.
                */
               LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, currentLeaderTopic,
-                  kafkaTopic, partition, DEFAULT_UPSTREAM_OFFSET, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
+                  kafkaVersionTopic, partition, DEFAULT_UPSTREAM_OFFSET, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
               /**
                * Put default upstream offset for TS message so that followers won't update the leader offset after seeing
                * the TS message.
@@ -522,7 +522,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean isLeader = partitionConsumptionState.getLeaderState().equals(LEADER);
     String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
     return isLeader && bufferReplayEnabledForHybrid &&
-        (!kafkaTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
+        (!kafkaVersionTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
   }
 
   /**
@@ -640,7 +640,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     // Sync TopicSwitch message into metadata store
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaTopic);
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (storeVersionState.isPresent()) {
       String newTopicSwitchLogging = "TopicSwitch message (new source topic:" + topicSwitch.sourceTopicName
           + "; rewind start time:" + topicSwitch.rewindStartTimestamp + ")";
@@ -654,7 +654,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         storeVersionState.get().topicSwitch = topicSwitch;
       }
       // Sync latest store version level metadata to disk
-      storageMetadataService.put(kafkaTopic, storeVersionState.get());
+      storageMetadataService.put(kafkaVersionTopic, storeVersionState.get());
 
       // Put TopicSwitch message into in-memory state to avoid poking metadata store
       partitionConsumptionState.setTopicSwitch(topicSwitch);
@@ -680,7 +680,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * and only consumes from version topic.
          */
         logger.info(consumerTaskId + " receives TopicSwitch message: new source topic: " + newSourceTopicName
-            + "; start offset: " + upstreamStartOffset + "; however buffer replay is disabled, consumer will stick to " + kafkaTopic);
+            + "; start offset: " + upstreamStartOffset + "; however buffer replay is disabled, consumer will stick to " + kafkaVersionTopic);
         partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
         return;
       }
@@ -761,7 +761,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           try {
             KafkaKey key = consumerRecord.key();
             KafkaMessageEnvelope envelope = consumerRecord.value();
-            AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
+            AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
             switch (MessageType.valueOf(envelope)) {
               case PUT:
                 // Issue an read to get the current value of the key
@@ -844,7 +844,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String leaderTopic = consumerRecord.topic();
       long sourceTopicOffset = consumerRecord.offset();
       LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
-          kafkaTopic, partition, sourceTopicOffset, defaultReadyToServeChecker, Optional.of(writeFunction), versionedDIVStats, logger);
+          kafkaVersionTopic, partition, sourceTopicOffset, defaultReadyToServeChecker, Optional.of(writeFunction), versionedDIVStats, logger);
       partitionConsumptionState.setLastLeaderProduceFuture(produceFunction.apply(callback, sourceTopicOffset));
     } else {
       // If (i) it's a follower or (ii) leader is consuming from VT, execute the write function immediately
@@ -901,7 +901,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * If buffer replay is disabled, all replicas are consuming from version topic, so check the lag in version topic.
        */
       long versionTopicConsumedOffset = offsetRecord.getOffset();
-      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(kafkaTopic, partition);
+      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, partition);
       long lag = storeVersionTopicLatestOffset - versionTopicConsumedOffset;
       if (shouldLogLag) {
         logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Last VT offset [%d] - Last VT consumed offset [%d]) = Lag [%d]",
@@ -916,7 +916,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int partition = pcs.getPartition();
 
     if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
-      if (cachedLatestOffsetGetter.getOffset(kafkaTopic, partition) - 1 <= pcs.getOffsetRecord().getOffset()) {
+      if (cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, partition) - 1 <= pcs.getOffsetRecord().getOffset()) {
         notificationDispatcher.reportCatchUpBaseTopicOffsetLag(pcs);
 
         /**
@@ -956,16 +956,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int partitionId = record.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
     if(null == partitionConsumptionState) {
-      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaTopic + " Partition Id: " + partitionId);
+      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic + " Partition Id: " + partitionId);
       return false;
     }
 
     if (!partitionConsumptionState.getLeaderState().equals(LEADER)) {
       String recordTopic = record.topic();
-      if (!kafkaTopic.equals(recordTopic)) {
+      if (!kafkaVersionTopic.equals(recordTopic)) {
         throw new VeniceMessageException(
             consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderState() + "; partition: " + partitionId
-                + "; Message retrieved from different topic. Expected " + this.kafkaTopic + " Actual " + recordTopic);
+                + "; Message retrieved from different topic. Expected " + this.kafkaVersionTopic + " Actual " + recordTopic);
       }
 
       long lastOffset = partitionConsumptionState.getOffsetRecord().getOffset();

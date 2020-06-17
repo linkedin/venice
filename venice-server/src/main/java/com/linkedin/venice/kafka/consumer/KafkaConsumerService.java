@@ -157,7 +157,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
           + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
     }
     versionTopicToConsumerMap.put(versionTopic, chosenConsumer);
-    LOGGER.info("Assigned a shared consumer for topic: " + ingestionTask.kafkaTopic);
+    LOGGER.info("Assigned a shared consumer for topic: " + ingestionTask.kafkaVersionTopic);
     return chosenConsumer;
   }
 
