@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.StoragePartitionDiskUsage;
 import java.util.HashMap;
@@ -13,7 +14,11 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.Map;
+import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.kafka.consumer.LeaderFollowerStateType.*;
+
 
 /**
  * This class enforces quota for each partition in hybrid stores and listens to store changes
@@ -33,8 +38,9 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   private static final Logger logger = Logger.getLogger(HybridStoreQuotaEnforcement.class);
 
   private final StoreIngestionTask storeIngestionTask;
+  private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private final AbstractStorageEngine storageEngine;
-  private final String topic;
+  private final String versionTopic;
   private final String storeName;
   private final int storePartitionCount;
 
@@ -53,17 +59,20 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   private long storeQuotaInBytes;
   private long diskQuotaPerPartition;
 
-  public HybridStoreQuotaEnforcement(StoreIngestionTask storeIngestionTask, AbstractStorageEngine storageEngine, Store store, String topic, int storePartitionCount) {
+  public HybridStoreQuotaEnforcement(StoreIngestionTask storeIngestionTask, AbstractStorageEngine storageEngine,
+      Store store, String versionTopic, int storePartitionCount,
+      ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap) {
     this.storeIngestionTask = storeIngestionTask;
+    this.partitionConsumptionStateMap = partitionConsumptionStateMap;
     this.storageEngine = storageEngine;
     this.storeName = store.getName();
-    this.topic = topic;
+    this.versionTopic = versionTopic;
     this.storePartitionCount = storePartitionCount;
     this.partitionConsumptionSizeMap = new HashMap<>();
     this.pausedPartitions = new HashSet<>();
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
     this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
-    int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
+    int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     Optional<Version> version = store.getVersion(storeVersion);
     setRTJob(version);
   }
@@ -83,7 +92,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     if (store.getName() != storeName) {
       return;
     }
-    int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
+    int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     Optional<Version> version = store.getVersion(storeVersion);
     setRTJob(version);
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
@@ -118,6 +127,20 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     partitionConsumptionSizeMap.get(partition).add(recordSize);
 
     /**
+     * Check the topic which is currently consumed topic for this partition
+     */
+    String consumingTopic = versionTopic;
+    if (partitionConsumptionStateMap.containsKey(partition)) {
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+      if (partitionConsumptionState.getLeaderState().equals(LEADER)) {
+        OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+         if (offsetRecord.getLeaderTopic() != null) {
+           consumingTopic = offsetRecord.getLeaderTopic();
+         }
+      }
+    }
+
+    /**
      * check if the current partition violates the partition-level quota.
      * It's possible to pause an already-paused partition or resume an un-paused partition. The reason that
      * we don't prevent this is that when a SN gets restarted, the in-memory paused partitions are empty. If
@@ -128,7 +151,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
         /**
          * Pause the partition for RT job.
          */
-        pausePartition(partition);
+        pausePartition(partition, consumingTopic);
         logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition.");
       } else {
         /**
@@ -149,7 +172,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
        * Only RT jobs partitions could be resumed
        */
       if (isRTJob() && isPartitionPausedIngestion(partition)) {
-        resumePartition(partition);
+        resumePartition(partition, consumingTopic);
         logger.info("Quota available for store " + storeName + " partition " + partition + ", resumed this partition.");
       }
     }
@@ -181,19 +204,19 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
    * After the partition gets paused, consumer.poll() in {@link StoreIngestionTask} won't return any records from this
    * partition without affecting partition subscription
    */
-  private void pausePartition(int partition) {
-    this.storeIngestionTask.getConsumer().forEach(consumer -> consumer.pause(topic, partition));
+  private void pausePartition(int partition, String consumingTopic) {
+    this.storeIngestionTask.getConsumer().forEach(consumer -> consumer.pause(consumingTopic, partition));
     this.pausedPartitions.add(partition);
   }
 
-  private void resumePartition(int partition) {
-    this.storeIngestionTask.getConsumer().forEach(consumer -> consumer.resume(topic, partition));
+  private void resumePartition(int partition, String consumingTopic) {
+    this.storeIngestionTask.getConsumer().forEach(consumer -> consumer.resume(consumingTopic, partition));
     this.pausedPartitions.remove(partition);
   }
 
   private void setRTJob(Optional<Version> version) {
     if (!version.isPresent()) {
-      int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
+      int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
       throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
     } else if (version.get().getStatus().equals(VersionStatus.ONLINE)) {
       isRTJob = true;

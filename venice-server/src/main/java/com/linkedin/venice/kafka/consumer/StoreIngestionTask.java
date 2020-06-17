@@ -120,7 +120,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Final stuff
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
-  protected final String kafkaTopic;
+  protected final String kafkaVersionTopic;
   protected final String storeName;
   protected final int versionNumber;
   protected final ReadOnlySchemaRepository schemaRepository;
@@ -264,9 +264,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.unorderedRecordsThrottler = unorderedRecordsThrottler;
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
-    this.kafkaTopic = storeConfig.getStoreName();
-    this.storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-    this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    this.kafkaVersionTopic = storeConfig.getStoreName();
+    this.storeName = Version.parseStoreFromKafkaTopicName(kafkaVersionTopic);
+    this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.availableSchemaIds = new HashSet<>();
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
     this.consumerMap = new VeniceConcurrentHashMap<>();
@@ -276,7 +276,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Could be accessed from multiple threads since there are multiple worker threads.
     this.producerTrackerMap = new VeniceConcurrentHashMap<>();
-    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaTopic);
+    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManager = topicManager;
     this.cachedLatestOffsetGetter = new CachedLatestOffsetGetter(topicManager, storeConfig.getTopicOffsetCheckIntervalMs());
 
@@ -291,10 +291,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isCurrentVersion = isCurrentVersion;
     this.hybridStoreConfig = hybridStoreConfig;
     this.isIncrementalPushEnabled = isIncrementalPushEnabled;
-    this.notificationDispatcher = new IngestionNotificationDispatcher(notifiers, kafkaTopic, isCurrentVersion);
+    this.notificationDispatcher = new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
 
     this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeName, versionNumber, e));
-    this.producerTrackerCreator = guid -> new ProducerTracker(guid, kafkaTopic);
+    this.producerTrackerCreator = guid -> new ProducerTracker(guid, kafkaVersionTopic);
 
     this.diskUsage = diskUsage;
 
@@ -323,7 +323,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void validateState() {
     if (!isRunning()) {
-      throw new VeniceException(" Topic " + kafkaTopic + " is shutting down, no more messages accepted");
+      throw new VeniceException(" Topic " + kafkaVersionTopic + " is shutting down, no more messages accepted");
     }
   }
 
@@ -331,14 +331,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * We will enforce hybrid quota only if this is hybrid mode && persistence type is rocks DB
      */
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     if (isHybridMode() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)) {
       this.hybridQuotaEnforcer = Optional.of(new HybridStoreQuotaEnforcement(
           this,
           storageEngine,
-          storeRepository.getStoreOrThrow(storeName),
-          kafkaTopic,
-          topicManager.getPartitions(kafkaTopic).size()));
+          storeRepository.getStoreOrThrow(storeName), kafkaVersionTopic,
+          topicManager.getPartitions(kafkaVersionTopic).size(),
+          partitionConsumptionStateMap));
       this.storeRepository.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
       this.subscribedPartitionToSize = Optional.of(new HashMap<>());
     }
@@ -383,7 +383,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public synchronized void kill() {
     validateState();
-    consumerActionsQueue.add(ConsumerAction.createKillAction(kafkaTopic, nextSeqNum()));
+    consumerActionsQueue.add(ConsumerAction.createKillAction(kafkaVersionTopic, nextSeqNum()));
     int currentAttempts = 0;
     try {
       // Check whether the task is really killed
@@ -397,7 +397,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     if (isRunning()) {
       // If task is still running, force close it.
-      notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Received the signal to kill this consumer. Topic " + kafkaTopic,
+      notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Received the signal to kill this consumer. Topic " + kafkaVersionTopic,
           new VeniceException("Kill the consumer"));
       // close can not stop the consumption synchronizely, but the status of helix would be set to ERROR after
       // reportError. The only way to stop it synchronizely is interrupt the current running thread, but it's an unsafe
@@ -410,14 +410,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
-    storageEngineRepository.getLocalStorageEngine(kafkaTopic).beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo);
-    logger.info("Started batch write to store: " + kafkaTopic + ", partition: " + partitionId +
+    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo);
+    logger.info("Started batch write to store: " + kafkaVersionTopic + ", partition: " + partitionId +
         " with checkpointed database info: " + checkpointedDatabaseInfo + " and sorted: " + sorted);
   }
 
   private StoragePartitionConfig getStoragePartitionConfig(int partitionId, boolean sorted,
       PartitionConsumptionState partitionConsumptionState) {
-    StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(kafkaTopic, partitionId);
+    StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(kafkaVersionTopic, partitionId);
     boolean deferredWrites;
     boolean readOnly = false;
     if (partitionConsumptionState.isEndOfPushReceived()) {
@@ -472,7 +472,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Currently, we make it a sloppy in case Kafka topic have duplicate messages.
      * TODO: find a better solution
      */
-      lagIsAcceptable = cachedLatestOffsetGetter.getOffset(kafkaTopic, partitionConsumptionState.getPartition()) <=
+      lagIsAcceptable = cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, partitionConsumptionState.getPartition()) <=
         partitionConsumptionState.getOffsetRecord().getOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
@@ -683,7 +683,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   @Override
   public void run() {
     // Update thread name to include topic to make it easy debugging
-    Thread.currentThread().setName("venice-consumer-" + kafkaTopic);
+    Thread.currentThread().setName("venice-consumer-" + kafkaVersionTopic);
 
     logger.info("Running " + consumerTaskId);
     try {
@@ -718,9 +718,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * {@link OffsetRecordTransformer} of {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)},
          * where `segment` could be changed by another message independent from current `offsetRecord`;
          */
-        consumerUnSubscribe(kafkaTopic, partitionConsumptionState);
-        storeBufferService.drainBufferedRecordsFromTopicPartition(kafkaTopic, partitionConsumptionState.getPartition());
-        syncOffset(kafkaTopic, partitionConsumptionState);
+        consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
+        storeBufferService.drainBufferedRecordsFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition());
+        syncOffset(kafkaVersionTopic, partitionConsumptionState);
       }
 
     } catch (VeniceIngestionTaskKilledException ke) {
@@ -784,12 +784,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (consumerMap == null || consumerMap.size() == 0) {
       // Consumer constructor error-ed out, nothing can be cleaned up.
-      logger.warn("Error in consumer creation, skipping close for topic " + kafkaTopic);
+      logger.warn("Error in consumer creation, skipping close for topic " + kafkaVersionTopic);
       return;
     }
     consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
     isRunning.set(false);
-    logger.info("Store ingestion task for store: " + kafkaTopic + " is closed");
+    logger.info("Store ingestion task for store: " + kafkaVersionTopic + " is closed");
   }
 
   /**
@@ -804,7 +804,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         message.incrementAttempt();
         processConsumerAction(message);
       } catch (InterruptedException e) {
-        throw new VeniceIngestionTaskKilledException(kafkaTopic, e);
+        throw new VeniceIngestionTaskKilledException(kafkaVersionTopic, e);
       } catch (Exception ex) {
         if (message.getAttemptsCount() < MAX_CONTROL_MESSAGE_RETRIES) {
           logger.info("Error Processing message will retry later" + message , ex);
@@ -826,7 +826,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
     if (record.getOffset() > 0) {
-      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaTopic);
+      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
       if (storeVersionState.isPresent()) {
         boolean sorted = storeVersionState.get().sorted;
         /**
@@ -876,8 +876,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       storeIngestionStats.recordInconsistentStoreMetadata(storeName, 1);
       // clear the local store metadata and the replica will be rebuilt from scratch upon retry as part of
       // processConsumerActions.
-      storageMetadataService.clearOffset(kafkaTopic, partition);
-      storageMetadataService.clearStoreVersionState(kafkaTopic);
+      storageMetadataService.clearOffset(kafkaVersionTopic, partition);
+      storageMetadataService.clearStoreVersionState(kafkaVersionTopic);
       producerTrackerMap.values().forEach(
           producerTracker -> producerTracker.clearPartition(partition)
       );
@@ -1006,7 +1006,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * So far, to make hybrid store/incremental store work, customer needs to do a new push after enabling hybrid/
        * incremental push feature of the store.
        */
-      String message = "The record was received after 'EOP', but the store: " + kafkaTopic +
+      String message = "The record was received after 'EOP', but the store: " + kafkaVersionTopic +
           " is neither hybrid nor incremental push enabled, so will skip it.";
       if (!filter.isRedundantException(message)) {
         logger.warn(message);
@@ -1028,11 +1028,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // reference to all downstream methods so that all offset persistence operations use the same partitionConsumptionState
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
     if (null == partitionConsumptionState) {
-      logger.info("Topic " + kafkaTopic + " Partition " + partition + " has been unsubscribed, skip this record that has offset " + record.offset());
+      logger.info("Topic " + kafkaVersionTopic + " Partition " + partition + " has been unsubscribed, skip this record that has offset " + record.offset());
       return;
     }
     if (partitionConsumptionState.isErrorReported()) {
-      logger.info("Topic " + kafkaTopic + " Partition " + partition + " is already errored, skip this record that has offset " + record.offset());
+      logger.info("Topic " + kafkaVersionTopic + " Partition " + partition + " is already errored, skip this record that has offset " + record.offset());
       return;
     }
     if (!shouldProcessRecord(record)) {
@@ -1049,9 +1049,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (needToUnsub) {
         errorMessage +=  ". Consumption will be halted.";
         notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
-        unSubscribePartition(kafkaTopic, faultyPartition);
+        unSubscribePartition(kafkaVersionTopic, faultyPartition);
       } else {
-        logger.info(errorMessage + ". However, " + kafkaTopic
+        logger.info(errorMessage + ". However, " + kafkaVersionTopic
             + " is the current version or EOP is already received so consumption will continue.");
       }
     } catch (VeniceMessageException | UnsupportedOperationException excp) {
@@ -1090,7 +1090,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     boolean recordsProcessedAboveSyncIntervalThreshold = false;
     if (syncBytesInterval > 0 && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval)) {
       recordsProcessedAboveSyncIntervalThreshold = true;
-      syncOffset(kafkaTopic, partitionConsumptionState);
+      syncOffset(kafkaVersionTopic, partitionConsumptionState);
     }
 
     reportIfCatchUpBaseTopicOffset(partitionConsumptionState);
@@ -1113,7 +1113,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.transform();
     // Checkpointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
-    storageMetadataService.put(this.kafkaTopic, partition, offsetRecord);
+    storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     ps.resetProcessedRecordSizeSinceLastSync();
   }
 
@@ -1133,7 +1133,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
     }
 
-    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaTopic);
+    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (!svs.isPresent()) {
       return STORE_VERSION_STATE_UNAVAILABLE.code;
     }
@@ -1205,7 +1205,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
 
     notificationDispatcher.reportStarted(partitionConsumptionState);
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaTopic);
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (!storeVersionState.isPresent()) {
       // No other partition of the same topic has started yet, let's initialize the StoreVersionState
       StoreVersionState newStoreVersionState = new StoreVersionState();
@@ -1213,7 +1213,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       newStoreVersionState.chunked = startOfPush.chunked;
       newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
       newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
-      storageMetadataService.put(kafkaTopic, newStoreVersionState);
+      storageMetadataService.put(kafkaVersionTopic, newStoreVersionState);
       // Update chunking flag in VeniceWriter
       if (startOfPush.chunked && veniceWriter != null) {
         veniceWriter.updateChunckingEnabled(startOfPush.chunked);
@@ -1248,7 +1248,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
      */
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     storageEngine.endBatchWrite(storagePartitionConfig);
 
     /**
@@ -1260,14 +1260,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void processStartOfBufferReplay(ControlMessage controlMessage, long offset, PartitionConsumptionState partitionConsumptionState) {
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaTopic);
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (storeVersionState.isPresent()) {
       // Update StoreVersionState, if necessary
       StartOfBufferReplay startOfBufferReplay = (StartOfBufferReplay) controlMessage.controlMessageUnion;
       if (null == storeVersionState.get().startOfBufferReplay) {
         // First time we receive a SOBR
         storeVersionState.get().startOfBufferReplay = startOfBufferReplay;
-        storageMetadataService.put(kafkaTopic, storeVersionState.get());
+        storageMetadataService.put(kafkaVersionTopic, storeVersionState.get());
       } else if (!Utils.listEquals(storeVersionState.get().startOfBufferReplay.sourceOffsets, startOfBufferReplay.sourceOffsets)) {
         // Something very wrong is going on ): ...
         throw new VeniceException("Unexpected: received multiple " + ControlMessageType.START_OF_BUFFER_REPLAY.name() +
@@ -1306,7 +1306,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
     throw new VeniceException(ControlMessageType.TOPIC_SWITCH.name() + " control message should not be received in"
-        + "Online/Offline state model. Topic " + kafkaTopic + " partition " + partition);
+        + "Online/Offline state model. Topic " + kafkaVersionTopic + " partition " + partition);
   }
 
   /**
@@ -1450,7 +1450,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (partitionConsumptionStateMap.containsKey(consumerRecord.partition())) {
         // If we actually intend to be consuming this partition, then we need to bubble up the failure to persist.
         logger.error("Met PersistenceFailureException while processing record with offset: " + consumerRecord.offset() +
-        ", topic: " + kafkaTopic + ", meta data of the record: " + consumerRecord.value().producerMetadata);
+        ", topic: " + kafkaVersionTopic + ", meta data of the record: " + consumerRecord.value().producerMetadata);
         throw ex;
       } else {
         /*
@@ -1466,7 +1466,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // We want to update offsets in all cases, except when we hit the PersistenceFailureException
     if (null == partitionConsumptionState) {
-      logger.info("Topic " + kafkaTopic + " Partition " + consumerRecord.partition() + " has been unsubscribed, will skip offset update");
+      logger.info("Topic " + kafkaVersionTopic + " Partition " + consumerRecord.partition() + " has been unsubscribed, will skip offset update");
     } else {
       /**
        * Record the time when server consumes the message;
@@ -1490,7 +1490,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       partitionConsumptionState.setOffsetRecord(offsetRecord);
       if (syncOffset) {
-        syncOffset(kafkaTopic, partitionConsumptionState);
+        syncOffset(kafkaVersionTopic, partitionConsumptionState);
       }
     }
     return sizeOfPersistedData;
@@ -1603,7 +1603,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long putStartTimeNs = System.nanoTime();
     storageEngine.put(partition, keyBytes, putValue);
     if (logger.isTraceEnabled()) {
-      logger.trace(consumerTaskId + " : Completed PUT to Store: " + kafkaTopic + " in " +
+      logger.trace(consumerTaskId + " : Completed PUT to Store: " + kafkaVersionTopic + " in " +
           (System.nanoTime() - putStartTimeNs) + " ns at " + System.currentTimeMillis());
     }
     if (emitMetrics.get()) {
@@ -1621,9 +1621,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected VeniceWriter getVeniceWriter() {
     if (null == veniceWriter) {
-      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaTopic);
+      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
       if (storeVersionState.isPresent()) {
-        veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaTopic, storeVersionState.get().chunked);
+        veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked);
       } else {
         /**
          * In general, a partition in version topic follows this pattern:
@@ -1634,7 +1634,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
          * different in some test cases which reuse the same VeniceWriter.
          */
-        veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaTopic);
+        veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic);
       }
     }
     return veniceWriter;
@@ -1716,7 +1716,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     int partition = consumerRecord.partition();
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
 
     byte[] keyBytes = kafkaKey.getKey();
 
@@ -1729,7 +1729,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Write to storage engine; potentially produce the PUT message to version topic
         produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
-            key -> prependHeaderAndWriteToStorageEngine(kafkaTopic, partition, key, putValue, put.schemaId),
+            key -> prependHeaderAndWriteToStorageEngine(kafkaVersionTopic, partition, key, putValue, put.schemaId),
             (callback, sourceTopicOffset) -> {
               /**
                * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
@@ -1781,10 +1781,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         long lookupStartTimeInNS = System.nanoTime();
-        boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaTopic);
-        GenericRecord originalValue = GenericRecordChunkingAdapter.INSTANCE.get(storageEngineRepository.getLocalStorageEngine(kafkaTopic), partition,
+        boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
+        GenericRecord originalValue = GenericRecordChunkingAdapter.INSTANCE.get(storageEngineRepository.getLocalStorageEngine(
+            kafkaVersionTopic), partition,
             ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
-            storageMetadataService.getStoreVersionCompressionStrategy(kafkaTopic), serverConfig.isComputeFastAvroEnabled(),
+            storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic), serverConfig.isComputeFastAvroEnabled(),
             schemaRepository, storeName);
         storeIngestionStats.recordWriteComputeLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
 
@@ -1809,11 +1810,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 // from user's input instead of getting it from store's metadata repo. This causes SN
                 // to der-se of keys a couple of times.
                 // TODO: Remove chunking logic form SN side once Samze VeniceWriter gets fixed.
-                writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaTopic), partition,
+                writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
                     ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes),
                     updateValueWithSchemaId);
               } else {
-                writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaTopic), partition, keyBytes, updateValueWithSchemaId);
+                writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition, keyBytes, updateValueWithSchemaId);
               }
             },
             (callback, sourceTopicOffset) ->
@@ -1827,7 +1828,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               storageEngine.delete(partition, key);
 
               if (logger.isTraceEnabled()) {
-                logger.trace(consumerTaskId + " : Completed DELETE to Store: " + kafkaTopic + " in " +
+                logger.trace(consumerTaskId + " : Completed DELETE to Store: " + kafkaVersionTopic + " in " +
                     (System.nanoTime() - deleteStartTimeNs) + " ns at " + System.currentTimeMillis());
               }
             },
@@ -1888,7 +1889,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion() ||
         schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      StoreVersionState storeVersionState = waitVersionStateAvailable(kafkaTopic);
+      StoreVersionState storeVersionState = waitVersionStateAvailable(kafkaVersionTopic);
       if (!storeVersionState.chunked) {
         throw new VeniceException("Detected chunking in a store-version where chunking is NOT enabled. Will abort ingestion.");
       }
@@ -1901,7 +1902,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private StoreVersionState waitVersionStateAvailable(String kafkaTopic) throws InterruptedException {
     long startTime = System.nanoTime();
     for (;;) {
-      Optional<StoreVersionState> state = storageMetadataService.getStoreVersionState(this.kafkaTopic);
+      Optional<StoreVersionState> state = storageMetadataService.getStoreVersionState(this.kafkaVersionTopic);
       long elapsedTime = System.nanoTime() - startTime;
 
       if (state.isPresent()) {
@@ -1982,7 +1983,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public String getVersionTopic() {
-    return kafkaTopic;
+    return kafkaVersionTopic;
   }
 
   Collection<KafkaConsumerWrapper> getConsumer() {

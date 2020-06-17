@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentMap;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -26,6 +27,7 @@ public class HybridStoreQuotaEnforcementTest {
   private final String storeName = "TestTopic";
   private final String topic = Version.composeKafkaTopic(storeName, 1);
   private final int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
+  private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap = mock(ConcurrentMap.class);
 
   private StoreIngestionTask storeIngestionTask;
   private AbstractStorageEngine storageEngine;
@@ -55,7 +57,8 @@ public class HybridStoreQuotaEnforcementTest {
                                                     storageEngine,
                                                     store,
                                                     topic,
-                                                    storePartitionCount);
+                                                    storePartitionCount,
+                                                    partitionConsumptionStateMap);
   }
 
   @Test
