@@ -23,7 +23,7 @@ def internalKafkaGroup = 'com.linkedin.kafka'
 def internalKafkaVersion = '2.3.0.21'
 
 def ddsStorageCoreVersion = '5.4.74'
-def gobblinVersion = '1.64.1495'
+def gobblinVersion = '0.15.0-dev-9467'
 
 ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.7.7',
@@ -60,10 +60,9 @@ ext.libraries = [ // Groovy map literal
                   zstd: 'com.github.luben:zstd-jni:1.4.4-7',
 
                   // Gobblin dependencies
-                  gobblinCoreBase: 'com.linkedin.gobblin-proxy:gobblin-core-base:' + gobblinVersion,
-                  // gobblinKafkaJobConstructs: 'com.linkedin.gobblin-kafka:job-constructs:2.0.7',
-                  gobblinKafkaCommon: 'com.linkedin.gobblin-proxy:gobblin-kafka-common:' + gobblinVersion,
-                  gobblinDataManagement: 'com.linkedin.gobblin-proxy:gobblin-data-management:' + gobblinVersion,
+                  gobblinCoreBase: 'org.apache.gobblin:gobblin-core-base:' + gobblinVersion,
+                  gobblinKafkaCommon: 'org.apache.gobblin:gobblin-kafka-common:' + gobblinVersion,
+                  gobblinDataManagement: 'org.apache.gobblin:gobblin-data-management:' + gobblinVersion,
 
                   // Hadoop to Venice Bridge dependencies
                   mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',

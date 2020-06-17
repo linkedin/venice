@@ -518,6 +518,16 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
       return consumerRecord.offset();
     }
 
+    @Override
+    public int getPartition() {
+      return consumerRecord.partition();
+    }
+
+    @Override
+    public String getTopic() {
+      return consumerRecord.topic();
+    }
+
     public int getSchemaId() { return schemaId; }
   }
 
