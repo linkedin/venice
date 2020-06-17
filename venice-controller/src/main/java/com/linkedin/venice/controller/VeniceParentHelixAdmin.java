@@ -1515,9 +1515,9 @@ public class VeniceParentHelixAdmin implements Admin {
   private Map<String, ControllerClient> getControllerClientMap(String clusterName){
     Map<String, ControllerClient> controllerClients = new HashMap<>();
     VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getConfigForCluster(clusterName);
-    veniceControllerConfig.getChildClusterMap().entrySet().
+    veniceControllerConfig.getChildDataCenterControllerUrlMap().entrySet().
       forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue(), sslFactory)));
-    veniceControllerConfig.getChildClusterD2Map().entrySet().
+    veniceControllerConfig.getChildDataCenterControllerD2Map().entrySet().
       forEach(entry -> controllerClients.put(entry.getKey(),
           new D2ControllerClient(veniceControllerConfig.getD2ServiceName(), clusterName, entry.getValue(), sslFactory)));
 
@@ -1642,7 +1642,11 @@ public class VeniceParentHelixAdmin implements Admin {
         logger.info("The errored kafka topic: " + kafkaTopic + " won't be truncated since it will be used to investigate"
             + "some Kafka related issue");
       } else {
-        //truncate the topic if this is not an incremental push enabled store or this is a failed batch push
+        /**
+         * truncate the topic if either
+         * 1. the store is not incremental push enabled and the push completed (no ERROR)
+         * 2. or this is a failed batch push
+         */
         Store store = veniceHelixAdmin.getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
         if ((!incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR) ||
             !store.isIncrementalPushEnabled()) {
@@ -1697,6 +1701,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public String getNativeReplicationKafkaBootstrapServer(String clusterName) {
+    return veniceHelixAdmin.getNativeReplicationKafkaBootstrapServer(clusterName);
+  }
+
+  @Override
   public boolean isSSLEnabledForPush(String clusterName, String storeName) {
     return veniceHelixAdmin.isSSLEnabledForPush(clusterName, storeName);
   }
@@ -1728,7 +1737,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getDatacenterCount(String clusterName){
-    return multiClusterConfigs.getConfigForCluster(clusterName).getChildClusterMap().size();
+    return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterControllerUrlMap().size();
   }
 
   @Override
@@ -2041,7 +2050,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   public Map<String, String> getChildClusterMap(String clusterName) {
     // key: datacenter, value: child controller url
-    return multiClusterConfigs.getConfigForCluster(clusterName).getChildClusterMap();
+    return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterControllerUrlMap();
   }
 
   @Override

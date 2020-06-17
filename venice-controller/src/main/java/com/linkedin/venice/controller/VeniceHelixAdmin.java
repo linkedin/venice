@@ -686,7 +686,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             Version.composeKafkaTopic(storeName, versionNumber);
         //write EOP message
         getVeniceWriterFactory().useVeniceWriter(
-            () -> getVeniceWriterFactory().createVeniceWriter(topicToReceiveEndOfPush),
+            () -> (multiClusterConfigs.isParent() && version.get().isNativeReplicationEnabled())
+                ? getVeniceWriterFactory().createVeniceWriter(topicToReceiveEndOfPush, version.get().getPushStreamSourceAddress())
+                : getVeniceWriterFactory().createVeniceWriter(topicToReceiveEndOfPush),
             veniceWriter -> {
                 if (alsoWriteStartOfPush) {
                     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -1090,6 +1092,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 } finally {
                     repository.unLock();
                 }
+                /**
+                 * TODO: if native replication is enabled and it's in parent controller, directly create the topic in
+                 *       the source child fabric, which requires a map of {@link TopicManager} (Kafka url to TM);
+                 *       with this optimization, broadcasting SOP will not retry until KMM create the topic but instead
+                 *       succeed immediately.
+                 */
                 // Topic created by Venice Controller is always without Kafka compaction.
                 topicManager.createTopic(
                     version.kafkaTopicName(),
@@ -1147,7 +1155,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                              * AddVersion is invoked by directly querying controllers; the fabric where the controllers
                              * are located at is the source fabric.
                              */
-                            version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
+                            String sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServer(clusterName);
+                            if (sourceKafkaBootstrapServers == null) {
+                                sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
+                            }
+                            version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
                         }
                     }
                     repository.updateStore(store);
@@ -1166,8 +1178,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
                 if (sendStartOfPush) {
                     final Version finalVersion = version;
-                    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
-                        finalVersion.kafkaTopicName())) {
+                    VeniceWriter veniceWriter = null;
+                    try {
+                        if (multiClusterConfigs.isParent() && finalVersion.isNativeReplicationEnabled()) {
+                            /**
+                             * Produce directly into one of the child fabric
+                             */
+                            veniceWriter = getVeniceWriterFactory().createVeniceWriter(finalVersion.kafkaTopicName(),
+                                finalVersion.getPushStreamSourceAddress());
+                        } else {
+                            veniceWriter = getVeniceWriterFactory().createVeniceWriter(finalVersion.kafkaTopicName());
+                        }
                         veniceWriter.broadcastStartOfPush(
                             sorted,
                             finalVersion.isChunkingEnabled(),
@@ -1181,6 +1202,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                 Version.composeStreamReprocessingTopic(finalVersion.getStoreName(), finalVersion.getNumber()),
                                 0L,
                                 new HashMap<>());
+                        }
+                    } finally {
+                        if (veniceWriter != null) {
+                            veniceWriter.close();
                         }
                     }
                 }
@@ -3098,6 +3123,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             return kafkaBootstrapServers;
         }
+    }
+
+    @Override
+    public String getNativeReplicationKafkaBootstrapServer(String clusterName) {
+        String sourceFabric = multiClusterConfigs.getConfigForCluster(clusterName).getNativeReplicationSourceFabric();
+        return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterKafkaUrlMap().get(sourceFabric);
     }
 
     @Override

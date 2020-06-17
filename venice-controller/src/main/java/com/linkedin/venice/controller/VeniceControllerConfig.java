@@ -33,9 +33,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterZkAddress;
   private final boolean parent;
   private final boolean enableTopicReplicator;
-  private final Map<String, String> childClusterMap;
+  private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
-  private final Map<String, String> childClusterD2Map;
+  private final Map<String, String> childDataCenterControllerD2Map;
   private final int parentControllerWaitingTimeForConsumptionMs;
   private final long adminConsumptionTimeoutMinute;
   private final long adminConsumptionCycleTimeoutMs;
@@ -64,6 +64,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean enableBatchPushFromAdminInChildController;
   private final boolean adminCheckReadMethodForKafka;
   private final String kafkaAdminClass;
+  private final Map<String, String> childDataCenterKafkaUrlMap;
+  private final String nativeReplicationSourceFabric;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -80,19 +82,22 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.topicCreationThrottlingTimeWindowMs = props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
     if (this.parent) {
-      String clusterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
-      this.childClusterMap = parseClusterMap(props, clusterWhitelist);
-      this.childClusterD2Map = parseClusterMap(props, clusterWhitelist, true);
-      this.d2ServiceName = childClusterD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
+      String dataCenterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
+      this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterWhitelist);
+      this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterWhitelist, true);
+      this.d2ServiceName = childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
 
-      if (childClusterMap.isEmpty() && childClusterD2Map.isEmpty()) {
+      if (childDataCenterControllerUrlMap.isEmpty() && childDataCenterControllerD2Map.isEmpty()) {
         throw new VeniceException("child controller list can not be empty");
       }
+      this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, dataCenterWhitelist);
     } else {
-      this.childClusterMap = Collections.emptyMap();
-      this.childClusterD2Map = Collections.emptyMap();
+      this.childDataCenterControllerUrlMap = Collections.emptyMap();
+      this.childDataCenterControllerD2Map = Collections.emptyMap();
       this.d2ServiceName = null;
+      this.childDataCenterKafkaUrlMap = Collections.emptyMap();
     }
+    this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
     this.adminConsumptionTimeoutMinute = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
     this.adminConsumptionCycleTimeoutMs = props.getLong(ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
@@ -200,16 +205,24 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    *
    * @return
    */
-  public Map<String, String> getChildClusterMap(){
-    return childClusterMap;
+  public Map<String, String> getChildDataCenterControllerUrlMap(){
+    return childDataCenterControllerUrlMap;
   }
 
   public String getD2ServiceName() {
     return d2ServiceName;
   }
 
-  public Map<String, String> getChildClusterD2Map() {
-    return childClusterD2Map;
+  public Map<String, String> getChildDataCenterControllerD2Map() {
+    return childDataCenterControllerD2Map;
+  }
+
+  public Map<String, String> getChildDataCenterKafkaUrlMap() {
+    return childDataCenterKafkaUrlMap;
+  }
+
+  public String getNativeReplicationSourceFabric() {
+    return nativeReplicationSourceFabric;
   }
 
   public int getParentControllerWaitingTimeForConsumptionMs() {
@@ -287,16 +300,23 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   }
 
   /**
+   * The config should follow the format below:
+   * CHILD_CLUSTER_URL_PREFIX.fabricName1=controllerUrls_in_fabric1
+   * CHILD_CLUSTER_URL_PREFIX.fabricName2=controllerUrls_in_fabric2
+   *
+   * This helper function will parse the config with above format and return a Map from data center to
+   * its controller urls.
+   *
    * @param clusterPros list of child controller uris
    * @param datacenterWhitelist data centers that are taken into account
    * @param D2Routing whether uses D2 to route or not
    * @return
    */
   public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterWhitelist, Boolean D2Routing) {
-    Properties childClusterUriProps;
+    Properties childDataCenterUriProps;
     String propsPrefix =  D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
 
-    childClusterUriProps = clusterPros.clipAndFilterNamespace(propsPrefix).toProperties();
+    childDataCenterUriProps = clusterPros.clipAndFilterNamespace(propsPrefix).toProperties();
 
     if (Utils.isNullOrEmpty(datacenterWhitelist)) {
       throw new VeniceException("child controller list must have a whitelist");
@@ -305,7 +325,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     Map<String, String> outputMap = new HashMap<>();
     List<String> whitelist = Arrays.asList(datacenterWhitelist.split(",\\s*"));
 
-    for (Map.Entry<Object, Object> uriEntry : childClusterUriProps.entrySet()) {
+    for (Map.Entry<Object, Object> uriEntry : childDataCenterUriProps.entrySet()) {
       String datacenter = (String) uriEntry.getKey();
       String uris = (String) uriEntry.getValue();
 
@@ -338,6 +358,45 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
           return uris;
         });
+      }
+    }
+
+    return outputMap;
+  }
+
+  /**
+   * The config should follow the format below:
+   * $CHILD_DATA_CENTER_KAFKA_URL_PREFIX.fabricName1=kafkaBootstrapServerUrls_in_fabric1
+   * $CHILD_DATA_CENTER_KAFKA_URL_PREFIX.fabricName2=kafkaBootstrapServerUrls_in_fabric2
+   *
+   * This helper function will parse the config with above format and return a Map from data center to
+   * its Kafka bootstrap server urls.
+   */
+  private static Map<String, String> parseChildDataCenterKafkaUrl(VeniceProperties clusterPros, String datacenterWhitelist) {
+    Properties childDataCenterKafkaUriProps = clusterPros.clipAndFilterNamespace(CHILD_DATA_CENTER_KAFKA_URL_PREFIX).toProperties();
+
+    if (Utils.isNullOrEmpty(datacenterWhitelist)) {
+      throw new VeniceException("child controller list must have a whitelist");
+    }
+
+    Map<String, String> outputMap = new HashMap<>();
+    List<String> whitelist = Arrays.asList(datacenterWhitelist.split(",\\s*"));
+
+    for (Map.Entry<Object, Object> uriEntry : childDataCenterKafkaUriProps.entrySet()) {
+      String datacenter = (String) uriEntry.getKey();
+      String kafkaBootstrapServerUrl = (String) uriEntry.getValue();
+
+      String errmsg = "Invalid configuration " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + datacenter;
+      if (datacenter.isEmpty()) {
+        throw new VeniceException(errmsg + ": cluster name can't be empty. " + kafkaBootstrapServerUrl);
+      }
+
+      if (kafkaBootstrapServerUrl.isEmpty()) {
+        throw new VeniceException(errmsg + ": found no urls for: " + datacenter);
+      }
+
+      if (whitelist.contains(datacenter)) {
+        outputMap.putIfAbsent(datacenter, kafkaBootstrapServerUrl);
       }
     }
 

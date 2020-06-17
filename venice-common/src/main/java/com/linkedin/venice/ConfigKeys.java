@@ -751,7 +751,18 @@ public class ConfigKeys {
    */
   public static final String CHILD_CLUSTER_D2_PREFIX = "child.cluster.d2.zkHost";
 
+  /**
+   * Config prefix for Kafka bootstrap url in all child fabrics; parent controllers need to know the
+   * Kafka url in all fabrics for native replication.
+   */
+  public static final String CHILD_DATA_CENTER_KAFKA_URL_PREFIX = "child.data.center.kafka.url";
+
   public static final String CHILD_CLUSTER_D2_SERVICE_NAME = "child.cluster.d2.service.name";
+
+  /**
+   * The default source fabric used for native replication
+   */
+  public static final String NATIVE_REPLICATION_SOURCE_FABRIC = "native.replication.source.fabric";
 
   /**
    * Only required when controller.parent.mode=true

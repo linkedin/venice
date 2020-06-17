@@ -175,7 +175,7 @@ public class TestVeniceParentHelixAdmin {
     doReturn(true).when(config).isParticipantMessageStoreEnabled();
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put(coloName, "localhost");
-    doReturn(childClusterMap).when(config).getChildClusterMap();
+    doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
     doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartition();
     return config;
   }
