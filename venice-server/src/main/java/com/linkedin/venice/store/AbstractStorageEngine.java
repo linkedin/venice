@@ -101,8 +101,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
          */
       } else {
         logger.info("Detected an unused LEGACY_METADATA_PARTITION_ID. Will drop it.");
-        legacyMetadataPartition.close();
-        dropPartition(LEGACY_METADATA_PARTITION_ID);
+        legacyMetadataPartition.drop();
       }
 
       /**
