@@ -20,7 +20,6 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceDelegateMode;
-import com.linkedin.venice.router.api.VeniceDelegateModeConfig;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostHealth;
 import com.linkedin.venice.router.api.VeniceRole;
@@ -175,13 +174,13 @@ public class RouterRequestThrottlingTest {
     int allowedQPS = (int) totalQuota / batchGetSize;
 
     // mock a scatter gather helper for multi-key requests
-    VeniceDelegateModeConfig config = mock(VeniceDelegateModeConfig.class);
+    VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
     doReturn(true).when(config).isStickyRoutingEnabledForMultiGet();
-    doReturn(true).when(config).isGreedyMultiGetScatter();
+    doReturn(true).when(config).isGreedyMultiGet();
 
     // multi-get/compute requests are throttled in VeniceDelegateMode
-    VeniceDelegateMode delegateMode = new VeniceDelegateMode(config, mock(RouterStats.class));
+    VeniceDelegateMode delegateMode = new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     delegateMode.initReadRequestThrottler(throttler);
 
     VenicePath path = mock(VenicePath.class);

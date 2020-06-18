@@ -12,8 +12,10 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.utils.HelixUtils;
@@ -45,7 +47,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
    * This mode will assume there is only host for single-get request (sticky routing), and the scattering logic is
    * optimized based on this assumption.
    */
-  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET = new ScatterGatherModeForStickySingleGet();
+  private final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET;
 
   /**
    * This mode will group all requests to the same host into a single request.  Hosts are selected as the first host returned
@@ -62,21 +64,28 @@ public class VeniceDelegateMode extends ScatterGatherMode {
    * This mode assumes there is only one host per partition (sticky routing), and the scattering logic is optimized
    * based on this assumption.
    */
-  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET = new ScatterGatherModeForStickyMultiGet();
+  private final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET;
 
   private RouterThrottler readRequestThrottler;
+  private RouteHttpRequestStats routeHttpRequestStats;
+
 
   private final boolean stickyRoutingEnabledForSingleGet;
   private final boolean stickyRoutingEnabledForMultiGet;
   private final boolean greedyMultiget;
+  private final boolean isLeastLoadedHostEnabled;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
-  public VeniceDelegateMode(VeniceDelegateModeConfig config, RouterStats<AggRouterHttpRequestStats> routerStats) {
+  public VeniceDelegateMode(VeniceRouterConfig config, RouterStats<AggRouterHttpRequestStats> routerStats, RouteHttpRequestStats routeHttpRequestStats) {
     super("VENICE_DELEGATE_MODE", false);
     this.stickyRoutingEnabledForSingleGet = config.isStickyRoutingEnabledForSingleGet();
     this.stickyRoutingEnabledForMultiGet = config.isStickyRoutingEnabledForMultiGet();
-    this.greedyMultiget = config.isGreedyMultiGetScatter();
+    this.greedyMultiget = config.isGreedyMultiGet();
     this.routerStats = routerStats;
+    this.routeHttpRequestStats = routeHttpRequestStats;
+    this.isLeastLoadedHostEnabled = config.isLeastLoadedHostSelectionEnabled();
+    this.SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET = new ScatterGatherModeForStickySingleGet();
+    this.SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET = new ScatterGatherModeForStickyMultiGet();
   }
 
   public void initReadRequestThrottler(RouterThrottler requestThrottler) {
@@ -166,13 +175,9 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             SERVICE_UNAVAILABLE, "Could not find ready-to-serve replica for request: " + part);
       }
       H host = part.getHosts().get(0);
+      // Select host with the least pending queue depth.
       if (hostCount > 1) {
-        List<H> hosts = part.getHosts();
-        host = hosts.get((int) (System.currentTimeMillis() % hostCount));  //cheap random host selection
-        // Update host selection
-        // The downstream (VeniceDispatcher) will only expect one host for a given scatter request.
-        H finalHost = host;
-        hosts.removeIf(aHost -> !aHost.equals(finalHost));
+        host = selectHost((VenicePath) path, venicePath, storeName, part);
       }
       if (!(host instanceof Instance)) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
@@ -223,11 +228,37 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     return finalScatter;
   }
 
+  private <H, K> H selectHost(VenicePath path, VenicePath venicePath, String storeName,
+      ScatterGatherRequest<H, K> part) throws RouterException {
+    H host;
+    List<H> hosts = part.getHosts();
+    long minCount = Long.MAX_VALUE;
+    H minHost = null;
+    for (H h : hosts) {
+      Instance node = (Instance) h;
+      if (!path.canRequestStorageNode(node.getNodeId()))
+        continue;
+      long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(node.getNodeId());
+      if (pendingRequestCount < minCount) {
+        minCount = pendingRequestCount;
+        minHost = h;
+      }
+    }
+    if (minHost == null) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
+          SERVICE_UNAVAILABLE, "Could not find ready-to-serve replica for request: " + part);
+    }
+    H finalHost = minHost;
+    hosts.removeIf(aHost -> !aHost.equals(finalHost));
+    host = finalHost;
+    return host;
+  }
+
   /**
    * This mode assumes there is only one available host for single-get request (sticky routing),
    * so it is optimized based on this assumption to avoid unnecessary memory allocation.
    */
-  static class ScatterGatherModeForStickySingleGet extends ScatterGatherMode {
+  class ScatterGatherModeForStickySingleGet extends ScatterGatherMode {
 
     protected ScatterGatherModeForStickySingleGet() {
       super("SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET", false);
@@ -258,8 +289,14 @@ public class VeniceDelegateMode extends ScatterGatherMode {
          * distributed to all the replicas of that partition; besides, it's guaranteed that the same key will always
          * go to the same host unless some hosts are down/stopped.
          */
-        H host = avoidSlowHost((VenicePath)path, key, hosts);
-        scatter.addOnlineRequest(new ScatterGatherRequest<>(Arrays.asList(host), keySet, partitionName));
+        VenicePath venicePath = (VenicePath)path;
+
+        H host = avoidSlowHost(venicePath, key, hosts);
+        // when least loaded host selection is enabled we pass the entire hosts list, else just pass a single host
+        if (!isLeastLoadedHostEnabled) {
+          hosts = Collections.singletonList(host);
+        }
+        scatter.addOnlineRequest(new ScatterGatherRequest<>(hosts, keySet, partitionName));
       } else {
         scatter.addOnlineRequest(new ScatterGatherRequest<>(hosts, keySet, partitionName));
       }
@@ -271,12 +308,12 @@ public class VeniceDelegateMode extends ScatterGatherMode {
    * This mode assumes there is only one available host per partition (sticky routing),
    * and it is optimized based on this assumption to avoid unnecessary memory allocation and speed up scattering logic.
    */
-  static class ScatterGatherModeForStickyMultiGet extends ScatterGatherMode {
+  class ScatterGatherModeForStickyMultiGet extends ScatterGatherMode {
 
     /**
      * This class contains all the partitions/keys belonging to the same host.
      */
-    static class KeyPartitionSet<H, K> {
+    class KeyPartitionSet<H, K> {
       public TreeSet<K> keySet = new TreeSet<>();
       public Set<String> partitionNames = new HashSet<>();
       // Only considering the first host because of sticky routing
@@ -321,11 +358,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       Map<Integer, List<K>> partitionKeys = new HashMap<>();
       for (K key : scatter.getPath().getPartitionKeys()) {
         int partitionId = ((RouterKey)key).getPartitionId();
-        List<K> partitionKeyList = partitionKeys.get(partitionId);
-        if (null == partitionKeyList) {
-          partitionKeyList = new LinkedList<>();
-          partitionKeys.put(partitionId, partitionKeyList);
-        }
+        List<K> partitionKeyList = partitionKeys.computeIfAbsent(partitionId, k -> new LinkedList<>());
         partitionKeyList.add(key);
       }
 
@@ -346,24 +379,29 @@ public class VeniceDelegateMode extends ScatterGatherMode {
              * to all the hosts; besides, it's guaranteed that the same key will always go to the same host unless
              * some hosts are down/stopped.
              */
-            H host = avoidSlowHost((VenicePath)path, key, hosts);
+            VenicePath venicePath = (VenicePath)path;
+            H host = avoidSlowHost(venicePath, key, hosts);
+            // when least loaded host selection is enabled we pass the entire hosts list, else just pass a single host
+            if (!isLeastLoadedHostEnabled) {
+              hosts = Collections.singletonList(host);
+            }
+
             /**
              * Using {@link HashMap#get} and checking whether the result is null or not
              * is faster than {@link HashMap#containsKey(Object)} and {@link HashMap#get}
              */
             KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(host);
             if (null == keyPartitionSet) {
-              keyPartitionSet = new KeyPartitionSet<>(Arrays.asList(host));
+              keyPartitionSet = new KeyPartitionSet<>(hosts);
               hostMap.put(host, keyPartitionSet);
             }
             keyPartitionSet.addKeyPartition(key, partitionName);
           }
-        }
-        else {
+        } else {
           H host = hosts.get(0);
           KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(host);
           if (null == keyPartitionSet) {
-            keyPartitionSet = new KeyPartitionSet<>(Arrays.asList(host));
+            keyPartitionSet = new KeyPartitionSet<>(Collections.singletonList(host));
             hostMap.put(host, keyPartitionSet);
           }
           keyPartitionSet.addKeyPartitions(entry.getValue(), partitionName);

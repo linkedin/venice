@@ -104,6 +104,8 @@ public class VeniceRouterConfig {
   private long maxRouterReadCapacityCu;
   private boolean helixCustomizedViewEnabled;
   private int ioThreadCountInPoolMode;
+  private boolean leastLoadedHostSelectionEnabled;
+
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -236,6 +238,7 @@ public class VeniceRouterConfig {
     earlyThrottleEnabled = props.getBoolean(ROUTER_EARLY_THROTTLE_ENABLED, false);
     helixCustomizedViewEnabled = props.getBoolean(HELIX_CUSTOMIZED_VIEW_ENABLED, false);
     ioThreadCountInPoolMode = props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
+    leastLoadedHostSelectionEnabled = props.getBoolean(ROUTER_LEAST_LOADED_HOST_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -547,6 +550,10 @@ public class VeniceRouterConfig {
 
   public boolean isAsyncStartEnabled() {
     return asyncStartEnabled;
+  }
+
+  public boolean isLeastLoadedHostSelectionEnabled() {
+    return leastLoadedHostSelectionEnabled;
   }
 
   public long getMaxRouterReadCapacityCu() {

@@ -21,7 +21,6 @@ import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceDelegateMode;
-import com.linkedin.venice.router.api.VeniceDelegateModeConfig;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VeniceHostHealth;
@@ -373,7 +372,7 @@ public class RouterServer extends AbstractVeniceService {
         config.getRouterPendingConnResumeThresholdPerRoute(), config.getFullPendingQueueServerOORMs(), aggHostHealthStats);
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
         routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats, aggHostHealthStats);
-    scatterGatherMode = new VeniceDelegateMode(new VeniceDelegateModeConfig(config), routerStats);
+    scatterGatherMode = new VeniceDelegateMode(config, routerStats, routeHttpRequestStats);
 
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests);
     heartbeat.startInner();
