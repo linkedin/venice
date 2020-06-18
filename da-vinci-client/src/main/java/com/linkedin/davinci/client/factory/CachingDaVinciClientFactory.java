@@ -41,12 +41,22 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
 
   @Override
   public  <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, DaVinciConfig config) {
-    return getClient(storeName, config, null, AvroGenericDaVinciClientImpl::new, AvroGenericDaVinciClientImpl.class);
+    return getClient(storeName, config, null, AvroGenericDaVinciClientImpl::new, AvroGenericDaVinciClientImpl.class, false);
+  }
+
+  @Override
+  public  <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(String storeName, DaVinciConfig config) {
+    return getClient(storeName, config, null, AvroGenericDaVinciClientImpl::new, AvroGenericDaVinciClientImpl.class, true);
   }
 
   @Override
   public <K, V extends SpecificRecord> DaVinciClient<K, V> getSpecificAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass) {
-    return getClient(storeName, config, valueClass, AvroSpecificDaVinciClientImpl::new, AvroSpecificDaVinciClientImpl.class);
+    return getClient(storeName, config, valueClass, AvroSpecificDaVinciClientImpl::new, AvroSpecificDaVinciClientImpl.class, false);
+  }
+
+  @Override
+  public <K, V extends SpecificRecord> DaVinciClient<K, V> getAndStartSpecificAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass) {
+    return getClient(storeName, config, valueClass, AvroSpecificDaVinciClientImpl::new, AvroSpecificDaVinciClientImpl.class, true);
   }
 
   protected interface DaVinciClientConstructor {
@@ -58,7 +68,8 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
       DaVinciConfig config,
       Class valueClass,
       DaVinciClientConstructor clientConstructor,
-      Class clientClass) {
+      Class clientClass,
+      boolean startClient) {
 
     DaVinciConfig originalConfig = configs.computeIfAbsent(storeName, k -> config);
     if (originalConfig.getStorageClass() != config.getStorageClass()) {
@@ -80,7 +91,9 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
       clientConfig.setStoreName(storeName);
       clientConfig.setSpecificValueClass(valueClass);
       DaVinciClient newClient = clientConstructor.apply(config, clientConfig, backendConfig);
-      newClient.start();
+      if (startClient) {
+        newClient.start();
+      }
       return newClient;
     });
 
