@@ -211,13 +211,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
     ingestionService.addNotifier(pushMonitorNotifier);
 
-    // If Helix customized view is enabled, do dual-write for offline push status update
-    if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
-      PartitionPushStatusNotifier partitionPushStatusNotifier = new PartitionPushStatusNotifier(
-          new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId()));
-      ingestionService.addNotifier(partitionPushStatusNotifier);
-    }
-
     CompletableFuture.runAsync(() -> {
       try {
         // Check node status before joining the cluster.
@@ -247,6 +240,13 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
       logger.info("Successfully started Helix Participation Service");
     });
+    
+    // If Helix customized view is enabled, do dual-write for offline push status update
+    if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
+      PartitionPushStatusNotifier partitionPushStatusNotifier = new PartitionPushStatusNotifier(
+          new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId()));
+      ingestionService.addNotifier(partitionPushStatusNotifier);
+    }
   }
 
   @Override
