@@ -1111,10 +1111,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * to find more details.
      */
     offsetRecord.transform();
-    // Checkpointing info required by the underlying storage engine
+    // Check-pointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     ps.resetProcessedRecordSizeSinceLastSync();
+    logger.info("Synced offset: " + offsetRecord.getOffset() + " for " + topic + " of partition: " + partition);
   }
 
   public void setLastDrainerException(Exception e) {
