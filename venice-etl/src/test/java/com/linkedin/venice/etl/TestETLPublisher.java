@@ -29,16 +29,22 @@ public class TestETLPublisher {
 
   @Test
   public void testSnapshotFormatUtil() {
-    String goodSnapshotFormat1 = "1570183273436-PT-558022380";
+    long recordCount = 558022380L;
+    String goodSnapshotFormat1 = "1570183273436-PT-" + recordCount;
     String goodSnapshotFormat2 = "1570269674164-PT-0";
     Assert.assertTrue(isValidSnapshotPath(goodSnapshotFormat1));
+    Assert.assertEquals(getSnapshotRecordCount(goodSnapshotFormat1), recordCount);
     Assert.assertTrue(isValidSnapshotPath(goodSnapshotFormat2));
+    Assert.assertEquals(getSnapshotRecordCount(goodSnapshotFormat2), 0L);
 
     String badSnapshotFormat1 = "1570183273436-558022380";
     String badSnapshotFormat2 = "PT-558022380";
     String badSnapshotFormat3 = "1570183273436-PT-a";
     Assert.assertFalse(isValidSnapshotPath(badSnapshotFormat1));
+    Assert.assertEquals(getSnapshotRecordCount(badSnapshotFormat1), 0L);
     Assert.assertFalse(isValidSnapshotPath(badSnapshotFormat2));
+    Assert.assertEquals(getSnapshotRecordCount(badSnapshotFormat2), 0L);
     Assert.assertFalse(isValidSnapshotPath(badSnapshotFormat3));
+    Assert.assertEquals(getSnapshotRecordCount(badSnapshotFormat3), 0L);
   }
 }

@@ -159,6 +159,13 @@ public class LumosSnapshotsPublisher extends AbstractJob {
       Path snapshotSourcePath = snapshotQueue.peek();
       String snapshotName = snapshotSourcePath.getName();
 
+      // Check whether the snapshot is empty
+      long recordCount = DataPublisherUtils.getSnapshotRecordCount(snapshotName);
+      if (recordCount == 0) {
+        logger.info("Skip copying snapshot " + snapshotName + " for store " + storeNamePath + ", because the new snapshot is empty.");
+        return;
+      }
+
       // Create the directory for the store in destination if it doesn't exist before
       Path storePath = new Path(destination);
       if (!fs.exists(storePath)) {
