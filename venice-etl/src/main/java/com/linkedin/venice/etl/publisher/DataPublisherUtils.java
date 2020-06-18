@@ -295,12 +295,21 @@ public class DataPublisherUtils {
 
   /**
    * A helper function to check whether the input string follow such
-   * @param path
-   * @return
    */
   public static boolean isValidSnapshotPath(String path) {
     Matcher m = SNAPSHOT_PATTERN.matcher(path);
     return m.matches();
+  }
+
+  /**
+   * A helper function to get record number in a snapshot from its snapshot name
+   */
+  public static long getSnapshotRecordCount(String snapshotName) {
+    if (!isValidSnapshotPath(snapshotName)) {
+      return 0;
+    }
+    int snapshotSeparatorIndex = snapshotName.indexOf(SNAPSHOT_SEPARATOR);
+    return Long.valueOf(snapshotName.substring(snapshotSeparatorIndex + SNAPSHOT_SEPARATOR.length()));
   }
 
   /**
