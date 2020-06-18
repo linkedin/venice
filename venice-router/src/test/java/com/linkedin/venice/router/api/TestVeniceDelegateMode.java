@@ -11,8 +11,10 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -207,12 +209,18 @@ public class TestVeniceDelegateMode {
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
+    VeniceRouterConfig config = mock(VeniceRouterConfig.class);
+    doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
+    doReturn(true).when(config).isStickyRoutingEnabledForMultiGet();
+    doReturn(false).when(config).isGreedyMultiGet();
+
+
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-        new VeniceDelegateModeConfig()
-        .withStickyRoutingEnabledForMultiGet(false)
-        .withStickyRoutingEnabledForSingleGet(false),
-        mock(RouterStats.class)
+        config,
+        mock(RouterStats.class),
+        mock(RouteHttpRequestStats.class)
     );
+
     scatterMode.initReadRequestThrottler(throttler);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
@@ -231,10 +239,9 @@ public class TestVeniceDelegateMode {
     // Test with sticky routing
     hostFinder = getHostFinder(partitionInstanceMap, true);
     scatterMode = new VeniceDelegateMode(
-        new VeniceDelegateModeConfig()
-        .withStickyRoutingEnabledForSingleGet(true)
-        .withStickyRoutingEnabledForMultiGet(true),
-        mock(RouterStats.class)
+        config,
+        mock(RouterStats.class),
+        mock(RouteHttpRequestStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
@@ -269,11 +276,16 @@ public class TestVeniceDelegateMode {
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
+    VeniceRouterConfig config = mock(VeniceRouterConfig.class);
+    doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
+    doReturn(false).when(config).isStickyRoutingEnabledForMultiGet();
+    doReturn(false).when(config).isGreedyMultiGet();
+
+
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-        new VeniceDelegateModeConfig()
-        .withStickyRoutingEnabledForSingleGet(false)
-        .withStickyRoutingEnabledForMultiGet(false),
-        mock(RouterStats.class)
+        config,
+        mock(RouterStats.class),
+        mock(RouteHttpRequestStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
 
@@ -363,12 +375,16 @@ public class TestVeniceDelegateMode {
     HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
+    VeniceRouterConfig config = mock(VeniceRouterConfig.class);
+    doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
+    doReturn(false).when(config).isStickyRoutingEnabledForMultiGet();
+    doReturn(false).when(config).isGreedyMultiGet();
+
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-        new VeniceDelegateModeConfig()
-        .withStickyRoutingEnabledForSingleGet(false)
-        .withStickyRoutingEnabledForMultiGet(false),
-        mock(RouterStats.class)
+       config,
+        mock(RouterStats.class),
+        mock(RouteHttpRequestStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
 
@@ -396,12 +412,16 @@ public class TestVeniceDelegateMode {
     // test sticky routing
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     hostFinder = getHostFinder(partitionInstanceMap, true);
+    doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
+    doReturn(true).when(config).isStickyRoutingEnabledForMultiGet();
+    doReturn(false).when(config).isGreedyMultiGet();
+
     scatterMode = new VeniceDelegateMode(
-        new VeniceDelegateModeConfig()
-        .withStickyRoutingEnabledForSingleGet(true)
-        .withStickyRoutingEnabledForMultiGet(true),
-        mock(RouterStats.class)
+        config,
+        mock(RouterStats.class),
+        mock(RouteHttpRequestStats.class)
     );
+
     scatterMode.initReadRequestThrottler(throttler);
     finalScatter =
         scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
@@ -514,11 +534,15 @@ public class TestVeniceDelegateMode {
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
+    VeniceRouterConfig config = mock(VeniceRouterConfig.class);
+    doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
+    doReturn(true).when(config).isStickyRoutingEnabledForMultiGet();
+    doReturn(false).when(config).isGreedyMultiGet();
+
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
-        new VeniceDelegateModeConfig()
-            .withStickyRoutingEnabledForSingleGet(false)
-            .withStickyRoutingEnabledForMultiGet(true),
-        mock(RouterStats.class)
+        config,
+        mock(RouterStats.class),
+        mock(RouteHttpRequestStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
 

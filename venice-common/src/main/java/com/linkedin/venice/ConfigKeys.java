@@ -1128,4 +1128,8 @@ public class ConfigKeys {
    * partitions and collect data on the effectiveness of previous resets.
    */
   public static final String ERROR_PARTITION_PROCESSING_CYCLE_DELAY = "error.partition.processing.cycle.delay";
+  /**
+   * Turns on  least loaded selection of server hosts.
+   */
+  public static final String ROUTER_LEAST_LOADED_HOST_ENABLED = "router.least.loaded.host.enabled";
 }
