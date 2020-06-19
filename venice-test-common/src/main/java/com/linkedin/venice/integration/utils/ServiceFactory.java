@@ -562,7 +562,7 @@ public class ServiceFactory {
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster) {
-    return getGenericAvroDaVinciClient(storeName, cluster,  TestUtils.getTempDataDirectory().getAbsolutePath());
+    return getGenericAvroDaVinciClient(storeName, cluster, TestUtils.getTempDataDirectory().getAbsolutePath());
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, String dataBasePath) {

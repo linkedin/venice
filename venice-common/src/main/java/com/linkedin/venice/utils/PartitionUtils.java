@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -10,6 +11,7 @@ import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import java.util.HashSet;
+import java.util.Properties;
 import java.util.Set;
 import java.util.stream.IntStream;
 import org.apache.log4j.Logger;
@@ -63,10 +65,21 @@ public class PartitionUtils {
     return subPartitions;
   }
 
-  public static VenicePartitioner getVenicePartitioner(String partitionerClass, int amplificationFactor,
-      VeniceProperties props) {
+  public static VenicePartitioner getVenicePartitioner(PartitionerConfig config) {
+    Properties params = new Properties();
+    params.putAll(config.getPartitionerParams());
+    return getVenicePartitioner(
+        config.getPartitionerClass(),
+        config.getAmplificationFactor(),
+        new VeniceProperties(params));
+  }
+
+  public static VenicePartitioner getVenicePartitioner(
+      String partitionerClass,
+      int amplificationFactor,
+      VeniceProperties params) {
     VenicePartitioner partitioner = ReflectUtils.callConstructor(ReflectUtils.loadClass(partitionerClass),
-        new Class<?>[]{VeniceProperties.class}, new Object[]{props});
+        new Class<?>[]{VeniceProperties.class}, new Object[]{params});
     if (amplificationFactor == 1) {
       return partitioner;
     }

@@ -1,7 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -17,20 +17,24 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.RemoteReadPolicy;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 
+import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -63,35 +67,64 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchStore() throws Exception {
-    String storeName = cluster.createStore(KEY_COUNT);
+    String storeName1 = cluster.createStore(KEY_COUNT);
+    String storeName2 = cluster.createStore(KEY_COUNT);
 
-    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
-      client.subscribeToAllPartitions().get();
+    ClientConfig clientConfig = ClientConfig
+            .defaultGenericClientConfig(null)
+            .setMetricsRepository(new MetricsRepository())
+            .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+            .setVeniceURL(cluster.getZk().getAddress());
+
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    VeniceProperties backendConfig = new PropertyBuilder()
+            .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
+            .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .build();
+
+    // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(clientConfig, backendConfig)) {
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
+
+      Map<Integer, Integer> keyValueMap = new HashMap<>();
+      client1.subscribeToAllPartitions().get();
       for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(client.get(k).get(), (Integer) 1);
+        assertEquals(client1.get(k).get(), 1);
+        keyValueMap.put(k, 1);
       }
 
+        // Test multiple client ingesting different stores concurrently
+      DaVinciClient<Integer, Integer> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
+      client2.subscribeToAllPartitions().get();
+      assertEquals(client2.batchGet(keyValueMap.keySet()).get(), keyValueMap);
+
       for (int i = 0; i < 2; ++i) {
-        Integer expectedValue = cluster.createVersion(storeName, KEY_COUNT);
+        Integer expectedValue = cluster.createVersion(storeName1, KEY_COUNT);
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           for (int k = 0; k < KEY_COUNT; ++k) {
-            assertEquals(client.get(k).get(), expectedValue);
+            assertEquals(client1.get(k).get(), expectedValue);
           }
         });
       }
 
-      // test non-existent key access
-      assertNull(client.get(KEY_COUNT + 1).get());
+      // Test non-existent key access
+      assertNull(client1.get(KEY_COUNT + 1).get());
 
-      // test read from a store that is being deleted concurrently
+      // Test read from a store that is being deleted concurrently
       try (ControllerClient controllerClient = cluster.getControllerClient()) {
-        ControllerResponse response = controllerClient.disableAndDeleteStore(storeName);
+        ControllerResponse response = controllerClient.disableAndDeleteStore(storeName1);
         assertFalse(response.isError(), response.getError());
 
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          assertThrows(VeniceNoStoreException.class, () -> client.get(KEY_COUNT / 3).get());
+          assertThrows(VeniceNoStoreException.class, () -> client1.get(KEY_COUNT / 3).get());
         });
       }
+
+      // Test data cleanup
+      assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
+      client1.unsubscribeFromAllPartitions();
+      client2.unsubscribeFromAllPartitions();
+      assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
     }
   }
 
@@ -116,7 +149,7 @@ public class DaVinciClientTest {
       Utils.sleep(1000);
       for (int i = 0; i < KEY_COUNT; i++) {
         final int key = i;
-        assertThrows(VeniceClientException.class, () -> client.get(key).get());
+        assertThrows(VeniceException.class, () -> client.get(key).get());
       }
       client.unsubscribe(Collections.singleton(emptyPartition));
 
@@ -167,7 +200,7 @@ public class DaVinciClientTest {
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           final int key = i;
-          assertThrows(VeniceClientException.class, () -> client.get(key).get());
+          assertThrows(VeniceException.class, () -> client.get(key).get());
         }
       });
 
@@ -191,7 +224,7 @@ public class DaVinciClientTest {
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           final int key = i;
-          assertThrows(VeniceClientException.class, () -> client.get(key).get());
+          assertThrows(VeniceException.class, () -> client.get(key).get());
         }
       });
     }
@@ -200,65 +233,62 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testBootstrap() throws Exception {
     String storeName = cluster.createStore(KEY_COUNT);
-    String dataBasePath = TestUtils.getTempDataDirectory().getAbsolutePath();
-    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, dataBasePath)) {
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
       client.subscribeToAllPartitions().get();
       for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(client.get(k).get(), (Integer) 1);
+        assertEquals(client.get(k).get(), 1);
       }
     }
 
-    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, dataBasePath)) {
+    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Map<Integer, Integer> keyValueMap = new HashMap();
-        for (int k = 0; k < KEY_COUNT; ++k) {
-          assertEquals(client.get(k).get(), (Integer) 1);
-          keyValueMap.put(k, 1);
+        try {
+          Map<Integer, Integer> keyValueMap = new HashMap();
+          for (int k = 0; k < KEY_COUNT; ++k) {
+            assertEquals(client.get(k).get(), 1);
+            keyValueMap.put(k, 1);
+          }
+          assertEquals(client.batchGet(keyValueMap.keySet()).get(), keyValueMap);
+        } catch (VeniceException e) {
+          throw new AssertionError("", e);
         }
-        assertEquals(client.batchGet(keyValueMap.keySet()).get(), keyValueMap);
       });
     }
 
     // Create a new version, so that old local version is removed during bootstrap and the access will fail.
     cluster.createVersion(storeName, KEY_COUNT);
-    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, dataBasePath)) {
-      assertThrows(VeniceNoStoreException.class, () -> client.get(0).get());
+    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
+      assertThrows(VeniceException.class, () -> client.get(0).get());
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testNonLocalRead() throws Exception {
     String storeName = cluster.createStore(KEY_COUNT);
-
-    VeniceProperties backendConfig = new PropertyBuilder()
-                                         .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
-                                         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-                                         .build();
-
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.QUERY_REMOTELY);
+    VeniceProperties backendConfig = new PropertyBuilder()
+            .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+            .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .build();
 
-    Set<Object> keySet = new HashSet<>();
-    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
+    Map<Integer, Integer> keyValueMap = new HashMap<>();
+    daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.QUERY_REMOTELY);
+    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       client.subscribe(Collections.singleton(0)).get();
       // With QUERY_REMOTELY enabled, all key-value pairs should be found.
       for (int k = 0; k < KEY_COUNT; ++k) {
         assertEquals(client.get(k).get(), 1);
-        keySet.add(k);
+        keyValueMap.put(k, 1);
       }
-
-      Map<Object, Object> valueMap = client.batchGet(keySet).get();
-      assertNotNull(valueMap);
-      for (int k = 0; k < KEY_COUNT; ++k) {
-        assertEquals(valueMap.get(k), 1);
-      }
+      assertEquals(client.batchGet(keyValueMap.keySet()).get(), keyValueMap);
     }
 
     daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.FAIL_FAST);
-    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
+    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       // We only subscribe to 1/3 of the partitions so some data will not be present locally.
       client.subscribe(Collections.singleton(0)).get();
-      assertThrows(VeniceClientException.class, () -> client.batchGet(keySet).get());
+      assertThrows(VeniceException.class, () -> client.batchGet(keyValueMap.keySet()).get());
     }
 
     // Update the store to use non-default partitioner and it shall fail during initialization even with QUERY_REMOTELY enabled.
@@ -276,7 +306,7 @@ public class DaVinciClientTest {
       }
     }
     daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.QUERY_REMOTELY);
-    assertThrows(VeniceClientException.class, () -> ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig));
+    assertThrows(VeniceException.class, () -> ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig));
   }
 
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {
