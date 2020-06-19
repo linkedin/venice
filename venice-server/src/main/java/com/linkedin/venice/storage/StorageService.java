@@ -134,8 +134,10 @@ public class StorageService extends AbstractVeniceService {
     partitionAssignmentRepository.addPartition(storeConfig.getStoreName(), partitionId);
 
     AbstractStorageEngine engine = openStore(storeConfig);
-    if (!engine.containsPartition(partitionId)) {
-      engine.addStoragePartition(partitionId);
+    synchronized (engine) {
+      if (!engine.containsPartition(partitionId)) {
+        engine.addStoragePartition(partitionId);
+      }
     }
     return engine;
   }
