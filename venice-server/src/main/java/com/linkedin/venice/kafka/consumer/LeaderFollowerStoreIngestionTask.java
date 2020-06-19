@@ -990,7 +990,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (shouldProduceToVersionTopic(partitionConsumptionState)) {
       String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
       LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
-          kafkaTopic, partition, offset, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
+          kafkaVersionTopic, partition, offset, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
       getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
     }
   }
