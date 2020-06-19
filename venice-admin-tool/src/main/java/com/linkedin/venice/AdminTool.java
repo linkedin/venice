@@ -1178,63 +1178,32 @@ public class AdminTool {
       terminate = !promptsOverride[2];
     } else {
       terminate = !userGivesPermission("Next step is to delete the cloned store in dest cluster "
-          + destClusterName + ". " + storeName + " in " + destClusterName + " will be deleted irreversibly. Do you want to proceed?");
+          + destClusterName + ". " + storeName + " in " + destClusterName + " will be deleted irreversibly."
+          + " Please verify there is no reads/writes to the cloned store. Do you want to proceed?");
     }
     if (terminate) {
       return;
     }
-    if (destControllerClient.getStore(storeName).getStore() == null) {
-      // Cloned store has not been created
-      // Directly delete cloned stores in children datacenters if two layer setup, otherwise skip
-      Map<String, String> childClusterMap = abortMigrationResponse.getChildClusterMap();
-      if (childClusterMap != null) {
-        List<String> childControllerUrls = new ArrayList<>(childClusterMap.values());
-        int numChildDatacenters = childControllerUrls.size();
-        int deletedStoreCount = 0;
-        ControllerClient[] destChildControllerClients = createControllerClients(destClusterName, childControllerUrls);
-
-        // The abort migration logic could not handle abort migration test 1 (aka abort immediately)
-        // in TestStoreMigration#testAbortMigrationMultiDatacenter very well due to race conditon
-        // The following wait logic is introduced as a workaround for this edge case.
-        // Wait until cloned store being created in dest cluster, then delete.
-        while (deletedStoreCount < numChildDatacenters) {
-          for (int i = 0; i < numChildDatacenters; i++) {
-            ControllerClient destChildController = destChildControllerClients[i];
-            if (destChildController.getStore(storeName).getStore() != null) {
-              System.err.println("Deleting cloned store " + storeName + " in " + destChildController.getMasterControllerUrl() + " ...");
-              destChildController.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-              TrackableControllerResponse deleteResponse = destChildController.deleteStore(storeName);
-              printObject(deleteResponse);
-              deletedStoreCount++;
-            }
-          }
-          System.err.println("Deleted cloned store in " + deletedStoreCount + "/" + numChildDatacenters + " child datacenters.");
-          Utils.sleep(3000);
-        }
-      }
-    } else {
-      // Delete cloned store in (parent) dest controller
-      System.err.println("Deleting cloned store " + storeName + " in " + destControllerClient.getMasterControllerUrl() + " ...");
-      destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName);
-      printObject(deleteResponse);
-    }
-
 
     // Cluster discovery should point to original cluster
     discoveryResponse = srcControllerClient.discoverCluster(storeName);
     if (!discoveryResponse.getCluster().equals(srcClusterName)) {
       System.err.println("ERROR: Incorrect cluster discovery result");
+      return;
     }
 
-    // Dest cluster(s) should not contain the cloned store
-    // This should not happen but in case it does, migration monitor probably has just created the cloned store in parent
-    // while the admin-tool trying to delete the cloned store in child datacenters.
     if (destControllerClient.getStore(storeName).getStore() != null) {
-      System.err.println("ERROR: Dest cluster " + destClusterName + " " + destControllerClient.getMasterControllerUrl()
-          + " still contains store " + storeName + ". Possibly caused by some race condition.\n"
-          + " Use --migration-status to check the current status and delete the cloned store in dest cluster when safe.\n"
-          + " Make sure admin channels don't get stuck.");
+      // If multi-colo, both parent and child dest controllers will consume the delete store message
+      System.err.println("Deleting cloned store " + storeName + " in " + destControllerClient.getMasterControllerUrl() + " ...");
+      destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName);
+      printObject(deleteResponse);
+      if (deleteResponse.isError()) {
+        System.err.println("ERROR: failed to delete store " + storeName + " in the dest cluster " + destClusterName);
+      }
+    } else {
+      System.err.println("Store " + storeName + " is not found in the dest cluster " + destClusterName
+          + ". Please use --migration-status to check the current status.");
     }
   }
 
