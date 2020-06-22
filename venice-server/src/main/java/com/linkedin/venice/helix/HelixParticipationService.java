@@ -239,14 +239,15 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       serviceState.set(ServiceState.STARTED);
 
       logger.info("Successfully started Helix Participation Service");
+
+      // If Helix customized view is enabled, do dual-write for offline push status update
+      if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
+        PartitionPushStatusNotifier partitionPushStatusNotifier = new PartitionPushStatusNotifier(
+            new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId()));
+        ingestionService.addNotifier(partitionPushStatusNotifier);
+        logger.info("Successfully started Helix partition status accessor. ");
+      }
     });
-    
-    // If Helix customized view is enabled, do dual-write for offline push status update
-    if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
-      PartitionPushStatusNotifier partitionPushStatusNotifier = new PartitionPushStatusNotifier(
-          new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId()));
-      ingestionService.addNotifier(partitionPushStatusNotifier);
-    }
   }
 
   @Override
