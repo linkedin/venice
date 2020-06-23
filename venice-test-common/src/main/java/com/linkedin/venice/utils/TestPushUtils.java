@@ -595,13 +595,13 @@ public class TestPushUtils {
 
     ControllerClient controllerClient =
         new ControllerClient(veniceClusterName, veniceUrl);
-    NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
-        "test@linkedin.com", keySchemaStr, valueSchemaStr);
+    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(5, c -> c.createNewStore(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
+        "test@linkedin.com", keySchemaStr, valueSchemaStr));
 
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    ControllerResponse controllerResponse = controllerClient.updateStore(
-        props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
+    ControllerResponse controllerResponse = controllerClient.retryableRequest(5, c -> c.updateStore(
+        props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 

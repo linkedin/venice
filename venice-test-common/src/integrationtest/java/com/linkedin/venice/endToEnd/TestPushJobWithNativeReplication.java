@@ -18,6 +18,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.testng.Assert;
@@ -30,6 +31,8 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestPushJobWithNativeReplication {
+  private static final int TEST_TIMEOUT = 60_000; // ms
+
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
@@ -72,7 +75,7 @@ public class TestPushJobWithNativeReplication {
     multiColoMultiClusterWrapper.close();
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationForBatchPush() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
@@ -97,23 +100,25 @@ public class TestPushJobWithNativeReplication {
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
 
-    // Current version should become 1
-    for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
-      Assert.assertEquals(version, 1);
-    }
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      // Current version should become 1
+      for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
+        Assert.assertEquals(version, 1);
+      }
 
-    // Verify the data in Venice Store
-    for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
-      VeniceMultiClusterWrapper childDataCenter = childClusters.get(dataCenterIndex);
-      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-      try(AvroGenericStoreClient<String, Object> client =
-          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= 100; ++i) {
-          String expected = "test_name_" + i;
-          String actual = client.get(Integer.toString(i)).get().toString();
-          Assert.assertEquals(actual, expected);
+      // Verify the data in Venice Store
+      for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+        VeniceMultiClusterWrapper childDataCenter = childClusters.get(dataCenterIndex);
+        String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+        try(AvroGenericStoreClient<String, Object> client =
+            ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+          for (int i = 1; i <= 100; ++i) {
+            String expected = "test_name_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
         }
       }
-    }
+    });
   }
 }
