@@ -79,6 +79,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       return;
     }
 
+    if (reporter != null) {
+      reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE, recordValue.length);
+    }
+
     try {
       recordValue = compressor.compress(recordValue);
     } catch (IOException e) {

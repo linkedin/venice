@@ -776,9 +776,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         pushJobDetails.totalKeyBytes =
             runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_KEY_SIZE);
         pushJobDetails.totalRawValueBytes =
-            runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_VALUE_SIZE);
+            runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE);
         pushJobDetails.totalCompressedValueBytes =
-            runningJob.getCounters().getGroup(COUNTER_GROUP_KAFKA).getCounter(COUNTER_TOTAL_COMPRESSED_VALUE_BYTES);
+            runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_VALUE_SIZE);
       }
     } catch (Exception e) {
       logger.warn("Exception caught while updating push job details with map reduce counters. "
