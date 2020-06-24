@@ -156,7 +156,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     for (String veniceStoreName: storeNames) {
       ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrls, veniceStoreName, sslFactory);
       if (clusterDiscoveryResponse.isError()) {
-        throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
+        logger.warn("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
       } else {
         String clusterName = clusterDiscoveryResponse.getCluster();
         ControllerClient controllerClient = clusterToControllerClient.computeIfAbsent(clusterName, k -> new ControllerClient(k, veniceControllerUrls, sslFactory));
@@ -245,28 +245,36 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     createControllersList(veniceStoreNames);
     Set<String> topicNames = new HashSet<>();
     for (String storeName: veniceStoreNames) {
-      StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
-      StoreInfo storeInfo = storeResponse.getStore();
-      // append current version topic
-      String topicName = Version.composeKafkaTopic(storeName, storeInfo.getColoToCurrentVersions().get(fabricName));
-      topicNames.add(topicName);
-      logger.info("Topic name in this ETL pipeline is: " + topicName);
+      if (storeToControllerClient.containsKey(storeName)) {
+        StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
+        StoreInfo storeInfo = storeResponse.getStore();
+        // append current version topic
+        String topicName = Version.composeKafkaTopic(storeName, storeInfo.getColoToCurrentVersions().get(fabricName));
+        topicNames.add(topicName);
+        logger.info("Topic name in this ETL pipeline is: " + topicName);
+      } else {
+        logger.warn("Skipped fetching topic for store " + storeName + " since it's cluster information is unavailable");
+      }
     }
 
     // get the topic names for future etl stores
     createControllersList(futureETLEnabledStores);
     for (String storeName : futureETLEnabledStores) {
-      StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
-      StoreInfo storeInfo = storeResponse.getStore();
-      // This largest version is across all colos.
-      int futureVersion = storeInfo.getLargestUsedVersionNumber();
-      int currentVersion = storeInfo.getColoToCurrentVersions().get(fabricName);
-      if (futureVersion > currentVersion) {
-        String futureTopicName = Version.composeKafkaTopic(storeName, futureVersion);
-        topicNames.add(futureTopicName);
-        logger.info("Future version topic in this ETL pipeline is: " + futureTopicName);
+      if (storeToControllerClient.containsKey(storeName)) {
+        StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
+        StoreInfo storeInfo = storeResponse.getStore();
+        // This largest version is across all colos.
+        int futureVersion = storeInfo.getLargestUsedVersionNumber();
+        int currentVersion = storeInfo.getColoToCurrentVersions().get(fabricName);
+        if (futureVersion > currentVersion) {
+          String futureTopicName = Version.composeKafkaTopic(storeName, futureVersion);
+          topicNames.add(futureTopicName);
+          logger.info("Future version topic in this ETL pipeline is: " + futureTopicName);
+        } else {
+          logger.info("Store " + storeName + " doesn't have a future version running yet. Skipped.");
+        }
       } else {
-        logger.info("Store " + storeName + " doesn't have a future version running yet. Skipped.");
+        logger.warn("Skipped fetching future version topic for store " + storeName + " since it's cluster information is unavailable");
       }
     }
 
