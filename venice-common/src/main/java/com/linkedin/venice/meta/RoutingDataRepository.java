@@ -74,6 +74,8 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
 
     void onExternalViewChange(PartitionAssignment partitionAssignment);
 
+    void onCustomizedViewChange(PartitionAssignment partitionAssignment);
+
     void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus);
 
     void onRoutingDataDeleted(String kafkaTopic);

@@ -486,6 +486,9 @@ public abstract class AbstractPushMonitor
     }
   }
 
+  @Override
+  public void onCustomizedViewChange(PartitionAssignment partitionAssignment) {
+  }
 
   @Override
   public void onRoutingDataDeleted(String kafkaTopic) {

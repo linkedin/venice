@@ -4,13 +4,15 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.helix.HelixCustomizedViewRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
+import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
-import com.linkedin.venice.helix.HelixViewPropertyType;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
@@ -88,7 +90,10 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.Arrays;
+import java.util.HashMap;
 import org.apache.helix.InstanceType;
+import org.apache.helix.PropertyType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
@@ -125,7 +130,7 @@ public class RouterServer extends AbstractVeniceService {
   private ZkClient zkClient;
   private SafeHelixManager manager;
   private HelixReadOnlySchemaRepository schemaRepository;
-  private HelixRoutingDataRepository routingDataRepository;
+  private HelixBaseRoutingRepository routingDataRepository;
   private HelixReadOnlyStoreRepository metadataRepository;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
@@ -232,7 +237,9 @@ public class RouterServer extends AbstractVeniceService {
     this.schemaRepository =
         new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName(),
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
-    this.routingDataRepository = new HelixRoutingDataRepository(manager, HelixViewPropertyType.EXTERNALVIEW);
+    this.routingDataRepository =
+        config.isHelixCustomizedViewEnabled() ? new HelixCustomizedViewRepository(manager)
+            : new HelixRoutingDataRepository(manager);
     this.storeConfigRepository =
         new HelixReadOnlyStoreConfigRepository(zkClient, adapter, config.getRefreshAttemptsForZkReconnect(),
             config.getRefreshIntervalForZkReconnectInMs());
@@ -390,7 +397,8 @@ public class RouterServer extends AbstractVeniceService {
         routingDataRepository);
 
     OnlineInstanceFinderDelegator onlineInstanceFinder =
-        new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository, partitionStatusOnlineInstanceFinder);
+        new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository,
+            partitionStatusOnlineInstanceFinder, config.isHelixCustomizedViewEnabled());
 
     dictionaryRetrievalService = new DictionaryRetrievalService(onlineInstanceFinder, config, sslFactoryForRequests, metadataRepository);
 
@@ -637,7 +645,7 @@ public class RouterServer extends AbstractVeniceService {
     logger.info(this.toString() + " is stopped");
   }
 
-  public HelixRoutingDataRepository getRoutingDataRepository() {
+  public HelixBaseRoutingRepository getRoutingDataRepository() {
     return routingDataRepository;
   }
 

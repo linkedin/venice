@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.RouterServer;
@@ -132,7 +133,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     service = new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
   }
 
-  public HelixRoutingDataRepository getRoutingDataRepository() {
+  public HelixBaseRoutingRepository getRoutingDataRepository() {
     return service.getRoutingDataRepository();
   }
 

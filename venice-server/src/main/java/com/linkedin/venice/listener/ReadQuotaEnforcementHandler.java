@@ -1,8 +1,10 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.Instance;
@@ -210,6 +212,16 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     return new TokenBucket(thisCapacity, thisRefillAmount, enforcementIntervalSeconds, SECONDS, clock);
   }
 
+  @Override
+  public void onExternalViewChange(PartitionAssignment partitionAssignment) {
+    updateQuota(partitionAssignment);
+  }
+
+  @Override
+  public void onCustomizedViewChange(PartitionAssignment partitionAssignment) {
+    updateQuota(partitionAssignment);
+  }
+
   /**
    * Recalculates the amount of quota that this node should serve given the partition assignment.  Assumes each
    * partition gets an even portion of quota, and for each partition divides the quota by the readyToServe instances.
@@ -217,8 +229,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    *
    * @param partitionAssignment Newest partitions assignments information including resource name and  all of instances assigned to this resource.
    */
-  @Override
-  public void onExternalViewChange(PartitionAssignment partitionAssignment) {
+  private void updateQuota(PartitionAssignment partitionAssignment) {
     String topic = partitionAssignment.getTopic();
     if (partitionAssignment.getAllPartitions().isEmpty()){
       logger.warn("QuotaEnforcementHandler updated with an empty partition map for topic: " + topic + ".  Skipping update process");
