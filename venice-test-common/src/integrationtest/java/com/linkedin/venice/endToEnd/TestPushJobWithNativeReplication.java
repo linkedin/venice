@@ -27,11 +27,12 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestPushJobWithNativeReplication {
-  private static final int TEST_TIMEOUT = 60_000; // ms
+  private static final int TEST_TIMEOUT = 90_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -51,16 +52,16 @@ public class TestPushJobWithNativeReplication {
      * Override the KMM whitelist config so that only messages in admin topic will be replicaed by KMM.
      */
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 3L);
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     serverProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
         1,
-        2,
         1,
-        2,
+        1,
+        1,
         Optional.empty(),
         Optional.empty(),
         Optional.of(new VeniceProperties(serverProperties)),
@@ -79,12 +80,14 @@ public class TestPushJobWithNativeReplication {
   public void testNativeReplicationForBatchPush() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir);
+    int recordCount = 10;
+    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
     /**
@@ -106,17 +109,15 @@ public class TestPushJobWithNativeReplication {
         Assert.assertEquals(version, 1);
       }
 
-      // Verify the data in Venice Store
-      for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
-        VeniceMultiClusterWrapper childDataCenter = childClusters.get(dataCenterIndex);
-        String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-        try(AvroGenericStoreClient<String, Object> client =
-            ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-          for (int i = 1; i <= 100; ++i) {
-            String expected = "test_name_" + i;
-            String actual = client.get(Integer.toString(i)).get().toString();
-            Assert.assertEquals(actual, expected);
-          }
+      // Verify the data in the second child fabric which consumes remotely
+      VeniceMultiClusterWrapper childDataCenter = childClusters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+      try(AvroGenericStoreClient<String, Object> client =
+          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        for (int i = 1; i <= recordCount; ++i) {
+          String expected = "test_name_" + i;
+          String actual = client.get(Integer.toString(i)).get().toString();
+          Assert.assertEquals(actual, expected);
         }
       }
     });
