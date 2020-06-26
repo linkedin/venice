@@ -73,6 +73,6 @@ public class LogNotifier implements VeniceNotifier {
 
   @Override
   public void error(String kafkaTopic, int partitionId, String message, Exception ex) {
-    logger.error(logMessage("Push errored", kafkaTopic, partitionId, null, message)  , ex);
+    logger.error(logMessage("Push errored", kafkaTopic, partitionId, null, message), ex);
   }
 }
