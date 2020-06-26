@@ -101,19 +101,15 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
     Iterator<OfflinePushStatus> iterator = offlinePushStatuses.iterator();
     while (iterator.hasNext()) {
       OfflinePushStatus pushStatus = iterator.next();
-      switch (pushStatus.getCurrentStatus()) {
-        case ERROR:
-        case COMPLETED:
-        case STARTED:
+      if (pushStatus.getCurrentStatus().isTaskStatus()) {
           List<PartitionStatus> partitionStatuses = getPartitionStatuses(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartition());
           pushStatus.setPartitionStatuses(partitionStatuses);
-          break;
-        default:
-          logger.info(
-              "Found invalid push statues:" + pushStatus.getCurrentStatus() + " for topic:" + pushStatus.getKafkaTopic()
-                  + "in cluster:" + clusterName + ". Will delete it from ZK.");
-          HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()));
-          iterator.remove();
+      } else {
+        logger.info(
+            "Found invalid push statues:" + pushStatus.getCurrentStatus() + " for topic:" + pushStatus.getKafkaTopic()
+                + "in cluster:" + clusterName + ". Will delete it from ZK.");
+        HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()));
+        iterator.remove();
       }
     }
     logger.info("Loaded " + offlinePushStatuses.size() + " offline pushes statuses from ZK in cluster:" + clusterName);
