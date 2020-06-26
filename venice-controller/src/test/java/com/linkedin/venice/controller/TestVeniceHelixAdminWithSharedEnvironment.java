@@ -960,6 +960,33 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   }
 
   @Test
+  public void testgetFutureVersions() throws Exception {
+    delayParticipantJobCompletion(true);
+    String storeName = TestUtils.getUniqueString("test_store");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+
+    int futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
+    Assert.assertEquals(futureVersion, 1, "Expected future version number of 1!!");
+    stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName, 1), 0);
+    // Wait version 1 become online.
+    // TOTAL_TIMEOUT_FOR_SHORT_TEST
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST*100, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+    futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
+    Assert.assertEquals(futureVersion, Store.NON_EXISTING_VERSION, "Expected future version number of 0!!");
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
+    Assert.assertEquals(futureVersion, 2, "Expected future version number of 2!!");
+    stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName, 2), 0);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST*100, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
+    futureVersion = veniceAdmin.getFutureVersion(clusterName, storeName);
+    Assert.assertEquals(futureVersion, Store.NON_EXISTING_VERSION, "Expected future version number of 0!!");
+    delayParticipantJobCompletion(false);
+  }
+
+  @Test
   public void testSingleGetRouterCacheEnabled() {
     String storeName = TestUtils.getUniqueString("test_store");
     veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");

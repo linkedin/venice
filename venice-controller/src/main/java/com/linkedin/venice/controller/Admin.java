@@ -127,6 +127,15 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName);
 
+    /**
+     * The difference between this api and getBootStrappingStores is subtle.  getBootStrappingStores will retrieve all those
+     * store versions which are undergoing a bootstrap for any reason (be it an offline push or a rebalance).  This api
+     * will only return those stores which are currently undergoing a push.
+     */
+    Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName);
+
+    int getFutureVersion(String clusterName, String storeName);
+
     Version peekNextVersion(String clusterName, String storeName);
 
     /**
@@ -502,6 +511,8 @@ public interface Admin extends AutoCloseable, Closeable {
      * Find the store versions which have at least one bootstrap replica.
      */
     Map<String, String> findAllBootstrappingVersions(String clusterName);
+
+
 
     VeniceWriterFactory getVeniceWriterFactory();
 

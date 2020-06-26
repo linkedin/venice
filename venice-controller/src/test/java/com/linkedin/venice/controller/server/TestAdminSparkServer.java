@@ -529,6 +529,20 @@ public class TestAdminSparkServer {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientCanListFutureStoreVersions() {
+    List<String> storeNames = new ArrayList<>();
+    storeNames.add(cluster.getNewStore("testStore").getName());
+
+    ControllerClient parentControllerClient = new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
+    MultiStoreStatusResponse storeResponse =
+        parentControllerClient.getFutureVersions(cluster.getClusterName(), storeNames.get(0));
+
+    // Theres no version for this store and no future version coming, so we expect an entry with null
+    Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey("dc-0"));
+    Assert.assertNull(storeResponse.getStoreStatusMap().get("dc-0"));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanUpdateWhiteList() {
     Admin admin = cluster.getMasterVeniceController().getVeniceAdmin();
 

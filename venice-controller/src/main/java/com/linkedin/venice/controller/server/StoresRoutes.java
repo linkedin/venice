@@ -24,6 +24,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -104,6 +105,24 @@ public class StoresRoutes extends AbstractRoute {
         storeInfo.setColoToCurrentVersions(
             admin.getCurrentVersionsForMultiColos(veniceResponse.getCluster(), veniceResponse.getName()));
         veniceResponse.setStore(storeInfo);
+      }
+    };
+  }
+
+  public Route getFutureVersion(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, FUTURE_VERSION.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        veniceResponse.setCluster(clusterName);
+        Map<String, String> storeStatusMap = admin.getFutureVersionsForMultiColos(clusterName, storeName);
+        if(storeStatusMap.isEmpty()) {
+          // Non parent controllers will return an empty map, so we'll just return the childs version of this api
+          storeStatusMap = Collections.singletonMap(storeName, String.valueOf(admin.getFutureVersion(clusterName, storeName)));
+        }
+        veniceResponse.setStoreStatusMap(storeStatusMap);
       }
     };
   }
