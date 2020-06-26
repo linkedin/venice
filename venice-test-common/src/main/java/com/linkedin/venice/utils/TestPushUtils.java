@@ -129,6 +129,11 @@ public class TestPushUtils {
 
   public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
       throws IOException {
+    return writeSimpleAvroFileWithUserSchema(parentDir, fileNameWithAvroSuffix, 100);
+  }
+
+  public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix, int recordCount)
+      throws IOException {
     String fileName;
     if (fileNameWithAvroSuffix) {
       fileName = "simple_user.avro";
@@ -138,7 +143,7 @@ public class TestPushUtils {
     return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING,
         (recordSchema, writer) -> {
           String name = "test_name_";
-          for (int i = 1; i <= 100; ++i) {
+          for (int i = 1; i <= recordCount; ++i) {
             GenericRecord user = new GenericData.Record(recordSchema);
             user.put("id", Integer.toString(i));
             user.put("name", name + i);
