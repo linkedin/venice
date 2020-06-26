@@ -24,6 +24,16 @@ public class HelixPartitionPushStatusAccessor extends HelixPartitionStateAccesso
         getPartitionNameFromId(topic, partitionId), status.name());
   }
 
+  /**
+   * When a replica is gone from an instance due to partition movement or resource drop, we need to call this delete
+   * function to explicitly delete the customized state for that replica. Otherwise, customized state will still stay there.
+   * Usually this should happen during state transition.
+   */
+  public void deleteReplicaStatus(String topic, int partitionId) {
+    super.deleteReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
+        getPartitionNameFromId(topic, partitionId));
+  }
+
   public ExecutionStatus getReplicaStatus(String topic, int partitionId) {
     return ExecutionStatus.valueOf(super.getReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
         getPartitionNameFromId(topic, partitionId)));

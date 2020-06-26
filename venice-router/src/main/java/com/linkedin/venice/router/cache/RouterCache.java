@@ -339,6 +339,10 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
   }
 
   @Override
+  public void onCustomizedViewChange(PartitionAssignment partitionAssignment) {
+  }
+
+  @Override
   public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
 
   }

@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -453,7 +454,7 @@ public class TestHybrid {
       Utils.sleep(waitTime);
 
       String resourceName = Version.composeKafkaTopic(storeName, 1);
-      HelixRoutingDataRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+      HelixBaseRoutingRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
       Instance leaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
       Assert.assertNotNull(leaderNode);
 

@@ -76,6 +76,10 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
   }
 
   @Override
+  public void onCustomizedViewChange(PartitionAssignment partitionAssignment) {
+  }
+
+  @Override
   public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
     // Ignore this event
   }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.helix.HelixCustomizedViewRepository;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -15,14 +16,23 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
   private final ReadOnlyStoreRepository metadataRepo;
   private final RoutingDataRepository routingDataOnlineInstanceFinder;
   private final PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder;
+  private final boolean isHelixCustomizedViewEnabled;
 
   private final Map<String, OnlineInstanceFinder> topicToInstanceFinderMap = new VeniceConcurrentHashMap<>();
 
-  public OnlineInstanceFinderDelegator(ReadOnlyStoreRepository metadataRepo, RoutingDataRepository routingDataOnlineInstanceFinder,
+  public OnlineInstanceFinderDelegator(ReadOnlyStoreRepository metadataRepo,
+      RoutingDataRepository routingDataOnlineInstanceFinder,
       PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder) {
+    this(metadataRepo, routingDataOnlineInstanceFinder, partitionStatusOnlineInstanceFinder, false);
+  }
+
+  public OnlineInstanceFinderDelegator(ReadOnlyStoreRepository metadataRepo,
+      RoutingDataRepository routingDataOnlineInstanceFinder,
+      PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder, boolean isHelixCustomizedViewEnabled) {
     this.metadataRepo = metadataRepo;
     this.routingDataOnlineInstanceFinder = routingDataOnlineInstanceFinder;
     this.partitionStatusOnlineInstanceFinder = partitionStatusOnlineInstanceFinder;
+    this.isHelixCustomizedViewEnabled = isHelixCustomizedViewEnabled;
   }
 
   @Override
@@ -51,6 +61,11 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
   }
 
   public OnlineInstanceFinder getInstanceFinder(String kafkaTopic) {
+    // If HelixCustomizedView is enabled, always use routingDataOnlineInstanceFinder, which is initialized as CustomizedViewRepository.
+    if (isHelixCustomizedViewEnabled) {
+      return routingDataOnlineInstanceFinder;
+    }
+
     return topicToInstanceFinderMap.computeIfAbsent(kafkaTopic, topic -> {
       Store store = metadataRepo.getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic));
       if (store == null) {

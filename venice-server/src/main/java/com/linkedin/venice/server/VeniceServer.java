@@ -13,7 +13,6 @@ import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
-import com.linkedin.venice.helix.HelixViewPropertyType;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -200,7 +199,7 @@ public class VeniceServer {
     //that will be completed with a routing data repository once the manager connects.
     CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
     CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
-      RoutingDataRepository routingData = new HelixRoutingDataRepository(manager, HelixViewPropertyType.EXTERNALVIEW);
+      RoutingDataRepository routingData = new HelixRoutingDataRepository(manager);
       routingData.refresh();
       return routingData;
     });

@@ -83,7 +83,7 @@ public class TestHelixRoutingDataRepository {
 
     readManager = new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
     readManager.connect();
-    repository = new HelixRoutingDataRepository(readManager, HelixViewPropertyType.EXTERNALVIEW);
+    repository = new HelixRoutingDataRepository(readManager);
     repository.refresh();
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,
         () -> repository.containsKafkaTopic(resourceName));
@@ -207,6 +207,11 @@ public class TestHelixRoutingDataRepository {
     RoutingDataRepository.RoutingDataChangedListener listener = new RoutingDataRepository.RoutingDataChangedListener() {
       @Override
       public void onExternalViewChange(PartitionAssignment partitionAssignment) {
+        isNoticed[0] = true;
+      }
+
+      @Override
+      public void onCustomizedViewChange(PartitionAssignment partitionAssignment) {
         isNoticed[0] = true;
       }
 

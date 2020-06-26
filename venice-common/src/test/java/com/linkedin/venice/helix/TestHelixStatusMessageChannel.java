@@ -78,7 +78,7 @@ public class TestHelixStatusMessageChannel {
     manager.connect();
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), cluster);
     channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
-    routingDataRepository = new HelixRoutingDataRepository(controller, HelixViewPropertyType.EXTERNALVIEW);
+    routingDataRepository = new HelixRoutingDataRepository(controller);
     routingDataRepository.refresh();
    }
 

@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -45,7 +46,9 @@ public class Partition {
    */
   @Deprecated
   public List<Instance> getReadyToServeInstances() {
-    return getInstancesInState(HelixState.ONLINE_STATE);
+    return getInstancesInState(ExecutionStatus.COMPLETED.name()).size() > getInstancesInState(
+        HelixState.ONLINE_STATE).size() ? getInstancesInState(ExecutionStatus.COMPLETED.name())
+        : getInstancesInState(HelixState.ONLINE_STATE);
   }
 
   public List<Instance> getWorkingInstances() {
