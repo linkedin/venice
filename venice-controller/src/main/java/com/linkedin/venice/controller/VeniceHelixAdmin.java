@@ -103,6 +103,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -114,6 +115,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
@@ -1459,8 +1461,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public int getFutureVersion(String clusterName, String storeName) {
+        // Find all ongoing offline pushes at first.
+        PushMonitor monitor = getVeniceHelixResource(clusterName).getPushMonitor();
+        Optional<String> offlinePush = monitor.getTopicsOfOngoingOfflinePushes().stream()
+                .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName)).findFirst();
+        if(offlinePush.isPresent()) {
+            return Version.parseVersionFromKafkaTopicName(offlinePush.get());
+        }
+        return Store.NON_EXISTING_VERSION;
+    }
+
+    @Override
     public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
         return null;
+    }
+
+    @Override
+    public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
+        return Collections.EMPTY_MAP;
     }
 
     @Override

@@ -98,6 +98,13 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.STORE, params, StoreResponse.class);
   }
 
+  public MultiStoreStatusResponse getFutureVersions(String clusterName, String storeName) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(CLUSTER, clusterName);
+    return request(ControllerRoute.FUTURE_VERSION, params, MultiStoreStatusResponse.class);
+  }
+
   @Deprecated
   public static StoreResponse getStore(String urlsToFindMasterController, String clusterName, String storeName) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)) {

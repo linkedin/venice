@@ -40,6 +40,7 @@ import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -859,6 +860,29 @@ public class VeniceParentHelixAdmin implements Admin {
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
     return getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+  }
+
+  @Override
+  public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
+    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    Set<String> prodColos = controllerClients.keySet();
+    Map<String, String> result = new HashMap<>();
+    for (String colo : prodColos) {
+      MultiStoreStatusResponse response = controllerClients.get(colo).getFutureVersions(clusterName, storeName);
+      if (response.isError()) {
+        logger.error(
+            "Could not query store from colo: " + colo + " for cluster: " + clusterName + ". " + response.getError());
+        result.put(colo, String.valueOf(AdminConsumptionTask.IGNORED_CURRENT_VERSION));
+      } else {
+        result.put(colo,response.getStoreStatusMap().get(clusterName));
+      }
+    }
+    return result;
+  }
+
+  @Override
+  public int getFutureVersion(String clusterName, String storeName) {
+    return Store.NON_EXISTING_VERSION;
   }
 
   protected Map<String, Integer> getCurrentVersionForMultiColos(String clusterName, String storeName,

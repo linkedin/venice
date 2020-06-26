@@ -95,7 +95,8 @@ public enum ControllerRoute {
 
   MATERIALIZE_METADATA_STORE_VERSION("/materialize_metadata_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION)),
 
-  DEMATERIALIZE_METADATA_STORE_VERSION("/dematerialize_metadata_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION));
+  DEMATERIALIZE_METADATA_STORE_VERSION("/dematerialize_metadata_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION)),
+  FUTURE_VERSION("/list_future_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
 
 
   private final String path;
