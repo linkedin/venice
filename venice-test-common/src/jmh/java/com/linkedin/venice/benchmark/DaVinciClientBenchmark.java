@@ -84,7 +84,7 @@ public class DaVinciClientBenchmark {
     }
 
     client = getGenericAvroDaVinciClient(storeName, cluster);
-    client.subscribeToAllPartitions().get(60, TimeUnit.SECONDS);
+    client.subscribeAll().get(60, TimeUnit.SECONDS);
 
     // Close as much as possible of the stuff we don't need, to minimize interference.
     cluster.getVeniceServers().forEach(VeniceServerWrapper::close);

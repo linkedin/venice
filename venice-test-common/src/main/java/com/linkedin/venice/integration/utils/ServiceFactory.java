@@ -1,6 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.davinci.client.AvroGenericDaVinciClientImpl;
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.ConfigKeys;
@@ -578,7 +578,7 @@ public class ServiceFactory {
         .defaultGenericClientConfig(storeName)
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
-    DaVinciClient<K, V> client = new AvroGenericDaVinciClientImpl<>(daVinciConfig, clientConfig, backendConfig);
+    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig);
     client.start();
     return client;
   }
@@ -594,7 +594,7 @@ public class ServiceFactory {
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(zkAddress);
 
-    DaVinciClient<K, V> client = new AvroGenericDaVinciClientImpl<>(new DaVinciConfig(), clientConfig, backendConfig);
+    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(new DaVinciConfig(), clientConfig, backendConfig);
     client.start();
     return client;
   }

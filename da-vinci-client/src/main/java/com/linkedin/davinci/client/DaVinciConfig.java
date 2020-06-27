@@ -4,34 +4,26 @@ package com.linkedin.davinci.client;
 public class DaVinciConfig {
   private StorageClass storageClass = StorageClass.DISK_BACKED_MEMORY;
   private RemoteReadPolicy remoteReadPolicy = RemoteReadPolicy.FAIL_FAST;
-  private VersionSwapPolicy versionSwapPolicy = VersionSwapPolicy.PER_PROCESS;
 
   public DaVinciConfig() {
   }
 
-  public DaVinciConfig(
-      StorageClass storageClass,
-      RemoteReadPolicy remoteReadPolicy,
-      VersionSwapPolicy versionSwapPolicy) {
+  protected DaVinciConfig(StorageClass storageClass, RemoteReadPolicy remoteReadPolicy) {
     this.storageClass = storageClass;
-    this.versionSwapPolicy = versionSwapPolicy;
     this.remoteReadPolicy = remoteReadPolicy;
   }
 
   public DaVinciConfig clone() {
-    return new DaVinciConfig(storageClass, remoteReadPolicy, versionSwapPolicy);
+    return new DaVinciConfig(storageClass, remoteReadPolicy);
   }
 
   public StorageClass getStorageClass() {
     return storageClass;
   }
 
-  public void setStorageClass(StorageClass storageClass) {
+  public DaVinciConfig setStorageClass(StorageClass storageClass) {
     this.storageClass = storageClass;
-  }
-
-  public VersionSwapPolicy getVersionSwapPolicy() {
-    return this.versionSwapPolicy;
+    return this;
   }
 
   public RemoteReadPolicy getRemoteReadPolicy() {
@@ -40,11 +32,6 @@ public class DaVinciConfig {
 
   public DaVinciConfig setRemoteReadPolicy(RemoteReadPolicy remoteReadPolicy) {
     this.remoteReadPolicy = remoteReadPolicy;
-    return this;
-  }
-
-  public DaVinciConfig setVersionSwapPolicy(VersionSwapPolicy versionSwapPolicy) {
-    this.versionSwapPolicy = versionSwapPolicy;
     return this;
   }
 }

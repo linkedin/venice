@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -20,6 +21,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.RemoteReadPolicy;
@@ -70,24 +73,25 @@ public class DaVinciClientTest {
     String storeName1 = cluster.createStore(KEY_COUNT);
     String storeName2 = cluster.createStore(KEY_COUNT);
 
-    ClientConfig clientConfig = ClientConfig
-            .defaultGenericClientConfig(null)
-            .setMetricsRepository(new MetricsRepository())
-            .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
-            .setVeniceURL(cluster.getZk().getAddress());
-
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
             .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             .build();
 
+    D2Client d2Client = new D2ClientBuilder()
+            .setZkHosts(cluster.getZk().getAddress())
+            .setZkSessionTimeout(3, TimeUnit.SECONDS)
+            .setZkStartupTimeout(3, TimeUnit.SECONDS)
+            .build();
+    D2ClientUtils.startClient(d2Client);
+
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(clientConfig, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
 
       Map<Integer, Integer> keyValueMap = new HashMap<>();
-      client1.subscribeToAllPartitions().get();
+      client1.subscribeAll().get();
       for (int k = 0; k < KEY_COUNT; ++k) {
         assertEquals(client1.get(k).get(), 1);
         keyValueMap.put(k, 1);
@@ -95,7 +99,7 @@ public class DaVinciClientTest {
 
         // Test multiple client ingesting different stores concurrently
       DaVinciClient<Integer, Integer> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
-      client2.subscribeToAllPartitions().get();
+      client2.subscribeAll().get();
       assertEquals(client2.batchGet(keyValueMap.keySet()).get(), keyValueMap);
 
       for (int i = 0; i < 2; ++i) {
@@ -122,8 +126,8 @@ public class DaVinciClientTest {
 
       // Test data cleanup
       assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
-      client1.unsubscribeFromAllPartitions();
-      client2.unsubscribeFromAllPartitions();
+      client1.unsubscribeAll();
+      client2.unsubscribeAll();
       assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
     }
   }
@@ -212,7 +216,7 @@ public class DaVinciClientTest {
       assertThrows(VeniceException.class, () -> client.unsubscribe(partitionSet));
 
       // re-subscribe to a partition with data to test sub a unsub-ed partition
-      client.subscribeToAllPartitions().get();
+      client.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
@@ -220,7 +224,7 @@ public class DaVinciClientTest {
       });
 
       // test unsubscribe from all partitions
-      client.unsubscribeFromAllPartitions();
+      client.unsubscribeAll();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           final int key = i;
@@ -235,7 +239,7 @@ public class DaVinciClientTest {
     String storeName = cluster.createStore(KEY_COUNT);
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
-      client.subscribeToAllPartitions().get();
+      client.subscribeAll().get();
       for (int k = 0; k < KEY_COUNT; ++k) {
         assertEquals(client.get(k).get(), 1);
       }
@@ -304,9 +308,14 @@ public class DaVinciClientTest {
       if (response.isError()) {
         fail(response.getError());
       }
+      cluster.createVersion(storeName, KEY_COUNT);
     }
     daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.QUERY_REMOTELY);
-    assertThrows(VeniceException.class, () -> ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig));
+    try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
+      client.subscribe(Collections.singleton(0)).get();
+      // With QUERY_REMOTELY enabled, all key-value pairs should be found.
+      assertEquals(client.batchGet(keyValueMap.keySet()).get().size(), keyValueMap.size());
+    }
   }
 
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {

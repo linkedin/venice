@@ -87,7 +87,7 @@ public class IngestionBenchmarkInSingleProcess {
       FileUtils.deleteDirectory(dataBasePath);
       DaVinciClient<Long, GenericRecord> client = getGenericAvroDaVinciClient(storeName, cluster, dataBasePath.toString());
       // Ingest data to local folder.
-      client.subscribeToAllPartitions().get(60, TimeUnit.SECONDS);
+      client.subscribeAll().get(60, TimeUnit.SECONDS);
       client.close();
     } catch (IOException | InterruptedException | ExecutionException | TimeoutException e) {
       throw new VeniceException(e);

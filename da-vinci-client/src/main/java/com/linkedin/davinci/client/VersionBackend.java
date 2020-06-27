@@ -3,18 +3,22 @@ package com.linkedin.davinci.client;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
+import org.apache.avro.io.BinaryDecoder;
 import org.apache.log4j.Logger;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static java.lang.Thread.*;
@@ -25,13 +29,17 @@ public class VersionBackend {
   private final DaVinciBackend backend;
   private final Version version;
   private final VeniceStoreConfig config;
+  private final VenicePartitioner partitioner;
+  private final int subPartitionCount;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
-  private final Map<Integer, CompletableFuture> partitionFutures = new ConcurrentHashMap<>();
+  private final Map<Integer, CompletableFuture> partitionFutures = new VeniceConcurrentHashMap<>();
 
   VersionBackend(DaVinciBackend backend, Version version) {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
+    this.partitioner = PartitionUtils.getVenicePartitioner(version.getPartitionerConfig());
+    this.subPartitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
     storageEngine.set(backend.getStorageService().getStorageEngineRepository().getLocalStorageEngine(version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
   }
@@ -47,7 +55,7 @@ public class VersionBackend {
       try {
         makeSurePartitionIsNotConsuming(entry.getKey());
       } catch (InterruptedException e) {
-        logger.warn("Waiting for partition is not consuming was interrupted", e);
+        logger.warn("Waiting for partition to stop consumption was interrupted", e);
         currentThread().interrupt();
         break;
       }
@@ -59,6 +67,11 @@ public class VersionBackend {
     for (Map.Entry<Integer, CompletableFuture> entry : partitionFutures.entrySet()) {
       backend.getStorageService().dropStorePartition(config, entry.getKey());
     }
+  }
+
+  @Override
+  public String toString() {
+    return version.kafkaTopicName();
   }
 
   public Version getVersion() {
@@ -73,6 +86,10 @@ public class VersionBackend {
     return engine;
   }
 
+  public int getSubPartitionId(byte[] keyBytes) {
+    return partitioner.getPartitionId(keyBytes, subPartitionCount);
+  }
+
   public boolean isReadyToServe(Integer subPartitionId) {
     CompletableFuture future = partitionFutures.get(subPartitionId);
     return future != null && future.isDone();
@@ -80,6 +97,28 @@ public class VersionBackend {
 
   synchronized boolean isReadyToServe(Set<Integer> subPartitions) {
     return subPartitions.stream().allMatch(this::isReadyToServe);
+  }
+
+  public <V> V read(
+      int subPartitionId,
+      byte[] keyBytes,
+      AbstractAvroChunkingAdapter<V> chunkingAdaptor,
+      BinaryDecoder binaryDecoder,
+      ByteBuffer reusedRawValue,
+      V reusedValue) {
+    return chunkingAdaptor.get(
+        version.getStoreName(),
+        getStorageEngine(),
+        subPartitionId,
+        keyBytes,
+        reusedRawValue,
+        reusedValue,
+        binaryDecoder,
+        version.isChunkingEnabled(),
+        version.getCompressionStrategy(),
+        true,
+        backend.getSchemaRepository(),
+        null);
   }
 
   synchronized CompletableFuture subscribe(Set<Integer> partitions) {
@@ -94,10 +133,9 @@ public class VersionBackend {
     }
 
     int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-    logger.info("Amplification factor: " + amplificationFactor);
-    logger.info("Subscribing to partitions: " + partitions.toString());
     Set<Integer> subPartitions = PartitionUtils.getSubPartitions(partitions, amplificationFactor);
-    logger.info("Subscribing to sub-partitions: " + subPartitions.toString());
+    logger.info("Subscribing to sub-partitions, storeName=" + this +
+                    ", subPartitions=" + subPartitions + ", amplificationFactor" + amplificationFactor);
     List<CompletableFuture> futures = new ArrayList<>(subPartitions.size());
     for (Integer id : subPartitions) {
       futures.add(subscribeSubPartition(id));
@@ -118,10 +156,9 @@ public class VersionBackend {
     }
 
     int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-    logger.info("Amplification factor: " + amplificationFactor);
-    logger.info("Unsubscribing from partitions: " + partitions.toString());
     Set<Integer> subPartitions = PartitionUtils.getSubPartitions(partitions, amplificationFactor);
-    logger.info("Unsubscribing from sub-partitions: " + subPartitions.toString());
+    logger.info("Subscribing to sub-partitions, storeName=" + this +
+                    ", subPartitions=" + subPartitions + ", amplificationFactor" + amplificationFactor);
     for (Integer id : subPartitions) {
       unsubscribeSubPartition(id);
     }
@@ -130,7 +167,7 @@ public class VersionBackend {
       try {
         makeSurePartitionIsNotConsuming(id);
       } catch (InterruptedException e) {
-        logger.warn("Waiting for partition is not consuming was interrupted", e);
+        logger.warn("Waiting for partition to stop consumption was interrupted", e);
         currentThread().interrupt();
         return;
       }

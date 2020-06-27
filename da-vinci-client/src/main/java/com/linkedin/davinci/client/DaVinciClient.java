@@ -11,14 +11,13 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
  * @param <V>
  */
 public interface DaVinciClient<K, V> extends AvroGenericStoreClient<K, V> {
-
   /**
    * Ingest the entire data (i.e. all partitions) locally.
    *
    * @return a future which completes when the data is ready to serve
    * @throws a VeniceException if subscription failed for any of the partitions
    */
-  CompletableFuture<Void> subscribeToAllPartitions();
+  CompletableFuture<Void> subscribeAll();
 
   /**
    * Ingest specific partition/partitions locally.
@@ -37,7 +36,7 @@ public interface DaVinciClient<K, V> extends AvroGenericStoreClient<K, V> {
    *
    * @throws a VeniceException if cleanup failed for any of the partitions
    */
-  void unsubscribeFromAllPartitions();
+  void unsubscribeAll();
 
   /**
    * Stop ingesting a partition locally, and drop its associated local states/data.

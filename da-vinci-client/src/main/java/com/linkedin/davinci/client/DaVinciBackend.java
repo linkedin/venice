@@ -22,6 +22,7 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
 import io.tehuti.metrics.MetricsRepository;
@@ -33,6 +34,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -115,7 +117,9 @@ public class DaVinciBackend implements Closeable {
       }
 
       StoreBackend store = storeByNameMap.computeIfAbsent(storeName, k -> new StoreBackend(this, storeName));
-      store.subscribe(Optional.of(version), storageEngine.getPartitionIds());
+      int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
+      Set<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
+      store.subscribe(partitions, Optional.of(version));
     }
   }
 
@@ -142,14 +146,14 @@ public class DaVinciBackend implements Closeable {
       storageService.stop();
       zkClient.close();
       metricsRepository.close();
-    } catch (Exception e) {
+    } catch (Throwable e) {
       throw new VeniceException("Unable to stop Da Vinci backend", e);
     }
   }
 
   public synchronized StoreBackend getStoreOrThrow(String storeName) {
     StoreBackend store = storeByNameMap.computeIfAbsent(storeName, k -> new StoreBackend(this, storeName));
-    store.subscribe(Optional.empty(), Collections.emptySet());
+    store.subscribe(Collections.emptySet(), Optional.empty());
     return store;
   }
 
