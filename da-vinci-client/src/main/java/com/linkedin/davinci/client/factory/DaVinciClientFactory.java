@@ -11,4 +11,3 @@ public interface DaVinciClientFactory extends AutoCloseable {
   <K, V extends SpecificRecord> DaVinciClient<K, V> getSpecificAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass);
   <K, V extends SpecificRecord> DaVinciClient<K, V> getAndStartSpecificAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass);
 }
-
