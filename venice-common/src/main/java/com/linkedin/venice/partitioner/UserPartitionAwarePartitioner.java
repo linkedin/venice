@@ -1,9 +1,10 @@
 package com.linkedin.venice.partitioner;
 
 import java.nio.ByteBuffer;
+import java.util.function.IntUnaryOperator;
 
 /**
- * UserPartitionAwarePartitioner takes a partitioner and amplicatitionFactor as input params.
+ * UserPartitionAwarePartitioner takes a partitioner and amplicatition factor as input params.
  * When partitioning, the partitioner is run twice in a row, once to determine the application partition,
  * and a second time to determine the sub-partition.
  *
@@ -21,29 +22,24 @@ public class UserPartitionAwarePartitioner extends VenicePartitioner {
   }
 
   @Override
-  public int getPartitionId(byte[] keyBytes, int numSubPartitions) {
-    return getPartitionId((numPartitions -> partitioner.getPartitionId(keyBytes, numPartitions)), numSubPartitions);
+  public int getPartitionId(byte[] keyBytes, int subPartitionCount) {
+    return getPartitionId((partitionCount -> partitioner.getPartitionId(keyBytes, partitionCount)), subPartitionCount);
   }
 
   @Override
-  public int getPartitionId(ByteBuffer keyByteBuffer, int numSubPartitions) {
-    return getPartitionId((numPartitions -> partitioner.getPartitionId(keyByteBuffer, numPartitions)), numSubPartitions);
+  public int getPartitionId(ByteBuffer keyByteBuffer, int subPartitionCount) {
+    return getPartitionId((partitionCount -> partitioner.getPartitionId(keyByteBuffer, partitionCount)), subPartitionCount);
   }
 
-  private int getPartitionId(PartitionGetter partitionGetter, int numSubPartitions) {
-    if (numSubPartitions % amplificationFactor != 0) {
+  private int getPartitionId(IntUnaryOperator partitioner, int subPartitionCount) {
+    if (subPartitionCount % amplificationFactor != 0) {
       throw new IllegalArgumentException(
-          String.format("numSubPartitions %d is not a multiple of amplificationFactor %d.",
-              numSubPartitions, amplificationFactor));
+          String.format("Sub-partition count %d is not a multiple of amplification factor %d.",
+              subPartitionCount, amplificationFactor));
     }
-    int numUserPartitions = numSubPartitions / amplificationFactor;
-    int userPartition = partitionGetter.get(numUserPartitions);
-    int offset = partitionGetter.get(amplificationFactor);
+    int userPartitionCount = subPartitionCount / amplificationFactor;
+    int userPartition = partitioner.applyAsInt(userPartitionCount);
+    int offset = partitioner.applyAsInt(amplificationFactor);
     return userPartition * amplificationFactor + offset;
-  }
-
-  @FunctionalInterface
-  private interface PartitionGetter {
-    int get(int numPartitions);
   }
 }

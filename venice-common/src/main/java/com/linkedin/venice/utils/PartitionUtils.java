@@ -65,6 +65,18 @@ public class PartitionUtils {
     return subPartitions;
   }
 
+  public static Set<Integer> getUserPartitions(Set<Integer> subPartitions, int amplificationFactor) {
+    if (amplificationFactor < 1) {
+      throw new VeniceClientException(
+          String.format("Invalid amplificationFactor %d. amplificationFactor must be >= 1.", amplificationFactor));
+    }
+    Set<Integer> userPartitions = new HashSet<>();
+    for (int subPartition : subPartitions) {
+      userPartitions.add(subPartition / amplificationFactor);
+    }
+    return userPartitions;
+  }
+
   public static VenicePartitioner getVenicePartitioner(PartitionerConfig config) {
     Properties params = new Properties();
     params.putAll(config.getPartitionerParams());

@@ -101,9 +101,9 @@ public class ClientConfig<T extends SpecificRecord> {
     return newConfig;
   }
 
-  private ClientConfig() {}
+  public ClientConfig() {}
 
-  private ClientConfig(String storeName) {
+  public ClientConfig(String storeName) {
     this.storeName = storeName;
   }
 

@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class StoreBackend {
   private static final Logger logger = Logger.getLogger(StoreBackend.class);
@@ -67,23 +68,36 @@ public class StoreBackend {
   }
 
   void setCurrentVersion(VersionBackend version) {
-    logger.info("Switching to a new version, version=" + version.getVersion().kafkaTopicName());
+    logger.info("Switching to a new version, version=" + version);
     currentVersion = version;
     currentVersionRef.set(version);
   }
 
-  public synchronized CompletableFuture subscribe(Optional<Version> version, Set<Integer> partitions) {
+  public synchronized CompletableFuture subscribeAll() {
+    // TODO: Add non-static partitioning support
     if (currentVersion == null) {
       setCurrentVersion(new VersionBackend(
           backend,
-          version.orElseGet(
+          backend.getLatestVersion(storeName).orElseThrow(
+              () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName))));
+    }
+    Version version = currentVersion.getVersion();
+    Set<Integer> partitions = IntStream.range(0, version.getPartitionCount()).boxed().collect(Collectors.toSet());
+    return subscribe(partitions, Optional.empty());
+  }
+
+  public synchronized CompletableFuture subscribe(Set<Integer> partitions, Optional<Version> bootstrapVersion) {
+    if (currentVersion == null) {
+      setCurrentVersion(new VersionBackend(
+          backend,
+          bootstrapVersion.orElseGet(
               () -> backend.getLatestVersion(storeName).orElseThrow(
                   () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName)))));
 
-    } else if (version.isPresent()) {
+    } else if (bootstrapVersion.isPresent()) {
       throw new VeniceException("Bootstrap version is already selected, storeName=" + storeName +
-                                    ", currentVersion=" + currentVersion.getVersion().kafkaTopicName() +
-                                    ", desiredVersion=" + version.get().kafkaTopicName());
+                                    ", currentVersion=" + currentVersion +
+                                    ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
     }
 
     logger.info("Subscribing to partitions, storeName=" + storeName + ", partitions=" + partitions);
@@ -91,7 +105,7 @@ public class StoreBackend {
 
     if (futureVersion != null) {
       futureVersion.subscribe(partitions).whenComplete((v, t) -> trySwapCurrentVersion());
-    } else if (version.isPresent()) {
+    } else if (bootstrapVersion.isPresent()) {
       trySubscribeFutureVersion();
     }
 

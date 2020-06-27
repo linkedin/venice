@@ -68,7 +68,7 @@ public class DaVinciClientEndToEndTest {
     String storeName = TestUtils.getUniqueString("batch-store");
     setUpStore(storeName, params -> {}, properties -> {});
     try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
-      client.subscribeToAllPartitions().get();
+      client.subscribeAll().get();
       for (int i = 1; i <= 100; ++i) {
         Object value = client.get(i).get();
         Assert.assertEquals(value, i);

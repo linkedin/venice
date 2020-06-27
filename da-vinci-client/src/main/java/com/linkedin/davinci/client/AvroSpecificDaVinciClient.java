@@ -8,20 +8,17 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import org.apache.avro.specific.SpecificRecord;
 
-public class AvroSpecificDaVinciClientImpl<K, V extends SpecificRecord> extends AvroGenericDaVinciClientImpl<K, V> {
+public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends AvroGenericDaVinciClient<K, V> {
   private final SpecificRecordChunkingAdapter<V> chunkingAdapter;
 
-  public AvroSpecificDaVinciClientImpl(
+  public AvroSpecificDaVinciClient(
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
       VeniceProperties backendConfig) {
     super(daVinciConfig, clientConfig, backendConfig);
+
     Class<V> valueClass = clientConfig.getSpecificValueClass();
-
-    if (clientConfig.isUseFastAvro()) {
-      FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
-    }
-
+    FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
     this.chunkingAdapter = new SpecificRecordChunkingAdapter<>(valueClass);
   }
 

@@ -22,6 +22,14 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -39,11 +47,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
@@ -778,8 +781,17 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         throw new VeniceException(response.getError());
       }
 
+      Properties props = new Properties();
+      props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
+      props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
+      for (Map.Entry<String, String> entry : response.getPartitionerParams().entrySet()) {
+        props.setProperty(entry.getKey(), entry.getValue());
+      }
+      props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
+      VeniceWriterFactory writerFactory = new VeniceWriterFactory(props);
+
       String kafkaTopic = response.getKafkaTopic();
-      writeBatchData(kafkaTopic, keySchema, valueSchema, batchData);
+      writeBatchData(writerFactory, kafkaTopic, keySchema, valueSchema, batchData);
 
       int versionId = Version.parseVersionFromKafkaTopicName(kafkaTopic);
       waitVersion(storeName, versionId);
@@ -808,8 +820,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     refreshAllRouterMetaData();
   }
 
-  protected void writeBatchData(String kafkaTopic, String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
-    TestUtils.VeniceTestWriterFactory writerFactory = TestUtils.getVeniceTestWriterFactory(getKafka().getAddress());
+  protected void writeBatchData(VeniceWriterFactory writerFactory, String kafkaTopic, String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
     try (
         VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
