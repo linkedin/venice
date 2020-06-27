@@ -147,6 +147,10 @@ public class TestVeniceParentHelixAdmin {
     config = mockConfig(clusterName);
     doReturn(1).when(config).getParentControllerWaitingTimeForConsumptionMs();
 
+    Map<String, ControllerClient> controllerClients = new HashMap<>();
+    controllerClients.put(coloName, new ControllerClient(clusterName, "localhost", Optional.empty()));
+    doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
+
     resources = mockResources(config, clusterName);
     doReturn(storeRepository).when(resources).getMetadataRepository();
 
