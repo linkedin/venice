@@ -38,7 +38,6 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -187,7 +186,7 @@ public class VeniceParentHelixAdmin implements Admin {
       VeniceControllerConfig config = multiClusterConfigs.getConfigForCluster(cluster);
       adminCommandExecutionTrackers.put(cluster,
           new AdminCommandExecutionTracker(config.getClusterName(), veniceHelixAdmin.getExecutionIdAccessor(),
-              getControllerClientMap(config.getClusterName())));
+              veniceHelixAdmin.getControllerClientMap(config.getClusterName())));
       perClusterAdminLocks.put(cluster, new ReentrantLock());
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(veniceHelixAdmin.getZkClient(),
@@ -858,13 +857,13 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
-    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
     return getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
   }
 
   @Override
   public Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName) {
-    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
     Set<String> prodColos = controllerClients.keySet();
     Map<String, String> result = new HashMap<>();
     for (String colo : prodColos) {
@@ -1536,18 +1535,6 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceUnsupportedOperationException("removeStorageNode");
   }
 
-  private Map<String, ControllerClient> getControllerClientMap(String clusterName){
-    Map<String, ControllerClient> controllerClients = new HashMap<>();
-    VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getConfigForCluster(clusterName);
-    veniceControllerConfig.getChildDataCenterControllerUrlMap().entrySet().
-      forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue(), sslFactory)));
-    veniceControllerConfig.getChildDataCenterControllerD2Map().entrySet().
-      forEach(entry -> controllerClients.put(entry.getKey(),
-          new D2ControllerClient(veniceControllerConfig.getD2ServiceName(), clusterName, entry.getValue(), sslFactory)));
-
-    return controllerClients;
-  }
-
   /**
    * Queries child clusters for status.
    * Of all responses, return highest of (in order) NOT_CREATED, NEW, STARTED, PROGRESS.
@@ -1564,13 +1551,13 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
-    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
     return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients);
   }
 
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic, Optional<String> incrementalPushVersion) {
-    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
     return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, incrementalPushVersion);
   }
 
@@ -1697,7 +1684,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic){
-    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    Map<String, ControllerClient> controllerClients = veniceHelixAdmin.getControllerClientMap(clusterName);
     return getOfflineJobProgress(clusterName, kafkaTopic, controllerClients);
   }
 
