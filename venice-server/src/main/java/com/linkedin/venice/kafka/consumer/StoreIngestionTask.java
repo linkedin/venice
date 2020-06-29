@@ -477,7 +477,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
       long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
-      boolean shouldLogLag = partitionConsumptionState.getOffsetRecord().getOffset() % threshold == 0; // Log lag for every <threshold> records.
+      String msg = kafkaVersionTopic + partitionConsumptionState.getPartition();
+
+      // Log only once a minute per partition.
+      boolean shouldLogLag = !filter.isRedundantException(msg);
       long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
       boolean lagging = lag > threshold;
 
