@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -20,6 +21,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static java.lang.Thread.*;
 
@@ -32,7 +35,7 @@ public class VersionBackend {
   private final VenicePartitioner partitioner;
   private final int subPartitionCount;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
-  private final Map<Integer, CompletableFuture> partitionFutures = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, CompletableFuture> subPartitionFutures = new VeniceConcurrentHashMap<>();
 
   VersionBackend(DaVinciBackend backend, Version version) {
     this.backend = backend;
@@ -46,14 +49,14 @@ public class VersionBackend {
 
   synchronized void close() {
     backend.getVersionByTopicMap().remove(version.kafkaTopicName());
-    for (Map.Entry<Integer, CompletableFuture> entry : partitionFutures.entrySet()) {
+    for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
       backend.getIngestionService().stopConsumption(config, entry.getKey());
       entry.getValue().cancel(true);
     }
 
-    for (Map.Entry<Integer, CompletableFuture> entry : partitionFutures.entrySet()) {
+    for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
       try {
-        makeSurePartitionIsNotConsuming(entry.getKey());
+        makeSureSubPartitionIsNotConsuming(entry.getKey());
       } catch (InterruptedException e) {
         logger.warn("Waiting for partition to stop consumption was interrupted", e);
         currentThread().interrupt();
@@ -63,8 +66,9 @@ public class VersionBackend {
   }
 
   synchronized void delete() {
+    logger.info("Deleting local version " + this);
     close();
-    for (Map.Entry<Integer, CompletableFuture> entry : partitionFutures.entrySet()) {
+    for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
       backend.getStorageService().dropStorePartition(config, entry.getKey());
     }
   }
@@ -74,7 +78,7 @@ public class VersionBackend {
     return version.kafkaTopicName();
   }
 
-  public Version getVersion() {
+  Version getVersion() {
     return version;
   }
 
@@ -86,21 +90,8 @@ public class VersionBackend {
     return engine;
   }
 
-  public int getSubPartitionId(byte[] keyBytes) {
-    return partitioner.getPartitionId(keyBytes, subPartitionCount);
-  }
-
-  public boolean isReadyToServe(Integer subPartitionId) {
-    CompletableFuture future = partitionFutures.get(subPartitionId);
-    return future != null && future.isDone();
-  }
-
-  synchronized boolean isReadyToServe(Set<Integer> subPartitions) {
-    return subPartitions.stream().allMatch(this::isReadyToServe);
-  }
-
   public <V> V read(
-      int subPartitionId,
+      int subPartition,
       byte[] keyBytes,
       AbstractAvroChunkingAdapter<V> chunkingAdaptor,
       BinaryDecoder binaryDecoder,
@@ -109,7 +100,7 @@ public class VersionBackend {
     return chunkingAdaptor.get(
         version.getStoreName(),
         getStorageEngine(),
-        subPartitionId,
+        subPartition,
         keyBytes,
         reusedRawValue,
         reusedValue,
@@ -121,51 +112,32 @@ public class VersionBackend {
         null);
   }
 
-  synchronized CompletableFuture subscribe(Set<Integer> partitions) {
-    for (Integer id : partitions) {
-      if (id < 0 || id >= version.getPartitionCount()) {
-        String msg = "Cannot subscribe to out of bounds partition" +
-                         ", kafkaTopic=" + version.kafkaTopicName() +
-                         ", partition=" + id +
-                         ", partitionCount=" + version.getPartitionCount();
-        throw new VeniceException(msg);
-      }
-    }
+  synchronized boolean isReadyToServe(ComplementSet<Integer> partitions) {
+    return getSubPartitions(partitions).stream().allMatch(this::isSubPartitionReadyToServe);
+  }
 
-    int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-    Set<Integer> subPartitions = PartitionUtils.getSubPartitions(partitions, amplificationFactor);
-    logger.info("Subscribing to sub-partitions, storeName=" + this +
-                    ", subPartitions=" + subPartitions + ", amplificationFactor" + amplificationFactor);
+  synchronized CompletableFuture subscribe(ComplementSet<Integer> partitions) {
+    Set<Integer> subPartitions = getSubPartitions(partitions);
+    logger.info("Subscribing to sub-partitions, storeName=" + this + ", subPartitions=" + subPartitions);
+
     List<CompletableFuture> futures = new ArrayList<>(subPartitions.size());
     for (Integer id : subPartitions) {
       futures.add(subscribeSubPartition(id));
     }
-
     return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
   }
 
-  synchronized void unsubscribe(Set<Integer> partitions) {
-    for (Integer id : partitions) {
-      if (id < 0 || id >= version.getPartitionCount()) {
-        String msg = "Cannot unsubscribe from out of bounds partition" +
-            ", kafkaTopic=" + version.kafkaTopicName() +
-            ", partition=" + id +
-            ", partitionCount=" + version.getPartitionCount();
-        throw new VeniceException(msg);
-      }
-    }
+  synchronized void unsubscribe(ComplementSet<Integer> partitions) {
+    Set<Integer> subPartitions = getSubPartitions(partitions);
+    logger.info("Subscribing to sub-partitions, storeName=" + this + ", subPartitions=" + subPartitions);
 
-    int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-    Set<Integer> subPartitions = PartitionUtils.getSubPartitions(partitions, amplificationFactor);
-    logger.info("Subscribing to sub-partitions, storeName=" + this +
-                    ", subPartitions=" + subPartitions + ", amplificationFactor" + amplificationFactor);
     for (Integer id : subPartitions) {
       unsubscribeSubPartition(id);
     }
 
     for (Integer id : subPartitions) {
       try {
-        makeSurePartitionIsNotConsuming(id);
+        makeSureSubPartitionIsNotConsuming(id);
       } catch (InterruptedException e) {
         logger.warn("Waiting for partition to stop consumption was interrupted", e);
         currentThread().interrupt();
@@ -175,32 +147,53 @@ public class VersionBackend {
     }
   }
 
-  private synchronized CompletableFuture subscribeSubPartition(int subPartitionId) {
-    storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartitionId));
-    backend.getIngestionService().startConsumption(config, subPartitionId, false);
-    return partitionFutures.computeIfAbsent(subPartitionId, k -> new CompletableFuture());
+  public int getSubPartition(byte[] keyBytes) {
+    return partitioner.getPartitionId(keyBytes, subPartitionCount);
   }
 
-  private synchronized void unsubscribeSubPartition(int partitionId) {
-    backend.getIngestionService().stopConsumption(config, partitionId);
-    partitionFutures.get(partitionId).cancel(true);
-    partitionFutures.remove(partitionId);
+  private Set<Integer> getSubPartitions(ComplementSet<Integer> partitions) {
+    int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
+    return PartitionUtils.getSubPartitions(
+        IntStream.range(0, version.getPartitionCount())
+            .filter(partitions::contains)
+            .boxed()
+            .collect(Collectors.toSet()),
+        amplificationFactor);
   }
 
-  synchronized void completeSubPartition(int subPartitionId) {
-    partitionFutures.computeIfAbsent(subPartitionId, k -> new CompletableFuture()).complete(null);
+  public boolean isSubPartitionReadyToServe(Integer subPartition) {
+    CompletableFuture future = subPartitionFutures.get(subPartition);
+    return future != null && future.isDone();
   }
 
-  private void makeSurePartitionIsNotConsuming(int partitionId) throws InterruptedException {
+  private synchronized CompletableFuture subscribeSubPartition(int subPartition) {
+    storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
+    backend.getIngestionService().startConsumption(config, subPartition, false);
+    return subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture());
+  }
+
+  private synchronized void unsubscribeSubPartition(int subPartition) {
+    backend.getIngestionService().stopConsumption(config, subPartition);
+    CompletableFuture future = subPartitionFutures.remove(subPartition);
+    if (future != null) {
+      future.cancel(true);
+    }
+  }
+
+  synchronized void completeSubPartition(int subPartition) {
+    subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).complete(null);
+  }
+
+  private void makeSureSubPartitionIsNotConsuming(int subPartition) throws InterruptedException {
     final int SLEEP_SECONDS = 3;
     final int RETRY_NUM = 100; // 5 min
     for (int i = 0; i < RETRY_NUM; i++) {
-      if (!backend.getIngestionService().isPartitionConsuming(config, partitionId)) {
+      if (!backend.getIngestionService().isPartitionConsuming(config, subPartition)) {
         return;
       }
       sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
     }
-    throw new VeniceException("Partition: " + partitionId + " of store: " + config.getStoreName()
+    throw new VeniceException("Partition: " + subPartition + " of store: " + config.getStoreName()
                                   + " is still consuming after waiting for it to stop for " + RETRY_NUM * SLEEP_SECONDS + " seconds.");
   }
 }
