@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 
@@ -252,17 +251,17 @@ public class Store {
    */
   private IncrementalPushPolicy incrementalPushPolicy = IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC;
 
-  public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
-      @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
-      @NotNull OfflinePushStrategy offlinePushStrategy) {
+  public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
+      RoutingStrategy routingStrategy, ReadStrategy readStrategy,
+      OfflinePushStrategy offlinePushStrategy) {
     this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
         NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null,
         new PartitionerConfig()); // Every store comes with default partitioner settings.
   }
 
-  public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
-      @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
-      @NotNull OfflinePushStrategy offlinePushStrategy, int currentVersion,
+  public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
+      RoutingStrategy routingStrategy, ReadStrategy readStrategy,
+      OfflinePushStrategy offlinePushStrategy, int currentVersion,
       long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig, PartitionerConfig partitionerConfig) {
     if (!isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);

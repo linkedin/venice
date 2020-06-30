@@ -18,7 +18,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.log4j.Logger;
-import org.jetbrains.annotations.NotNull;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 
@@ -121,7 +120,6 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
     return metadataMap;
   }
 
-  @NotNull
   @Override
   public Iterator<Pair<byte[], byte[]>> iterator() {
     if (fileReader == null) {

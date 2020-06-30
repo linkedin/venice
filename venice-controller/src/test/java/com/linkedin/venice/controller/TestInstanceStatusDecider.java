@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
@@ -30,7 +30,7 @@ public class TestInstanceStatusDecider {
   private VeniceHelixResources resources;
   private String clusterName;
   private SafeHelixDataAccessor accessor;
-  private HelixRoutingDataRepository routingDataRepository;
+  private HelixExternalViewRepository routingDataRepository;
   private HelixReadWriteStoreRepository readWriteStoreRepository;
   private String storeName = "TestInstanceStatusDecider";
   private int version = 1;
@@ -41,7 +41,7 @@ public class TestInstanceStatusDecider {
   public void setup() {
     clusterName = TestUtils.getUniqueString("TestInstanceStatusDecider");
     resources = mock(VeniceHelixResources.class);
-    routingDataRepository = mock(HelixRoutingDataRepository.class);
+    routingDataRepository = mock(HelixExternalViewRepository.class);
     readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);
     mockMonitor = mock(PushMonitorDelegator.class);
 

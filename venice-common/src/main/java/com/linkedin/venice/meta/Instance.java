@@ -3,7 +3,6 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
-import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
 
@@ -39,8 +38,8 @@ public class Instance {
     this(nodeId, host, port, port);
   }
 
-  public Instance(@JsonProperty("nodeId") @NotNull String nodeId,
-                  @JsonProperty("host") @NotNull String host,
+  public Instance(@JsonProperty("nodeId") String nodeId,
+                  @JsonProperty("host") String host,
                   @JsonProperty("port") int port,
                   @JsonProperty("sslPort") int sslPort) {
     this.nodeId = nodeId;

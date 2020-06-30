@@ -1,6 +1,5 @@
 package com.linkedin.venice.helix;
 
-import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
@@ -29,12 +28,12 @@ import org.apache.log4j.Logger;
  * Extend HelixBaseRoutingRepository to leverage external view data.
  */
 @BatchMode
-public class HelixRoutingDataRepository extends HelixBaseRoutingRepository {
-    private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class);
+public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
+    private static final Logger logger = Logger.getLogger(HelixExternalViewRepository.class);
 
     private static final String ONLINE_OFFLINE_VENICE_STATE_FILLER = "N/A";
 
-    public HelixRoutingDataRepository(SafeHelixManager manager) {
+    public HelixExternalViewRepository(SafeHelixManager manager) {
         super(manager);
         dataSource.put(PropertyType.EXTERNALVIEW, Collections.emptyList());
     }

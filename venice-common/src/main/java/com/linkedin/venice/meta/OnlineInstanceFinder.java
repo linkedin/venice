@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.routerapi.ReplicaState;
 import java.util.List;
 import java.util.Map;
@@ -10,7 +11,7 @@ import java.util.Map;
  * a certain host. Check out VeniceVersionFinder and VeniceHostFinder for more details.
  *
  * Currently, there are 2 approaches.
- * 1. {@link com.linkedin.venice.helix.HelixRoutingDataRepository} finds online hosts according to Helix resource
+ * 1. {@link HelixExternalViewRepository} finds online hosts according to Helix resource
  * current state. This approach is used if a resource is in Online/Offline state model.
  * 2. {@link com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder} finds online hosts according to
  * Partition status. This approach is used if a resource is in Leader/Follower state model.

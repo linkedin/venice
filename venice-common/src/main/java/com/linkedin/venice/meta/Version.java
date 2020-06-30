@@ -6,7 +6,6 @@ import com.linkedin.venice.guid.GuidUtils;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
-import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
 
@@ -142,7 +141,7 @@ public class Version implements Comparable<Version> {
   }
 
   public Version(
-      @JsonProperty("storeName") @com.fasterxml.jackson.annotation.JsonProperty("storeName") @NotNull String storeName,
+      @JsonProperty("storeName") @com.fasterxml.jackson.annotation.JsonProperty("storeName") String storeName,
       @JsonProperty("number") @com.fasterxml.jackson.annotation.JsonProperty("number") int number,
       @JsonProperty("createdTime")  @com.fasterxml.jackson.annotation.JsonProperty("createdTime") long createdTime,
       @JsonProperty("pushJobId") @com.fasterxml.jackson.annotation.JsonProperty("pushJobId") String pushJobId,
@@ -169,7 +168,7 @@ public class Version implements Comparable<Version> {
     return status;
   }
 
-  public void setStatus(@NotNull VersionStatus status) {
+  public void setStatus(VersionStatus status) {
     this.status = status;
   }
 
@@ -409,11 +408,11 @@ public class Version implements Comparable<Version> {
     return kafkaTopicName;
   }
 
-  public static String parseStoreFromKafkaTopicName(@NotNull String kafkaTopic) {
+  public static String parseStoreFromKafkaTopicName(String kafkaTopic) {
     return kafkaTopic.substring(0, getLastIndexOfVersionSeparator(kafkaTopic));
   }
 
-  public static int parseVersionFromKafkaTopicName(@NotNull String kafkaTopic) {
+  public static int parseVersionFromKafkaTopicName(String kafkaTopic) {
     int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
     if (kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX)) {
       return Integer.parseInt(kafkaTopic.substring(versionStartIndex, kafkaTopic.lastIndexOf(
@@ -455,7 +454,7 @@ public class Version implements Comparable<Version> {
     return versionTopic + STREAM_REPROCESSING_TOPIC_SUFFIX;
   }
 
-  public static String composeVersionTopicFromStreamReprocessingTopic(@NotNull String kafkaTopic) {
+  public static String composeVersionTopicFromStreamReprocessingTopic(String kafkaTopic) {
     if (!isStreamReprocessingTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a stream-reprocessing topic");
     }

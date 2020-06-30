@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -63,15 +62,15 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private AbstractParticipantModelFactory onlineOfflineParticipantModelFactory;
   private AbstractParticipantModelFactory leaderFollowerParticipantModelFactory;
 
-  public HelixParticipationService(@NotNull StoreIngestionService storeIngestionService,
-          @NotNull StorageService storageService,
-          @NotNull VeniceConfigLoader veniceConfigLoader,
-          @NotNull ReadOnlyStoreRepository helixReadOnlyStoreRepository,
-          @NotNull MetricsRepository metricsRepository,
-          @NotNull String zkAddress,
-          @NotNull String clusterName,
-          @NotNull int port,
-          @NotNull CompletableFuture<SafeHelixManager> managerFuture) {
+  public HelixParticipationService(StoreIngestionService storeIngestionService,
+          StorageService storageService,
+          VeniceConfigLoader veniceConfigLoader,
+          ReadOnlyStoreRepository helixReadOnlyStoreRepository,
+          MetricsRepository metricsRepository,
+          String zkAddress,
+          String clusterName,
+          int port,
+          CompletableFuture<SafeHelixManager> managerFuture) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;

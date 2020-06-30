@@ -11,8 +11,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import org.apache.log4j.Logger;
 
-import javax.validation.constraints.NotNull;
-
 
 /**
  * VeniceConfigService loads the static configuration that does not change
@@ -73,7 +71,7 @@ public class VeniceConfigLoader {
   private final VeniceServerConfig veniceServerConfig;
   private final VeniceProperties combinedProperties;
 
-  public VeniceConfigLoader(@NotNull VeniceProperties clusterProperties, @NotNull VeniceProperties serverProperties) {
+  public VeniceConfigLoader(VeniceProperties clusterProperties, VeniceProperties serverProperties) {
     this.combinedProperties =
         new PropertyBuilder()
             .put(clusterProperties.toProperties())

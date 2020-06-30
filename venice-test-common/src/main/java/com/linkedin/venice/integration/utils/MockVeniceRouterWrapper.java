@@ -6,7 +6,7 @@ import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
@@ -74,7 +74,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     HelixReadOnlySchemaRepository mockSchemaRepository = Mockito.mock(HelixReadOnlySchemaRepository.class);
     doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(Mockito.anyString());
 
-    HelixRoutingDataRepository mockRepo = Mockito.mock(HelixRoutingDataRepository.class);
+    HelixExternalViewRepository mockRepo = Mockito.mock(HelixExternalViewRepository.class);
     doReturn(1).when(mockRepo).getNumberOfPartitions(Matchers.anyString());
 
     Instance mockControllerInstance = Mockito.mock(Instance.class);

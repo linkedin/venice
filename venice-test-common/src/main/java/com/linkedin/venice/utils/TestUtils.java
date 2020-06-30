@@ -32,7 +32,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -176,7 +175,7 @@ public class TestUtils {
     });
   }
 
-  public static Store createTestStore(@NotNull String name, @NotNull String owner, long createdTime) {
+  public static Store createTestStore(String name, String owner, long createdTime) {
       return new Store(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
           ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
   }
@@ -208,7 +207,7 @@ public class TestUtils {
   }
 
   public static OffsetRecord getOffsetRecord(long currentOffset) {
-    return getOffsetRecord(currentOffset, Optional.<Long>empty());
+    return getOffsetRecord(currentOffset, Optional.empty());
   }
 
   public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {

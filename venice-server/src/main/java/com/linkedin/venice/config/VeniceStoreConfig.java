@@ -6,7 +6,6 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.bdb.BdbStoreConfig;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
-import javax.validation.constraints.NotNull;
 
 
 /**
@@ -26,14 +25,14 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
   private BdbStoreConfig bdbStoreConfig;
 
-  public VeniceStoreConfig(@NotNull String storeName, @NotNull VeniceProperties storeProperties)
+  public VeniceStoreConfig(String storeName, VeniceProperties storeProperties)
     throws ConfigurationException {
     super(storeProperties);
     this.storeName = storeName;
     initAndValidateProperties(storeProperties);
   }
 
-  public VeniceStoreConfig(@NotNull String storeName, @NotNull VeniceProperties storeProperties,
+  public VeniceStoreConfig(String storeName, VeniceProperties storeProperties,
       PersistenceType storePersistenceType)
       throws ConfigurationException {
     this(storeName, storeProperties);

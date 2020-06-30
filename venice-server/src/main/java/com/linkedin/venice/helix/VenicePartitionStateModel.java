@@ -7,7 +7,6 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import java.util.concurrent.atomic.AtomicInteger;
-import javax.validation.constraints.NotNull;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.apache.helix.participant.statemachine.StateModelInfo;
@@ -40,14 +39,14 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     private final static AtomicInteger partitionNumberFromOfflineToBootstrap = new AtomicInteger(0);
     private final static AtomicInteger partitionNumberFromBootstrapToOnline = new AtomicInteger(0);
 
-    public VenicePartitionStateModel(@NotNull StoreIngestionService storeIngestionService,
-        @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition,
+    public VenicePartitionStateModel(StoreIngestionService storeIngestionService,
+        StorageService storageService, VeniceStoreConfig storeConfig, int partition,
         StateModelNotifier notifier, ReadOnlyStoreRepository readOnlyStoreRepository) {
         this(storeIngestionService, storageService, storeConfig, partition, notifier, new SystemTime(), readOnlyStoreRepository);
     }
 
-    public VenicePartitionStateModel(@NotNull StoreIngestionService storeIngestionService,
-        @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition,
+    public VenicePartitionStateModel(StoreIngestionService storeIngestionService,
+        StorageService storageService, VeniceStoreConfig storeConfig, int partition,
         StateModelNotifier notifier, Time time, ReadOnlyStoreRepository readOnlyStoreRepository) {
         super(storeIngestionService, readOnlyStoreRepository, storageService, storeConfig, partition, time);
         this.notifier = notifier;
