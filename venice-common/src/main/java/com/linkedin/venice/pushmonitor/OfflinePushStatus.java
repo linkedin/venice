@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.apache.log4j.Logger;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
@@ -23,6 +24,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
  * Class stores all the statuses and history of one offline push.
  */
 public class OfflinePushStatus {
+  private static final Logger logger = Logger.getLogger(OfflinePushStatus.class);
   private final String kafkaTopic;
   private final int numberOfPartition;
   private final int replicationFactor;
@@ -66,6 +68,11 @@ public class OfflinePushStatus {
       this.statusDetails = newStatusDetails;
       addHistoricStatus(newStatus, incrementalPushVersion);
     } else {
+      if (this.currentStatus.equals(newStatus)) {
+        // State change is redundant.  Just log the event, no need to throw a whole trace.
+        logger.warn(String.format("Redundant push state status received for state %s.  New state details: %s", newStatus,
+            newStatusDetails.orElse("not specified!!")));
+      }
       throw new VeniceException("Can not transit status from:" + currentStatus + " to " + newStatus);
     }
   }
