@@ -75,6 +75,7 @@ import static org.testng.Assert.*;
 public class TestHybrid {
   private static final Logger logger = Logger.getLogger(TestHybrid.class);
   private static final int STREAMING_RECORD_SIZE = 1024;
+  private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
   @DataProvider(name = "isLeaderFollowerModelEnabled", parallel = true)
   public static Object[][] isLeaderFollowerModelEnabled() {
@@ -208,7 +209,7 @@ public class TestHybrid {
           TopicManager topicManager = new TopicManager(
               DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
               100,
-              0l,
+              MIN_COMPACTION_LAG,
               TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
 
         ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
@@ -226,6 +227,7 @@ public class TestHybrid {
         // verify the topic compaction policy
         String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
         Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion1), "topic: " + topicForStoreVersion1 + " should have compaction enabled");
+        Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topicForStoreVersion1), MIN_COMPACTION_LAG, "topic:" + topicForStoreVersion1 + " should have min compaction lag config set to " + MIN_COMPACTION_LAG);
 
         //Verify some records (note, records 1-100 have been pushed)
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -265,6 +267,7 @@ public class TestHybrid {
         // verify the topic compaction policy
         String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
         Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion2), "topic: " + topicForStoreVersion2 + " should have compaction enabled");
+        Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topicForStoreVersion2), MIN_COMPACTION_LAG, "topic:" + topicForStoreVersion2 + " should have min compaction lag config set to " + MIN_COMPACTION_LAG);
 
         // Verify streaming record in second version
         checkLargeRecord(client, 2);

@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.util.*;
@@ -35,6 +36,7 @@ public class TopicManagerTest {
 
   /** Wait time for {@link #manager} operations, in seconds */
   private static final int WAIT_TIME = 10;
+  private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
   private KafkaBrokerWrapper kafka;
   private TopicManager manager;
@@ -55,7 +57,7 @@ public class TopicManagerTest {
   public void setup() {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
-    manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka));
+    manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
   }
 
   @AfterClass
@@ -275,7 +277,9 @@ public class TopicManagerTest {
     Assert.assertFalse(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
     manager.updateTopicCompactionPolicy(topic, true);
     Assert.assertTrue(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction enabled");
+    Assert.assertEquals(manager.getTopicMinLogCompactionLagMs(topic), MIN_COMPACTION_LAG);
     manager.updateTopicCompactionPolicy(topic, false);
     Assert.assertFalse(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
+    Assert.assertEquals(manager.getTopicMinLogCompactionLagMs(topic), 0L);
   }
 }
