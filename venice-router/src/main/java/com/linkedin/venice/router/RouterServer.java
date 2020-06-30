@@ -8,11 +8,10 @@ import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.HelixCustomizedViewRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
-import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
@@ -90,10 +89,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 
-import java.util.Arrays;
-import java.util.HashMap;
 import org.apache.helix.InstanceType;
-import org.apache.helix.PropertyType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
@@ -239,7 +235,7 @@ public class RouterServer extends AbstractVeniceService {
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.routingDataRepository =
         config.isHelixCustomizedViewEnabled() ? new HelixCustomizedViewRepository(manager)
-            : new HelixRoutingDataRepository(manager);
+            : new HelixExternalViewRepository(manager);
     this.storeConfigRepository =
         new HelixReadOnlyStoreConfigRepository(zkClient, adapter, config.getRefreshAttemptsForZkReconnect(),
             config.getRefreshIntervalForZkReconnectInMs());
@@ -286,7 +282,7 @@ public class RouterServer extends AbstractVeniceService {
    */
   public RouterServer(
       VeniceProperties properties,
-      HelixRoutingDataRepository routingDataRepository,
+      HelixExternalViewRepository routingDataRepository,
       HelixReadOnlyStoreRepository metadataRepository,
       HelixReadOnlySchemaRepository schemaRepository,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,

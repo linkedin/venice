@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Test case for HelixRoutingDataRepository.
  */
-public class TestHelixRoutingDataRepository {
+public class TestHelixExternalViewRepository {
   // Test behavior configuration
   private static final int WAIT_TIME = 1000; // FIXME: Non-deterministic. Will lead to flaky tests.
 
@@ -49,7 +49,7 @@ public class TestHelixRoutingDataRepository {
   private int httpPort;
   private int adminPort;
   private ZkServerWrapper zkServerWrapper;
-  private HelixRoutingDataRepository repository;
+  private HelixExternalViewRepository repository;
   private SafeHelixManager readManager;
 
   @BeforeMethod(alwaysRun = true)
@@ -83,7 +83,7 @@ public class TestHelixRoutingDataRepository {
 
     readManager = new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
     readManager.connect();
-    repository = new HelixRoutingDataRepository(readManager);
+    repository = new HelixExternalViewRepository(readManager);
     repository.refresh();
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,
         () -> repository.containsKafkaTopic(resourceName));

@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.CachedReadOnlyStoreRepository;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
@@ -39,14 +39,14 @@ public class ErrorPartitionResetTaskTest {
 
   private HelixAdminClient helixAdminClient;
   private CachedReadOnlyStoreRepository readOnlyStoreRepository;
-  private HelixRoutingDataRepository routingDataRepository;
+  private HelixExternalViewRepository routingDataRepository;
   private MetricsRepository metricsRepository;
 
   @BeforeMethod
   public void setup() {
     helixAdminClient = mock(HelixAdminClient.class);
     readOnlyStoreRepository = mock(CachedReadOnlyStoreRepository.class);
-    routingDataRepository = mock(HelixRoutingDataRepository.class);
+    routingDataRepository = mock(HelixExternalViewRepository.class);
     metricsRepository = new MetricsRepository();
   }
 

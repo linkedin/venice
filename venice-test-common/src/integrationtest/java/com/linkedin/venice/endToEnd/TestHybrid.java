@@ -15,7 +15,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;

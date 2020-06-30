@@ -3,7 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -82,7 +82,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         "Offline push should be completed");
     // Stop and start participant to use new master to trigger state transition.
     stopParticipants();
-    HelixRoutingDataRepository routing = newMaster.getVeniceHelixResource(clusterName).getRoutingDataRepository();
+    HelixExternalViewRepository routing = newMaster.getVeniceHelixResource(clusterName).getRoutingDataRepository();
     Assert.assertEquals(routing.getMasterController().getPort(),
         Utils.parsePortFromHelixNodeIdentifier(newMaster.getControllerName()),
         "Master controller is changed.");

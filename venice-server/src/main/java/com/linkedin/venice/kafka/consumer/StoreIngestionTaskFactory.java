@@ -17,7 +17,6 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
-import javax.validation.constraints.NotNull;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -37,14 +36,14 @@ public class StoreIngestionTaskFactory {
 
   public StoreIngestionTask getNewIngestionTask(
       boolean isLeaderFollowerModelEnabled,
-      @NotNull Properties kafkaConsumerProperties,
-      @NotNull BooleanSupplier isCurrentVersion,
-      @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
+      Properties kafkaConsumerProperties,
+      BooleanSupplier isCurrentVersion,
+      Optional<HybridStoreConfig> hybridStoreConfig,
       boolean isIncrementalPushEnabled,
-      @NotNull VeniceStoreConfig storeConfig,
+      VeniceStoreConfig storeConfig,
       boolean bufferReplayEnabledForHybrid,
       boolean isNativeReplicationEnabled,
-      @NotNull String nativeReplicationSourceAddress,
+      String nativeReplicationSourceAddress,
       int partitionId
   ) {
     if (isLeaderFollowerModelEnabled) {

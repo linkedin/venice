@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.ArrayList;
@@ -40,7 +41,7 @@ public class Partition {
    * Checking if a instance ready to serve via its Helix state is unsafe after L/F model is introduced.
    *
    * Avoid using this API outside of {@link com.linkedin.venice.pushmonitor.PushStatusDecider#checkPushStatusAndDetails}
-   * and {@link com.linkedin.venice.helix.HelixRoutingDataRepository#getReadyToServeInstances(String, int)}
+   * and {@link HelixExternalViewRepository#getReadyToServeInstances(String, int)}
    *
    * TODO: remove this API once we've fully migrate to L/F model.
    */

@@ -1,8 +1,6 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.concurrent.ConcurrentHashMap;
-import javax.validation.constraints.NotNull;
 import org.apache.log4j.Logger;
 
 import java.util.HashMap;
@@ -60,7 +58,7 @@ public class PartitionAssignmentRepository {
    * @param resourceName      resource name to add or update
    * @param logicalPartitions Set representing assignment of logical partitions for this resource
    */
-  public synchronized void setAssignment(@NotNull String resourceName, @NotNull Set<Integer> logicalPartitions)
+  public synchronized void setAssignment(String resourceName, Set<Integer> logicalPartitions)
       throws VeniceException {
     if (logicalPartitions.isEmpty()) {
       String errorMessage = "The partitions set assigned should not be empty.";
@@ -70,7 +68,7 @@ public class PartitionAssignmentRepository {
     resourceNameToPartitionIdsMap.put(resourceName, logicalPartitions);
   }
 
-  public synchronized void deleteAssignment(@NotNull String resourceName)
+  public synchronized void deleteAssignment(String resourceName)
       throws VeniceException {
     //update the first view
     resourceNameToPartitionIdsMap.remove(resourceName);

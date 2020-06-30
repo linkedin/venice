@@ -8,7 +8,6 @@ import com.linkedin.venice.controller.stats.AggStoreStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
-import com.linkedin.venice.helix.HelixViewPropertyType;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
@@ -18,7 +17,7 @@ import com.linkedin.venice.pushmonitor.AggPushHealthStats;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.VeniceLock;
@@ -46,7 +45,7 @@ public class VeniceHelixResources implements VeniceResource {
 
   private final SafeHelixManager controller;
   private final HelixReadWriteStoreRepository metadataRepository;
-  private final HelixRoutingDataRepository routingDataRepository;
+  private final HelixExternalViewRepository routingDataRepository;
   private final HelixReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
@@ -109,7 +108,7 @@ public class VeniceHelixResources implements VeniceResource {
       // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
       spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
     }
-    this.routingDataRepository = new HelixRoutingDataRepository(spectatorManager);
+    this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
     this.messageChannel = new HelixStatusMessageChannel(helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
@@ -198,7 +197,7 @@ public class VeniceHelixResources implements VeniceResource {
     return schemaRepository;
   }
 
-  public HelixRoutingDataRepository getRoutingDataRepository() {
+  public HelixExternalViewRepository getRoutingDataRepository() {
     return routingDataRepository;
   }
 

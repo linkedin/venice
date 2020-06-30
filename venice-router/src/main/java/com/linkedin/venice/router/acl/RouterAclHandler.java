@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
-import javax.validation.constraints.NotNull;
 import org.apache.log4j.Logger;
 
 @ChannelHandler.Sharable
@@ -37,10 +36,10 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private HelixReadOnlyStoreConfigRepository storeConfigRepo;
   private Map<String, String> clusterToD2Map;
 
-  public RouterAclHandler(@NotNull DynamicAccessController accessController,
-      @NotNull HelixReadOnlyStoreRepository metadataRepository,
-      @NotNull HelixReadOnlyStoreConfigRepository storeConfigRepo,
-      @NotNull Map<String, String> clusterToD2Map) {
+  public RouterAclHandler(DynamicAccessController accessController,
+      HelixReadOnlyStoreRepository metadataRepository,
+      HelixReadOnlyStoreConfigRepository storeConfigRepo,
+      Map<String, String> clusterToD2Map) {
 
     this.metadataRepository = metadataRepository;
     this.accessController = accessController.init(
