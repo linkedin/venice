@@ -145,9 +145,10 @@ public class ReplicaStatus {
         .equals(PROGRESS)) {
       return;
     }
-    // remove the oldest status snapshot once history is too long.
-    if (statusHistory.size() == MAX_HISTORY_LENGTH) {
-      statusHistory.remove(0);
+    // remove the oldest status snapshots once history is too long.
+    int statusHistorySize = statusHistory.size();
+    if (statusHistorySize >= MAX_HISTORY_LENGTH) {
+      statusHistory = statusHistory.subList(statusHistorySize - MAX_HISTORY_LENGTH + 1, statusHistorySize);
     }
 
     StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
