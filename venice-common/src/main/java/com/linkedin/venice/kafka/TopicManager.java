@@ -309,12 +309,24 @@ public class TopicManager implements Closeable {
     String currentCompactionPolicy = topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG) ?
         (String)topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG) : TopicConfig.CLEANUP_POLICY_DELETE;
     String expectedCompactionPolicy = logCompaction ? TopicConfig.CLEANUP_POLICY_COMPACT : TopicConfig.CLEANUP_POLICY_DELETE;
+    long currentMinLogCompactionLagMs = topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG) ?
+        Long.valueOf((String)topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
+    long expectedMinLogCompactionLagMs = logCompaction ? topicMinLogCompactionLagMs : 0L;
+    boolean needToUpdateTopicConfig = false;
     if (! expectedCompactionPolicy.equals(currentCompactionPolicy)) {
       // Different, then update
+      needToUpdateTopicConfig = true;
       topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, expectedCompactionPolicy);
+    }
+    if (currentMinLogCompactionLagMs != expectedMinLogCompactionLagMs) {
+      needToUpdateTopicConfig = true;
+      topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(expectedMinLogCompactionLagMs));
+    }
+    if (needToUpdateTopicConfig) {
       getKafkaAdmin().setTopicConfig(topicName, topicProperties);
       logger.info("Kafka compaction policy for topic: " + topicName + " has been updated from " +
-          currentCompactionPolicy + " to " + expectedCompactionPolicy);
+          currentCompactionPolicy + " to " + expectedCompactionPolicy + ", min compaction lag updated from "
+          + currentMinLogCompactionLagMs + " to " + expectedCompactionPolicy);
     }
   }
 
@@ -322,6 +334,15 @@ public class TopicManager implements Closeable {
     Properties topicProperties = getTopicConfig(topicName);
     return topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG) &&
         topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG).equals(TopicConfig.CLEANUP_POLICY_COMPACT);
+  }
+
+  /**
+   * This API is for testing only at this moment.
+   */
+  public long getTopicMinLogCompactionLagMs(String topicName) {
+    Properties topicProperties = getTopicConfig(topicName);
+    return topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
+        ? Long.valueOf((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
   }
 
   public Map<String, Long> getAllTopicRetentions() {
