@@ -142,7 +142,7 @@ public class RouterServer extends AbstractVeniceService {
   private VeniceDelegateMode scatterGatherMode;
   private HelixAdapterSerializer adapter;
   private ZkRoutersClusterManager routersClusterManager;
-  private Router router;
+  private Optional<Router> router = Optional.empty();
   private Router secureRouter;
   private Optional<RouterCache> routerCache;
   private DictionaryRetrievalService dictionaryRetrievalService;
@@ -492,24 +492,26 @@ public class RouterServer extends AbstractVeniceService {
 
     VerifySslHandler unsecureVerifySslHandler = new VerifySslHandler(securityStats, config.isEnforcingSecureOnly());
     HealthCheckStats healthCheckStats = new HealthCheckStats(this.metricsRepository, "healthcheck_stats");
-    router = Router.builder(scatterGather)
-        .name("VeniceRouterHttp")
-        .resourceRegistry(registry)
-        .serverSocketChannel(serverSocketChannelClass)
-        .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
-        .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
-        .connectionLimit(config.getConnectionLimit())
-        .timeoutProcessor(timeoutProcessor)
-        .serverSocketOptions(serverSocketOptions)
-        .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
-          pipeline.addLast("RouterThrottleHandler", new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
-          pipeline.addLast("HealthCheckHandler", new HealthCheckHandler(healthCheckStats));
-          pipeline.addLast("VerifySslHandler", unsecureVerifySslHandler);
-          pipeline.addLast("MetadataHandler", metaDataHandler);
-          addStreamingHandler(pipeline);
-        })
-        .idleTimeout(3, TimeUnit.HOURS)
-        .build();
+    if (!config.isEnforcingSecureOnly()) {
+      router = Optional.of(Router.builder(scatterGather)
+          .name("VeniceRouterHttp")
+          .resourceRegistry(registry)
+          .serverSocketChannel(serverSocketChannelClass)
+          .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
+          .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
+          .connectionLimit(config.getConnectionLimit())
+          .timeoutProcessor(timeoutProcessor)
+          .serverSocketOptions(serverSocketOptions)
+          .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
+            pipeline.addLast("RouterThrottleHandler", new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
+            pipeline.addLast("HealthCheckHandler", new HealthCheckHandler(healthCheckStats));
+            pipeline.addLast("VerifySslHandler", unsecureVerifySslHandler);
+            pipeline.addLast("MetadataHandler", metaDataHandler);
+            addStreamingHandler(pipeline);
+          })
+          .idleTimeout(3, TimeUnit.HOURS)
+          .build());
+    }
 
     VerifySslHandler verifySslHandler = new VerifySslHandler(securityStats);
     RouterAclHandler aclHandler = accessController.isPresent() ? new RouterAclHandler(accessController.get(), metadataRepository) : null;
@@ -607,9 +609,13 @@ public class RouterServer extends AbstractVeniceService {
 
     dispatcher.stop();
 
-    router.shutdown();
+    if (router.isPresent()) {
+      router.get().shutdown();
+    }
     secureRouter.shutdown();
-    router.waitForShutdown();
+    if (!router.isPresent()) {
+      router.get().waitForShutdown();
+    }
     logger.info("Non-secure router has been shutdown completely");
     secureRouter.waitForShutdown();
     logger.info("Secure router has been shutdown completely");
@@ -722,10 +728,14 @@ public class RouterServer extends AbstractVeniceService {
       /**
        * When the listen port is open, we would like to have current Router to be fully ready.
        */
-      serverFuture = router.start(new InetSocketAddress(config.getPort()));
+      if (router.isPresent()) {
+        serverFuture = router.get().start(new InetSocketAddress(config.getPort()));
+      }
       secureServerFuture = secureRouter.start(new InetSocketAddress(config.getSslPort()));
       try {
-        serverFuture.await();
+        if (router.isPresent()) {
+          serverFuture.await();
+        }
         secureServerFuture.await();
       } catch (InterruptedException e) {
         handleExceptionInStartServices(new VeniceException(e), async);
@@ -737,10 +747,12 @@ public class RouterServer extends AbstractVeniceService {
       }
 
       try {
-        int port = ((InetSocketAddress) serverFuture.get()).getPort();
+        if (router.isPresent()) {
+          int port = ((InetSocketAddress) serverFuture.get()).getPort();
+          logger.info(this.toString() + " started on non-ssl port: " + port);
+        }
         int sslPort = ((InetSocketAddress) secureServerFuture.get()).getPort();
-        logger.info(this.toString() + " started on port: " + port
-            + " and ssl port: " + sslPort);
+        logger.info(this.toString() + " started on ssl port: " + sslPort);
       } catch (Exception e) {
         logger.error("Exception while waiting for " + this.toString() + " to start", e);
         serviceState.set(ServiceState.STOPPED);
