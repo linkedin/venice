@@ -16,6 +16,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -44,7 +45,12 @@ public class TestRouter {
 
   @Test
   public void testSecureRouterWithHttpD2() throws Exception {
-    testRouterWithD2(false, true);
+    try {
+      testRouterWithD2(false, true);
+      Assert.fail("Cannot connect with secure router with http.");
+    } catch (Exception e) {
+      //expected
+    }
   }
 
   @Test
