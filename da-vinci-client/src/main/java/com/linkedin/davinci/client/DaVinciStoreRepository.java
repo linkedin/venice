@@ -2,6 +2,7 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -25,7 +26,22 @@ public class DaVinciStoreRepository extends HelixReadOnlyStoreRepository {
     updateLock.lock();
     try {
       subscription.add(storeName);
-      refreshOneStore(storeName);
+      Store store = refreshOneStore(storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName, clusterName);
+      }
+    } finally {
+      updateLock.unlock();
+    }
+  }
+
+  public void unsubscribe(String storeName) {
+    updateLock.lock();
+    try {
+      if (!subscription.remove(storeName)) {
+        throw new VeniceException("Cannot unsubscribe from not-subscribed store, storeName=" + storeName);
+      }
+      removeStore(storeName);
     } finally {
       updateLock.unlock();
     }
@@ -35,12 +51,11 @@ public class DaVinciStoreRepository extends HelixReadOnlyStoreRepository {
   protected Store putStore(Store newStore) {
     updateLock.lock();
     try {
-      if (!VeniceSystemStoreUtils.isSystemStore(newStore.getName()) &&
-          !subscription.contains(newStore.getName())) {
-        logger.info("Ignoring not subscribed store put, storeName=" + newStore.getName());
-        return null;
+      if (subscription.contains(newStore.getName()) || VeniceSystemStoreUtils.isSystemStore(newStore.getName())) {
+        return super.putStore(newStore);
       }
-      return super.putStore(newStore);
+      logger.info("Ignoring not-subscribed store, storeName=" + newStore.getName());
+      return null;
     } finally {
       updateLock.unlock();
     }

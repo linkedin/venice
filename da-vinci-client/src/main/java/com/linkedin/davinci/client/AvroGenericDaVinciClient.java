@@ -9,16 +9,13 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.venice.storage.chunking.GenericChunkingAdapter;
-import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -36,7 +33,6 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -92,25 +88,25 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   @Override
   public CompletableFuture<Void> subscribeAll() {
     throwIfNotReady();
-    return storeBackend.subscribeAll();
+    return storeBackend.subscribe(ComplementSet.universalSet());
   }
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     throwIfNotReady();
-    return storeBackend.subscribe(partitions, Optional.empty());
+    return storeBackend.subscribe(ComplementSet.wrap(partitions));
   }
 
   @Override
   public void unsubscribeAll() {
     throwIfNotReady();
-    storeBackend.unsubscribeAll();
+    storeBackend.unsubscribe(ComplementSet.universalSet());
   }
 
   @Override
   public void unsubscribe(Set<Integer> partitions) {
     throwIfNotReady();
-    storeBackend.unsubscribe(partitions);
+    storeBackend.unsubscribe(ComplementSet.wrap(partitions));
   }
 
   @Override
@@ -132,9 +128,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
 
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-      int subPartitionId = versionBackend.getSubPartitionId(keyBytes);
+      int subPartitionId = versionBackend.getSubPartition(keyBytes);
 
-      if (versionBackend.isReadyToServe(subPartitionId)) {
+      if (versionBackend.isSubPartitionReadyToServe(subPartitionId)) {
         V value = versionBackend.read(
             subPartitionId,
             keyBytes,
@@ -173,9 +169,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       for (K key : keys) {
         byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-        int subPartitionId = versionBackend.getSubPartitionId(keyBytes);
+        int subPartitionId = versionBackend.getSubPartition(keyBytes);
 
-        if (versionBackend.isReadyToServe(subPartitionId)) {
+        if (versionBackend.isSubPartitionReadyToServe(subPartitionId)) {
           V value = versionBackend.read(
               subPartitionId,
               keyBytes,

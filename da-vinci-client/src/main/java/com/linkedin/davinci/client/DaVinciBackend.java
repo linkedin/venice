@@ -22,15 +22,16 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
 import io.tehuti.metrics.MetricsRepository;
 
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
 
 import java.io.Closeable;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
@@ -44,6 +45,8 @@ import static java.lang.Thread.*;
 
 
 public class DaVinciBackend implements Closeable {
+  private static final Logger logger = Logger.getLogger(DaVinciBackend.class);
+
   private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;
   private final DaVinciStoreRepository storeRepository;
@@ -111,15 +114,18 @@ public class DaVinciBackend implements Closeable {
       storeRepository.subscribe(storeName);
       Version version = getLatestVersion(storeName).orElse(null);
       if (version == null || version.kafkaTopicName().equals(kafkaTopicName) == false) {
+        logger.info("Deleting obsolete local version " + kafkaTopicName);
         // If the version is not the latest, it should be removed.
         storageService.removeStorageEngine(kafkaTopicName);
+        storeRepository.unsubscribe(storeName);
         continue;
       }
 
-      StoreBackend store = storeByNameMap.computeIfAbsent(storeName, k -> new StoreBackend(this, storeName));
+      logger.info("Bootstrapping local version " + kafkaTopicName);
+      StoreBackend store = getStoreOrThrow(storeName);
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
       Set<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
-      store.subscribe(partitions, Optional.of(version));
+      store.subscribe(ComplementSet.wrap(partitions), Optional.of(version));
     }
   }
 
@@ -152,9 +158,7 @@ public class DaVinciBackend implements Closeable {
   }
 
   public synchronized StoreBackend getStoreOrThrow(String storeName) {
-    StoreBackend store = storeByNameMap.computeIfAbsent(storeName, k -> new StoreBackend(this, storeName));
-    store.subscribe(Collections.emptySet(), Optional.empty());
-    return store;
+    return storeByNameMap.computeIfAbsent(storeName, k -> new StoreBackend(this, storeName));
   }
 
   ExecutorService getExecutor() {
@@ -165,7 +169,7 @@ public class DaVinciBackend implements Closeable {
     return configLoader;
   }
 
-  public DaVinciStoreRepository getStoreRepository() {
+  DaVinciStoreRepository getStoreRepository() {
     return storeRepository;
   }
 

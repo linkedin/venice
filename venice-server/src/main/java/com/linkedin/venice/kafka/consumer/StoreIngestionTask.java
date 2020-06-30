@@ -919,7 +919,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
-        consumerUnSubscribe(topic, partitionConsumptionStateMap.get(partition));
+        PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
+        if (consumptionState != null) {
+          consumerUnSubscribe(topic, consumptionState);
+        }
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
         /**

@@ -2,7 +2,6 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -70,9 +69,6 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchStore() throws Exception {
-    String storeName1 = cluster.createStore(KEY_COUNT);
-    String storeName2 = cluster.createStore(KEY_COUNT);
-
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
@@ -88,21 +84,35 @@ public class DaVinciClientTest {
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
+      String storeName1 = cluster.createStore(KEY_COUNT);
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
 
-      Map<Integer, Integer> keyValueMap = new HashMap<>();
+      // Test non-existent key access
       client1.subscribeAll().get();
+      assertNull(client1.get(KEY_COUNT + 1).get());
+
+      // Test single-get access
+      Map<Integer, Integer> keyValueMap = new HashMap<>();
       for (int k = 0; k < KEY_COUNT; ++k) {
         assertEquals(client1.get(k).get(), 1);
         keyValueMap.put(k, 1);
       }
 
-        // Test multiple client ingesting different stores concurrently
-      DaVinciClient<Integer, Integer> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
-      client2.subscribeAll().get();
-      assertEquals(client2.batchGet(keyValueMap.keySet()).get(), keyValueMap);
-
+      // Test automatic new version ingestion
       for (int i = 0; i < 2; ++i) {
+        // Test per-version partitioning parameters
+        try (ControllerClient controllerClient = cluster.getControllerClient()) {
+          ControllerResponse response = controllerClient.updateStore(
+              storeName1,
+              new UpdateStoreQueryParams()
+                  .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+                  .setPartitionCount(i + 1)
+                  .setPartitionerParams(
+                      Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(i))
+                  ));
+          assertFalse(response.isError(), response.getError());
+        }
+
         Integer expectedValue = cluster.createVersion(storeName1, KEY_COUNT);
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           for (int k = 0; k < KEY_COUNT; ++k) {
@@ -111,16 +121,19 @@ public class DaVinciClientTest {
         });
       }
 
-      // Test non-existent key access
-      assertNull(client1.get(KEY_COUNT + 1).get());
+      // Test multiple client ingesting different stores concurrently
+      String storeName2 = cluster.createStore(KEY_COUNT);
+      DaVinciClient<Integer, Integer> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
+      client2.subscribeAll().get();
+      assertEquals(client2.batchGet(keyValueMap.keySet()).get(), keyValueMap);
 
       // Test read from a store that is being deleted concurrently
       try (ControllerClient controllerClient = cluster.getControllerClient()) {
-        ControllerResponse response = controllerClient.disableAndDeleteStore(storeName1);
+        ControllerResponse response = controllerClient.disableAndDeleteStore(storeName2);
         assertFalse(response.isError(), response.getError());
 
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          assertThrows(VeniceNoStoreException.class, () -> client1.get(KEY_COUNT / 3).get());
+          assertThrows(VeniceNoStoreException.class, () -> client2.get(KEY_COUNT / 3).get());
         });
       }
 
@@ -209,11 +222,7 @@ public class DaVinciClientTest {
       });
 
       // unsubscribe not subscribed partitions
-      Set<Integer> partitionSet = new HashSet<>();
-      for (int i = 0; i < partitionCount; i++) {
-        partitionSet.add(i);
-      }
-      assertThrows(VeniceException.class, () -> client.unsubscribe(partitionSet));
+      client.unsubscribe(Collections.singleton(0));
 
       // re-subscribe to a partition with data to test sub a unsub-ed partition
       client.subscribeAll().get();
@@ -295,7 +304,7 @@ public class DaVinciClientTest {
       assertThrows(VeniceException.class, () -> client.batchGet(keyValueMap.keySet()).get());
     }
 
-    // Update the store to use non-default partitioner and it shall fail during initialization even with QUERY_REMOTELY enabled.
+    // Update the store to use non-default partitioner
     try (ControllerClient client = cluster.getControllerClient()) {
       ControllerResponse response = client.updateStore(
           storeName,
@@ -305,9 +314,7 @@ public class DaVinciClientTest {
                   Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(2))
               )
       );
-      if (response.isError()) {
-        fail(response.getError());
-      }
+      assertFalse(response.isError(), response.getError());
       cluster.createVersion(storeName, KEY_COUNT);
     }
     daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.QUERY_REMOTELY);
@@ -325,10 +332,7 @@ public class DaVinciClientTest {
     paramsConsumer.accept(params);
     try (ControllerClient client = cluster.getControllerClient()) {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      client.updateStore(
-          storeName,
-          params
-      );
+      client.updateStore(storeName, params);
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
       SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM,
           Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
