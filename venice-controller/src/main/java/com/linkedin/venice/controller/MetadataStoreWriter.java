@@ -12,11 +12,14 @@ import com.linkedin.venice.meta.systemstore.schemas.ETLStoreConfig;
 import com.linkedin.venice.meta.systemstore.schemas.HybridStoreConfig;
 import com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig;
 import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
+import com.linkedin.venice.meta.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.meta.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.meta.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
 import com.linkedin.venice.meta.systemstore.schemas.TargetVersionStates;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -24,6 +27,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -102,6 +106,33 @@ public class MetadataStoreWriter {
     writer.put(key, value, storeMetadataSchemaIdMap.get(clusterName));
   }
 
+  // For now we only have one single key schema, but we will support key schema evolution in the future via annotation.
+  public void writeStoreKeySchemas(String clusterName, String storeName, Collection<SchemaEntry> keySchemaMap) {
+    VeniceWriter writer = prepareToWrite(clusterName, storeName);
+    StoreMetadataKey key = new StoreMetadataKey();
+    key.keyStrings = Arrays.asList(storeName, clusterName);
+    key.metadataType = StoreMetadataType.STORE_KEY_SCHEMAS.getValue();
+    StoreMetadataValue value = new StoreMetadataValue();
+    StoreKeySchemas storeSchemas = (StoreKeySchemas) StoreMetadataType.STORE_KEY_SCHEMAS.getNewInstance();
+    storeSchemas.keySchemaMap = parseSchemaMap(keySchemaMap);
+    value.metadataUnion = storeSchemas;
+    value.timestamp = System.currentTimeMillis();
+    writer.put(key, value, storeMetadataSchemaIdMap.get(clusterName));
+  }
+
+  public void writeStoreValueSchemas(String clusterName, String storeName, Collection<SchemaEntry> valueSchemaMap) {
+    VeniceWriter writer = prepareToWrite(clusterName, storeName);
+    StoreMetadataKey key = new StoreMetadataKey();
+    key.keyStrings = Arrays.asList(storeName, clusterName);
+    key.metadataType = StoreMetadataType.STORE_VALUE_SCHEMAS.getValue();
+    StoreMetadataValue value = new StoreMetadataValue();
+    StoreValueSchemas storeSchemas = (StoreValueSchemas) StoreMetadataType.STORE_VALUE_SCHEMAS.getNewInstance();
+    storeSchemas.valueSchemaMap = parseSchemaMap(valueSchemaMap);
+    value.metadataUnion = storeSchemas;
+    value.timestamp = System.currentTimeMillis();
+    writer.put(key, value, storeMetadataSchemaIdMap.get(clusterName));
+  }
+
   private VeniceWriter prepareToWrite(String clusterName, String storeName) {
     String rtTopic = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName));
     if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
@@ -120,6 +151,10 @@ public class MetadataStoreWriter {
         writerFactory.createVeniceWriter(rtTopic, new VeniceAvroKafkaSerializer(StoreMetadataKey.SCHEMA$.toString()),
             new VeniceAvroKafkaSerializer(StoreMetadataValue.SCHEMA$.toString())));
     return writer;
+  }
+
+  private Map<CharSequence, CharSequence> parseSchemaMap(Collection<SchemaEntry> valueSchemaMap) {
+    return valueSchemaMap.stream().collect(Collectors.toMap(s -> (Integer.toString(s.getId())), s->s.getSchema().toString()));
   }
 
   /**
