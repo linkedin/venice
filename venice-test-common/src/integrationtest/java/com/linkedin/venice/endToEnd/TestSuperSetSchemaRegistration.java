@@ -30,13 +30,13 @@ public class TestSuperSetSchemaRegistration {
     private VeniceClusterWrapper veniceCluster;
     private ControllerClient controllerClient;
 
-    /**
-     *
-     * @param parentDir
-     * @param addFieldWithDefaultValue
-     * @return the Schema object for the avro file
-     * @throws IOException
-     */
+  /**
+   * @param parentDir
+   * @param addFieldWithDefaultValue1
+   * @param addFieldWithDefaultValue2
+   * @return
+   * @throws IOException
+   */
     private static Schema writeComplicatedAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue1, boolean addFieldWithDefaultValue2) throws IOException {
       String schemaStr = "{\"namespace\": \"example.avro\",\n" +
           " \"type\": \"record\",\n" +

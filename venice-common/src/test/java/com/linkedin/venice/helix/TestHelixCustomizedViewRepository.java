@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
-import org.apache.helix.PropertyType;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -77,7 +76,7 @@ public class TestHelixCustomizedViewRepository {
     // Build customized state config and update to Zookeeper
     CustomizedStateConfig.Builder customizedStateConfigBuilder = new CustomizedStateConfig.Builder();
     List<String> aggregationEnabledTypes = new ArrayList<String>();
-    aggregationEnabledTypes.add("OFFLINE_PUSH");
+    aggregationEnabledTypes.add(HelixPartitionState.OFFLINE_PUSH.name());
     customizedStateConfigBuilder.setAggregationEnabledTypes(aggregationEnabledTypes);
     CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
     admin.addCustomizedStateConfig(clusterName, customizedStateConfig);
@@ -201,7 +200,7 @@ public class TestHelixCustomizedViewRepository {
       Assert.assertEquals(replicaState.getPartition(), partitionId0, "Unexpected partition number");
       Assert.assertNotNull(replicaState.getParticipantId(), "Participant id should not be null");
       Assert.assertEquals(replicaState.isReadyToServe(),
-          replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED));
+          replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name()));
     }
   }
 

@@ -59,8 +59,8 @@ public class ReplicaState {
     this.venicePushStatus = venicePushStatus;
   }
 
-  public void setReadyToServe(boolean readyToServer) {
-    isReadyToServe = readyToServer;
+  public void setReadyToServe(boolean readyToServe) {
+    isReadyToServe = readyToServe;
   }
 
   @JsonIgnore
