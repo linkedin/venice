@@ -4,6 +4,7 @@ import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
@@ -25,18 +26,20 @@ public abstract class AbstractParticipantModelFactory extends StateModelFactory<
   //a dedicated thread pool for state transition execution that all state model created by the
   //same factory would share. If it's null, Helix would use a shared thread pool.
   private final ExecutorService executorService;
+  protected CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture;
+  protected final String instanceName;
 
-  public AbstractParticipantModelFactory(StoreIngestionService storeIngestionService,
-      StorageService storageService,
-      VeniceConfigLoader configService,
-      ExecutorService executorService,
-      ReadOnlyStoreRepository metadataRepo) {
+  public AbstractParticipantModelFactory(StoreIngestionService storeIngestionService, StorageService storageService,
+      VeniceConfigLoader configService, ExecutorService executorService, ReadOnlyStoreRepository metadataRepo,
+      CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
 
     this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
     this.configService = configService;
     this.executorService = executorService;
     this.metadataRepo = metadataRepo;
+    this.partitionPushStatusAccessorFuture = partitionPushStatusAccessorFuture;
+    this.instanceName = instanceName;
   }
 
   @Override

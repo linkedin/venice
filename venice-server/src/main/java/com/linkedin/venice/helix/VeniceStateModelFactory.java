@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.HelixUtils;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
 
@@ -15,12 +16,19 @@ import java.util.concurrent.ExecutorService;
 public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
   private final StateModelNotifier stateModelNotifier = new StateModelNotifier();
 
-  public VeniceStateModelFactory(StoreIngestionService storeIngestionService,
-          StorageService storageService,
-          VeniceConfigLoader configService,
-          ExecutorService executorService,
-          ReadOnlyStoreRepository readOnlyStoreRepository) {
-    super(storeIngestionService, storageService, configService, executorService, readOnlyStoreRepository);
+  public VeniceStateModelFactory(StoreIngestionService storeIngestionService, StorageService storageService,
+      VeniceConfigLoader configService, ExecutorService executorService,
+      ReadOnlyStoreRepository readOnlyStoreRepository) {
+    this(storeIngestionService, storageService, configService, executorService, readOnlyStoreRepository,
+        CompletableFuture.completedFuture(null), null);
+  }
+
+  public VeniceStateModelFactory(StoreIngestionService storeIngestionService, StorageService storageService,
+      VeniceConfigLoader configService, ExecutorService executorService,
+      ReadOnlyStoreRepository readOnlyStoreRepository,
+      CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
+    super(storeIngestionService, storageService, configService, executorService, readOnlyStoreRepository,
+        partitionPushStatusAccessorFuture, instanceName);
 
     // Add a new notifier to let state model knows the end of consumption so that it can complete the bootstrap to
     // online state transition.
@@ -33,7 +41,8 @@ public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
     logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName);
     return new VenicePartitionStateModel(getStoreIngestionService(), getStorageService(),
         getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),
-        HelixUtils.getPartitionId(partitionName), stateModelNotifier, getMetadataRepo());
+        HelixUtils.getPartitionId(partitionName), stateModelNotifier, getMetadataRepo(),
+        partitionPushStatusAccessorFuture, instanceName);
   }
 
   StateModelNotifier getNotifier() {

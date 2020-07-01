@@ -61,6 +61,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private HelixStatusMessageChannel messageChannel;
   private AbstractParticipantModelFactory onlineOfflineParticipantModelFactory;
   private AbstractParticipantModelFactory leaderFollowerParticipantModelFactory;
+  private HelixPartitionPushStatusAccessor partitionPushStatusAccessor;
 
   public HelixParticipationService(StoreIngestionService storeIngestionService,
           StorageService storageService,
@@ -103,6 +104,13 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   @Override
   public boolean startInner() {
+    logger.info("Attempting to start HelixParticipation service");
+    manager = new SafeHelixManager(
+        HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
+
+    CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture =
+        managerFuture.thenApply(manager -> partitionPushStatusAccessor);
+
     //create 2 dedicated thread pools for executing incoming state transitions (1 for online offline (O/O) model and the
     //other for leader follower (L/F) model) Since L/F transition is not blocked by ingestion, it should run much faster
     //than O/O's. Thus, the size is supposed to be smaller.
@@ -115,7 +123,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             "venice-O/O-state-transition",
             metricsRepository,
             "Venice_ST_thread_pool"),
-        helixReadOnlyStoreRepository);
+        helixReadOnlyStoreRepository, partitionPushStatusAccessorFuture, instance.getNodeId());
 
     leaderFollowerParticipantModelFactory = new LeaderFollowerParticipantModelFactory(
         ingestionService,
@@ -126,11 +134,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             "venice-L/F-state-transition",
             metricsRepository,
             "Venice_L/F_ST_thread_pool"),
-            helixReadOnlyStoreRepository);
+        helixReadOnlyStoreRepository, partitionPushStatusAccessorFuture, instance.getNodeId());
 
-    logger.info("Attempting to start HelixParticipation service");
-    manager = new SafeHelixManager(
-        HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
     manager.getStateMachineEngine().registerStateModelFactory(ONLINE_OFFLINE_MODEL_NAME, onlineOfflineParticipantModelFactory);
     manager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
     //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
@@ -241,8 +246,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
       // If Helix customized view is enabled, do dual-write for offline push status update
       if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
-        PartitionPushStatusNotifier partitionPushStatusNotifier = new PartitionPushStatusNotifier(
-            new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId()));
+        partitionPushStatusAccessor =
+            new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId());
+        PartitionPushStatusNotifier partitionPushStatusNotifier =
+            new PartitionPushStatusNotifier(partitionPushStatusAccessor);
         ingestionService.addNotifier(partitionPushStatusNotifier);
         logger.info("Successfully started Helix partition status accessor. ");
       }

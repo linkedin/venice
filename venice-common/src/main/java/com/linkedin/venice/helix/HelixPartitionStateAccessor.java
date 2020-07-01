@@ -72,4 +72,11 @@ public abstract class HelixPartitionStateAccessor {
           + "%s", stateType.name(), topic), e);
     }
   }
+
+  /**
+   * Only used in test now
+   */
+  void setCustomizedStateProvider(CustomizedStateProvider customizedStateProvider) {
+    customizedStateProvider = customizedStateProvider;
+  }
 }
