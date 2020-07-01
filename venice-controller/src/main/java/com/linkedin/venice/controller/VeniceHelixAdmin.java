@@ -109,6 +109,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -504,6 +505,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             HelixReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
             schemaRepo.initKeySchema(storeName, keySchema);
             schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+            // Write store schemas to metadata store.
+            if (newStore.isStoreMetadataSystemStoreEnabled()) {
+                Collection<SchemaEntry> keySchemas = new HashSet<>();
+                keySchemas.add(schemaRepo.getKeySchema(storeName));
+                metadataStoreWriter.writeStoreKeySchemas(clusterName, storeName, keySchemas);
+                metadataStoreWriter.writeStoreValueSchemas(clusterName, storeName, schemaRepo.getValueSchemas(storeName));
+            }
             logger.info("Completed creating Store: " + storeName);
         }finally {
             resources.unlockForMetadataOperation();
@@ -2862,6 +2870,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
         SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+        // Write store schemas to metadata store.
+        Store store = getStore(clusterName, storeName);
+        if (store.isStoreMetadataSystemStoreEnabled()) {
+            metadataStoreWriter.writeStoreValueSchemas(clusterName, storeName, schemaRepository.getValueSchemas(storeName));
+        }
 
         return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
     }
@@ -2883,7 +2896,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " Expected new schema id of " + schemaId + " but the next available id from the local repository is "
                 + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: " + valueSchemaStr);
         }
-        return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+
+        SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+        // Write store schemas to metadata store.
+        Store store = getStore(clusterName, storeName);
+        if (store.isStoreMetadataSystemStoreEnabled()) {
+            metadataStoreWriter.writeStoreValueSchemas(clusterName, storeName, schemaRepository.getValueSchemas(storeName));
+        }
+        return schemaEntry;
     }
 
     @Override
@@ -3960,6 +3980,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, veniceStore);
         metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, veniceStore.getVersions(),
             veniceStore.getCurrentVersion());
+        // Materialize store's key/value schemas.
+        Collection<SchemaEntry> keySchemas = new HashSet<>();
+        keySchemas.add(getKeySchema(clusterName, storeName));
+        metadataStoreWriter.writeStoreKeySchemas(clusterName, storeName, keySchemas);
+        metadataStoreWriter.writeStoreValueSchemas(clusterName, storeName, getValueSchemas(clusterName, storeName));
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setStoreMetadataSystemStoreEnabled(true);
             return store;

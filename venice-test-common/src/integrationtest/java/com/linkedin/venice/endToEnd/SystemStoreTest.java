@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.StoreMetadataType;
 import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -20,19 +21,20 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentStoreStates;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentVersionStates;
 import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
+import com.linkedin.venice.meta.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
-import com.linkedin.venice.meta.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.meta.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.meta.systemstore.schemas.TargetVersionStates;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
 import java.util.Arrays;
@@ -41,6 +43,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -216,7 +219,7 @@ public class SystemStoreTest {
     // Create a new Venice store and materialize the corresponding metadata system store
     String regularVeniceStoreName = TestUtils.getUniqueString("regular_store");
     NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularVeniceStoreName, "test",
-        STRING_SCHEMA, STRING_SCHEMA);
+        STRING_SCHEMA, USER_SCHEMA_STRING);
     assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
     ControllerResponse controllerResponse =
         parentControllerClient.materializeMetadataStoreVersion(clusterName, regularVeniceStoreName, metadataStoreVersionNumber);
@@ -225,6 +228,11 @@ public class SystemStoreTest {
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
     TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
         Optional.empty());
+
+    controllerResponse = parentControllerClient.addValueSchema(regularVeniceStoreName, USER_SCHEMA_STRING_WITH_DEFAULT);
+    assertFalse(controllerResponse.isError(), "Failed to add new store value schema");
+
+
     // Try to read from the metadata store
     venice.refreshAllRouterMetaData();
     StoreMetadataKey storeAttributesKey = new StoreMetadataKey();
@@ -239,6 +247,12 @@ public class SystemStoreTest {
     StoreMetadataKey storeCurrentVersionStatesKey = new StoreMetadataKey();
     storeCurrentVersionStatesKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
     storeCurrentVersionStatesKey.metadataType = StoreMetadataType.CURRENT_VERSION_STATES.getValue();
+    StoreMetadataKey storeKeySchemasKey = new StoreMetadataKey();
+    storeKeySchemasKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
+    storeKeySchemasKey.metadataType = StoreMetadataType.STORE_KEY_SCHEMAS.getValue();
+    StoreMetadataKey storeValueSchemasKey = new StoreMetadataKey();
+    storeValueSchemasKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
+    storeValueSchemasKey.metadataType = StoreMetadataType.STORE_VALUE_SCHEMAS.getValue();
 
     try (AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client =
         ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig
@@ -250,6 +264,8 @@ public class SystemStoreTest {
           assertNotNull(client.get(storeTargetVersionStatesKey).get());
           assertNotNull(client.get(storeCurrentStatesKey).get());
           assertNotNull(client.get(storeCurrentVersionStatesKey).get());
+          assertNotNull(client.get(storeKeySchemasKey).get());
+          assertNotNull(client.get(storeValueSchemasKey).get());
         } catch (Exception e) {
           fail();
         }
@@ -284,6 +300,28 @@ public class SystemStoreTest {
       });
       currentVersionStates = (CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion;
       assertEquals(currentVersionStates.currentVersionStates.get(0).status.toString(), ONLINE.name());
+
+      // Make sure keySchemaMap and valueSchemaMap has correct number of entries.
+      StoreKeySchemas storeKeySchemas = (StoreKeySchemas) client.get(storeKeySchemasKey).get().metadataUnion;
+      assertEquals(storeKeySchemas.keySchemaMap.size(), 1);
+      StoreValueSchemas storeValueSchemas = (StoreValueSchemas) client.get(storeValueSchemasKey).get().metadataUnion;
+      assertEquals(storeValueSchemas.valueSchemaMap.size(), 2);
+
+      // CharSequence is not comparable. We have to peform the CharSequence to String map conversion so the get() from map won't fail.
+      Map<String, String> keySchemaMap = Utils.getStringMapFromCharSequenceMap(storeKeySchemas.keySchemaMap);
+      CharSequence keySchemaStr = keySchemaMap.get(Integer.toString(1));
+      assertNotNull(keySchemaStr);
+      assertEquals(keySchemaStr.toString(), STRING_SCHEMA);
+
+      Map<String, String> valueSchemaMap = Utils.getStringMapFromCharSequenceMap(storeValueSchemas.valueSchemaMap);
+      CharSequence valueSchemaStr = valueSchemaMap.get(Integer.toString(1));
+      assertNotNull(valueSchemaStr);
+      // We need to reparse the schema string so it won't have field ordering issue.
+      assertEquals(valueSchemaStr.toString(), Schema.parse(USER_SCHEMA_STRING).toString());
+      // Check evolved value schema after we materialized the metadata store.
+      valueSchemaStr = valueSchemaMap.get(Integer.toString(2));
+      assertNotNull(valueSchemaStr);
+      assertEquals(valueSchemaStr.toString(), Schema.parse(USER_SCHEMA_STRING_WITH_DEFAULT).toString());
     }
 
     // Dematerialize the metadata store version and it should be cleaned up properly.

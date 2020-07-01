@@ -475,6 +475,36 @@
               "type": "int"
             }
           ]
+        },
+        {
+          "name": "StoreKeySchemas",
+          "doc": "This type of store metadata describes the key schemas of the store",
+          "type": "record",
+          "fields": [
+            {
+              "name": "keySchemaMap",
+              "doc": "A string to string map representing the mapping from id to key schema.",
+              "type": {
+                "type": "map",
+                "values": "string"
+              }
+            }
+          ]
+        },
+        {
+          "name": "StoreValueSchemas",
+          "doc": "This type of store metadata describes the value schemas of the store. ",
+          "type": "record",
+          "fields": [
+            {
+              "name": "valueSchemaMap",
+              "doc": "A string to string map representing the mapping from schema id to value schema string.",
+              "type": {
+                "type": "map",
+                "values": "string"
+              }
+            }
+          ]
         }
       ]
     }

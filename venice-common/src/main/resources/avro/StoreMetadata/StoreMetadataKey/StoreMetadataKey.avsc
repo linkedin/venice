@@ -11,7 +11,7 @@
     },
     {
       "name": "metadataType",
-      "doc": "An integer (mapped to Enums) specifying the metadata type of the record. 1 => StoreAttributes, 2 => TargetVersionStates, 3 => CurrentStoreStates, 4 => CurrentVersionStates.",
+      "doc": "An integer (mapped to Enums) specifying the metadata type of the record. 1 => StoreAttributes, 2 => TargetVersionStates, 3 => CurrentStoreStates, 4 => CurrentVersionStates, 5 => StoreKeySchemas, 6 => StoreValueSchemas.",
       "type": "int"
     }
   ]
