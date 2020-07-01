@@ -55,13 +55,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
   public static final int METADATA_PARTITION_ID = 1000_000_000;
 
-  /**
-   * In a previous iteration of the code, we had a different value for the {@link #METADATA_PARTITION_ID}.
-   * This continues to live on in the code so that the server can auto-cleanup. Once we're certain this
-   * cruft doesn't exist anywhere, we could cleanup the cleanup code...
-   */
-  private static final int LEGACY_METADATA_PARTITION_ID = 100_000_000;
-
   private final String storeName;
   private final List<Partition> partitionList = new SparseConcurrentList<>();
   private Partition metadataPartition = null;
@@ -87,43 +80,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   protected synchronized void restoreStoragePartitions() {
     Set<Integer> partitionIds = getPersistedPartitionIds();
 
-    /** See JavaDoc on {@link LEGACY_METADATA_PARTITION_ID} for more details on this cleanup logic. */
-    if (partitionIds.contains(LEGACY_METADATA_PARTITION_ID)) {
-      Partition legacyMetadataPartition = createStoragePartition(new StoragePartitionConfig(storeName, LEGACY_METADATA_PARTITION_ID));
-      if (isMetadataMigrationCompleted(legacyMetadataPartition)) {
-        throw new StorageInitializationException("Detected the presence of an active LEGACY_METADATA_PARTITION_ID.");
-        /**
-         * Alternative strategies could include:
-         * 1. Continuing to use {@link LEGACY_METADATA_PARTITION_ID}.
-         * 2. Moving the data directory from {@link LEGACY_METADATA_PARTITION_ID} to {@link METADATA_PARTITION_ID}.
-         * 3. Dropping all metadata and all data, effectively pretending it's a fresh node (a bit brutal).
-         *
-         * In practice, we think we never turned on this metadata migration feature during the time when
-         * the code was set to {@link LEGACY_METADATA_PARTITION_ID} so this should never happen.
-         */
-      } else {
-        logger.info("Detected an unused LEGACY_METADATA_PARTITION_ID. Will drop it.");
-        legacyMetadataPartition.drop();
-      }
-
-      /**
-       * N.B.: Although we're trying to be as cautious as possible with this cleanup code, there could be
-       *       uncovered edge cases. For example, if the metadata migration key is set in both the legacy
-       *       and contemporary metadata partition IDs, then it's unclear what the state of the system
-       *       actually is (did it attempt two migrations in a row, with the second one containing empty
-       *       metadata, since the BDB source would have been wiped after the first migration?)... there
-       *       may be cases where the correct thing to do is to wipe all data and metadata and treat the
-       *       server as a fresh host, but we're assuming that this needs not happen since we haven't
-       *       begun the metadata migration yet.
-       */
-    }
-
     /**
      * We remove the special partition IDs from the set because we don't want to store them in the
      * {@link #partitionList}, as that would blow up the array size of the collection, causing memory
      * pressure and potentially OOMing.
      */
-    partitionIds.remove(LEGACY_METADATA_PARTITION_ID);
     partitionIds.remove(METADATA_PARTITION_ID);
 
     this.metadataPartition = createStoragePartition(new StoragePartitionConfig(storeName, METADATA_PARTITION_ID));
@@ -189,9 +150,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
     if (partitionId == METADATA_PARTITION_ID) {
       throw new StorageInitializationException("The metadata partition is not allowed to be set via this function!");
-    }
-    if (partitionId >= LEGACY_METADATA_PARTITION_ID) {
-      throw new StorageInitializationException("Partition ID must be < " + LEGACY_METADATA_PARTITION_ID);
     }
 
     if (containsPartition(partitionId)) {

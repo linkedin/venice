@@ -295,13 +295,6 @@ public class VeniceServer {
     // TODO - Efficient way to lock java heap
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
-    for (AbstractVeniceService service : services) {
-      // Skip the participant and ingestion service only after offset bootstrap.
-      if (service == kafkaStoreIngestionService || service == helixParticipationService) {
-        continue;
-      }
-      service.start();
-    }
 
     /**
      * We need to add some delay here for router connection warming.
@@ -313,12 +306,11 @@ public class VeniceServer {
     } catch (InterruptedException e) {
       throw new VeniceException("Got interrupted exception while delaying start for Router connection warming");
     }
-    List<AbstractStorageEngine> allStorageEngines =
-        storageService.getStorageEngineRepository().getAllLocalStorageEngines();
 
-    // start the helix participant service and ingestion service only after offset store bootstrap.
-    kafkaStoreIngestionService.start();
-    helixParticipationService.start();
+    for (AbstractVeniceService service : services) {
+      service.start();
+    }
+
     long end = System.currentTimeMillis();
     logger.info("Startup completed in " + (end - start) + " ms.");
   }
