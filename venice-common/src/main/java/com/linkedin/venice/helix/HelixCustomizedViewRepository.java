@@ -66,7 +66,7 @@ public class HelixCustomizedViewRepository extends HelixBaseRoutingRepository {
           .flatMap(e -> e.getValue()
               .stream()
               .map(instance -> new ReplicaState(partitionId, instance.getNodeId(), LEADER_FOLLOWER_VENICE_STATE_FILLER,
-                  e.getKey(), e.getKey().equals(ExecutionStatus.COMPLETED))))
+                  e.getKey(), e.getKey().equals(ExecutionStatus.COMPLETED.name()))))
           .collect(Collectors.toList());
   }
 
