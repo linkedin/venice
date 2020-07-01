@@ -9,6 +9,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.controller.VeniceStateModel;
+import com.linkedin.venice.utils.Utils;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.LeaderStandbySMD;
@@ -40,6 +42,8 @@ import org.apache.log4j.Logger;
 public abstract class AbstractParticipantModel extends StateModel {
   protected final Logger logger = Logger.getLogger(getClass());
   private static final String STORE_PARTITION_DESCRIPTION_FORMAT = "%s-%d";
+  private static final int RETRY_COUNT = 5;
+  private static final int RETRY_DURATION_MS = 1000;
 
   private final StoreIngestionService storeIngestionService;
   private final ReadOnlyStoreRepository metaDataRepo;
@@ -49,10 +53,18 @@ public abstract class AbstractParticipantModel extends StateModel {
   private final Time time;
 
   private final String storePartitionDescription;
+  private HelixPartitionPushStatusAccessor partitionPushStatusAccessor;
+  private final String instanceName;
 
   public AbstractParticipantModel(StoreIngestionService storeIngestionService, ReadOnlyStoreRepository metaDataRepo,
-      StorageService storageService,
-      VeniceStoreConfig storeConfig, int partition, Time time) {
+      StorageService storageService, VeniceStoreConfig storeConfig, int partition, Time time) {
+    this(storeIngestionService, metaDataRepo, storageService, storeConfig, partition, time,
+        CompletableFuture.completedFuture(null), null);
+  }
+
+  public AbstractParticipantModel(StoreIngestionService storeIngestionService, ReadOnlyStoreRepository metaDataRepo,
+      StorageService storageService, VeniceStoreConfig storeConfig, int partition, Time time,
+      CompletableFuture<HelixPartitionPushStatusAccessor> accessorFuture, String instanceName) {
     this.storeIngestionService = storeIngestionService;
     this.metaDataRepo = metaDataRepo;
     this.storageService = storageService;
@@ -60,8 +72,13 @@ public abstract class AbstractParticipantModel extends StateModel {
     this.partition = partition;
     this.time = time;
 
-    this.storePartitionDescription = String
-        .format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
+    this.storePartitionDescription =
+        String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
+    accessorFuture.thenAccept(partitionPushStatusAccessor -> {
+      logger.info("Initializing AbstractParticipantModel with completed partitionPushStatusAccessor");
+      this.partitionPushStatusAccessor = partitionPushStatusAccessor;
+    });
+    this.instanceName = instanceName;
   }
 
   protected void executeStateTransition(Message message, NotificationContext context,
@@ -155,6 +172,7 @@ public abstract class AbstractParticipantModel extends StateModel {
       throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
     }
     removePartitionFromStore();
+    removeCustomizedState();
   }
 
   protected void removePartitionFromStore() {
@@ -182,6 +200,42 @@ public abstract class AbstractParticipantModel extends StateModel {
     } catch (Exception e) {
       logger.error(
           "Error dropping the partition:" + partition + " in store:" + getStoreConfig().getStoreName());
+    }
+  }
+
+  /**
+   * remove customized state for this partition if there is one
+   */
+  protected void removeCustomizedState() {
+    if (partitionPushStatusAccessor != null) {
+      String storeName = getStoreConfig().getStoreName();
+      boolean isSuccess = false;
+      int attempt = 0;
+      while (!isSuccess && attempt <= RETRY_COUNT) {
+        attempt++;
+        if (attempt > 1) {
+          logger.info("Wait " + RETRY_DURATION_MS + "ms to retry.");
+          Utils.sleep(RETRY_DURATION_MS);
+          logger.info(
+              String.format("Attempt #%s in removing customized state for store: %s, partition: %s, on instance: %s",
+                  attempt, storeName, partition, instanceName));
+        }
+        try {
+          partitionPushStatusAccessor.deleteReplicaStatus(storeName, partition);
+          isSuccess = true;
+        } catch (Exception e) {
+          logger.error(String.format("Error in removing customized state for store: %s, partition: %s, on instance: %s",
+              storeName, partition, instanceName, e));
+          continue;
+        }
+      }
+      if (!isSuccess) {
+        String errorMsg = String.format(
+            "Error: After attempting %s times, removing customized state for store: %s, partition: %s, on instance: %s",
+            attempt, storeName, partition, instanceName);
+        logger.error(errorMsg);
+        throw new VeniceException(errorMsg);
+      }
     }
   }
 

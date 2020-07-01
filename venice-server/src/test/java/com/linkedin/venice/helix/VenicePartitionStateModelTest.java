@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Store;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import org.apache.helix.participant.statemachine.StateTransitionError;
 import org.testng.Assert;
@@ -13,10 +14,12 @@ import static org.mockito.Mockito.*;
  */
 public class VenicePartitionStateModelTest
     extends AbstractVenicePartitionStateModelTest<VenicePartitionStateModel, StateModelNotifier> {
+
   @Override
   protected VenicePartitionStateModel getParticipantStateModel() {
-    return new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig,
-        testPartition, mockNotifier, mockReadOnlyStoreRepository);
+    return new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig, testPartition,
+        mockNotifier, mockReadOnlyStoreRepository, CompletableFuture.completedFuture(mockPushStatusAccessor),
+        instanceName);
   }
 
   @Override
@@ -106,9 +109,11 @@ public class VenicePartitionStateModelTest
    */
   @Test
   public void testOnBecomeDroppedFromOffline() {
+    doAnswer(invocation -> {return null;}).when(mockPushStatusAccessor).deleteReplicaStatus(any(), anyInt());
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
     verify(mockStorageService, atLeastOnce()).dropStorePartition(mockStoreConfig , testPartition);
     verify(mockStoreIngestionService, atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
+    verify(mockPushStatusAccessor, atLeastOnce()).deleteReplicaStatus(any(), anyInt());
   }
 
   /**
