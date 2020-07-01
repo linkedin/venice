@@ -1108,6 +1108,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void syncOffset(String topic, PartitionConsumptionState ps) {
     int partition = ps.getPartition();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
+    if (storageEngine == null) {
+      logger.warn("Storage engine has been removed. Could not execute sync offset for topic: " + topic + " and partition: " + partition);
+      return;
+    }
     Map<String, String> dbCheckpointingInfo = storageEngine.sync(partition);
     OffsetRecord offsetRecord = ps.getOffsetRecord();
     /**
