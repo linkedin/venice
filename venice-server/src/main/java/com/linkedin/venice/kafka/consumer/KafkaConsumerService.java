@@ -44,9 +44,7 @@ import org.apache.log4j.Logger;
 public class KafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = Logger.getLogger(KafkaConsumerService.class);
 
-  private final int numOfConsumersPerKafkaCluster;
   private final long readCycleDelayMs;
-
   private final List<SharedKafkaConsumer> consumers = new ArrayList<>();
   /**
    * This field is used to maintain the mapping between version topic and the corresponding ingestion task.
@@ -66,7 +64,6 @@ public class KafkaConsumerService extends AbstractVeniceService {
       final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
       final EventThrottler recordsThrottler, final KafkaConsumerServiceStats stats) {
     this.readCycleDelayMs = readCycleDelayMs;
-    this.numOfConsumersPerKafkaCluster = numOfConsumersPerKafkaCluster;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.stats = stats;
@@ -86,6 +83,10 @@ public class KafkaConsumerService extends AbstractVeniceService {
     consumerExecutor.shutdown();
 
     LOGGER.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
+  }
+
+  KafkaConsumerServiceStats getStats() {
+    return stats;
   }
 
   /**
@@ -213,6 +214,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
     public void run() {
       boolean addSomeDelay = false;
       Map<String, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> topicRecordsMap = new HashMap<>();
+
       while (! stopped) {
         try {
           if (!consumer.hasSubscription()) {
@@ -236,6 +238,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
               List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsOfCurrentTopic = topicRecordsMap.computeIfAbsent(topic, k -> new LinkedList<>());
               recordsOfCurrentTopic.add(record);
             }
+            long beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
             for (Map.Entry<String, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> entry : topicRecordsMap.entrySet()) {
               String topic = entry.getKey();
               List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> topicRecords = entry.getValue();
@@ -283,6 +286,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
                 ingestionTask.setLastConsumerException(e);
               }
             }
+            stats.recordConsumerRecordsProducingToWriterBufferLatency(LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
 
             bandwidthThrottler.maybeThrottle(totalBytes);
             recordsThrottler.maybeThrottle(records.count());
