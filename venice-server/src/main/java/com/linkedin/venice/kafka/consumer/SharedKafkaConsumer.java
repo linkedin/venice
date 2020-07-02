@@ -1,14 +1,17 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -26,6 +29,17 @@ import org.apache.log4j.Logger;
  */
 public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   private static final Logger LOGGER = Logger.getLogger(SharedKafkaConsumer.class);
+
+  /**
+   * After this number of poll requests, shared consumer will check whether all the subscribed topics exist or not.
+   * And it will clean up the subscription to the topics, which don't exist any more.
+   */
+  private final int sanitizeTopicSubscriptionAfterPollTimes;
+  private int pollTimesSinceLastSanitization = 0;
+  /**
+   * This set is used to store the topics without corresponding ingestion tasks in each poll request.
+   */
+  private Set<String> topicsWithoutCorrespondingIngestionTask = new HashSet<>();
 
   private final KafkaConsumerWrapper delegate;
   /**
@@ -46,8 +60,13 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   private final Map<String, StoreIngestionTask> topicToIngestionTaskMap = new VeniceConcurrentHashMap<>();
 
   public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service) {
+    this(delegate, service, 1000);
+  }
+
+  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service, int sanitizeTopicSubscriptionAfterPollTimes) {
     this.delegate = delegate;
     this.kafkaConsumerService = service;
+    this.sanitizeTopicSubscriptionAfterPollTimes = sanitizeTopicSubscriptionAfterPollTimes;
   }
 
   /**
@@ -102,9 +121,73 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     updateCurrentAssignment(false);
   }
 
+  /**
+   * This function is used to detect whether there is any subscription to the non-existing topics.
+   * If yes, this function will remove the subscriptions to these non-existing topics.
+   */
+  private void sanitizeConsumerSubscription() {
+    // Get the subscriptions
+    Set<TopicPartition> assignment = getAssignment();
+    if (assignment.isEmpty()) {
+      return;
+    }
+    Map<String, List<PartitionInfo>> existingTopicPartitions = listTopics();
+    Set<String> deletedTopics = new HashSet<>();
+    assignment.forEach( tp -> {
+      if (!existingTopicPartitions.containsKey(tp.topic())) {
+        deletedTopics.add(tp.topic());
+      }
+    });
+    if (!deletedTopics.isEmpty()) {
+      LOGGER.error("Detected the following deleted topics, and will unsubscribe them: " + deletedTopics);
+      deletedTopics.forEach( topic -> {
+        StoreIngestionTask task = getIngestionTaskForTopic(topic);
+        if (task != null) {
+          task.setLastConsumerException(new VeniceException("Topic: " + topic + " got deleted"));
+        }
+      });
+      close(deletedTopics);
+      kafkaConsumerService.getStats().recordDetectedDeletedTopicNum(deletedTopics.size());
+    }
+  }
+
   @Override
   public synchronized ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout) {
-    return this.delegate.poll(timeout);
+    if (++pollTimesSinceLastSanitization == sanitizeTopicSubscriptionAfterPollTimes) {
+      /**
+       * The reasons only to sanitize the subscription periodically:
+       * 1. This is a heavy operation.
+       * 2. The behavior of subscripting non-existing topics is not common.
+       * 3. The subscription to the non-existing topics will only cause some inefficiency because of the logging in each
+       *    poll request, but not correctness.
+       */
+      pollTimesSinceLastSanitization = 0;
+      sanitizeConsumerSubscription();
+    }
+    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = this.delegate.poll(timeout);
+    // Check whether the returned records, which don't have the corresponding ingestion tasks
+    topicsWithoutCorrespondingIngestionTask.clear();
+    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+      if (getIngestionTaskForTopic(record.topic()) == null) {
+        topicsWithoutCorrespondingIngestionTask.add(record.topic());
+      }
+    }
+    if (!topicsWithoutCorrespondingIngestionTask.isEmpty()) {
+      LOGGER.error("Detected the following topics without attached ingestion task, and will unsubscribe them: " + topicsWithoutCorrespondingIngestionTask);
+      close(topicsWithoutCorrespondingIngestionTask);
+      kafkaConsumerService.getStats().recordDetectedNoRunningIngestionTopicNum(topicsWithoutCorrespondingIngestionTask.size());
+    }
+    /**
+     * Here, this function still returns the original records because of the following reasons:
+     * 1. The behavior of not having corresponding ingestion tasks is not common, and most-likely it is caused by resource leaking/partial failure in edge cases.
+     * 2. Copying them to a new {@link ConsumerRecords} is not GC friendly.
+     * 3. Even copying them to  a new {@link ConsumerRecords} couldn't guarantee the consistency between returned consumer records
+     *    and the corresponding ingestion tasks since the caller will try to fetch the ingestion task for each record again, and
+     *    {@link #detach} could happen in-between, so the caller has to handle this situation of non corresponding ingestion task anyway.
+     *
+     * The consumer subscription cleanup will take effect in the next {@link #poll} request.
+     */
+    return records;
   }
 
   @Override
@@ -191,6 +274,10 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    */
   public void detach(StoreIngestionTask ingestionTask) {
     Set<String> subscribedTopics = ingestionTask.getEverSubscribedTopics();
+    /**
+     * This logic is used to guard the resource leaking situation when the unsubscription doesn't happen before the detaching.
+     */
+    close(subscribedTopics);
     subscribedTopics.forEach(topic -> topicToIngestionTaskMap.remove(topic));
     LOGGER.info("Detached ingestion task, which has subscribed topics: " + subscribedTopics);
   }

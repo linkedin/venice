@@ -773,24 +773,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void internalClose() {
     // Only reset Offset Messages are important, subscribe/unSubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
-    for (ConsumerAction message : consumerActionsQueue) {
-      ConsumerActionType opType = message.getType();
-      if (opType == ConsumerActionType.RESET_OFFSET) {
-        String topic = message.getTopic();
-        int partition = message.getPartition();
-        logger.info(consumerTaskId + " Cleanup Reset OffSet : Topic " + topic + " Partition Id " + partition );
-        storageMetadataService.clearOffset(topic, partition);
-      } else {
-        logger.info(consumerTaskId + " Cleanup ignoring the Message " + message);
+    try {
+      for (ConsumerAction message : consumerActionsQueue) {
+        ConsumerActionType opType = message.getType();
+        if (opType == ConsumerActionType.RESET_OFFSET) {
+          String topic = message.getTopic();
+          int partition = message.getPartition();
+          logger.info(consumerTaskId + " Cleanup Reset OffSet : Topic " + topic + " Partition Id " + partition);
+          storageMetadataService.clearOffset(topic, partition);
+        } else {
+          logger.info(consumerTaskId + " Cleanup ignoring the Message " + message);
+        }
       }
-    }
 
-    if (consumerMap == null || consumerMap.size() == 0) {
-      // Consumer constructor error-ed out, nothing can be cleaned up.
-      logger.warn("Error in consumer creation, skipping close for topic " + kafkaVersionTopic);
-      return;
+      if (consumerMap == null || consumerMap.size() == 0) {
+        // Consumer constructor error-ed out, nothing can be cleaned up.
+        logger.warn("Error in consumer creation, skipping close for topic " + kafkaVersionTopic);
+      } else {
+        consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
+      }
+    } catch (Exception e) {
+      logger.error("Caught exception while trying to close the current ingestion task", e);
     }
-    consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
     isRunning.set(false);
     logger.info("Store ingestion task for store: " + kafkaVersionTopic + " is closed");
   }
