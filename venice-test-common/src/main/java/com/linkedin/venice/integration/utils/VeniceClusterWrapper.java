@@ -170,11 +170,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(sslToKafka));
         if (!veniceRouterWrappers.isEmpty()) {
           featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
-                  .setVeniceURL("http://" + veniceRouterWrappers.values().stream().findFirst().get().getAddress())
-
-              // TODO: Figure out why the D2-based config doesn't work...
-//            .setD2Client(D2TestUtils.getAndStartD2Client(zkAddress))
-//            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+                  // Set d2 configs as KafkaStoreIngestionService ClientConfig.cloneConfig enables d2routing anyway
+                  .setVeniceURL(zkAddress)
+                  .setD2ServiceName(D2TestUtils.getD2ServiceName(clusterToD2, clusterName))
           );
         }
         featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(isKafkaOpenSSLEnabled));

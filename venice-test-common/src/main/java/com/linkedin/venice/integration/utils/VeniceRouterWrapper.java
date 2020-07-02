@@ -65,17 +65,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(properties);
 
       // setup d2 config first
-      String d2 = null;
-      if (!Utils.isNullOrEmpty(clusterToD2)) {
-        d2 = clusterToD2.substring(clusterToD2.indexOf(clusterName) + clusterName.length() + 1);
-        int end = d2.indexOf(",");
-        if (end > 0) {
-          d2 = d2.substring(0, end);
-        }
-      }
+      String d2 = D2TestUtils.getD2ServiceName(clusterToD2, clusterName);
 
       List<D2Server> d2Servers;
-      if (!Utils.isNullOrEmpty(d2) && !d2.equals(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)) {
+      if (!D2TestUtils.DEFAULT_TEST_SERVICE_NAME.equals(d2)) {
         D2TestUtils.setupD2Config(zkAddress, false, d2, d2, false);
         d2Servers = D2TestUtils.getD2Servers(
             zkAddress, new String[] {"http://localhost:" + port, "https://localhost:" + sslPortFromPort(port)}, d2);

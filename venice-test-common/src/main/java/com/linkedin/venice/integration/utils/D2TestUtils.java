@@ -17,6 +17,7 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -63,6 +64,18 @@ public class D2TestUtils {
     } catch (Exception e) {
       throw new VeniceException(e);
     }
+  }
+
+  public static String getD2ServiceName(String clusterToD2, String clusterName) {
+    String d2 = null;
+    if (!Utils.isNullOrEmpty(clusterToD2)) {
+      d2 = clusterToD2.substring(clusterToD2.indexOf(clusterName) + clusterName.length() + 1);
+      int end = d2.indexOf(",");
+      if (end > 0) {
+        d2 = d2.substring(0, end);
+      }
+    }
+    return d2 == null ? DEFAULT_TEST_SERVICE_NAME : d2;
   }
 
   private static D2Server getD2Server(String zkHosts, String localUri) {

@@ -15,11 +15,13 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -95,7 +97,7 @@ public class StoreMigrationTest {
     twoLayerMultiColoMultiClusterWrapper.close();
   }
 
-  @Test
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testMigrateStoreMultiDatacenter() throws Exception {
     String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
     String destD2ServiceName = "venice-" + destClusterName.substring(destClusterName.length() - 1);
@@ -105,21 +107,25 @@ public class StoreMigrationTest {
         .setD2ServiceName(srcD2ServiceName)
         .setD2Client(d2Client));
 
+    // Force refreshing router repositories to ensure that client connects to the correct cluster during the initialization
+    refreshAllRouterMetaData();
     verifyStoreData(client);
 
     startMigration(parentControllerUrl);
     completeMigration();
 
-    verifyStoreData(client);
-    AbstractAvroStoreClient<String, Object> castClient =
-        (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client).getInnerStoreClient();
-    // Client d2ServiceName should be updated
-    Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
-
-    endMigration(parentControllerUrl);
+    try {
+      verifyStoreData(client);
+      AbstractAvroStoreClient<String, Object> castClient =
+          (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client).getInnerStoreClient();
+      // Client d2ServiceName should be updated
+      Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
+    } finally {
+      endMigration(parentControllerUrl);
+    }
   }
 
-  @Test
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testMigrateStoreWithPushesAndUpdatesMultiDatacenter() throws Exception {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
@@ -162,7 +168,7 @@ public class StoreMigrationTest {
     endMigration(parentControllerUrl);
   }
 
-  @Test
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testCompleteMigrationMultiDatacenter() throws Exception {
     ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
 
@@ -211,7 +217,7 @@ public class StoreMigrationTest {
     endMigration(parentControllerUrl);
   }
 
-  @Test
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testAbortMigrationMultiDatacenter() throws Exception {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
@@ -257,10 +263,15 @@ public class StoreMigrationTest {
     checkChildStatusAfterAbortMigration();
   }
 
-  @Test
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testMigrateStoreSingleDatacenter() throws Exception {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, childControllerUrl0);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, childControllerUrl0);
+
+    // Ensure store in child fabric is not migrating. StartMigration will terminate early is store is in migrating.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Assert.assertFalse(srcControllerClient.getStore(STORE_NAME).getStore().isMigrating());
+    });
 
     // Preforms store migration on child controller
     startMigration(childControllerUrl0);
@@ -350,10 +361,14 @@ public class StoreMigrationTest {
     AdminTool.main(endMigration);
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      // Store should be deleted in source cluster
+      // Store should be deleted in source cluster. Store in destination cluster should not be migrating.
       ControllerClient srcControllerClient = new ControllerClient(srcClusterName, controllerUrl);
       StoreResponse storeResponse = srcControllerClient.getStore(STORE_NAME);
       Assert.assertNull(storeResponse.getStore());
+      ControllerClient destControllerClient = new ControllerClient(destClusterName, controllerUrl);
+      storeResponse = destControllerClient.getStore(STORE_NAME);
+      Assert.assertNotNull(storeResponse.getStore());
+      Assert.assertFalse(storeResponse.getStore().isMigrating());
     });
     swapSrcAndDest();
   }
@@ -398,5 +413,13 @@ public class StoreMigrationTest {
         checkStatusAfterAbortMigration(srcChildControllerClient, destChildControllerClient);
       }
     });
+  }
+
+  private void refreshAllRouterMetaData() {
+    for (VeniceMultiClusterWrapper multiClusterWrapper : multiClusterWrappers) {
+      for (VeniceClusterWrapper clusterWrapper : multiClusterWrapper.getClusters().values()) {
+        clusterWrapper.refreshAllRouterMetaData();
+      }
+    }
   }
 }
