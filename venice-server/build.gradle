@@ -31,7 +31,6 @@ dependencies {
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
   }
   implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
-  implementation libraries.bdbJe
   implementation libraries.helix
   implementation libraries.kafkaClients
   implementation libraries.conscrypt

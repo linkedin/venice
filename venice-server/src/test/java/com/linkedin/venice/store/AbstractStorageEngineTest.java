@@ -32,7 +32,6 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     return new PropertyBuilder()
         .put(CLUSTER_NAME, "test_offset_manager")
         .put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true")
-        .put(OFFSET_MANAGER_TYPE, "bdb")
         .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs)
         .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
         .put(ZOOKEEPER_ADDRESS, "localhost:2181")
