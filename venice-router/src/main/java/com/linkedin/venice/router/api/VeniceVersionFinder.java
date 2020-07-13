@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.StoreDisabledException;
@@ -47,7 +49,7 @@ public class VeniceVersionFinder {
     this.clusterName = clusterName;
   }
 
-  public int getVersion(String store) throws VeniceException {
+  public int getVersion(String store, BasicFullHttpRequest request) throws VeniceException {
     /**
      * TODO: clone a store object is too expensive, and we could choose to expose the necessary methods
      * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
@@ -59,7 +61,7 @@ public class VeniceVersionFinder {
     if (!veniceStore.isEnableReads()) {
       throw new StoreDisabledException(store, "read");
     }
-    if (veniceStore.isMigrating()) {
+    if (veniceStore.isMigrating() && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
       Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(store);
       if (config.isPresent()) {
         String newCluster = config.get().getCluster();

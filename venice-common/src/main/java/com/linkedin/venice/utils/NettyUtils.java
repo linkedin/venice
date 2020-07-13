@@ -18,21 +18,12 @@ public class NettyUtils {
 
   public static void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
       ChannelHandlerContext ctx) {
-    setupResponseAndFlush(status, body, isJson, null, ctx);
-  }
-
-  public static void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
-                                     String location, ChannelHandlerContext ctx) {
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, status, Unpooled.wrappedBuffer(body));
     try {
       if (isJson) {
         response.headers().set(CONTENT_TYPE, HttpConstants.JSON);
       } else {
         response.headers().set(CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
-      }
-
-      if (location != null) {
-        response.headers().set(LOCATION, location);
       }
     } catch (NoSuchMethodError e){ // netty version conflict
       logger.warn("NoSuchMethodError, probably from netty version conflict.  Printing netty on classpath: ", e);

@@ -512,11 +512,7 @@ public class RouterServer extends AbstractVeniceService {
         .build();
 
     VerifySslHandler verifySslHandler = new VerifySslHandler(securityStats);
-    RouterAclHandler aclHandler = accessController.isPresent() ? new RouterAclHandler(
-        accessController.get(),
-        metadataRepository,
-        storeConfigRepository,
-        config.getClusterToD2Map()) : null;
+    RouterAclHandler aclHandler = accessController.isPresent() ? new RouterAclHandler(accessController.get(), metadataRepository) : null;
     SSLInitializer sslInitializer = sslFactory.isPresent() ? new SSLInitializer(sslFactory.get()) : null;
     Consumer<ChannelPipeline> noop = pipeline -> {};
     Consumer<ChannelPipeline> addSslInitializer = pipeline -> {pipeline.addFirst("SSL Initializer", sslInitializer);};

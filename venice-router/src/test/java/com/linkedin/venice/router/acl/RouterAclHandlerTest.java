@@ -2,10 +2,8 @@ package com.linkedin.venice.router.acl;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreConfig;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -17,9 +15,6 @@ import io.netty.handler.ssl.SslHandler;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSession;
 import org.mockito.ArgumentMatcher;
@@ -32,8 +27,6 @@ import static org.mockito.Mockito.*;
 public class RouterAclHandlerTest {
   private DynamicAccessController accessController;
   private HelixReadOnlyStoreRepository metadataRepo;
-  private HelixReadOnlyStoreConfigRepository storeConfigRepo;
-  private Map<String, String> clusterToD2Map;
   private ChannelHandlerContext ctx;
   private HttpRequest req;
   private RouterAclHandler aclHandler;
@@ -48,15 +41,11 @@ public class RouterAclHandlerTest {
   @BeforeMethod
   public void setup() throws Exception {
     accessController = mock(DynamicAccessController.class);
-    storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
-    clusterToD2Map = new HashMap<>();
     ctx = mock(ChannelHandlerContext.class);
     req = mock(HttpRequest.class);
     store = mock(Store.class);
 
     when(accessController.init(any())).thenReturn(accessController);
-    // No redirect attempts by default
-    doReturn(Optional.empty()).when(storeConfigRepo).getStoreConfig(any());
 
     // Certificate
     ChannelPipeline pipe = mock(ChannelPipeline.class);
@@ -133,7 +122,6 @@ public class RouterAclHandlerTest {
   @Test
   public void storeMissing() throws Exception {
     hasStore[0] = false;
-    doReturn(Optional.empty()).when(storeConfigRepo).getStoreConfig("storename");
     enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore);
 
     verify(ctx, never()).fireChannelRead(req);
@@ -141,22 +129,6 @@ public class RouterAclHandlerTest {
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
     verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
   }
-
-  @Test
-  public void storeMigrated() throws Exception {
-    hasStore[0] = false;
-    StoreConfig storeConfig = new StoreConfig("storename");
-    storeConfig.setCluster("destCluster");
-    doReturn(Optional.of(storeConfig)).when(storeConfigRepo).getStoreConfig("storename");
-    clusterToD2Map.put("destCluster", "d2Service");
-    enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore);
-
-    verify(ctx, never()).fireChannelRead(req);
-    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
-    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
-    verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.MOVED_PERMANENTLY)));
-  }
-
   @Test
   public void aclDisabledForSystemStore() throws Exception {
     isSystemStore[0] = true;
@@ -209,7 +181,7 @@ public class RouterAclHandlerTest {
       }
       // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
       metadataRepo = mock(HelixReadOnlyStoreRepository.class);
-      aclHandler = spy(new RouterAclHandler(accessController, metadataRepo, storeConfigRepo, clusterToD2Map));
+      aclHandler = spy(new RouterAclHandler(accessController, metadataRepo));
       update();
       aclHandler.channelRead0(ctx, req);
     }
