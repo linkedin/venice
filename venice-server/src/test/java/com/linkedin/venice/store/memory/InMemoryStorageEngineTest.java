@@ -3,7 +3,6 @@ package com.linkedin.venice.store.memory;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.VeniceConfigLoader;
-import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.storage.StorageService;
@@ -42,8 +41,7 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
     VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY);
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
 
-    service = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
-        mock(AggVersionedStorageEngineStats.class), null);
+    service = new StorageService(configLoader, mock(AggVersionedStorageEngineStats.class), null);
     storeConfig = new VeniceStoreConfig(STORE_NAME, serverProperties);
 
     testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);

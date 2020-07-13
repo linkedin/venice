@@ -89,8 +89,7 @@ public class DaVinciBackend implements Closeable {
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
     rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBStatisticsEnabled()) : null;
-    storageService = new StorageService(configLoader, s -> {},
-        null, storageEngineStats, rocksDBMemoryStats);
+    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats);
     storageService.start();
 
     SchemaReader schemaReader = getSchemaReader(

@@ -26,14 +26,12 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggRocksDBStats;
-import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
-import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
@@ -73,7 +71,6 @@ public class VeniceServer {
   private StorageService storageService;
   private StorageMetadataService storageMetadataService;
   private StorageEngineMetadataService storageEngineMetadataService;
-  private BdbStorageMetadataService bdbMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private HelixParticipationService helixParticipationService;
   private LeakedResourceCleaner leakedResourceCleaner;
@@ -137,34 +134,25 @@ public class VeniceServer {
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
-    // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
-    bdbMetadataService = new BdbStorageMetadataService(clusterConfig);
-    services.add(bdbMetadataService);
 
     // Create ReadOnlyStore/SchemaRepository
     createHelixStoreAndSchemaRepository(clusterConfig, metricsRepository);
 
     // TODO: It would be cleaner to come up with a storage engine metric abstraction so we're not passing around so
     // many objects in constructors
-    AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
     boolean plainTableEnabled = veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
     RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled) : null;
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s),
-        bdbStorageEngineStats, storageEngineStats, rocksDBMemoryStats);
+    storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats);
 
-    if (veniceConfigLoader.getVeniceServerConfig().isRocksDBOffsetMetadataEnabled()) {
-      logger.info("Server will start with RocksDB offset store enabled");
-      storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository());
-      services.add(storageEngineMetadataService);
-      storageMetadataService = storageEngineMetadataService;
-    } else {
-      storageMetadataService = bdbMetadataService;
-    }
+    logger.info("Server will start with RocksDB offset store enabled");
+    storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository());
+    services.add(storageEngineMetadataService);
+    storageMetadataService = storageEngineMetadataService;
 
     services.add(storageService);
 
@@ -308,7 +296,7 @@ public class VeniceServer {
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
     for (AbstractVeniceService service : services) {
-      // Skip the participant and ingestions service only after offset bootstrap.
+      // Skip the participant and ingestion service only after offset bootstrap.
       if (service == kafkaStoreIngestionService || service == helixParticipationService) {
         continue;
       }
@@ -327,26 +315,7 @@ public class VeniceServer {
     }
     List<AbstractStorageEngine> allStorageEngines =
         storageService.getStorageEngineRepository().getAllLocalStorageEngines();
-    if (veniceConfigLoader.getVeniceServerConfig().isRocksDBOffsetMetadataEnabled()) {
-      for (AbstractStorageEngine storageEngine : allStorageEngines) {
-        logger.info("Bootstrapping offset records from BDB to RocksDB for store : " + storageEngine.getName());
-        storageEngine.bootStrapAndValidateOffsetRecordsFromBDB(bdbMetadataService);
-      }
-    } else {
-      for (AbstractStorageEngine storageEngine : allStorageEngines) {
-        /**
-         * Following method checks if a store was previously migrated to use RocksDB but still trying to start
-         * the server with config isRocksDBOffsetMetadataEnabled() set to false. For rolling back all the data
-         * needs to be wiped clean
-         */
-        if (storageEngine.isMetadataMigrationCompleted()) {
-          throw new VeniceException(String.format(
-              "Store %s has previously migrated to RocksDB metadata offset store, but now its set "
-                  + "(server.enable.rocksdb.offset.metadata = false) to use BDB. "
-                  + "Please delete all data including offset for this store", storageEngine.getName()));
-        }
-      }
-    }
+
     // start the helix participant service and ingestion service only after offset store bootstrap.
     kafkaStoreIngestionService.start();
     helixParticipationService.start();

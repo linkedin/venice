@@ -5,14 +5,12 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
-import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -26,10 +24,6 @@ public class VeniceClusterConfig {
   private String clusterName;
   //TODO: shouldn't the following configs be moved to VeniceServerConfig??
   protected String dataBasePath;
-  private String offsetManagerType = null;
-  private String offsetDatabasePath = null;
-  private long offsetManagerFlushIntervalMs;
-  private long offsetDatabaseCacheSize;
   private String zookeeperAddress;
   private PersistenceType persistenceType;
   private String kafkaBootstrapServers;
@@ -67,12 +61,7 @@ public class VeniceClusterConfig {
     clusterName = clusterProps.getString(CLUSTER_NAME);
 
     zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
-    offsetManagerType = clusterProps.getString(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString()); // Default "bdb"
-    offsetDatabasePath = clusterProps.getString(OFFSET_DATA_BASE_PATH,
-        Paths.get(System.getProperty("java.io.tmpdir"), BdbStorageMetadataService.OFFSETS_STORE_NAME).toAbsolutePath().toString());
     offsetManagerLogFileMaxBytes = clusterProps.getInt(OFFSET_MANAGER_LOG_FILE_MAX_BYTES, 10 * 1024 * 1024); // 10 MB
-    offsetManagerFlushIntervalMs = clusterProps.getLong(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
-    offsetDatabaseCacheSize = clusterProps.getSizeInBytes(OFFSET_DATABASE_CACHE_SIZE, 50 * 1024 * 1024); // 50 MB
 
     try {
       persistenceType = PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE,
@@ -134,22 +123,6 @@ public class VeniceClusterConfig {
 
   public String getClusterName() {
     return clusterName;
-  }
-
-  public String getOffsetManagerType() {
-    return offsetManagerType;
-  }
-
-  public String getOffsetDatabasePath() {
-    return offsetDatabasePath;
-  }
-
-  public long getOffsetManagerFlushIntervalMs() {
-    return offsetManagerFlushIntervalMs;
-  }
-
-  public long getOffsetDatabaseCacheSizeInBytes() {
-    return offsetDatabaseCacheSize;
   }
 
   public String getZookeeperAddress() {

@@ -3,7 +3,6 @@ package com.linkedin.venice.config;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.store.bdb.BdbStoreConfig;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 
@@ -23,13 +22,11 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   private Optional<PersistenceType> storePersistenceType = Optional.empty();
 
   // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
-  private BdbStoreConfig bdbStoreConfig;
 
   public VeniceStoreConfig(String storeName, VeniceProperties storeProperties)
     throws ConfigurationException {
     super(storeProperties);
     this.storeName = storeName;
-    initAndValidateProperties(storeProperties);
   }
 
   public VeniceStoreConfig(String storeName, VeniceProperties storeProperties,
@@ -39,22 +36,8 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     this.storePersistenceType = Optional.of(storePersistenceType);
   }
 
-  private void initAndValidateProperties(VeniceProperties storeProperties) throws ConfigurationException {
-    bdbStoreConfig = new BdbStoreConfig(storeName, storeProperties);
-    // initialize all other properties here and add getters for the same.
-  }
-
   public String getStoreName() {
     return storeName;
-  }
-
-  // TODO: This function doesn't belong here, does it ?!?!?
-  public BdbStoreConfig getBdbStoreConfig() {
-    if (getStorePersistenceType().equals(PersistenceType.BDB)) {
-      return this.bdbStoreConfig;
-    } else {
-      throw new VeniceException("Store '" + storeName + "' is not BDB, so it does not have any BdbStoreConfig.");
-    }
   }
 
   public PersistenceType getStorePersistenceType() {

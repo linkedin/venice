@@ -8,12 +8,10 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
-import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.store.rocksdb.RocksDBStorageEngineFactory;
@@ -44,14 +42,11 @@ public class StorageService extends AbstractVeniceService {
   private final VeniceConfigLoader configLoader;
   private final VeniceServerConfig serverConfig;
   private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
-  private final Consumer<String> storeVersionStateDeleter;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
   public StorageService(
       VeniceConfigLoader configLoader,
-      Consumer<String> storeVersionStateDeleter,
-      AggVersionedBdbStorageEngineStats bdbStorageEngineStats,
       AggVersionedStorageEngineStats storageEngineStats,
       RocksDBMemoryStats rocksDBMemoryStats) {
 
@@ -70,11 +65,8 @@ public class StorageService extends AbstractVeniceService {
     this.configLoader = configLoader;
     this.serverConfig = configLoader.getVeniceServerConfig();
     this.storageEngineRepository = new StorageEngineRepository();
-    if (bdbStorageEngineStats != null) {
-      this.storageEngineRepository.setAggBdbStorageEngineStats(bdbStorageEngineStats);
-    }
+
     this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
-    this.storeVersionStateDeleter = storeVersionStateDeleter;
     this.aggVersionedStorageEngineStats = storageEngineStats;
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     initInternalStorageEngineFactories();
@@ -82,7 +74,7 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats) {
-    this(configLoader, s -> {}, null, storageEngineStats, null);
+    this(configLoader, storageEngineStats, null);
   }
 
   /**
@@ -90,7 +82,6 @@ public class StorageService extends AbstractVeniceService {
    * Please add it here if you want to add more.
    */
   private void initInternalStorageEngineFactories() {
-    persistenceTypeToStorageEngineFactoryMap.put(BDB, new BdbStorageEngineFactory(serverConfig));
     persistenceTypeToStorageEngineFactoryMap.put(IN_MEMORY, new InMemoryStorageEngineFactory(serverConfig));
     persistenceTypeToStorageEngineFactoryMap.put(ROCKS_DB, new RocksDBStorageEngineFactory(serverConfig, rocksDBMemoryStats));
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
@@ -212,11 +203,6 @@ public class StorageService extends AbstractVeniceService {
 
       // Clean up the state
       storageEngineRepository.removeLocalStorageEngine(storeName);
-
-      // Clean up the metadata. We dont need to do this here if the config is enabled, as dropPartition does the offset cleanup also
-      if (!serverConfig.isRocksDBOffsetMetadataEnabled()) {
-        storeVersionStateDeleter.accept(storeName);
-      }
     }
   }
 

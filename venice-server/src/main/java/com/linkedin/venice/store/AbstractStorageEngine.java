@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.storage.BdbStorageMetadataService;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.SparseConcurrentList;
 
 import org.apache.log4j.Logger;
@@ -16,7 +16,6 @@ import org.apache.log4j.Logger;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -141,95 +140,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return null != someMetadataPartition.get(METADATA_MIGRATION_KEY);
   }
 
-  /**
-   * bootstrap and validate metadata offset records from BDB to rocksDB partition.
-   * it writes a dummy value to key METADATA_MIGRATION_KEY to indicate that this has been migrated to rocksDB
-   * @param bdbStorageMetadataService
-   */
-  public synchronized void bootStrapAndValidateOffsetRecordsFromBDB(BdbStorageMetadataService bdbStorageMetadataService) {
-    // Check if this store has already been migrated to use rocksDB offset store
-    if (isMetadataMigrationCompleted()) {
-      return;
-    }
-
-    bootStrapOffsetRecordsFromBDB(bdbStorageMetadataService);
-    validateBootstrap(bdbStorageMetadataService);
-
-    // Set the migration key indicating that the migration is done for this store.
-    metadataPartition.put(METADATA_MIGRATION_KEY, "DUMMY_VALUE".getBytes());
-  }
-
-  /**
-   * Loads offset from BDB into RocksDB metadata partition
-   * @param bdbStorageMetadataService
-   */
-  private void bootStrapOffsetRecordsFromBDB(BdbStorageMetadataService bdbStorageMetadataService) {
-    if (!bdbStorageMetadataService.isStarted()) {
-      throw new VeniceException("BDBMetadataService not started");
-    }
-
-    for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
-      if (!containsPartition(partitionId)) {
-        continue;
-      }
-      OffsetRecord offsetRecord = bdbStorageMetadataService.getLastOffset(storeName, partitionId);
-      if (offsetRecord.getOffset() != OffsetRecord.LOWEST_OFFSET) {
-        putPartitionOffset(partitionId, offsetRecord);
-      }
-    }
-    Optional<StoreVersionState> storeVersionState = bdbStorageMetadataService.getStoreVersionState(storeName);
-    if (storeVersionState.isPresent()) {
-      putStoreVersionState(storeVersionState.get());
-    }
-  }
-
-  /**
-   * Validate bootstrapped records from BDB and if they match clean up the BDB records
-   * else throw exception.
-   * @param bdbStorageMetadataService
-   */
-  private void validateBootstrap(BdbStorageMetadataService bdbStorageMetadataService) {
-    Set<Integer> bdbPartitions = new HashSet<>();
-    for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
-      if (!containsPartition(partitionId)) {
-        continue;
-      }
-      OffsetRecord bdbOffsetRecord = bdbStorageMetadataService.getLastOffset(storeName, partitionId);
-      Optional<OffsetRecord> rocksDBOffsetRecord = getPartitionOffset(partitionId);
-
-      if (bdbOffsetRecord.getOffset() != OffsetRecord.LOWEST_OFFSET) {
-        if (!rocksDBOffsetRecord.isPresent()) {
-          throw new VeniceException("RocksDB offset record missing but exits in BDB :" + bdbOffsetRecord);
-        }
-        if (!bdbOffsetRecord.equals(rocksDBOffsetRecord.get())) {
-          throw new VeniceException("BDB and RocksDB offset record mismatch, BDB record  :" + bdbOffsetRecord + " rocksdb record " + rocksDBOffsetRecord);
-        }
-        bdbPartitions.add(partitionId);
-      }
-    }
-
-    Optional<StoreVersionState> BDBStoreVersionState = bdbStorageMetadataService.getStoreVersionState(storeName);
-    Optional<StoreVersionState> rocksDBStoreVersionState = getStoreVersionState();
-
-    if (BDBStoreVersionState.isPresent() ) {
-      if (!rocksDBStoreVersionState.isPresent()) {
-        throw new VeniceException("RocksDB StoreVersionState record missing, but exist in BDB  :" + BDBStoreVersionState);
-      }
-      if (!BDBStoreVersionState.get().equals(rocksDBStoreVersionState.get())) {
-        throw new VeniceException("BDB and RocksDB StoreVersionState record mismatch, BDB record :" + BDBStoreVersionState + " rocksdb record " + rocksDBStoreVersionState);
-      }
-    }
-
-    //all validations passed. clear the BDB offset records
-    for (Integer partitionId : bdbPartitions) {
-      bdbStorageMetadataService.clearOffset(storeName, partitionId);
-    }
-
-    if (BDBStoreVersionState.isPresent()) {
-      bdbStorageMetadataService.clearStoreVersionState(storeName);
-    }
-  }
-
   public synchronized void preparePartitionForReading(int partitionId) {
     if (!containsPartition(partitionId)) {
       logger.warn("Partition " + storeName + "_" + partitionId + " was removed before reopening.");
@@ -320,7 +230,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       logger.error("Failed to remove a non existing partition: " + partitionId + " Store " + this.getName() );
       return;
     }
-    /* NOTE: bdb database is not closed here. */
     logger.info("Removing Partition: " + partitionId + " Store " + this.getName());
 
     /**

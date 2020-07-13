@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.meta.IngestionIsolationMode;
-import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.queues.FairBlockingQueue;
@@ -38,7 +37,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
-  private final BdbServerConfig bdbServerConfig;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final boolean enableServerWhiteList;
   private final boolean autoCreateDataPath; // default true
@@ -213,7 +211,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     dataBasePath = serverProperties.getString(DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
     autoCreateDataPath = Boolean.valueOf(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
-    bdbServerConfig = new BdbServerConfig(serverProperties);
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
     enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
     maxOnlineOfflineStateTransitionThreadNumber = serverProperties.getInt(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100);
@@ -325,10 +322,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isAutoCreateDataPath(){
     return autoCreateDataPath;
-  }
-
-  public BdbServerConfig getBdbServerConfig() {
-    return this.bdbServerConfig;
   }
 
   public RocksDBServerConfig getRocksDBServerConfig() {

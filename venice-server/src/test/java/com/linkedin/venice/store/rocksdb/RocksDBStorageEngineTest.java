@@ -5,9 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
-import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
@@ -40,8 +38,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
-        s -> {},
-        mock(AggVersionedBdbStorageEngineStats.class),
         mock(AggVersionedStorageEngineStats.class),
         null);
     clusterConfig = new VeniceClusterConfig(serverProps);
@@ -154,43 +150,5 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Assert.assertEquals(persistedPartitionIds.size(), 2);
     Assert.assertTrue(persistedPartitionIds.contains(PARTITION_ID));
     Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
-  }
-
-  @Test
-  public void testBDBToRocksDBOffsetBootStrap() throws Exception {
-    BdbStorageMetadataService metadataService = new BdbStorageMetadataService(clusterConfig);
-    metadataService.start();
-    try {
-      AbstractStorageEngine testStorageEngine = getTestStoreEngine();
-      String topic = testStorageEngine.getName();
-      OffsetRecord expectedRecord = null, actualRecord = null;
-
-      for (int j = 0; j < 2; j++) {
-        expectedRecord = TestUtils.getOffsetRecord(j);
-        metadataService.put(testStorageEngine.getName(), PARTITION_ID, expectedRecord);
-      }
-      StoreVersionState storeVersionState = new StoreVersionState();
-      storeVersionState.sorted = true;
-      metadataService.put(topic, storeVersionState);
-      actualRecord = metadataService.getLastOffset(topic, PARTITION_ID);
-      storeVersionState = metadataService.getStoreVersionState(topic).get();
-      testStoreEngine.bootStrapAndValidateOffsetRecordsFromBDB(metadataService);
-
-      Optional<OffsetRecord> record = testStoreEngine.getPartitionOffset(PARTITION_ID);
-      Assert.assertEquals(record.get(), actualRecord);
-
-      Optional<StoreVersionState> actualState = testStoreEngine.getStoreVersionState();
-      Assert.assertEquals(actualState.get(), storeVersionState);
-
-      // after validation BDB should be empty
-      Assert.assertFalse(metadataService.getStoreVersionState(topic).isPresent());
-
-      // calling it again will not bootstrap and validate again.
-      storeVersionState.sorted = false;
-      metadataService.put(topic, storeVersionState);
-      testStoreEngine.bootStrapAndValidateOffsetRecordsFromBDB(metadataService);
-    } finally {
-      metadataService.stop();
-    }
   }
 }
