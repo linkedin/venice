@@ -6,6 +6,7 @@ import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.r2.message.rest.RestResponseBuilder;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import org.apache.http.HttpHeaders;
@@ -87,7 +88,9 @@ public class TestTransportClient {
     verify(mockD2Client, times(2)).restRequest(d2RequestCaptor.capture(), any(), any());
     Assert.assertEquals(D2_PREFIX + SERVICE_NAME + "/" + TEST_REQUEST,
         d2RequestCaptor.getAllValues().get(0).getURI().toString());
+    Assert.assertTrue(d2RequestCaptor.getAllValues().get(0).getHeaders().containsKey(HttpConstants.VENICE_ALLOW_REDIRECT));
     Assert.assertEquals(D2_PREFIX + UPDATED_SERVICE_NAME + "/" + TEST_REQUEST,
         d2RequestCaptor.getAllValues().get(1).getURI().toString());
+    Assert.assertFalse(d2RequestCaptor.getAllValues().get(1).getHeaders().containsKey(HttpConstants.VENICE_ALLOW_REDIRECT));
   }
 }

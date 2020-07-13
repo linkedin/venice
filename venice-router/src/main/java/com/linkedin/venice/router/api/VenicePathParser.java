@@ -105,7 +105,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     VenicePath path = null;
     try {
       // this method may throw store not exist exception; track the exception under unhealthy request metric
-      int version = versionFinder.getVersion(storeName);
+      int version = versionFinder.getVersion(storeName, fullHttpRequest);
       String resourceName = Version.composeKafkaTopic(storeName, version);
 
       Optional<RouterStats<AggRouterHttpRequestStats>> statsOptional = routerConfig.isKeyValueProfilingEnabled() ?

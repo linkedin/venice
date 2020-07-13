@@ -243,6 +243,11 @@ public class D2TransportClient extends TransportClient {
                 d2ServiceName = uri.getAuthority();
                 logger.info("update d2ServiceName to " + d2ServiceName);
                 RestRequest redirectedRequest = request.builder().setURI(uri).build();
+                /**
+                 * Don't include VENICE_ALLOW_REDIRECT in request headers.
+                 * Allowing redirection for this request makes the other router respond 301 again
+                 * if its StoreConfig is not up-to-date.
+                 */
                 d2Client.restRequest(redirectedRequest, requestContext.clone(), callback);
                 return;
               } else {
@@ -265,7 +270,8 @@ public class D2TransportClient extends TransportClient {
       }
     };
 
-    d2Client.restRequest(request, requestContext, redirectCallback);
+    RestRequest redirectableRequest = request.builder().addHeaderValue(VENICE_ALLOW_REDIRECT, "1").build();
+    d2Client.restRequest(redirectableRequest, requestContext, redirectCallback);
   }
 
   private void streamRequest(StreamRequest request, RequestContext requestContext, Callback<StreamResponse> callback) {
@@ -284,6 +290,11 @@ public class D2TransportClient extends TransportClient {
                 d2ServiceName = uri.getAuthority();
                 logger.info("update d2ServiceName to " + d2ServiceName);
                 StreamRequest redirectedRequest = request.builder().setURI(uri).build(request.getEntityStream());
+                /**
+                 * Don't include VENICE_ALLOW_REDIRECT in request headers.
+                 * Allowing redirection for this request makes the other router respond 301 again
+                 * if its StoreConfig is not up-to-date.
+                 */
                 d2Client.streamRequest(redirectedRequest, requestContext.clone(), callback);
                 return;
               } else {
@@ -306,7 +317,9 @@ public class D2TransportClient extends TransportClient {
       }
     };
 
-    d2Client.streamRequest(request, requestContext, redirectCallback);
+    StreamRequest redirectableRequest = request.builder()
+        .addHeaderValue(VENICE_ALLOW_REDIRECT, "1").build(request.getEntityStream());
+    d2Client.streamRequest(redirectableRequest, requestContext, redirectCallback);
   }
 
   @Override
