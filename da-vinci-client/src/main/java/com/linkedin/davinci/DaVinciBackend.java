@@ -1,4 +1,4 @@
-package com.linkedin.davinci.client;
+package com.linkedin.davinci;
 
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
