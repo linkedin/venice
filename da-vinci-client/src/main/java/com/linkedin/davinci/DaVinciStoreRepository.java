@@ -1,4 +1,4 @@
-package com.linkedin.davinci.client;
+package com.linkedin.davinci;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;

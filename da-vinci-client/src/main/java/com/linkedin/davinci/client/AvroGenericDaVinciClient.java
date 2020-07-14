@@ -21,6 +21,9 @@ import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.DaVinciBackend;
+import com.linkedin.davinci.StoreBackend;
+import com.linkedin.davinci.VersionBackend;
 
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
