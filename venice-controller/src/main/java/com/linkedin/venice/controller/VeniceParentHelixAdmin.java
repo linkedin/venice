@@ -572,7 +572,9 @@ public class VeniceParentHelixAdmin implements Admin {
       try {
         storeNameForCurrentTopic = Version.parseStoreFromKafkaTopicName(topic);
       } catch (Exception e) {
-        logger.warn("Failed to parse StoreName from topic: " + topic, e);
+        if (logger.isDebugEnabled()) {
+          logger.debug("Failed to parse StoreName from topic: " + topic + ", and error message: " + e.getMessage());
+        }
         continue;
       }
       if (storeNameForCurrentTopic.equals(storeName)) {
