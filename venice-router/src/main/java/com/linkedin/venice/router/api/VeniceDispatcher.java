@@ -220,13 +220,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     String snID = storageNode.getNodeId();
     RequestType requestType = path.getRequestType();
 
-    if (!pendingRequestThrottler.put()) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(storeName),
-          Optional.of(requestType),
-          SERVICE_UNAVAILABLE,
-          "Maximum number of pending request threshold reached! Please contact Venice team.");
-    }
     long startTime = System.nanoTime();
     TimedCompletableFuture<PortableHttpResponse>
         responseFuture = new TimedCompletableFuture<>(System.currentTimeMillis(), storageNode.getNodeId());
@@ -251,6 +244,20 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       routerStats.recordPendingRequest(storageNode.getNodeId());
     } finally {
       lock.unlock();
+    }
+
+    /**
+     * TODO: Consider removing the per router level pendingRequestThrottler once {@link RouterThrottleHandler} is
+     *       enabled; {@link RouterThrottleHandler} is also a per router level pending request throttler but works
+     *       in the earlier stack before scattering any request, which can save more resource.
+     */
+    if (!pendingRequestThrottler.put()) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.of(storeName),
+          Optional.of(requestType),
+          SERVICE_UNAVAILABLE,
+          "Maximum number of pending request threshold reached! Current pending request count: "
+              + pendingRequestThrottler.getCurrentPendingRequestCount() + ". Please contact Venice team.");
     }
 
     long requestId = uniqueRequestId.getAndIncrement();
