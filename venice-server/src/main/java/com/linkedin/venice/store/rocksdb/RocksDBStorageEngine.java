@@ -19,18 +19,19 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
 
   private final String rocksDbPath;
   private final String storeDbPath;
-  private final Options options;
   private final RocksDBMemoryStats memoryStats;
   private final RocksDBThrottler rocksDbThrottler;
+  private final RocksDBServerConfig rocksDBServerConfig;
+  private final RocksDBStorageEngineFactory factory;
 
-
-  public RocksDBStorageEngine(VeniceStoreConfig storeConfig, Options options, String rocksDbPath,
-      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler) {
+  public RocksDBStorageEngine(VeniceStoreConfig storeConfig, RocksDBStorageEngineFactory factory, String rocksDbPath,
+      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
     super(storeConfig.getStoreName());
     this.rocksDbPath = rocksDbPath;
-    this.options = options;
     this.memoryStats = rocksDBMemoryStats;
     this.rocksDbThrottler = rocksDbThrottler;
+    this.rocksDBServerConfig = rocksDBServerConfig;
+    this.factory = factory;
 
     // Create store folder if it doesn't exist
     storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getName());
@@ -70,7 +71,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
 
   @Override
   public RocksDBStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
-    return new RocksDBStoragePartition(storagePartitionConfig, options, rocksDbPath, memoryStats, rocksDbThrottler);
+    return new RocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler, rocksDBServerConfig);
   }
 
   @Override

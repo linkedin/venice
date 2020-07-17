@@ -11,7 +11,7 @@ import java.util.Set;
 
 public class BlackHoleStorageEngineFactory extends StorageEngineFactory {
   @Override
-  public AbstractStorageEngine getStore(VeniceStoreConfig storeDef) throws StorageInitializationException {
+  public AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeDef) throws StorageInitializationException {
     return new BlackHoleStorageEngine(storeDef.getStoreName());
   }
 

@@ -161,6 +161,10 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER = "rocksdb.level0.slowdown.writes.trigger";
   public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER = "rocksdb.level0.stops.writes.trigger";
 
+  public static final String ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION = "rocksdb.level0.file.num.compaction.trigger.write.only.version";
+  public static final String ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION = "rocksdb.level0.slowdown.writes.trigger.write.only.version";
+  public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION = "rocksdb.level0.stops.writes.trigger.write.only.version";
+
   /**
    * Every time, when RocksDB tries to open a database, it will spin up multiple threads to load the file metadata
    * in parallel, and the application could hit the thread limit issue if there are many RocksDB open operations
@@ -223,6 +227,10 @@ public class RocksDBServerConfig {
   private final int level0FileNumCompactionTrigger;
   private final int level0SlowdownWritesTrigger;
   private final int level0StopWritesTrigger;
+
+  private final int level0FileNumCompactionTriggerWriteOnlyVersion;
+  private final int level0SlowdownWritesTriggerWriteOnlyVersion;
+  private final int level0StopWritesTriggerWriteOnlyVersion;
 
 
   public RocksDBServerConfig(VeniceProperties props) {
@@ -298,9 +306,25 @@ public class RocksDBServerConfig {
     this.databaseOpenOperationThrottle = props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, 3);
     this.cappedPrefixExtractorLength = props.getInt(CAPPED_PREFIX_EXTRACTOR_LENGTH, 16);
     this.writeQuotaBytesPerSecond = props.getSizeInBytes(ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND, 100L * 1024 * 1024); // 100MB by default
-    this.level0FileNumCompactionTrigger = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4);
-    this.level0SlowdownWritesTrigger = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20);
-    this.level0StopWritesTrigger = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 36);
+    this.level0FileNumCompactionTrigger = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 40);
+    this.level0SlowdownWritesTrigger = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 60);
+    this.level0StopWritesTrigger = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 80);
+
+    this.level0FileNumCompactionTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 100);
+    this.level0SlowdownWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 120);
+    this.level0StopWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 160);
+  }
+
+  public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
+    return level0FileNumCompactionTriggerWriteOnlyVersion;
+  }
+
+  public int getLevel0SlowdownWritesTriggerWriteOnlyVersion() {
+    return level0SlowdownWritesTriggerWriteOnlyVersion;
+  }
+
+  public int getLevel0StopWritesTriggerWriteOnlyVersion() {
+    return level0StopWritesTriggerWriteOnlyVersion;
   }
 
   public int getLevel0FileNumCompactionTrigger() {

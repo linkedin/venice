@@ -2126,6 +2126,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (extraDisjunctionCondition ||
           (partitionConsumptionState.isEndOfPushReceived() && !partitionConsumptionState.isCompletionReported())) {
         if (isReadyToServe(partitionConsumptionState)) {
+          StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(kafkaVersionTopic, partitionId);
+          logger.info("Reopen database after ready-to-serve with storage partition config: " + storagePartitionConfig);
+          // After ready to serve reopen the database with default L0 compaction config
+          storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).prepareStorageForRead(storagePartitionConfig);
           if (partitionConsumptionState.isCompletionReported()) {
             // Completion has been reported so extraDisjunctionCondition must be true to enter here.
             logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " synced offset: "
@@ -2135,6 +2139,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
             logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " is ready to serve");
           }
+
         } else {
           notificationDispatcher.reportProgress(partitionConsumptionState);
         }
