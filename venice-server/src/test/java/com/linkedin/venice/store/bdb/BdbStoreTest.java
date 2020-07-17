@@ -31,7 +31,7 @@ public class BdbStoreTest extends AbstractStoreTest {
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(storeProps);
     BdbStorageEngineFactory factory = new BdbStorageEngineFactory(serverConfig);
-    AbstractStorageEngine engine = factory.getStore(storeConfig);
+    AbstractStorageEngine engine = factory.getStorageEngine(storeConfig);
     engine.addStoragePartition(partitionId);
 
     testStore = engine;

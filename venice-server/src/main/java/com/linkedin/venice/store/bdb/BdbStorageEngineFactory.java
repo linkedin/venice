@@ -169,7 +169,7 @@ public class BdbStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public AbstractStorageEngine getStore(VeniceStoreConfig storeConfig) throws StorageInitializationException {
+  public AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeConfig) throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
     synchronized (lock) {
       String storeName = storeConfig.getStoreName();

@@ -1,8 +1,12 @@
 package com.linkedin.venice.store.rocksdb;
 
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
@@ -78,7 +82,12 @@ public class RocksDBStoragePartitionTest {
     Options options = new Options();
     options.setCreateIfMissing(true);
     Map<String, String> inputRecords = generateInput(1000, sorted);
-    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR, null, rocksDbThrottler);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
     if (sorted) {
@@ -103,7 +112,9 @@ public class RocksDBStoragePartitionTest {
         if (currentRecordNum == interruptedRecord) {
           if (reopenDatabaseDuringInterruption) {
             storagePartition.close();
-            storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR, null, rocksDbThrottler);
+            storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+            Options storeOptions = storagePartition.getOptions();
+            Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
           if (sorted) {
             storagePartition.beginBatchWrite(checkpointingInfo);
@@ -142,13 +153,16 @@ public class RocksDBStoragePartitionTest {
     // Re-open it in read/write mode
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
-    storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR, null, rocksDbThrottler);
+    partitionConfig.setWriteOnlyConfig(false);
+    storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = keyPrefix + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
+    Options storeOptions = storagePartition.getOptions();
+    Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
     storagePartition.drop();
     options.close();
     removeDir(storeDir);

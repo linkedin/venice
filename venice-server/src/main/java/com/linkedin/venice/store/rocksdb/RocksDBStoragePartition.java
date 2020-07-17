@@ -13,8 +13,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
+import org.rocksdb.BlockBasedTableConfig;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.FlushOptions;
 import org.rocksdb.IngestExternalFileOptions;
@@ -23,6 +25,7 @@ import org.rocksdb.PlainTableConfig;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileWriter;
+import org.rocksdb.Statistics;
 import org.rocksdb.WriteOptions;
 
 import static com.linkedin.venice.store.AbstractStorageEngine.*;
@@ -65,7 +68,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private final String fullPathForTempSSTFileDir;
   private final EnvOptions envOptions;
 
-
   private final String storeName;
   private final int partitionId;
   private final String fullPathForPartitionDB;
@@ -84,7 +86,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   private final Options options;
   private final RocksDB rocksDB;
-
+  private final RocksDBServerConfig rocksDBServerConfig;
+  private final RocksDBStorageEngineFactory factory;
   /**
    * Whether the input is sorted or not.
    */
@@ -95,16 +98,23 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   private final boolean readOnly;
 
+  private final Optional<Statistics> aggStatistics;
+
   private final RocksDBMemoryStats rocksDBMemoryStats;
   private final RocksDBThrottler rocksDbThrottler;
 
-  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, Options options, String dbDir,
-      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler) {
+  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
+      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
     super(storagePartitionConfig.getPartitionId());
 
+    this.factory = factory;
+    this.rocksDBServerConfig = rocksDBServerConfig;
     // Create the folder for storage partition if it doesn't exist
     this.storeName = storagePartitionConfig.getStoreName();
     this.partitionId = storagePartitionConfig.getPartitionId();
+    this.aggStatistics = factory.getAggStatistics();
+
+    Options options =  getStoreOptions(storagePartitionConfig);
 
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
@@ -127,6 +137,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     this.envOptions.setUseDirectWrites(false);
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.rocksDbThrottler = rocksDbThrottler;
+
     try {
       if (this.readOnly) {
         this.rocksDB = rocksDbThrottler.openReadOnly(options, fullPathForPartitionDB);
@@ -172,6 +183,74 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
         LOGGER.info("Removed sst file: " + fullPathForSSTFile + " since it is after checkpointed SST file no: " + lastFinishedSSTFileNo);
       }
     }
+  }
+
+  public synchronized Options getStoreOptions(StoragePartitionConfig storagePartitionConfig) {
+    Options options = new Options();
+    options.setEnv(factory.getEnv());
+    options.setCreateIfMissing(true);
+    options.setCompressionType(rocksDBServerConfig.getRocksDBOptionsCompressionType());
+    options.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
+    options.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
+    options.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
+    options.setMaxOpenFiles(rocksDBServerConfig.getMaxOpenFiles());
+    options.setTargetFileSizeBase(rocksDBServerConfig.getTargetFileSizeInBytes());
+
+    options.setWriteBufferManager(factory.getWriteBufferManager());
+    options.setSstFileManager(factory.getSstFileManager());
+    options.setMaxFileOpeningThreads(rocksDBServerConfig.getMaxFileOpeningThreads());
+    options.setRateLimiter(factory.getRateLimiter());
+
+    /**
+     * Disable the stat dump threads, which will create excessive threads, which will eventually crash
+     * storage node.
+     */
+    options.setStatsDumpPeriodSec(0);
+    options.setStatsPersistPeriodSec(0);
+
+    aggStatistics.ifPresent(stat -> options.setStatistics(stat));
+
+    if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+      PlainTableConfig tableConfig = new PlainTableConfig();
+      tableConfig.setStoreIndexInFile(rocksDBServerConfig.isRocksDBStoreIndexInFile());
+      tableConfig.setHugePageTlbSize(rocksDBServerConfig.getRocksDBHugePageTlbSize());
+      tableConfig.setBloomBitsPerKey(rocksDBServerConfig.getRocksDBBloomBitsPerKey());
+      options.setTableFormatConfig(tableConfig);
+      options.setAllowMmapReads(true);
+      options.useCappedPrefixExtractor(rocksDBServerConfig.getCappedPrefixExtractorLength());
+    } else {
+      // Cache index and bloom filter in block cache
+      // and share the same cache across all the RocksDB databases
+      BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
+      tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
+      tableConfig.setBlockCache(factory.getSharedCache());
+      tableConfig.setCacheIndexAndFilterBlocks(true);
+
+      // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in memory.
+      // https://github.com/facebook/rocksdb/wiki/Block-Cache#caching-index-and-filter-blocks
+      // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
+
+      tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
+      tableConfig.setFormatVersion(2); // Latest version
+      options.setTableFormatConfig(tableConfig);
+    }
+    // Memtable options
+    options.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
+    options.setMaxWriteBufferNumber(rocksDBServerConfig.getRocksDBMaxMemtableCount());
+    options.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
+    options.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
+    options.setMemtableHugePageSize(rocksDBServerConfig.getMemTableHugePageSize());
+
+    if (!storagePartitionConfig.isWriteOnlyConfig()) {
+      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
+      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
+      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
+    } else {
+      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
+      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
+      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
+    }
+    return options;
   }
 
   @Override
@@ -433,6 +512,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     /**
      * The following operations are used to free up memory.
      */
+    options.close();
     deRegisterDBStats();
     rocksDB.close();
     if (null != envOptions) {
@@ -485,5 +565,9 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     } else {
       return 0;
     }
+  }
+
+  protected Options getOptions() {
+    return options;
   }
 }

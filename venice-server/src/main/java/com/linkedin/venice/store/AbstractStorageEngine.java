@@ -244,6 +244,16 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
   }
 
   /**
+   * Prepare the opened storage partition for reading.
+   * Currently it will reset the L0 compaction trigger configs to lower value.
+   * @param storagePartitionConfig
+   */
+  public synchronized void prepareStorageForRead(StoragePartitionConfig storagePartitionConfig) {
+    storagePartitionConfig.setWriteOnlyConfig(false);
+    adjustStoragePartition(storagePartitionConfig);
+  }
+
+  /**
    * Adjust the opened storage partition according to the provided storagePartitionConfig.
    * It will throw exception if there is no opened storage partition for the given partition id.
    * @param storagePartitionConfig

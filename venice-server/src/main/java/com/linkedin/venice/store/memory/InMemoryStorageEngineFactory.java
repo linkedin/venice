@@ -20,7 +20,7 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public AbstractStorageEngine getStore(VeniceStoreConfig storeConfig)
+  public AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeConfig)
       throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
     synchronized (lock) {

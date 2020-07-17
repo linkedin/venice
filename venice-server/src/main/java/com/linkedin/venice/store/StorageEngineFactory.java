@@ -22,7 +22,7 @@ public abstract class StorageEngineFactory {
    * @param storeDef  store definition
    * @return The storage engine
    */
-  public abstract AbstractStorageEngine getStore(VeniceStoreConfig storeDef)
+  public abstract AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeDef)
       throws StorageInitializationException;
 
   /**

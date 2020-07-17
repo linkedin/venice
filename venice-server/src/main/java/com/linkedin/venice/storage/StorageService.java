@@ -86,7 +86,7 @@ public class StorageService extends AbstractVeniceService {
     restoreAllStores(configLoader);
   }
 
-  public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats) {
+  public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats ) {
     this(configLoader, s -> {}, null, storageEngineStats, null);
   }
 
@@ -189,7 +189,7 @@ public class StorageService extends AbstractVeniceService {
 
     logger.info("Creating/Opening Storage Engine " + storeName + " with type: " + storeConfig.getStorePersistenceType());
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
-    engine = factory.getStore(storeConfig);
+    engine = factory.getStorageEngine(storeConfig);
     storageEngineRepository.addLocalStorageEngine(engine);
     // Setup storage engine stats
     aggVersionedStorageEngineStats.setStorageEngine(storeName, engine);
