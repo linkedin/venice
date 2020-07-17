@@ -291,7 +291,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
          * Config {@link EXTRACT_TABLE_NAME_KEY} will determine the table name of a topic; we choose to use version
          * topic name as the table name so that we create a clean ETL isolation between different versions.
          */
-        topicSpecificState.appendToSetProp(EXTRACT_TABLE_NAME_KEY, topicEntry.getKey());
+        topicSpecificState.appendToSetProp(EXTRACT_TABLE_NAME_KEY, transformInvalidTableName(topicEntry.getKey()));
         filteredTopics.add(new KafkaTopic(topicEntry.getKey(),
             topicEntry.getValue().stream().map(PARTITION_INFO_TO_KAFKA_PARTITION).collect(Collectors.toList()),
             com.google.common.base.Optional.of(topicSpecificState)));
@@ -446,6 +446,17 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   @Override
   public void close() throws IOException {
     this.veniceKafkaConsumer.close();
+  }
+
+  /**
+   * If there is dash("-") inside the table name, Gobblin would throw avro SchemaParseException when using
+   * the table name inside schema; this helper function will replace all dashes with underscores("_")
+   */
+  private static String transformInvalidTableName(String tableName) {
+    if (tableName.contains("-")) {
+      tableName = tableName.replaceAll("-", "_");
+    }
+    return tableName;
   }
 
   /**
