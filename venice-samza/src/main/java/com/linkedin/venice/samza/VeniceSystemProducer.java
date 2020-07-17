@@ -137,18 +137,22 @@ public class VeniceSystemProducer implements SystemProducer {
     throw new SamzaException("Failed to send request to Controller, error: " + errorMsg);
   }
 
+  /**
+   * This method is overrided and not used by LinkedIn internally.
+   * Please update the overrided method accordingly after modifying this method.
+   */
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
+    return getVeniceWriter(store, veniceWriterProperties);
+  }
+
+  protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
     veniceWriterProperties.setProperty(PARTITIONER_CLASS, store.getPartitionerClass());
     for (Map.Entry<String, String> entry : store.getPartitionerParams().entrySet()) {
       veniceWriterProperties.setProperty(entry.getKey(), entry.getValue());
     }
     veniceWriterProperties.setProperty(AMPLIFICATION_FACTOR, String.valueOf(store.getAmplificationFactor()));
-    return getVeniceWriter(store, veniceWriterProperties);
-  }
-
-  protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
     return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time);
   }
 
