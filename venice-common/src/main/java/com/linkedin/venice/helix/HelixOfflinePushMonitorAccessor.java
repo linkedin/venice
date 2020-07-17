@@ -193,6 +193,13 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
     logger.info(
         "Start update replica status for topic:" + topic + " partition:" + partitionId + " in cluster:" + clusterName);
     HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
+
+      // currentData can be null if the path read out of zk is blank to start with (as current data is read and passed in)
+      // So first we do a null check.  If it's null, we can return a base object and fill the data we're trying to persist
+      if(currentData == null) {
+        currentData = new PartitionStatus(partitionId);
+      }
+
       currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion);
       if (progress != Integer.MIN_VALUE) {
         currentData.updateProgress(instanceId, progress);
