@@ -63,11 +63,16 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
       setupNewStorePartition(true);
+      String resourceName = message.getResourceName();
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int version = Version.parseVersionFromKafkaTopicName(resourceName);
 
-      String storeName = Version.parseStoreFromKafkaTopicName(message.getResourceName());
-      int version = Version.parseVersionFromKafkaTopicName(message.getResourceName());
+
+      // Placing a latch in the transition if this is the current version
       if (getMetaDataRepo().getStore(storeName).getCurrentVersion() == version) {
-        waitConsumptionCompleted(message.getResourceName(), notifier);
+        //startConsumption is called in order to create the latch
+        notifier.startConsumption(resourceName, getPartition());
+        waitConsumptionCompleted(resourceName, notifier);
       }
     });
   }
