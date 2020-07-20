@@ -188,6 +188,13 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     });
   }
 
+  @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
+  public void onBecomingOfflineFromError(Message message, NotificationContext context) {
+    executeStateTransition(message, () -> {
+      logger.info(clusterName + " going from ERROR to OFFLINE.");
+    });
+  }
+
   @Override
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
     String controllerName = message.getTgtName();
