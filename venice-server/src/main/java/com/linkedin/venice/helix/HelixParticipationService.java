@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -62,6 +63,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private AbstractParticipantModelFactory onlineOfflineParticipantModelFactory;
   private AbstractParticipantModelFactory leaderFollowerParticipantModelFactory;
   private HelixPartitionPushStatusAccessor partitionPushStatusAccessor;
+  private Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture;
 
   public HelixParticipationService(StoreIngestionService storeIngestionService,
           StorageService storageService,
@@ -83,7 +85,9 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.metricsRepository = metricsRepository;
     this.instance = new Instance(participantName, Utils.getHostName(), port);
     this.managerFuture = managerFuture;
-
+    if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
+      this.partitionPushStatusAccessorFuture = Optional.of(new CompletableFuture<>());
+    }
     new ParticipantStateStats(metricsRepository, "venice_O/O_partition_state");
   }
 
@@ -107,9 +111,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     logger.info("Attempting to start HelixParticipation service");
     manager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
-
-    CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture =
-        managerFuture.thenApply(manager -> partitionPushStatusAccessor);
 
     //create 2 dedicated thread pools for executing incoming state transitions (1 for online offline (O/O) model and the
     //other for leader follower (L/F) model) Since L/F transition is not blocked by ingestion, it should run much faster
@@ -202,6 +203,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   /**
    * check RouterServer#asyncStart() for details about asyncStart
+   * The difference between router async start and here is router asyncStart is disabled in prod since it is risky,
+   * and it is only enabled in dev env for PCL.
+   * For server, the deployment hook will make sure each partition of current version must have
+   * enough ready-to-serve replicas before restarting next storage node.
    */
   private void asyncStart() {
     zkClient = ZkClientFactory.newZkClient(zkAddress);
@@ -223,13 +228,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
         manager.connect();
-
-        /**
-         * instance config is intended for CRUSH alg.
-         * Comment it out as it's already taken care by deployment script (by Helix rest APIs).
-         * So no need to invoke here
-         */
-        //HelixUtils.setupInstanceConfig(clusterName, instance.getNodeId(), zkAddress);
         managerFuture.complete(manager);
       } catch (Exception e) {
         logger.error(e.getMessage(), e);
@@ -239,20 +237,27 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         System.exit(1);
       }
 
-
-      serviceState.set(ServiceState.STARTED);
-
-      logger.info("Successfully started Helix Participation Service");
-
       // If Helix customized view is enabled, do dual-write for offline push status update
-      if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
+      if (partitionPushStatusAccessorFuture.isPresent()) {
+        /**
+         * The accessor can only get created successfully after helix manager is created.
+         */
         partitionPushStatusAccessor =
             new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId());
         PartitionPushStatusNotifier partitionPushStatusNotifier =
             new PartitionPushStatusNotifier(partitionPushStatusAccessor);
         ingestionService.addNotifier(partitionPushStatusNotifier);
-        logger.info("Successfully started Helix partition status accessor. ");
+        /**
+         * Complete the accessor future after the accessor is created && the notifier is added.
+         * This is for blocking the {@link AbstractParticipantModel #setupNewStorePartition()} until
+         * the notifier is added.
+         */
+        partitionPushStatusAccessorFuture.get().complete(partitionPushStatusAccessor);
+        logger.info("Successfully started Helix partition status accessor.");
       }
+
+      serviceState.set(ServiceState.STARTED);
+      logger.info("Successfully started Helix Participation Service.");
     });
   }
 

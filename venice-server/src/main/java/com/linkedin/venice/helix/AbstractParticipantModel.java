@@ -10,6 +10,7 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.controller.VeniceStateModel;
 import com.linkedin.venice.utils.Utils;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.NotificationContext;
@@ -44,6 +45,7 @@ public abstract class AbstractParticipantModel extends StateModel {
   private static final String STORE_PARTITION_DESCRIPTION_FORMAT = "%s-%d";
   private static final int RETRY_COUNT = 5;
   private static final int RETRY_DURATION_MS = 1000;
+  private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = 300000;
 
   private final StoreIngestionService storeIngestionService;
   private final ReadOnlyStoreRepository metaDataRepo;
@@ -53,18 +55,13 @@ public abstract class AbstractParticipantModel extends StateModel {
   private final Time time;
 
   private final String storePartitionDescription;
+  private Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionStatusAccessorFuture;
   private HelixPartitionPushStatusAccessor partitionPushStatusAccessor;
   private final String instanceName;
 
   public AbstractParticipantModel(StoreIngestionService storeIngestionService, ReadOnlyStoreRepository metaDataRepo,
-      StorageService storageService, VeniceStoreConfig storeConfig, int partition, Time time) {
-    this(storeIngestionService, metaDataRepo, storageService, storeConfig, partition, time,
-        CompletableFuture.completedFuture(null), null);
-  }
-
-  public AbstractParticipantModel(StoreIngestionService storeIngestionService, ReadOnlyStoreRepository metaDataRepo,
       StorageService storageService, VeniceStoreConfig storeConfig, int partition, Time time,
-      CompletableFuture<HelixPartitionPushStatusAccessor> accessorFuture, String instanceName) {
+      Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> accessorFuture, String instanceName) {
     this.storeIngestionService = storeIngestionService;
     this.metaDataRepo = metaDataRepo;
     this.storageService = storageService;
@@ -74,10 +71,11 @@ public abstract class AbstractParticipantModel extends StateModel {
 
     this.storePartitionDescription =
         String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
-    accessorFuture.thenAccept(partitionPushStatusAccessor -> {
-      logger.info("Initializing AbstractParticipantModel with completed partitionPushStatusAccessor");
-      this.partitionPushStatusAccessor = partitionPushStatusAccessor;
-    });
+    /**
+     * We cannot block here because helix manager connection depends on the state model constructing in helix logic.
+     * If we block here in the constructor, it will cause deadlocks.
+     */
+    partitionStatusAccessorFuture = accessorFuture;
     this.instanceName = instanceName;
   }
 
@@ -152,8 +150,24 @@ public abstract class AbstractParticipantModel extends StateModel {
    * set up a new store partition and start the ingestion
    */
   protected void setupNewStorePartition(boolean isLeaderFollowerModel) {
-    // If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
-    // will not create them again.
+    if (partitionStatusAccessorFuture.isPresent() && partitionPushStatusAccessor == null) {
+      /**
+       * Waiting for push accessor to get initialized before starting ingestion.
+       * Otherwise, it's possible that store ingestion starts without having the
+       * accessor ready to get notified.
+       */
+      try {
+        partitionPushStatusAccessor =
+            partitionStatusAccessorFuture.get().get(WAIT_PARTITION_ACCESSOR_TIME_OUT_MS, TimeUnit.MILLISECONDS);
+      } catch (Exception e) {
+        throw new VeniceException("Error when initializing partition push status accessor, "
+            + "will not start ingestion for store partition. ", e);
+      }
+    }
+    /**
+     * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
+     * will not create them again.
+     */
     storageService.openStoreForNewPartition(storeConfig, partition);
     storeIngestionService.startConsumption(storeConfig, partition, isLeaderFollowerModel);
   }

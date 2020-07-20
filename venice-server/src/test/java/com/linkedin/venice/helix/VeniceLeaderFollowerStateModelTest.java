@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Store;
+import java.util.Optional;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -11,7 +12,7 @@ public class VeniceLeaderFollowerStateModelTest
   @Override
   protected LeaderFollowerParticipantModel getParticipantStateModel() {
     return new LeaderFollowerParticipantModel(mockStoreIngestionService, mockStorageService, mockStoreConfig,
-        testPartition, mockNotifier, mockReadOnlyStoreRepository);
+        testPartition, mockNotifier, mockReadOnlyStoreRepository, Optional.empty(), null);
   }
 
   @Override

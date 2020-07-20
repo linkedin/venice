@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.helix.NotificationContext;
@@ -40,17 +41,10 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     private final static AtomicInteger partitionNumberFromOfflineToBootstrap = new AtomicInteger(0);
     private final static AtomicInteger partitionNumberFromBootstrapToOnline = new AtomicInteger(0);
 
-    public VenicePartitionStateModel(StoreIngestionService storeIngestionService,
-        StorageService storageService, VeniceStoreConfig storeConfig, int partition,
-        StateModelNotifier notifier, ReadOnlyStoreRepository readOnlyStoreRepository) {
-        this(storeIngestionService, storageService, storeConfig, partition, notifier, new SystemTime(),
-            readOnlyStoreRepository);
-    }
-
     public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
         VeniceStoreConfig storeConfig, int partition, StateModelNotifier notifier,
         ReadOnlyStoreRepository readOnlyStoreRepository,
-        CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorCompletableFuture,
+        Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorCompletableFuture,
         String instanceName) {
         this(storeIngestionService, storageService, storeConfig, partition, notifier, new SystemTime(),
             readOnlyStoreRepository, partitionPushStatusAccessorCompletableFuture, instanceName);
@@ -58,15 +52,8 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
 
     public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
         VeniceStoreConfig storeConfig, int partition, StateModelNotifier notifier, Time time,
-        ReadOnlyStoreRepository readOnlyStoreRepository) {
-        super(storeIngestionService, readOnlyStoreRepository, storageService, storeConfig, partition, time);
-        this.notifier = notifier;
-    }
-
-    public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
-        VeniceStoreConfig storeConfig, int partition, StateModelNotifier notifier, Time time,
         ReadOnlyStoreRepository readOnlyStoreRepository,
-        CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
+        Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
         super(storeIngestionService, readOnlyStoreRepository, storageService, storeConfig, partition, time,
             partitionPushStatusAccessorFuture, instanceName);
         this.notifier = notifier;

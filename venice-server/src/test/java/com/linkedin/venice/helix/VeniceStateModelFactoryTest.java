@@ -11,7 +11,7 @@ import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.TestUtils;
-import java.util.concurrent.ExecutionException;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -83,7 +83,7 @@ public class VeniceStateModelFactoryTest {
         mockStorageService,
         mockConfigLoader,
         this.executorService,
-        mockReadOnlyStoreRepository);
+        mockReadOnlyStoreRepository, Optional.empty(), null);
     stateModel = factory.createNewStateModel(resourceName, resourceName + "_" + testPartition);
   }
 
@@ -147,15 +147,14 @@ public class VeniceStateModelFactoryTest {
   }
 
   @Test
-  public void testNumberOfStateTransitionsExceedThreadPoolSize()
-      throws ExecutionException, InterruptedException {
+  public void testNumberOfStateTransitionsExceedThreadPoolSize() {
     int threadPoolSize = 1;
     LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
     ThreadPoolExecutor executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 2L, TimeUnit.SECONDS, queue,
         new DaemonThreadFactory("venice-state-transition"));
     executor.allowCoreThreadTimeOut(true);
     factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader, executor,
-        mockReadOnlyStoreRepository);
+        mockReadOnlyStoreRepository, Optional.empty(), null);
     ExecutorService testExecutor = factory.getExecutorService("");
     Assert.assertEquals(testExecutor, executor);
 

@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.HelixUtils;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -21,7 +22,7 @@ public class LeaderFollowerParticipantModelFactory extends AbstractParticipantMo
   public LeaderFollowerParticipantModelFactory(StoreIngestionService storeIngestionService,
       StorageService storageService, VeniceConfigLoader configService, ExecutorService executorService,
       ReadOnlyStoreRepository metadataRepo,
-      CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture,
+      Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture,
       String instanceName) {
     super(storeIngestionService, storageService, configService, executorService, metadataRepo,
         partitionPushStatusAccessorFuture, instanceName);
