@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.helix.NotificationContext;
@@ -51,15 +52,8 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
 
   public LeaderFollowerParticipantModel(StoreIngestionService storeIngestionService, StorageService storageService,
       VeniceStoreConfig storeConfig, int partition, LeaderFollowerStateModelNotifier notifier,
-      ReadOnlyStoreRepository metadataRepo) {
-    super(storeIngestionService, metadataRepo, storageService, storeConfig, partition, new SystemTime());
-    this.notifier = notifier;
-  }
-
-  public LeaderFollowerParticipantModel(StoreIngestionService storeIngestionService, StorageService storageService,
-      VeniceStoreConfig storeConfig, int partition, LeaderFollowerStateModelNotifier notifier,
       ReadOnlyStoreRepository metadataRepo,
-      CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
+      Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
     super(storeIngestionService, metadataRepo, storageService, storeConfig, partition, new SystemTime(),
         partitionPushStatusAccessorFuture, instanceName);
     this.notifier = notifier;

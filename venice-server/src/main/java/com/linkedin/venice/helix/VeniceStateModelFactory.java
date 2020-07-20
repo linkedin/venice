@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.HelixUtils;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
@@ -18,15 +19,8 @@ public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
 
   public VeniceStateModelFactory(StoreIngestionService storeIngestionService, StorageService storageService,
       VeniceConfigLoader configService, ExecutorService executorService,
-      ReadOnlyStoreRepository readOnlyStoreRepository) {
-    this(storeIngestionService, storageService, configService, executorService, readOnlyStoreRepository,
-        CompletableFuture.completedFuture(null), null);
-  }
-
-  public VeniceStateModelFactory(StoreIngestionService storeIngestionService, StorageService storageService,
-      VeniceConfigLoader configService, ExecutorService executorService,
       ReadOnlyStoreRepository readOnlyStoreRepository,
-      CompletableFuture<HelixPartitionPushStatusAccessor> partitionPushStatusAccessorFuture, String instanceName) {
+      Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
     super(storeIngestionService, storageService, configService, executorService, readOnlyStoreRepository,
         partitionPushStatusAccessorFuture, instanceName);
 
