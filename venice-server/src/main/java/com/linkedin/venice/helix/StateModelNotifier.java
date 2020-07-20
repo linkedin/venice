@@ -33,8 +33,6 @@ public class StateModelNotifier implements VeniceNotifier {
 
   void waitConsumptionCompleted(String resourceName, int partitionId, int bootstrapToOnlineTimeoutInHours,
       StoreIngestionService storeIngestionService) throws InterruptedException {
-   //   AggStoreIngestionStats storeIngestionStats, AggVersionedStorageIngestionStats versionedStorageIngestionStats)
-   //   throws InterruptedException {
     String stateModelId = getStateModelIdentification(resourceName , partitionId);
     CountDownLatch latch = stateModelToLatchMap.get(stateModelId);
     if (latch == null) {
