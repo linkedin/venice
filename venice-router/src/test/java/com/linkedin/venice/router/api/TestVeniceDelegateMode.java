@@ -254,6 +254,33 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
     selectedHost = hosts.get(0);
     Assert.assertEquals(instanceList.get(0), selectedHost, "Sticky routing should select: " + instanceList.get(0));
+
+    // Test with least loaded host selection
+    hostFinder = getHostFinder(partitionInstanceMap, false);
+    RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
+
+    doReturn(true).when(config).isLeastLoadedHostSelectionEnabled();
+    doReturn(40L).when(routeHttpRequestStats).getPendingRequestCount("host1_123");
+    doReturn(20L).when(routeHttpRequestStats).getPendingRequestCount("host2_123");
+    doReturn(30L).when(routeHttpRequestStats).getPendingRequestCount("host3_123");
+
+    scatterMode = new VeniceDelegateMode(
+        config,
+        mock(RouterStats.class),
+        routeHttpRequestStats
+    );
+    scatterMode.initReadRequestThrottler(throttler);
+    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
+        partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    requests = finalScatter.getOnlineRequests();
+    Assert.assertEquals(requests.size(), 1, "There should be only one online request since there is only one key");
+    request = requests.iterator().next();
+    hosts = request.getHosts();
+    Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
+    selectedHost = hosts.get(0);
+    Assert.assertEquals(instanceList.get(0), selectedHost, "Sticky routing should select: " + instanceList.get(0));
+
   }
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available for store.*")
