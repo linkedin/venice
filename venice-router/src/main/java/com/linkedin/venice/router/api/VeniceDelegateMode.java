@@ -10,6 +10,7 @@ import com.linkedin.ddsstorage.router.api.Scatter;
 import com.linkedin.ddsstorage.router.api.ScatterGatherMode;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -19,7 +20,6 @@ import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.utils.HelixUtils;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -175,9 +175,13 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             SERVICE_UNAVAILABLE, "Could not find ready-to-serve replica for request: " + part);
       }
       H host = part.getHosts().get(0);
-      // Select host with the least pending queue depth.
       if (hostCount > 1) {
-        host = selectHost((VenicePath) path, venicePath, storeName, part);
+        List<H> hosts = part.getHosts();
+        host = hosts.get((int) (System.currentTimeMillis() % hostCount));  //cheap random host selection
+        // Update host selection
+        // The downstream (VeniceDispatcher) will only expect one host for a given scatter request.
+        H finalHost = host;
+        hosts.removeIf(aHost -> !aHost.equals(finalHost));
       }
       if (!(host instanceof Instance)) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
@@ -228,10 +232,9 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     return finalScatter;
   }
 
-  private <H, K> H selectHost(VenicePath path, VenicePath venicePath, String storeName,
-      ScatterGatherRequest<H, K> part) throws RouterException {
+  // Select host with the least pending queue depth.
+  private <H> H selectLeastLoadedHost(List<H> hosts, VenicePath path, String storeName) throws RouterException {
     H host;
-    List<H> hosts = part.getHosts();
     long minCount = Long.MAX_VALUE;
     H minHost = null;
     for (H h : hosts) {
@@ -245,8 +248,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
     }
     if (minHost == null) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-          SERVICE_UNAVAILABLE, "Could not find ready-to-serve replica for request: " + part);
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(path.getRequestType()),
+          SERVICE_UNAVAILABLE, "Could not find ready-to-serve replica for request path: " + path.getResourceName());
     }
     H finalHost = minHost;
     hosts.removeIf(aHost -> !aHost.equals(finalHost));
@@ -291,12 +294,15 @@ public class VeniceDelegateMode extends ScatterGatherMode {
          */
         VenicePath venicePath = (VenicePath)path;
 
-        H host = avoidSlowHost(venicePath, key, hosts);
+        H host;
         // when least loaded host selection is enabled we pass the entire hosts list, else just pass a single host
-        if (!isLeastLoadedHostEnabled) {
-          hosts = Collections.singletonList(host);
+        if (isLeastLoadedHostEnabled) {
+          host = selectLeastLoadedHost(hosts, venicePath, resourceName);
+        } else {
+          host = avoidSlowHost(venicePath, key, hosts);
         }
-        scatter.addOnlineRequest(new ScatterGatherRequest<>(hosts, keySet, partitionName));
+
+        scatter.addOnlineRequest(new ScatterGatherRequest<>(Collections.singletonList(host), keySet, partitionName));
       } else {
         scatter.addOnlineRequest(new ScatterGatherRequest<>(hosts, keySet, partitionName));
       }
@@ -345,7 +351,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         @Nonnull HostFinder<H, R> hostFinder, @Nonnull HostHealthMonitor<H> hostHealthMonitor, @Nonnull R roles,
         Metrics metrics) throws RouterException {
       P path = scatter.getPath();
-      if (!  (path instanceof VenicePath)) {
+      if (!(path instanceof VenicePath)) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
             "VenicePath is expected, but received " + path.getClass());
       }
@@ -380,10 +386,12 @@ public class VeniceDelegateMode extends ScatterGatherMode {
              * some hosts are down/stopped.
              */
             VenicePath venicePath = (VenicePath)path;
-            H host = avoidSlowHost(venicePath, key, hosts);
+            H host;
             // when least loaded host selection is enabled we pass the entire hosts list, else just pass a single host
-            if (!isLeastLoadedHostEnabled) {
-              hosts = Collections.singletonList(host);
+            if (isLeastLoadedHostEnabled) {
+              host = selectLeastLoadedHost(hosts, venicePath, resourceName);
+            } else {
+              host = avoidSlowHost(venicePath, key, hosts);
             }
 
             /**
@@ -392,7 +400,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
              */
             KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(host);
             if (null == keyPartitionSet) {
-              keyPartitionSet = new KeyPartitionSet<>(hosts);
+              keyPartitionSet = new KeyPartitionSet<>(Collections.singletonList(host));
               hostMap.put(host, keyPartitionSet);
             }
             keyPartitionSet.addKeyPartition(key, partitionName);
