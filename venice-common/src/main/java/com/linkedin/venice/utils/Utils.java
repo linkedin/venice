@@ -624,20 +624,22 @@ public class Utils {
   }
 
   /**
-   * N.B.: This method doesn't work in IntelliJ because of the way the classpath is generated in that environment.
+   * This might not work when application is running inside application server like Jetty
    *
    * @return the version of the venice-common jar on the classpath, if available, or "N/A" otherwise.
    */
   public static String getVeniceVersionFromClassPath() {
-    ClassLoader cl = ClassLoader.getSystemClassLoader();
-    URL[] urls = ((URLClassLoader)cl).getURLs();
+    //The application class loader is no longer an instance of java.net.URLClassLoader in JDK 9+
+    //So changing implementation to be compatible with JDK8 and JDK11 at the same time
+    String classpath = System.getProperty("java.class.path");
+    String[] entries = classpath.split(File.pathSeparator);
     String jarNamePrefixToLookFor = "venice-common-";
-    for (URL url: urls) {
-      String fileName = url.getFile();
-      int indexOfJarName = fileName.lastIndexOf(jarNamePrefixToLookFor);
+
+    for(int i = 0; i < entries.length; i++) {
+      int indexOfJarName = entries[i].lastIndexOf(jarNamePrefixToLookFor);
       if (indexOfJarName > -1) {
         int substringStart = indexOfJarName + jarNamePrefixToLookFor.length();
-        return fileName.substring(substringStart).replace(".jar", "");
+        return entries[i].substring(substringStart).replace(".jar", "");
       }
     }
 
