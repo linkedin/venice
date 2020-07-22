@@ -10,6 +10,7 @@ import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -50,7 +51,12 @@ public class D2ServiceDiscovery {
         }
         CompletableFuture<TransportClientResponse> responseFuture = client.get(TYPE_D2_SERVICE_DISCOVERY + "/" + storeName,
             Collections.singletonMap(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED, "true"));
-        response = responseFuture.get();
+        try {
+          response = responseFuture.get();
+        } catch (ExecutionException getResponseException) {
+          LOGGER.warn("ExecutionException when trying to get the service discovery response", getResponseException);
+          response = null;
+        }
         currentAttempt++;
       }
       byte[] body = response.getBody();
