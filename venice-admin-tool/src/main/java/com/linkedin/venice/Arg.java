@@ -90,7 +90,8 @@ public enum Arg {
   STORE_TYPE("store-type", "st", true, "the type of the stores. The support type are 'hybrid_only', 'hybrid_or_incremental', 'all'"),
   NATIVE_REPLICATION_ENABLED("native-replication-enabled", "nr", true, "whether or not native replication is enabled for this store.  Leader Follow must also be enabled."),
   PUSH_STREAM_SOURCE_ADDRESS("push-stream-source-address", "pssa", true, "The url address for the kafka broker which hosts the topic which contains the push data for this store."),
-  FABRIC("fabric", "fa", true, "Which fabric to complete store migration.");
+  FABRIC("fabric", "fa", true, "Which fabric to complete store migration."),
+  DEFAULT_CONFIGS("default-configs", "dc", false, "Use default store configs (intended for system stores)");
 
   private final String argName;
   private final String first;

@@ -69,6 +69,7 @@ public class SystemStoreTest {
   private String participantMessageStoreName;
   private VeniceServerWrapper veniceServerWrapper;
   private String clusterName;
+  private String zkSharedStoreName = VeniceSystemStore.METADATA_STORE.getPrefix();
   private int metadataStoreVersionNumber;
 
   @BeforeClass
@@ -101,12 +102,10 @@ public class SystemStoreTest {
     TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(participantMessageStoreName, 1),
         controllerClient, 2, TimeUnit.MINUTES, Optional.of(logger));
     // Set up and configure the Zk shared store for METADATA_STORE
-    String zkSharedStoreName = VeniceSystemStore.METADATA_STORE.getPrefix();
     ControllerResponse controllerResponse =
         parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedStoreName, "test");
     assertFalse(controllerResponse.isError(), "Failed to create the new Zk shared store");
-    VersionCreationResponse versionCreationResponse =
-        parentControllerClient.newZkSharedStoreVersion(clusterName, zkSharedStoreName);
+    VersionCreationResponse versionCreationResponse = parentControllerClient.newZkSharedStoreVersion(zkSharedStoreName);
     // Verify the new version creation in parent and child controller
     assertFalse(versionCreationResponse.isError(), "Failed to create the new Zk shared store version");
     metadataStoreVersionNumber = versionCreationResponse.getVersion();
@@ -226,7 +225,7 @@ public class SystemStoreTest {
         STRING_SCHEMA, USER_SCHEMA_STRING);
     assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
     ControllerResponse controllerResponse =
-        parentControllerClient.materializeMetadataStoreVersion(clusterName, regularVeniceStoreName, metadataStoreVersionNumber);
+        parentControllerClient.materializeMetadataStoreVersion(regularVeniceStoreName, metadataStoreVersionNumber);
     assertFalse(controllerResponse.isError(), "Failed to materialize the new Zk shared store version");
     String metadataStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
@@ -371,7 +370,7 @@ public class SystemStoreTest {
     assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.get(), "ReadOnly Repo refresh()");
 
     // Dematerialize the metadata store version and it should be cleaned up properly.
-    controllerResponse = parentControllerClient.dematerializeMetadataStoreVersion(clusterName, regularVeniceStoreName,
+    controllerResponse = parentControllerClient.dematerializeMetadataStoreVersion(regularVeniceStoreName,
         metadataStoreVersionNumber);
     assertFalse(controllerResponse.isError(), "Failed to dematerialize metadata store version");
     assertFalse(parentController.getVeniceAdmin().getStore(clusterName, regularVeniceStoreName).isStoreMetadataSystemStoreEnabled());
@@ -389,7 +388,7 @@ public class SystemStoreTest {
         STRING_SCHEMA, STRING_SCHEMA);
     assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
     ControllerResponse controllerResponse =
-        parentControllerClient.materializeMetadataStoreVersion(clusterName, regularVeniceStoreName, metadataStoreVersionNumber);
+        parentControllerClient.materializeMetadataStoreVersion(regularVeniceStoreName, metadataStoreVersionNumber);
     assertFalse(controllerResponse.isError(), "Failed to materialize the new Zk shared store version");
     String metadataStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
@@ -405,6 +404,22 @@ public class SystemStoreTest {
       assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
     });
   }
+
+  @Test
+  public void testZkSharedStoreCanBeRecreated() {
+    ControllerResponse controllerResponse = parentControllerClient.disableAndDeleteStore(zkSharedStoreName);
+    assertFalse(controllerResponse.isError(), "Failed to delete the zk shared store: " + zkSharedStoreName);
+    controllerResponse = parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedStoreName, "test");
+    assertFalse(controllerResponse.isError(), "Failed to recreate the Zk shared store");
+    VersionCreationResponse versionCreationResponse = parentControllerClient.newZkSharedStoreVersion(zkSharedStoreName);
+    // Verify the new version creation in parent and child controller
+    assertFalse(versionCreationResponse.isError(), "Failed to create the new Zk shared store version");
+    metadataStoreVersionNumber = versionCreationResponse.getVersion();
+    Store zkSharedStore = parentController.getVeniceAdmin().getStore(clusterName, zkSharedStoreName);
+    assertTrue(zkSharedStore.containsVersion(metadataStoreVersionNumber), "New version is missing");
+    assertEquals(zkSharedStore.getCurrentVersion(), metadataStoreVersionNumber, "Unexpected current version");
+  }
+
   static class TestListener implements StoreDataChangedListener {
     AtomicInteger creationCount = new AtomicInteger(0);
     AtomicInteger changeCount = new AtomicInteger(0);
