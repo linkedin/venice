@@ -110,6 +110,7 @@ public class VenicePartitionStateModelTest
    */
   @Test
   public void testOnBecomeDroppedFromOffline() {
+    testStateModel.setupNewStorePartition(false);
     doAnswer(invocation -> {return null;}).when(mockPushStatusAccessor).deleteReplicaStatus(any(), anyInt());
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
     verify(mockStorageService, atLeastOnce()).dropStorePartition(mockStoreConfig , testPartition);

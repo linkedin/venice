@@ -87,6 +87,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.managerFuture = managerFuture;
     if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
       this.partitionPushStatusAccessorFuture = Optional.of(new CompletableFuture<>());
+    } else {
+      this.partitionPushStatusAccessorFuture = Optional.empty();
     }
     new ParticipantStateStats(metricsRepository, "venice_O/O_partition_state");
   }
