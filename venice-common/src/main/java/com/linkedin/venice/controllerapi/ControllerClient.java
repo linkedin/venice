@@ -322,24 +322,21 @@ public class ControllerClient implements Closeable {
     return response;
   }
 
-  public VersionCreationResponse newZkSharedStoreVersion(String clusterName, String zkSharedStoreName) {
+  public VersionCreationResponse newZkSharedStoreVersion(String zkSharedStoreName) {
     QueryParams params = newParams()
-        .add(CLUSTER, clusterName)
         .add(NAME, zkSharedStoreName);
     return request(ControllerRoute.NEW_ZK_SHARED_STORE_VERSION, params, VersionCreationResponse.class);
   }
 
-  public ControllerResponse materializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber) {
+  public ControllerResponse materializeMetadataStoreVersion(String storeName, int versionNumber) {
     QueryParams params = newParams()
-        .add(CLUSTER, clusterName)
         .add(NAME, storeName)
         .add(VERSION, versionNumber);
     return request(ControllerRoute.MATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);
   }
 
-  public ControllerResponse dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber) {
+  public ControllerResponse dematerializeMetadataStoreVersion(String storeName, int versionNumber) {
     QueryParams params = newParams()
-        .add(CLUSTER, clusterName)
         .add(NAME, storeName)
         .add(VERSION, versionNumber);
     return request(ControllerRoute.DEMATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);

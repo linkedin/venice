@@ -162,7 +162,16 @@ public enum Command {
   ENABLE_LF_MODEL("enable-lf-model", "enable leader/follower model for certain stores based on the param",
       new Arg[] {URL, CLUSTER, STORE_TYPE}),
   DISABLE_LF_MODEL("disable-lf-model", "disable leader/follower model for certain stores based on the param",
-      new Arg[] {URL, CLUSTER, STORE_TYPE});
+      new Arg[] {URL, CLUSTER, STORE_TYPE}),
+  NEW_ZK_SHARED_STORE("new-zk-shared-store", "Create a new store object to be shared by multiple stores with the same prefix",
+      new Arg[] {URL, CLUSTER, STORE},
+      new Arg[] {OWNER, DEFAULT_CONFIGS}),
+  NEW_ZK_SHARED_STORE_VERSION("new-zk-shared-store-version", "Create a new store version for an existing Zk shared store",
+      new Arg[] {URL, CLUSTER, STORE}),
+  MATERIALIZE_METADATA_STORE_VERSION("materialize-metadata-store-version", "Materialize the metadata system store for an existing Venice store",
+      new Arg[] {URL, CLUSTER, STORE, VERSION}),
+  DEMATERIALIZE_METADATA_STORE_VERSION("dematerialize-metadata-store-version", "Dematerialize the metadata system store for an existing Venice store",
+      new Arg[] {URL, CLUSTER, STORE, VERSION});
 
   private final String commandName;
   private final String description;

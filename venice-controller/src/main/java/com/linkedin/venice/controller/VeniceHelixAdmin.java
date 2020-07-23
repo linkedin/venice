@@ -422,6 +422,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
         if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE) {
+            if (VeniceSystemStore.METADATA_STORE.getPrefix().equals(storeName)) {
+                // The Zk shared store object itself does not maintain any actual resources.
+                return false;
+            }
             // Use the regular Venice store name instead to get cluster information from StoreConfig.
             storeName = VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName);
         }
