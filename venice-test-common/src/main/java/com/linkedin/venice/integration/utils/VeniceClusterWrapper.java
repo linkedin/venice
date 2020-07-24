@@ -545,6 +545,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     restartVeniceComponent(veniceServerWrappers, port);
   }
 
+  public synchronized void stopAndRestartVeniceServer(int port) {
+    stopVeniceComponent(veniceServerWrappers, port);
+    restartVeniceComponent(veniceServerWrappers, port);
+  }
+
   /**
    * Find the venice servers which has been assigned to the given resource and partition.
    * After getting these servers, you can fail some of them to simulate the server failure. Otherwise you might not

@@ -252,7 +252,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         String leaderTopic = offsetRecord.getLeaderTopic();
         long versionTopicOffset = offsetRecord.getOffset();
-        if (!topic.equals(leaderTopic)) {
+        if (leaderTopic != null && !topic.equals(leaderTopic)) {
           consumerUnSubscribe(leaderTopic, partitionConsumptionState);
 
           // finish consuming and producing all the things in queue
@@ -273,6 +273,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
           }
 
+          partitionConsumptionState.setConsumeRemotely(false);
           // subscribe back to VT/partition
           consumerSubscribe(topic, partitionConsumptionState, versionTopicOffset);
           logger.info(consumerTaskId + " demoted to standby for partition " + partition + "\n" + offsetRecord.toDetailedString());
@@ -754,9 +755,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * Fail the job if it's lossy and it's during the GF job (before END_OF_PUSH received);
              * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
              */
-            String logMsg = String.format(consumerTaskId + " received message with upstreamOffset: %d;"
-                    + " but recorded upstreamOffset is: %d. New GUID: %s; previous producer GUID: %s. "
-                    + "Multiple leaders are producing.", newUpstreamOffset, previousUpstreamOffset,
+            String logMsg = String.format(consumerTaskId + " partition %d received message with upstreamOffset: %d;"
+                    + " but recorded upstreamOffset is: %d. New GUID: %s; previous producer GUID: %s."
+                    + " Multiple leaders are producing.", consumerRecord.partition(), newUpstreamOffset,
+                previousUpstreamOffset,
                 GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
                 GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
 
