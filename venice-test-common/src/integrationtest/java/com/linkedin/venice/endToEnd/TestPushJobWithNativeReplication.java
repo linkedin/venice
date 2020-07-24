@@ -5,12 +5,16 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -43,7 +47,7 @@ public class TestPushJobWithNativeReplication {
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     /**
      * Reduce leader promotion delay to 3 seconds;
@@ -59,9 +63,9 @@ public class TestPushJobWithNativeReplication {
         NUMBER_OF_CLUSTERS,
         1,
         1,
+        2,
         1,
-        1,
-        1,
+        2,
         Optional.empty(),
         Optional.empty(),
         Optional.of(new VeniceProperties(serverProperties)),
@@ -71,7 +75,7 @@ public class TestPushJobWithNativeReplication {
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiColoMultiClusterWrapper.close();
   }
@@ -113,6 +117,65 @@ public class TestPushJobWithNativeReplication {
       VeniceMultiClusterWrapper childDataCenter = childClusters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
       String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
       try(AvroGenericStoreClient<String, Object> client =
+          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        for (int i = 1; i <= recordCount; ++i) {
+          String expected = "test_name_" + i;
+          String actual = client.get(Integer.toString(i)).get().toString();
+          Assert.assertEquals(actual, expected);
+        }
+      }
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, groups = {"flaky"})
+  public void testNativeReplicationWithLeadershipHandover() throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    File inputDir = getTempDataDirectory();
+    int recordCount = 10;
+    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setPartitionCount(1)
+        .setLeaderFollowerModel(true)
+        .setNativeReplicationEnabled(true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+
+    new Thread(() -> {
+      KafkaPushJob job = new KafkaPushJob("Test push job", props);
+      job.run();
+    }).start();
+
+    // Leadership hands over when the job is running
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, () -> {
+      VeniceClusterWrapper veniceClusterWrapper = childClusters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
+      String topic = Version.composeKafkaTopic(storeName, 1);
+      HelixBaseRoutingRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+      Assert.assertTrue(routingDataRepo.containsKafkaTopic(topic));
+
+      Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);
+      Assert.assertNotNull(leaderNode);
+      veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      // Current version should become 1
+      for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
+        Assert.assertEquals(version, 1);
+      }
+
+      // Verify the data in the second child fabric which consumes remotely
+      VeniceMultiClusterWrapper childDataCenter = childClusters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+      try (AvroGenericStoreClient<String, Object> client =
           ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
         for (int i = 1; i <= recordCount; ++i) {
           String expected = "test_name_" + i;
