@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -61,27 +62,23 @@ public class MirrorMakerTest {
    * FlakyTestRetryAnalyzer class has been removed; we use "flaky" group to mark flaky test now.
    */
   @Test(timeOut = 30 * Time.MS_PER_SECOND)
-  void testMirrorMakerProcessWrapper() throws ExecutionException, InterruptedException {
-    MirrorMakerWrapper mirrorMaker = null;
+  void testMirrorMakerProcessWrapper() throws ExecutionException, InterruptedException, IOException {
+    LOGGER.info("Source Kafka: " + sourceKafka.getAddress());
+    LOGGER.info("Source Kafka's ZK: " + sourceKafka.getZkAddress());
+    LOGGER.info("Destination Kafka: " + destinationKafka.getAddress());
+    LOGGER.info("Destination Kafka's ZK: " + destinationKafka.getZkAddress());
+    String cliCommandParams = "--start-kafka-mirror-maker"
+        + " --kafka-zk-url-source " + sourceKafka.getZkAddress()
+        + " --kafka-zk-url-dest " + destinationKafka.getZkAddress()
+        + " --kafka-bootstrap-servers-dest " + destinationKafka.getAddress()
+        + " --kafka-topic-whitelist '.*'";
+    String cliCommand = "java -jar venice-admin-tool/build/libs/venice-admin-tool-0.1.jar " + cliCommandParams;
+    LOGGER.info("Manual MM params for admin-tool: \n" + cliCommand);
 
-    try {
-      LOGGER.info("Source Kafka: " + sourceKafka.getAddress());
-      LOGGER.info("Source Kafka's ZK: " + sourceKafka.getZkAddress());
-      LOGGER.info("Destination Kafka: " + destinationKafka.getAddress());
-      LOGGER.info("Destination Kafka's ZK: " + destinationKafka.getZkAddress());
-      String cliCommandParams = "--start-kafka-mirror-maker"
-          + " --kafka-zk-url-source " + sourceKafka.getZkAddress()
-          + " --kafka-zk-url-dest " + destinationKafka.getZkAddress()
-          + " --kafka-bootstrap-servers-dest " + destinationKafka.getAddress()
-          + " --kafka-topic-whitelist '.*'";
-      String cliCommand = "java -jar venice-admin-tool/build/libs/venice-admin-tool-0.1.jar " + cliCommandParams;
-      LOGGER.info("Manual MM params for admin-tool: \n" + cliCommand);
-
-      LOGGER.info("Starting MM!");
-      mirrorMaker = ServiceFactory.getKafkaMirrorMaker(sourceKafka, destinationKafka);
-
-      TopicManager topicManager =
-          new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(sourceKafka));
+    LOGGER.info("Starting MM!");
+    try (MirrorMakerWrapper mirrorMaker = ServiceFactory.getKafkaMirrorMaker(sourceKafka, destinationKafka);
+        TopicManager topicManager =
+            new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(sourceKafka))) {
 
       String topicName = TestUtils.getUniqueString("topic");
       topicManager.createTopic(topicName, 2, 1, false);
@@ -89,29 +86,33 @@ public class MirrorMakerTest {
       Properties producerJavaProps = new Properties();
       producerJavaProps.setProperty(ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,
           sourceKafka.getAddress());
-      ApacheKafkaProducer producer = new ApacheKafkaProducer(new VeniceProperties(producerJavaProps));
-      ApacheKafkaConsumer consumer = new ApacheKafkaConsumer(getKafkaConsumerProperties(destinationKafka.getAddress()));
+      ApacheKafkaProducer producer = null;
+      try (ApacheKafkaConsumer consumer = new ApacheKafkaConsumer(getKafkaConsumerProperties(destinationKafka.getAddress()))) {
+        producer = new ApacheKafkaProducer(new VeniceProperties(producerJavaProps));
 
-      // Test pre-conditions
-      consumer.subscribe(topicName, 0, OffsetRecord.LOWEST_OFFSET);
+        // Test pre-conditions
+        consumer.subscribe(topicName, 0, OffsetRecord.LOWEST_OFFSET);
 
-      LOGGER.info("About to consume message from destination cluster (should be empty).");
-      ConsumerRecords consumerRecordsBeforeTest = consumer.poll(1 * Time.MS_PER_SECOND);
-      Assert.assertTrue(consumerRecordsBeforeTest.isEmpty(),
-          "The destination Kafka cluster should be empty at the beginning of the test!");
+        LOGGER.info("About to consume message from destination cluster (should be empty).");
+        ConsumerRecords consumerRecordsBeforeTest = consumer.poll(1 * Time.MS_PER_SECOND);
+        Assert.assertTrue(consumerRecordsBeforeTest.isEmpty(),
+            "The destination Kafka cluster should be empty at the beginning of the test!");
 
-      LOGGER.info("About to produce message into source cluster.");
-      producer.sendMessage(topicName, new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[]{}), getValue(), 0, null).get();
+        LOGGER.info("About to produce message into source cluster.");
+        producer.sendMessage(topicName, new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[]{}), getValue(), 0, null).get();
 
-      LOGGER.info("About to consume message from destination cluster (should contain something).");
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        ApacheKafkaConsumer newConsumer = new ApacheKafkaConsumer(getKafkaConsumerProperties(destinationKafka.getAddress()));
-        newConsumer.subscribe(topicName, 0, OffsetRecord.LOWEST_OFFSET);
-        ConsumerRecords consumerRecords = newConsumer.poll(1 * Time.MS_PER_SECOND);
-        Assert.assertFalse(consumerRecords.isEmpty(), "The destination Kafka cluster should NOT be empty!");
-      });
-    } finally {
-      IOUtils.closeQuietly(mirrorMaker);
+        LOGGER.info("About to consume message from destination cluster (should contain something).");
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          ApacheKafkaConsumer newConsumer = new ApacheKafkaConsumer(getKafkaConsumerProperties(destinationKafka.getAddress()));
+          newConsumer.subscribe(topicName, 0, OffsetRecord.LOWEST_OFFSET);
+          ConsumerRecords consumerRecords = newConsumer.poll(1 * Time.MS_PER_SECOND);
+          Assert.assertFalse(consumerRecords.isEmpty(), "The destination Kafka cluster should NOT be empty!");
+        });
+      } finally {
+        if (null != producer) {
+          producer.close(5000);
+        }
+      }
     }
   }
 
