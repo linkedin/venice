@@ -21,6 +21,7 @@ import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.utils.URLEncodedUtils;
+import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.codehaus.jackson.JsonParseException;
@@ -59,30 +60,31 @@ public class TestAdminSparkServerGetMaster {
       throws IOException {
     String controllerUrl = veniceControllerWrapper.getControllerUrl();
 
-    HttpClient client = HttpClients.createDefault();
-    List<NameValuePair> queryParams = new ArrayList<>();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, cluster));
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "some-hostname"));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
+    try (CloseableHttpClient client = HttpClients.createDefault()) {
+      List<NameValuePair> queryParams = new ArrayList<>();
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, cluster));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "some-hostname"));
+      String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      try {
-        HttpGet get = new HttpGet(controllerUrl + MASTER_CONTROLLER.getPath() + "?" + queryString);
-        HttpResponse response = client.execute(get);
-        String jsonStr;
-        try (InputStream bodyStream = response.getEntity().getContent()) {
-          jsonStr = IOUtils.toString(bodyStream);
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        try {
+          HttpGet get = new HttpGet(controllerUrl + MASTER_CONTROLLER.getPath() + "?" + queryString);
+          HttpResponse response = client.execute(get);
+          String jsonStr;
+          try (InputStream bodyStream = response.getEntity().getContent()) {
+            jsonStr = IOUtils.toString(bodyStream);
+          }
+
+          MasterControllerResponse responseObject = mapper.readValue(jsonStr, MasterControllerResponse.class);
+
+          String masterControllerUrl = responseObject.getUrl();
+
+          Assert.assertEquals(masterControllerUrl, "http://" + Utils.getHostName() + ":" + veniceControllerWrapper.getPort(),
+              "Can not find correct master controller url.");
+        } catch (IOException e) {
+          throw new VeniceException(e);
         }
-
-        MasterControllerResponse responseObject = mapper.readValue(jsonStr, MasterControllerResponse.class);
-
-        String masterControllerUrl = responseObject.getUrl();
-
-        Assert.assertEquals(masterControllerUrl, "http://" + Utils.getHostName() + ":" + veniceControllerWrapper.getPort(),
-            "Can not find correct master controller url.");
-      } catch (IOException e) {
-        throw new VeniceException(e);
-      }
-    });
+      });
+    }
   }
 }

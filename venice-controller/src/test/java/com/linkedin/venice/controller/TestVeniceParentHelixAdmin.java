@@ -68,6 +68,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -111,6 +112,7 @@ public class TestVeniceParentHelixAdmin {
   private Store store;
   private ParentHelixOfflinePushAccessor accessor;
   private HelixReadOnlyStoreConfigRepository readOnlyStoreConfigRepository;
+  private Map<String, ControllerClient> controllerClients = new HashMap<>();
 
   @BeforeMethod
   public void setupTestCase() {
@@ -147,7 +149,6 @@ public class TestVeniceParentHelixAdmin {
     config = mockConfig(clusterName);
     doReturn(1).when(config).getParentControllerWaitingTimeForConsumptionMs();
 
-    Map<String, ControllerClient> controllerClients = new HashMap<>();
     controllerClients.put(coloName, new ControllerClient(clusterName, "localhost", Optional.empty()));
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
@@ -167,6 +168,13 @@ public class TestVeniceParentHelixAdmin {
     // Need to bypass VeniceWriter initialization
     veniceWriter = mock(VeniceWriter.class);
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+  }
+
+  @AfterMethod
+  public void cleanupTestCase() {
+    controllerClients.values().forEach(ControllerClient::close);
+    controllerClients.clear();
+    parentAdmin.close();
   }
 
   private VeniceControllerConfig mockConfig(String clusterName) {
@@ -825,17 +833,18 @@ public class TestVeniceParentHelixAdmin {
     String pushJobId = TestUtils.getUniqueString("push_job_id");
     doReturn(new Version(storeName, 1, pushJobId)).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
-    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
-    VeniceWriter veniceWriter = mock(VeniceWriter.class);
-    partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+      VeniceWriter veniceWriter = mock(VeniceWriter.class);
+      partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
 
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
-        .when(veniceWriter).put(any(), any(), anyInt());
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
-    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
-    verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
+      doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+          .when(veniceWriter).put(any(), any(), anyInt());
+      when(zkClient.readData(zkMetadataNodePath, null))
+          .thenReturn(null)
+          .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+      partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
+      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
+    }
   }
 
   /**
@@ -893,10 +902,11 @@ public class TestVeniceParentHelixAdmin {
     store.addVersion(new Version(storeName, 1, pushJobId));
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
-    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.PROGRESS);
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.PROGRESS);
 
-    Assert.assertThrows(VeniceException.class, () -> partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId2, 1, 1));
+      Assert.assertThrows(VeniceException.class, () -> partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId2, 1, 1));
+    }
   }
 
   /**
@@ -916,20 +926,21 @@ public class TestVeniceParentHelixAdmin {
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(version).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
-    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
-    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
-    VeniceWriter veniceWriter = mock(VeniceWriter.class);
-    partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
-        .when(veniceWriter).put(any(), any(), anyInt());
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
-    Version newVersion =
-        partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1,
-            Version.PushType.BATCH, false, false, null);
-    verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
-    Assert.assertEquals(newVersion, version);
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+      VeniceWriter veniceWriter = mock(VeniceWriter.class);
+      partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+      doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+          .when(veniceWriter).put(any(), any(), anyInt());
+      when(zkClient.readData(zkMetadataNodePath, null))
+          .thenReturn(null)
+          .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+      Version newVersion =
+          partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1,
+              Version.PushType.BATCH, false, false, null);
+      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
+      Assert.assertEquals(newVersion, version);
+    }
   }
 
   /**
@@ -951,17 +962,18 @@ public class TestVeniceParentHelixAdmin {
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Version(storeName, 1, pushJobId)).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
-    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
-    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
-    VeniceWriter veniceWriter = mock(VeniceWriter.class);
-    partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
-        .when(veniceWriter).put(any(), any(), anyInt());
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
-    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, false, false, null);
-    verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+      VeniceWriter veniceWriter = mock(VeniceWriter.class);
+      partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+      doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+          .when(veniceWriter).put(any(), any(), anyInt());
+      when(zkClient.readData(zkMetadataNodePath, null))
+          .thenReturn(null)
+          .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+      partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, false, false, null);
+      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false, false, Version.PushType.BATCH, null, null);
+    }
   }
 
   /**
@@ -979,12 +991,13 @@ public class TestVeniceParentHelixAdmin {
     Version version = new Version(storeName, 1, Version.guidBasedDummyPushId());
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
-    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
-    try {
-      partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
-    } catch (VeniceException e){
-      Assert.assertTrue(e.getMessage().contains(pushJobId), "Exception for topic exists when increment version should contain requested pushId");
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+      try {
+        partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
+      } catch (VeniceException e){
+        Assert.assertTrue(e.getMessage().contains(pushJobId), "Exception for topic exists when increment version should contain requested pushId");
+      }
     }
   }
 
@@ -1182,81 +1195,75 @@ public class TestVeniceParentHelixAdmin {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testSuperSetSchemaGenWithSameUpcomingSchema(boolean isControllerSslEnabled) throws IOException {
-    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-    VeniceControllerWrapper childControllerWrapper =
-        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
-    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-    VeniceControllerWrapper controllerWrapper =
-        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled);
+    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+        VeniceControllerWrapper childControllerWrapper =
+            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
+        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+        VeniceControllerWrapper controllerWrapper =
+            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+                new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled)) {
+      String controllerUrl = isControllerSslEnabled ? controllerWrapper.getSecureControllerUrl() : controllerWrapper.getControllerUrl();
+      Optional<SSLFactory> sslFactory = isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
 
-    String controllerUrl = isControllerSslEnabled ? controllerWrapper.getSecureControllerUrl() : controllerWrapper.getControllerUrl();
-    Optional<SSLFactory> sslFactory = isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
+      // Adding store
+      String storeName = "test_store";
+      String owner = "test_owner";
+      String keySchemaStr = "\"long\"";
+      Schema valueSchema = generateSchema(false);
 
-    // Adding store
-    String storeName = "test_store";
-    String owner = "test_owner";
-    String keySchemaStr = "\"long\"";
-    Schema valueSchema = generateSchema(false);
+      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory)) {
+        controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
 
-    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory);
-    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+        params.setReadComputationEnabled(true);
+        params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
+        params.setAutoSchemaPushJobEnabled(true);
+        controllerClient.updateStore(storeName, params);
 
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setReadComputationEnabled(true);
-    params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
-    params.setAutoSchemaPushJobEnabled(true);
-    controllerClient.updateStore(storeName, params);
+        valueSchema = generateSuperSetSchema();
+        controllerClient.addValueSchema(storeName, valueSchema.toString());
 
-    valueSchema = generateSuperSetSchema();
-    controllerClient.addValueSchema(storeName, valueSchema.toString());
+        MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
 
-    MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
-
-    Assert.assertEquals(schemaResponse.getSchemas().length,2);
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() == -1);
-
-    controllerWrapper.close();
-    childControllerWrapper.close();
-    kafkaBrokerWrapper.close();
+        Assert.assertEquals(schemaResponse.getSchemas().length,2);
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() == -1);
+      }
+    }
   }
 
   @Test
   public void testAddValueSchemaDocUpdate() throws IOException {
-    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-    VeniceControllerWrapper childControllerWrapper =
-        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, false);
-    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-    VeniceControllerWrapper controllerWrapper =
-        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            new VeniceControllerWrapper[]{childControllerWrapper}, false);
+    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+        VeniceControllerWrapper childControllerWrapper =
+            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, false);
+        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+        VeniceControllerWrapper controllerWrapper =
+            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+                new VeniceControllerWrapper[]{childControllerWrapper}, false)) {
+      String controllerUrl = controllerWrapper.getControllerUrl();
+      Optional<SSLFactory> sslFactory =  Optional.empty();
 
-    String controllerUrl = controllerWrapper.getControllerUrl();
-    Optional<SSLFactory> sslFactory =  Optional.empty();
+      // Adding store
+      String storeName = "test_store";
+      String owner = "test_owner";
+      String keySchemaStr = "\"long\"";
+      String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
+      String schemaStrDoc = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
 
-    // Adding store
-    String storeName = "test_store";
-    String owner = "test_owner";
-    String keySchemaStr = "\"long\"";
-    String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
-    String schemaStrDoc = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
+      Schema valueSchema = Schema.parse(schemaStr);
 
-    Schema valueSchema = Schema.parse(schemaStr);
+      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory)) {
+        controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
 
-    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory);
-    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+        valueSchema = Schema.parse(schemaStrDoc);
+        controllerClient.addValueSchema(storeName, valueSchema.toString());
 
-    valueSchema = Schema.parse(schemaStrDoc);
-    controllerClient.addValueSchema(storeName, valueSchema.toString());
+        MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
 
-    MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
-
-    Assert.assertEquals(schemaResponse.getSchemas().length,2);
-
-    controllerWrapper.close();
-    childControllerWrapper.close();
-    kafkaBrokerWrapper.close();
+        Assert.assertEquals(schemaResponse.getSchemas().length,2);
+      }
+    }
   }
 
   @Test
@@ -1857,57 +1864,58 @@ public class TestVeniceParentHelixAdmin {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAdminCanKillLingeringVersion(boolean isIncrementalPush) {
-    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
-    long startTime = System.currentTimeMillis();
-    MockTime mockTime = new MockTime(startTime);
-    partialMockParentAdmin.setTimer(mockTime);
-    mockTime.addMilliseconds(30 * Time.MS_PER_HOUR);
-    String storeName = "test_store";
-    String existingTopicName = storeName + "_v1";
-    Store store = mock(Store.class);
-    Version version = new Version(storeName, 1, "test-push");
-    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.STARTED);
-    String newPushJobId = "new-test-push";
-    Version newVersion = new Version(storeName, 2, newPushJobId);
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
+      long startTime = System.currentTimeMillis();
+      MockTime mockTime = new MockTime(startTime);
+      partialMockParentAdmin.setTimer(mockTime);
+      mockTime.addMilliseconds(30 * Time.MS_PER_HOUR);
+      String storeName = "test_store";
+      String existingTopicName = storeName + "_v1";
+      Store store = mock(Store.class);
+      Version version = new Version(storeName, 1, "test-push");
+      partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.STARTED);
+      String newPushJobId = "new-test-push";
+      Version newVersion = new Version(storeName, 2, newPushJobId);
 
-    doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(Optional.of(version)).when(store).getVersion(1);
-    doReturn(new HashSet<>(Arrays.asList(topicName, existingTopicName))).when(topicManager).listTopics();
-    doReturn(newVersion).when(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, newPushJobId,
-        3, 3, false, true, Version.PushType.BATCH, null, null);
+      doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
+      doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+      doReturn(Optional.of(version)).when(store).getVersion(1);
+      doReturn(new HashSet<>(Arrays.asList(topicName, existingTopicName))).when(topicManager).listTopics();
+      doReturn(newVersion).when(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, newPushJobId,
+          3, 3, false, true, Version.PushType.BATCH, null, null);
 
-    VeniceWriter veniceWriter = mock(VeniceWriter.class);
-    partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
-        .when(veniceWriter).put(any(), any(), anyInt());
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+      VeniceWriter veniceWriter = mock(VeniceWriter.class);
+      partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+      doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+          .when(veniceWriter).put(any(), any(), anyInt());
+      when(zkClient.readData(zkMetadataNodePath, null))
+          .thenReturn(null)
+          .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
-    if (isIncrementalPush) {
-      /**
-       * Parent shouldn't allow an incremental push happen on an incompleted batch push;
-       * notice that the batch push might already be completed but is reported as incompleted
-       * due to transient issues. Either way, incremental push should fail.
-       */
-      try {
-        partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, Version.PushType.INCREMENTAL, false, true, null);
-        Assert.fail("Incremental push should fail if the previous batch push is not in COMPLETE state.");
-      } catch (Exception e) {
+      if (isIncrementalPush) {
         /**
-         * Make sure that parent will not kill previous batch push.
+         * Parent shouldn't allow an incremental push happen on an incompleted batch push;
+         * notice that the batch push might already be completed but is reported as incompleted
+         * due to transient issues. Either way, incremental push should fail.
          */
-        Assert.assertFalse(partialMockParentAdmin.isJobKilled(version.kafkaTopicName()));
+        try {
+          partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, Version.PushType.INCREMENTAL, false, true, null);
+          Assert.fail("Incremental push should fail if the previous batch push is not in COMPLETE state.");
+        } catch (Exception e) {
+          /**
+           * Make sure that parent will not kill previous batch push.
+           */
+          Assert.assertFalse(partialMockParentAdmin.isJobKilled(version.kafkaTopicName()));
+        }
+      } else {
+        Assert.assertEquals(partialMockParentAdmin
+                .incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, Version.PushType.BATCH, false, true, null),
+            newVersion, "Unexpected new version returned by incrementVersionIdempotent");
+        /**
+         * Parent should kill the lingering job.
+         */
+        Assert.assertTrue(partialMockParentAdmin.isJobKilled(version.kafkaTopicName()));
       }
-    } else {
-      Assert.assertEquals(partialMockParentAdmin
-              .incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, Version.PushType.BATCH, false, true, null),
-              newVersion, "Unexpected new version returned by incrementVersionIdempotent");
-      /**
-       * Parent should kill the lingering job.
-       */
-      Assert.assertTrue(partialMockParentAdmin.isJobKilled(version.kafkaTopicName()));
     }
   }
 
@@ -1950,94 +1958,92 @@ public class TestVeniceParentHelixAdmin {
 
   @Test
   public void testHybridAndETLStoreConfig() {
-    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-    VeniceControllerWrapper childControllerWrapper =
-        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper);
-    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-    VeniceControllerWrapper controllerWrapper =
-        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            new VeniceControllerWrapper[]{childControllerWrapper},false);
-    String controllerUrl = controllerWrapper.getControllerUrl();
+    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+        VeniceControllerWrapper childControllerWrapper =
+            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper);
+        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+        VeniceControllerWrapper controllerWrapper =
+            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+                new VeniceControllerWrapper[]{childControllerWrapper},false)) {
+      String controllerUrl = controllerWrapper.getControllerUrl();
 
-    // Adding store
-    String storeName = "test_store";
-    String owner = "test_owner";
-    String keySchemaStr = "\"long\"";
-    String proxyUser = "test_user";
-    Schema valueSchema = generateSchema(false);
-    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
-    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+      // Adding store
+      String storeName = "test_store";
+      String owner = "test_owner";
+      String keySchemaStr = "\"long\"";
+      String proxyUser = "test_user";
+      Schema valueSchema = generateSchema(false);
+      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
+        controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
 
-    // Configure the store to hybrid
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(600)
-        .setHybridOffsetLagThreshold(10000);
-    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
-    Assert.assertFalse(controllerResponse.isError());
-    HybridStoreConfig hybridStoreConfig = controllerClient.getStore(storeName).getStore().getHybridStoreConfig();
-    Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
-    Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
+        // Configure the store to hybrid
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+            .setHybridRewindSeconds(600)
+            .setHybridOffsetLagThreshold(10000);
+        ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
+        Assert.assertFalse(controllerResponse.isError());
+        HybridStoreConfig hybridStoreConfig = controllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+        Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
+        Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
-    // Try to update the hybrid store with different hybrid configs
-    params = new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(172800);
-    controllerResponse = controllerClient.updateStore(storeName, params);
-    Assert.assertFalse(controllerResponse.isError());
-    hybridStoreConfig = controllerClient.getStore(storeName).getStore().getHybridStoreConfig();
-    Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 172800);
-    Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
+        // Try to update the hybrid store with different hybrid configs
+        params = new UpdateStoreQueryParams()
+            .setHybridRewindSeconds(172800);
+        controllerResponse = controllerClient.updateStore(storeName, params);
+        Assert.assertFalse(controllerResponse.isError());
+        hybridStoreConfig = controllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+        Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 172800);
+        Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
-    // test enabling ETL without etl proxy account, expected failure
-    params = new UpdateStoreQueryParams();
-    params.setRegularVersionETLEnabled(true);
-    params.setFutureVersionETLEnabled(true);
-    controllerResponse = controllerClient.updateStore(storeName, params);
-    ETLStoreConfig etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
-    Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
-    Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
-    Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
-        + "because etled user proxy account is not set"));
+        // test enabling ETL without etl proxy account, expected failure
+        params = new UpdateStoreQueryParams();
+        params.setRegularVersionETLEnabled(true);
+        params.setFutureVersionETLEnabled(true);
+        controllerResponse = controllerClient.updateStore(storeName, params);
+        ETLStoreConfig etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+        Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
+        Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
+            + "because etled user proxy account is not set"));
 
-    // test enabling ETL with empty proxy account, expected failure
-    params = new UpdateStoreQueryParams();
-    params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount("");
-    params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount("");
-    controllerResponse = controllerClient.updateStore(storeName, params);
-    etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
-    Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
-    Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
-    Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
-        + "because etled user proxy account is not set"));
+        // test enabling ETL with empty proxy account, expected failure
+        params = new UpdateStoreQueryParams();
+        params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount("");
+        params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount("");
+        controllerResponse = controllerClient.updateStore(storeName, params);
+        etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+        Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
+        Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
+            + "because etled user proxy account is not set"));
 
-    // test enabling ETL with etl proxy account, expected success
-    params = new UpdateStoreQueryParams();
-    params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
-    params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
-    controllerClient.updateStore(storeName, params);
-    etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
-    Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
-    Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
+        // test enabling ETL with etl proxy account, expected success
+        params = new UpdateStoreQueryParams();
+        params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
+        params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
+        controllerClient.updateStore(storeName, params);
+        etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
+        Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
 
-    // set the ETL back to false
-    params = new UpdateStoreQueryParams();
-    params.setRegularVersionETLEnabled(false);
-    params.setFutureVersionETLEnabled(false);
-    controllerClient.updateStore(storeName, params);
-    etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
-    Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
-    Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
+        // set the ETL back to false
+        params = new UpdateStoreQueryParams();
+        params.setRegularVersionETLEnabled(false);
+        params.setFutureVersionETLEnabled(false);
+        controllerClient.updateStore(storeName, params);
+        etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+        Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
 
-    // test enabling ETL again without etl proxy account, expected success
-    params = new UpdateStoreQueryParams();
-    params.setRegularVersionETLEnabled(true);
-    params.setFutureVersionETLEnabled(true);
-    controllerClient.updateStore(storeName, params);
-    etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
-    Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
-    Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
-
-    controllerWrapper.close();
-    childControllerWrapper.close();
-    kafkaBrokerWrapper.close();
+        // test enabling ETL again without etl proxy account, expected success
+        params = new UpdateStoreQueryParams();
+        params.setRegularVersionETLEnabled(true);
+        params.setFutureVersionETLEnabled(true);
+        controllerClient.updateStore(storeName, params);
+        etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+        Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
+        Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
+      }
+    }
   }
 }

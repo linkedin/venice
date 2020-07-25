@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,111 +42,116 @@ public class TestBrooklin {
   private static final Logger logger = Logger.getLogger(TestBrooklin.class);
 
   @Test
-  public void testGetKafkaURL() {
+  public void testGetKafkaURL() throws IOException {
     String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
-    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
     String topic = "test-topic";
-    BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
-    TopicManager topicManager =
-        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka));
 
-    //enable ssl
-    Properties kafkaSslProps = new Properties();
-    kafkaSslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, brooklin.getBrooklinDmsUri());
-    kafkaSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "true");
-    kafkaSslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER, kafka.getSSLAddress());
-    kafkaSslProps.setProperty(ConfigKeys.CLUSTER_NAME, dummyVeniceClusterName);
-    kafkaSslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "venice-test-service");
-    kafkaSslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
+    try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+        BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
+        TopicManager topicManager =
+            new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka));) {
+      //enable ssl
+      Properties kafkaSslProps = new Properties();
+      kafkaSslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, brooklin.getBrooklinDmsUri());
+      kafkaSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "true");
+      kafkaSslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER, kafka.getSSLAddress());
+      kafkaSslProps.setProperty(ConfigKeys.CLUSTER_NAME, dummyVeniceClusterName);
+      kafkaSslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "venice-test-service");
+      kafkaSslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
 
-    BrooklinTopicReplicator replicator =
-        new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaSslProps));
-    Assert.assertEquals(replicator.getKafkaURL(topic), "kafkassl://" + kafka.getSSLAddress() + "/" + topic);
+      BrooklinTopicReplicator replicator =
+          new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaSslProps));
+      Assert.assertEquals(replicator.getKafkaURL(topic), "kafkassl://" + kafka.getSSLAddress() + "/" + topic);
 
-    //disable ssl
-    Properties kafkaNonSslProps = new Properties();
-    kafkaNonSslProps.putAll(kafkaSslProps);
-    kafkaNonSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "false");
+      //disable ssl
+      Properties kafkaNonSslProps = new Properties();
+      kafkaNonSslProps.putAll(kafkaSslProps);
+      kafkaNonSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "false");
 
-    replicator =
-        new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaNonSslProps));
-    Assert.assertEquals(replicator.getKafkaURL(topic), "kafka://" + kafka.getAddress() + "/" + topic);
+      replicator =
+          new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaNonSslProps));
+      Assert.assertEquals(replicator.getKafkaURL(topic), "kafka://" + kafka.getAddress() + "/" + topic);
+    }
   }
 
   @Test
-  public void canReplicateKafkaWithBrooklinTopicReplicator() throws InterruptedException {
-    String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
-    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
-    BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
-    Properties properties = new Properties();
-    properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
-    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100, 0l, TestUtils.getVeniceConsumerFactory(kafka));
-    TopicReplicator replicator =
-        new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
-            brooklin.getBrooklinDmsUri(), new VeniceProperties(properties), dummyVeniceClusterName, "venice-test-service", false,
-            Optional.empty());
+  public void canReplicateKafkaWithBrooklinTopicReplicator() throws InterruptedException, IOException {
+    try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+        BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka)) {
 
-    //Create topics
-    int partitionCount = 1;
-    String sourceTopic = TestUtils.getUniqueString("source");
-    String destinationTopic = TestUtils.getUniqueString("destination");
-    topicManager.createTopic(sourceTopic, partitionCount, 1, true);
-    topicManager.createTopic(destinationTopic, partitionCount, 1, true);
+      Properties properties = new Properties();
+      properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
+      try (TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+          100, 0l, TestUtils.getVeniceConsumerFactory(kafka))) {
+        String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
+        TopicReplicator replicator =
+            new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
+                brooklin.getBrooklinDmsUri(), new VeniceProperties(properties), dummyVeniceClusterName, "venice-test-service", false,
+                Optional.empty());
 
-    byte[] key = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
-    byte[] value = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
+        //Create topics
+        int partitionCount = 1;
+        String sourceTopic = TestUtils.getUniqueString("source");
+        String destinationTopic = TestUtils.getUniqueString("destination");
+        topicManager.createTopic(sourceTopic, partitionCount, 1, true);
+        topicManager.createTopic(destinationTopic, partitionCount, 1, true);
 
-    //Produce in source topic
-    Producer<byte[], byte[]> producer = getKafkaProducer(kafka);
-    producer.send(new ProducerRecord<>(sourceTopic, key, value));
-    producer.flush();
-    producer.close();
+        byte[] key = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
+        byte[] value = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
 
-    //create replication stream
-    try {
-      replicator.beginReplication(sourceTopic, destinationTopic, 0);
-    } catch (TopicException e) {
-      throw new VeniceException(e);
-    }
+        //Produce in source topic
+        try (Producer<byte[], byte[]> producer = getKafkaProducer(kafka)) {
+          producer.send(new ProducerRecord<>(sourceTopic, key, value));
+          producer.flush();
+        }
 
-    //check destination topic for records
-    String consumeTopic = destinationTopic;
-    KafkaConsumer<byte[],byte[]> consumer = getKafkaConsumer(kafka);
-    List<TopicPartition> allPartitions = new ArrayList<>();
-    for (int p=0;p<consumer.partitionsFor(consumeTopic).size();p++){
-      allPartitions.add(new TopicPartition(consumeTopic, p));
-    }
-    consumer.assign(allPartitions);
-    consumer.seekToBeginning(allPartitions);
-    List<ConsumerRecord<byte[], byte[]>> buffer = new ArrayList<>();
-    long startTime = System.currentTimeMillis();
-    while (true) {
-      ConsumerRecords<byte[], byte[]> records = consumer.poll(100);
-      if (records.isEmpty() && buffer.size() > 3){
-        // first 3 records are control messages.
-        break;
+        //create replication stream
+        try {
+          replicator.beginReplication(sourceTopic, destinationTopic, 0);
+        } catch (TopicException e) {
+          throw new VeniceException(e);
+        }
+
+        //check destination topic for records
+        String consumeTopic = destinationTopic;
+        try (KafkaConsumer<byte[],byte[]> consumer = getKafkaConsumer(kafka)) {
+          List<TopicPartition> allPartitions = new ArrayList<>();
+          for (int p=0;p<consumer.partitionsFor(consumeTopic).size();p++){
+            allPartitions.add(new TopicPartition(consumeTopic, p));
+          }
+          consumer.assign(allPartitions);
+          consumer.seekToBeginning(allPartitions);
+          List<ConsumerRecord<byte[], byte[]>> buffer = new ArrayList<>();
+          long startTime = System.currentTimeMillis();
+          while (true) {
+            ConsumerRecords<byte[], byte[]> records = consumer.poll(100);
+            if (records.isEmpty() && buffer.size() > 3){
+              // first 3 records are control messages.
+              break;
+            }
+            if (System.currentTimeMillis() - startTime > TimeUnit.MILLISECONDS.convert(30, TimeUnit.SECONDS)){
+              throw new RuntimeException("Test timed out waiting for messages to appear in destination topic after 30 seconds");
+            }
+            for (ConsumerRecord<byte[], byte[]> record : records) {
+              buffer.add(record);
+            }
+            try {
+              Thread.sleep(500);
+            } catch (InterruptedException e){
+              break;
+            }
+          }
+
+          assertEquals(buffer.get(3).key(), key);
+          assertEquals(buffer.get(3).value(), value);
+        }
+
+        try {
+          replicator.terminateReplication(sourceTopic, destinationTopic);
+        } catch (TopicException e) {
+          throw new VeniceException(e);
+        }
       }
-      if (System.currentTimeMillis() - startTime > TimeUnit.MILLISECONDS.convert(30, TimeUnit.SECONDS)){
-        throw new RuntimeException("Test timed out waiting for messages to appear in destination topic after 30 seconds");
-      }
-      for (ConsumerRecord<byte[], byte[]> record : records) {
-        buffer.add(record);
-      }
-      try {
-        Thread.sleep(500);
-      } catch (InterruptedException e){
-        break;
-      }
-    }
-
-    assertEquals(buffer.get(3).key(), key);
-    assertEquals(buffer.get(3).value(), value);
-
-    try {
-      replicator.terminateReplication(sourceTopic, destinationTopic);
-    } catch (TopicException e) {
-      throw new VeniceException(e);
     }
   }
 
@@ -175,58 +181,57 @@ public class TestBrooklin {
   }
 
   @Test
-  public void testReflectiveInstantiation() {
+  public void testReflectiveInstantiation() throws IOException {
+    try (TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(null))) {
+      // Main case: trying to instantiate the BrooklinTopicReplicator
+      String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();
+      VeniceProperties props = new PropertyBuilder()
+          .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
+          .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false)
+          .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, brooklinReplicatorClassName)
+          .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, "useless...")
+          .put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, "some Kafka connection")
+          .put(ConfigKeys.CLUSTER_NAME, "Venice cluster name")
+          .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "some app id")
+          .build();
+      VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceTestWriterFactory("some Kafka connection");
+      Optional<TopicReplicator> topicReplicator = TopicReplicator.getTopicReplicator(topicManager, props, veniceWriterFactory);
 
-    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(null));
+      assertTrue(topicReplicator.isPresent());
+      assertEquals(topicReplicator.get().getClass().getName(), brooklinReplicatorClassName);
 
-    // Main case: trying to instantiate the BrooklinTopicReplicator
-    String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();
-    VeniceProperties props = new PropertyBuilder()
-        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
-        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false)
-        .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, brooklinReplicatorClassName)
-        .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, "useless...")
-        .put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, "some Kafka connection")
-        .put(ConfigKeys.CLUSTER_NAME, "Venice cluster name")
-        .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "some app id")
-        .build();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceTestWriterFactory("some Kafka connection");
-    Optional<TopicReplicator> topicReplicator = TopicReplicator.getTopicReplicator(topicManager, props, veniceWriterFactory);
+      // We should fail if no class name is specified
+      VeniceProperties badPropsWithNoClassName = new PropertyBuilder()
+          .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
+          .build();
+      try {
+        TopicReplicator.getTopicReplicator(topicManager, badPropsWithNoClassName, veniceWriterFactory);
+        fail("TopicReplicator.get() should fail fast if no class name is specified.");
+      } catch (Exception e) {
+        logger.info("Got an exception, as expected: ", e);
+        // Good
+      }
 
-    assertTrue(topicReplicator.isPresent());
-    assertEquals(topicReplicator.get().getClass().getName(), brooklinReplicatorClassName);
+      // We should fail if a bad class name is specified
+      VeniceProperties badPropsWithBadClassName = new PropertyBuilder()
+          .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
+          .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "fake.package.name." + brooklinReplicatorClassName)
+          .build();
+      try {
+        TopicReplicator.getTopicReplicator(topicManager, badPropsWithBadClassName, veniceWriterFactory);
+        fail("TopicReplicator.get() should fail fast if a bad class name is specified.");
+      } catch (Exception e) {
+        logger.info("Got an exception, as expected: ", e);
+        // Good
+      }
 
-    // We should fail if no class name is specified
-    VeniceProperties badPropsWithNoClassName = new PropertyBuilder()
-        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
-        .build();
-    try {
-      TopicReplicator.getTopicReplicator(topicManager, badPropsWithNoClassName, veniceWriterFactory);
-      fail("TopicReplicator.get() should fail fast if no class name is specified.");
-    } catch (Exception e) {
-      logger.info("Got an exception, as expected: ", e);
-      // Good
+      // When specifying the "kill-switch", we should be able to run without a TopicReplicator
+      VeniceProperties emptyProps = new PropertyBuilder()
+          .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false)
+          .build();
+      Optional<TopicReplicator> emptyTopicReplicator = TopicReplicator.getTopicReplicator(topicManager, emptyProps, veniceWriterFactory);
+
+      assertFalse(emptyTopicReplicator.isPresent());
     }
-
-    // We should fail if a bad class name is specified
-    VeniceProperties badPropsWithBadClassName = new PropertyBuilder()
-        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
-        .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "fake.package.name." + brooklinReplicatorClassName)
-        .build();
-    try {
-      TopicReplicator.getTopicReplicator(topicManager, badPropsWithBadClassName, veniceWriterFactory);
-      fail("TopicReplicator.get() should fail fast if a bad class name is specified.");
-    } catch (Exception e) {
-      logger.info("Got an exception, as expected: ", e);
-      // Good
-    }
-
-    // When specifying the "kill-switch", we should be able to run without a TopicReplicator
-    VeniceProperties emptyProps = new PropertyBuilder()
-        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false)
-        .build();
-    Optional<TopicReplicator> emptyTopicReplicator = TopicReplicator.getTopicReplicator(topicManager, emptyProps, veniceWriterFactory);
-
-    assertFalse(emptyTopicReplicator.isPresent());
   }
 }

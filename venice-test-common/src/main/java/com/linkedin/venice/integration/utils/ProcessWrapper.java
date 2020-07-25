@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.ExceptionUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 
@@ -23,9 +24,15 @@ public abstract class ProcessWrapper implements Closeable {
   // Add a flag to avoid stopping a service that it's not running.
   private boolean isRunning;
 
+  private boolean closeCalled = false;
+  private boolean closeSucceeded = false;
+  private final Exception constructionStack;
+
   ProcessWrapper(String serviceName, File dataDirectory) {
     this.serviceName = serviceName;
     this.dataDirectory = dataDirectory;
+    this.constructionStack = new VeniceException("Exception only for the sake of recording the construction stack");
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> closeAudit("JVM shutdown time")));
   }
 
   /**
@@ -112,8 +119,10 @@ public abstract class ProcessWrapper implements Closeable {
   }
 
   public void close() {
+    closeCalled = true;
     try {
       stop();
+      closeSucceeded = true;
     } catch (Exception e) {
       LOGGER.error("Failed to shutdown " + serviceName + " service running at " + getAddressForLogging(), e);
     }
@@ -124,5 +133,19 @@ public abstract class ProcessWrapper implements Closeable {
     } catch (IOException e) {
       LOGGER.error("Failed to delete " + serviceName + "'s data directory: " + dataDirectory.getAbsolutePath(), e);
     }
+  }
+
+  private void closeAudit(String context) {
+    if (!closeCalled) {
+      System.err.println(context + ": " + this.getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
+      close();
+    } else if (!closeSucceeded) {
+      System.err.println(context + ": " + this.getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
+    }
+  }
+
+  @Override
+  public void finalize() {
+    closeAudit("GC-time");
   }
 }

@@ -144,6 +144,7 @@ public class TestAdminConsumptionTask {
   @AfterMethod
   public void cleanUp() {
     executor.shutdownNow();
+    veniceWriter.close();
   }
 
   private VeniceWriter getVeniceWriter(InMemoryKafkaBroker inMemoryKafkaBroker) {
@@ -388,30 +389,32 @@ public class TestAdminConsumptionTask {
    * This test is flaky on slower hardware, with a short timeout ):
    */
   @Test (timeOut = TIMEOUT * 6)
-  public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException {
-    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
-    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0L, TestUtils.getVeniceConsumerFactory(kafka));
-    String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-    topicManager.createTopic(adminTopic, 1, 1, true);
-    VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);
-    String storeName = "test-store";
+  public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException, IOException {
+    try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+        TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0L, TestUtils.getVeniceConsumerFactory(kafka))) {
+      String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
+      topicManager.createTopic(adminTopic, 1, 1, true);
+      String storeName = "test-store";
+      try (VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);
+          VeniceWriter<byte[], byte[], byte[]> writer = TestUtils.getVeniceTestWriterFactory(kafka.getAddress()).createBasicVeniceWriter(adminTopic)) {
+        byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1); // This name is special
+        long badOffset =
+            writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get().offset();
 
-    VeniceWriter<byte[], byte[], byte[]> writer = TestUtils.getVeniceTestWriterFactory(kafka.getAddress()).createBasicVeniceWriter(adminTopic);
+        byte[] goodMessage = getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2);
+        writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1); // This name is special
-    long badOffset =
-        writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get().offset();
+        Thread.sleep(5000); // Non deterministic, but whatever.  This should never fail.
+        Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
 
-    byte[] goodMessage = getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2);
-    writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-
-    Thread.sleep(5000); // Non deterministic, but whatever.  This should never fail.
-    Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
-
-    new ControllerClient(clusterName, controller.getControllerUrl()).skipAdminMessage(Long.toString(badOffset), false);
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, storeName));
-    });
+        try (ControllerClient controllerClient = new ControllerClient(clusterName, controller.getControllerUrl())) {
+          controllerClient.skipAdminMessage(Long.toString(badOffset), false);
+        }
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
+          Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, storeName));
+        });
+      }
+    }
   }
 
   @Test (timeOut = TIMEOUT)
