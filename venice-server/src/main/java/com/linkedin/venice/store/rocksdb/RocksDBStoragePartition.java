@@ -97,11 +97,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    * Whether the database is read only or not.
    */
   private final boolean readOnly;
-
   private final Optional<Statistics> aggStatistics;
-
   private final RocksDBMemoryStats rocksDBMemoryStats;
-  private final RocksDBThrottler rocksDbThrottler;
 
   public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
@@ -115,7 +112,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     this.aggStatistics = factory.getAggStatistics();
 
     Options options =  getStoreOptions(storagePartitionConfig);
-
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
@@ -136,7 +132,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     // Direct write is not efficient when there are a lot of ongoing pushes
     this.envOptions.setUseDirectWrites(false);
     this.rocksDBMemoryStats = rocksDBMemoryStats;
-    this.rocksDbThrottler = rocksDbThrottler;
 
     try {
       if (this.readOnly) {
@@ -185,7 +180,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  public synchronized Options getStoreOptions(StoragePartitionConfig storagePartitionConfig) {
+  private Options getStoreOptions(StoragePartitionConfig storagePartitionConfig) {
     Options options = new Options();
     options.setEnv(factory.getEnv());
     options.setCreateIfMissing(true);
@@ -491,7 +486,9 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized void drop() {
     close();
     try {
-      RocksDB.destroyDB(fullPathForPartitionDB, options);
+      Options storeOptions = getStoreOptions(new StoragePartitionConfig(storeName, partitionId));
+      RocksDB.destroyDB(fullPathForPartitionDB, storeOptions);
+      storeOptions.close();
     } catch (RocksDBException e) {
       LOGGER.error("Failed to destroy DB for store: " + storeName + ", partition id: " + partitionId);
     }
@@ -503,7 +500,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
     // Remove partition directory
     removeDirWithTwoLayers(fullPathForPartitionDB);
-
     LOGGER.info("RocksDB for store: " + storeName + ", partition: " + partitionId + " was dropped");
   }
 
@@ -512,7 +508,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     /**
      * The following operations are used to free up memory.
      */
-    options.close();
     deRegisterDBStats();
     rocksDB.close();
     if (null != envOptions) {
@@ -521,6 +516,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     if (null != currentSSTFileWriter) {
       currentSSTFileWriter.close();
     }
+    options.close();
     LOGGER.info("RocksDB for store: " + storeName + ", partition: " + partitionId + " was closed");
   }
 
