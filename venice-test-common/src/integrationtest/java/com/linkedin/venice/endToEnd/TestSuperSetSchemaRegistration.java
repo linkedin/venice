@@ -17,6 +17,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
+import org.apache.commons.io.IOUtils;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -97,13 +98,8 @@ public class TestSuperSetSchemaRegistration {
 
     @AfterClass
     public void cleanUp() {
-      if (controllerClient != null) {
-        controllerClient.close();
-      }
-
-      if (veniceCluster != null) {
-        veniceCluster.close();
-      }
+      IOUtils.closeQuietly(controllerClient);
+      IOUtils.closeQuietly(veniceCluster);
     }
 
     @Test(timeOut = TEST_TIMEOUT)
@@ -119,7 +115,7 @@ public class TestSuperSetSchemaRegistration {
       Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
       props.setProperty(VALUE_FIELD_PROP, "value");
 
-      createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props);
+      try (ControllerClient controllerClient = createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props)) {}
 
       // set up superset schema gen configs
       UpdateStoreQueryParams params = new UpdateStoreQueryParams();
@@ -133,15 +129,17 @@ public class TestSuperSetSchemaRegistration {
 
       props.setProperty(VALUE_FIELD_PROP, "value");
 
-      KafkaPushJob job = new KafkaPushJob("Test Batch push job # 1", props);
-      job.run();
+      try (KafkaPushJob job = new KafkaPushJob("Test Batch push job # 1", props)) {
+        job.run();
+      }
 
       writeComplicatedAvroFileWithUserSchema(inputDir, false, false);
       props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
       props.setProperty(VALUE_FIELD_PROP, "value");
 
-      job = new KafkaPushJob("Test Batch push job # 2", props);
-      job.run();
+      try (KafkaPushJob job = new KafkaPushJob("Test Batch push job # 2", props)) {
+        job.run();
+      }
     }
 }
 

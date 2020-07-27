@@ -35,13 +35,14 @@ public class TestWritePathComputation {
 
       // Set flag
       String controllerUrl = multiClusterWrapper.getMasterController(clusterName, GET_MASTER_CONTROLLER_TIMEOUT).getControllerUrl();
-      ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
-      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
-      Assert.assertTrue(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
+      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+        Assert.assertTrue(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
 
-      // Reset flag
-      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
-      Assert.assertFalse(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
+        // Reset flag
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
+        Assert.assertFalse(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
+      }
     }
   }
 
@@ -68,19 +69,20 @@ public class TestWritePathComputation {
 
       // Set flag
       String parentControllerUrl = parentController.getControllerUrl();
-      ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl);
-      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
-      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
-        Assert.assertTrue(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
-        Assert.assertTrue(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
-      });
+      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl)) {
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+          Assert.assertTrue(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
+          Assert.assertTrue(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
+        });
 
-      // Reset flag
-      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
-      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
-        Assert.assertFalse(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
-        Assert.assertFalse(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
-      });
+        // Reset flag
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+          Assert.assertFalse(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
+          Assert.assertFalse(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
+        });
+      }
     }
   }
 }

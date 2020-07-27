@@ -24,6 +24,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -609,8 +610,18 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return components.get(selectedPort);
   }
 
+  /**
+   * @deprecated consider using {@link #useControllerClient(Consumer)} instead for guaranteed resource cleanup
+   */
+  @Deprecated
   public ControllerClient getControllerClient() {
     return new ControllerClient(clusterName, getAllControllersURLs());
+  }
+
+  public void useControllerClient(Consumer<ControllerClient> controllerClientConsumer) {
+    try (ControllerClient controllerClient = getControllerClient()) {
+      controllerClientConsumer.accept(controllerClient);
+    }
   }
 
   /**

@@ -43,6 +43,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -154,11 +155,15 @@ public class ConsumerIntegrationTest {
         .setVeniceURL(cluster.getRandomRouterURL()));
   }
 
+  @AfterMethod
+  public void testCleanUp() {
+    IOUtils.closeQuietly(client);
+  }
+
   @AfterClass
-  public void cleanUp() {
+  public void sharedCleanUp() {
     IOUtils.closeQuietly(cluster);
     IOUtils.closeQuietly(controllerClient);
-    IOUtils.closeQuietly(client);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

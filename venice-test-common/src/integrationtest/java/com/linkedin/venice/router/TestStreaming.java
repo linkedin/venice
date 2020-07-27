@@ -110,10 +110,10 @@ public class TestStreaming {
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     // enable compute
-    veniceCluster.getControllerClient().updateStore(storeName,
-        new UpdateStoreQueryParams().setReadComputationEnabled(true)
+    veniceCluster.useControllerClient(c -> c.updateStore(storeName, new UpdateStoreQueryParams()
+        .setReadComputationEnabled(true)
         .setReadQuotaInCU(1000000000)
-    );
+    ));
 
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 

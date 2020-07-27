@@ -123,69 +123,67 @@ public abstract class TestRouterCache {
     CompressionStrategy compressionStrategy = isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP;
     VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
 
-    VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .createVeniceWriter(topic, keySerializer, valueSerializer);
-
-
-
     String keyPrefix = "key_";
     String valuePrefix = "value_";
 
-    veniceWriter.broadcastStartOfPush(true, false, compressionStrategy, new HashMap<>());
-    // Insert test record and wait synchronously for it to succeed
-    for (int i = 0; i < 100; ++i) {
-      veniceWriter.put(keyPrefix + i, compressor.compress(avroSerializer.serialize(topic,valuePrefix + i)), valueSchemaId).get();
-    }
-    // Write end of push message to make node become ONLINE from BOOTSTRAP
-    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+        .createVeniceWriter(topic, keySerializer, valueSerializer)) {
 
-    // Wait for storage node to finish consuming, and new version to be activated
-    String controllerUrl = veniceCluster.getAllControllersURLs();
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
-      // Refresh router metadata once new version is pushed, so that the router sees the latest store version.
-      if (currentVersion == pushVersion) {
-        veniceCluster.refreshAllRouterMetaData();
+      veniceWriter.broadcastStartOfPush(true, false, compressionStrategy, new HashMap<>());
+      // Insert test record and wait synchronously for it to succeed
+      for (int i = 0; i < 100; ++i) {
+        veniceWriter.put(keyPrefix + i, compressor.compress(avroSerializer.serialize(topic,valuePrefix + i)), valueSchemaId).get();
       }
-      return currentVersion == pushVersion;
-    });
+      // Write end of push message to make node become ONLINE from BOOTSTRAP
+      veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    IOUtils.closeQuietly(veniceWriter);
+      // Wait for storage node to finish consuming, and new version to be activated
+      String controllerUrl = veniceCluster.getAllControllersURLs();
+      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+        int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+        // Refresh router metadata once new version is pushed, so that the router sees the latest store version.
+        if (currentVersion == pushVersion) {
+          veniceCluster.refreshAllRouterMetaData();
+        }
+        return currentVersion == pushVersion;
+      });
+    }
 
     // Test with D2 Client
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
-    AvroGenericStoreClient<String, CharSequence> storeClient =
+    try (AvroGenericStoreClient<String, CharSequence> storeClient =
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client));
-    // Run multiple rounds
-    int rounds = 50;
-    int cur = 0;
-    String existingKey = keyPrefix + 2;
-    String expectedValue = valuePrefix + 2;
-    String nonExistingKey = keyPrefix + 100;
-    while (++cur <= rounds) {
-      /**
-       * Batch get should not get impacted by caching feature.
-       */
-      Set<String> keySet = new HashSet<>();
-      for (int i = 0; i < 10; ++i) {
-        keySet.add(keyPrefix + i);
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client))) {
+      // Run multiple rounds
+      int rounds = 50;
+      int cur = 0;
+      String existingKey = keyPrefix + 2;
+      String expectedValue = valuePrefix + 2;
+      String nonExistingKey = keyPrefix + 100;
+      while (++cur <= rounds) {
+        /**
+         * Batch get should not get impacted by caching feature.
+         */
+        Set<String> keySet = new HashSet<>();
+        for (int i = 0; i < 10; ++i) {
+          keySet.add(keyPrefix + i);
+        }
+        keySet.add("unknown_key");
+        Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
+        Assert.assertEquals(result.size(), 10);
+        for (int i = 0; i < 10; ++i) {
+          Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
+        }
+        /**
+         * Test existing key
+         */
+        CharSequence value = storeClient.get(existingKey).get();
+        Assert.assertEquals(value.toString(), expectedValue);
+        /**
+         * Test non-existing key
+         */
+        Assert.assertNull(storeClient.get(nonExistingKey).get());
       }
-      keySet.add("unknown_key");
-      Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
-      Assert.assertEquals(result.size(), 10);
-      for (int i = 0; i < 10; ++i) {
-        Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
-      }
-      /**
-       * Test existing key
-       */
-      CharSequence value = storeClient.get(existingKey).get();
-      Assert.assertEquals(value.toString(), expectedValue);
-      /**
-       * Test non-existing key
-       */
-      Assert.assertNull(storeClient.get(nonExistingKey).get());
     }
 
     double totalCacheLookupRequest = 0;

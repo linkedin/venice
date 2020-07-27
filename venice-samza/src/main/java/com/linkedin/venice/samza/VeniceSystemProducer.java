@@ -230,7 +230,9 @@ public class VeniceSystemProducer implements SystemProducer {
   @Override
   public synchronized void stop() {
     this.isStarted = false;
-    veniceWriter.close();
+    if (null != veniceWriter) {
+      veniceWriter.close();
+    }
     if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
       switch (pushMonitor.get().getCurrentStatus()) {
@@ -256,7 +258,9 @@ public class VeniceSystemProducer implements SystemProducer {
       }
       pushMonitor.get().close();
     }
-    controllerClient.close();
+    if (null != controllerClient) {
+      controllerClient.close();
+    }
     D2ClientUtils.shutdownClient(d2Client);
   }
 

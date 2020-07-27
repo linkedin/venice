@@ -75,14 +75,15 @@ public class TestStorageMetadataMigration {
     int serverPort2 = cluster.getVeniceServers().get(1).getPort();
     int serverPort3 = cluster.getVeniceServers().get(2).getPort();
 
-    ControllerClient client = new ControllerClient(clusterName, urls);
+    try (ControllerClient client = new ControllerClient(clusterName, urls)) {
+      // stop a server during push
+      cluster.stopVeniceServer(serverPort1);
+      TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+          () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
+      Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
+      Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
+    }
 
-    // stop a server during push
-    cluster.stopVeniceServer(serverPort1);
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
-        () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
-    Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
-    Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
     // stop one more server
     cluster.stopVeniceServer(serverPort2);
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,

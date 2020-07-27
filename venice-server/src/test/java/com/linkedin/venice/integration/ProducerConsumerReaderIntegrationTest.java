@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -68,12 +69,9 @@ public class ProducerConsumerReaderIntegrationTest {
 
   @AfterMethod
   public void cleanUp() {
-    if (storeClient != null) {
-      storeClient.close();
-    }
-    if (veniceCluster != null) {
-      veniceCluster.close();
-    }
+    IOUtils.closeQuietly(storeClient);
+    IOUtils.closeQuietly(veniceCluster);
+    IOUtils.closeQuietly(veniceWriter);
   }
 
   @Test
@@ -172,41 +170,44 @@ public class ProducerConsumerReaderIntegrationTest {
       }
       k++;
     }
-    VeniceWriter<byte[], byte[], byte[]> basicVeniceWriter = writerFactory.createBasicVeniceWriter(topicName);
-    VeniceWriter<String, String, byte[]> veniceWriter1 =
-        veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer);
-    VeniceWriter<String, String, byte[]> veniceWriter2 =
-        veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer);
-    basicVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    // Two writers with the same Guid that write the same data (same partition) to the kafka topic at different rates.
-    // In the end the second writer will have produced only half of the records produced by the first writer.
-    int j = 0;
-    for (int i = 0; i < data.size(); i++) {
-      veniceWriter1.put(data.get(i).getFirst(), data.get(i).getSecond(), valueSchemaId);
-      if (i % 2 == 0) {
-        veniceWriter2.put(data.get(j).getFirst(), data.get(j).getSecond(), valueSchemaId);
-        j++;
+
+    try(VeniceWriter<byte[], byte[], byte[]> basicVeniceWriter = writerFactory.createBasicVeniceWriter(topicName);
+        VeniceWriter<String, String, byte[]> veniceWriter1 =
+            veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer);
+        VeniceWriter<String, String, byte[]> veniceWriter2 =
+            veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer)) {
+      basicVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
+      // Two writers with the same Guid that write the same data (same partition) to the kafka topic at different rates.
+      // In the end the second writer will have produced only half of the records produced by the first writer.
+      int j = 0;
+      for (int i = 0; i < data.size(); i++) {
+        veniceWriter1.put(data.get(i).getFirst(), data.get(i).getSecond(), valueSchemaId);
+        if (i % 2 == 0) {
+          veniceWriter2.put(data.get(j).getFirst(), data.get(j).getSecond(), valueSchemaId);
+          j++;
+        }
       }
+      basicVeniceWriter.broadcastEndOfPush(new HashMap<>());
     }
-    veniceWriter1.close();
-    basicVeniceWriter.broadcastEndOfPush(new HashMap<>());
-    basicVeniceWriter.close();
 
     // Wait for ingestion to complete.
-    ControllerClient controllerClient =
-        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
-    final int pushVersion = Version.parseVersionFromKafkaTopicName(topicName);
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
-      return currentVersion == pushVersion;
-    });
-
-    waitForRouterReady(data.get(0).getFirst());
-    // Read and verify the ingested data.
-    for (Pair<String, String> keyValue : data) {
-      Object value = storeClient.get(keyValue.getFirst()).get();
-      Assert.assertEquals(value.toString(), keyValue.getSecond(), "Unexpected key value pair!");
+    try (ControllerClient controllerClient =
+        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL())) {
+      final int pushVersion = Version.parseVersionFromKafkaTopicName(topicName);
+      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        return currentVersion == pushVersion;
+      });
     }
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      // Read and verify the ingested data.
+      for (Pair<String, String> keyValue : data) {
+        Object value = storeClient.get(keyValue.getFirst()).get();
+        Assert.assertNotNull(value, "Value should not be null for key: " + keyValue.getFirst());
+        Assert.assertEquals(value.toString(), keyValue.getSecond(), "Unexpected key value pair!");
+      }
+    });
   }
 
   private void waitForRouterReady(final String key) {

@@ -32,6 +32,20 @@ public abstract class ProcessWrapper implements Closeable {
     this.serviceName = serviceName;
     this.dataDirectory = dataDirectory;
     this.constructionStack = new VeniceException("Exception only for the sake of recording the construction stack");
+    // We eliminate test framework stack trace elements, since they are not relevant to our leak debugging
+    StackTraceElement[] stackTraceElements = this.constructionStack.getStackTrace();
+    int firstUselessElement = -1;
+    for (int i = 0; i < stackTraceElements.length; i++) {
+      if (!stackTraceElements[i].getClassName().startsWith("com.linkedin.venice")) {
+        firstUselessElement = i;
+        break;
+      }
+    }
+    StackTraceElement[] prunedStackTraceElements = new StackTraceElement[firstUselessElement];
+    for (int i = 0; i < prunedStackTraceElements.length; i++) {
+      prunedStackTraceElements[i] = stackTraceElements[i];
+    }
+    this.constructionStack.setStackTrace(prunedStackTraceElements);
     Runtime.getRuntime().addShutdownHook(new Thread(() -> closeAudit("JVM shutdown time")));
   }
 
