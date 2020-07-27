@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.HelixAsAServiceWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -38,115 +39,117 @@ public class TestHAASController {
 
   @Test
   public void testStartHAASHelixControllerAsControllerClusterLeader() {
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
-    HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress());
-    VeniceControllerWrapper controllerWrapper = venice.addVeniceController(enableControllerClusterHAASProperties);
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> assertTrue(controllerWrapper.isMasterControllerOfControllerCluster(),
-            "The only Venice controller should be appointed the colo master"));
-    assertTrue(controllerWrapper.isMasterController(venice.getClusterName()),
-        "The only Venice controller should be the leader of Venice cluster " + venice.getClusterName());
-    venice.addVeniceServer(new Properties(), new Properties());
-    VersionCreationResponse response = venice.getNewStoreVersion();
-    assertFalse(response.isError());
-    venice.getControllerClient().writeEndOfPush(response.getName(),
-        Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS,
-        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
-            ExecutionStatus.COMPLETED.toString()));
-    helixAsAServiceWrapper.close();
-    venice.close();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      VeniceControllerWrapper controllerWrapper = venice.addVeniceController(enableControllerClusterHAASProperties);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+          () -> assertTrue(controllerWrapper.isMasterControllerOfControllerCluster(),
+              "The only Venice controller should be appointed the colo master"));
+      assertTrue(controllerWrapper.isMasterController(venice.getClusterName()),
+          "The only Venice controller should be the leader of Venice cluster " + venice.getClusterName());
+      venice.addVeniceServer(new Properties(), new Properties());
+      VersionCreationResponse response = venice.getNewStoreVersion();
+      assertFalse(response.isError());
+      venice.useControllerClient(controllerClient -> {
+        controllerClient.writeEndOfPush(response.getName(), Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS,
+            () -> assertEquals(controllerClient.queryJobStatus(response.getKafkaTopic()).getStatus(), ExecutionStatus.COMPLETED.toString()));
+      });
+    }
   }
 
   @Test
   public void testTransitionToHAASControllerAsControllerClusterLeader() {
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
-    HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress());
-    VersionCreationResponse response = venice.getNewStoreVersion();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
-            ExecutionStatus.STARTED.toString()));
-    List<VeniceControllerWrapper> oldControllers = venice.getVeniceControllers();
-    List<VeniceControllerWrapper> newControllers = new ArrayList<>();
-    // Start the rolling bounce process
-    for (VeniceControllerWrapper oldController : oldControllers) {
-      venice.stopVeniceController(oldController.getPort());
-      oldController.close();
-      newControllers.add(venice.addVeniceController(enableControllerClusterHAASProperties));
-    }
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS,
-        () -> {
-          for (VeniceControllerWrapper newController : newControllers) {
-            if (newController.isMasterController(venice.getClusterName())) {
-              assertTrue(newController.isMasterControllerOfControllerCluster(),
-                  "The colo master Venice controller should be the leader of the only Venice cluster");
-              return true;
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      VersionCreationResponse response = venice.getNewStoreVersion();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+          () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
+              ExecutionStatus.STARTED.toString()));
+      List<VeniceControllerWrapper> oldControllers = venice.getVeniceControllers();
+      List<VeniceControllerWrapper> newControllers = new ArrayList<>();
+      // Start the rolling bounce process
+      for (VeniceControllerWrapper oldController : oldControllers) {
+        venice.stopVeniceController(oldController.getPort());
+        oldController.close();
+        newControllers.add(venice.addVeniceController(enableControllerClusterHAASProperties));
+      }
+      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS,
+          () -> {
+            for (VeniceControllerWrapper newController : newControllers) {
+              if (newController.isMasterController(venice.getClusterName())) {
+                assertTrue(newController.isMasterControllerOfControllerCluster(),
+                    "The colo master Venice controller should be the leader of the only Venice cluster");
+                return true;
+              }
             }
-          }
-          return false;
-        });
-    // Make sure the previous ongoing push can be completed.
-    venice.getControllerClient().writeEndOfPush(response.getName(),
-        Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
-            ExecutionStatus.COMPLETED.toString()));
-    helixAsAServiceWrapper.close();
-    venice.close();
+            return false;
+          });
+      // Make sure the previous ongoing push can be completed.
+      venice.useControllerClient(controllerClient -> {
+        controllerClient.writeEndOfPush(response.getName(), Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+            () -> assertEquals(controllerClient.queryJobStatus(response.getKafkaTopic()).getStatus(), ExecutionStatus.COMPLETED.toString()));
+      });
+    }
   }
 
   @Test
   public void testStartHAASControllerAsStorageClusterLeader() {
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
-    HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress());
-    VeniceControllerWrapper controllerWrapper =
-        venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> assertTrue(controllerWrapper.isMasterController(venice.getClusterName()),
-            "The only Venice controller should become the leader of the only Venice cluster"));
-    venice.addVeniceServer(new Properties(), new Properties());
-    venice.addVeniceServer(new Properties(), new Properties());
-    VersionCreationResponse response = venice.getNewStoreVersion();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
-            ExecutionStatus.STARTED.toString()));
-    venice.getControllerClient().writeEndOfPush(response.getName(),
-        Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
-            ExecutionStatus.COMPLETED.toString()));
-    helixAsAServiceWrapper.close();
-    venice.close();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      VeniceControllerWrapper controllerWrapper =
+          venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+          () -> assertTrue(controllerWrapper.isMasterController(venice.getClusterName()),
+              "The only Venice controller should become the leader of the only Venice cluster"));
+      venice.addVeniceServer(new Properties(), new Properties());
+      venice.addVeniceServer(new Properties(), new Properties());
+      VersionCreationResponse response = venice.getNewStoreVersion();
+      venice.useControllerClient(controllerClient -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+            () -> assertEquals(controllerClient.queryJobStatus(response.getKafkaTopic()).getStatus(),
+                ExecutionStatus.STARTED.toString()));
+        venice.getControllerClient().writeEndOfPush(response.getName(),
+            Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+            () -> assertEquals(controllerClient.queryJobStatus(response.getKafkaTopic()).getStatus(),
+                ExecutionStatus.COMPLETED.toString()));
+      });
+    }
   }
 
   @Test
   public void testTransitionToHAASControllerAsStorageClusterLeader() {
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
-    HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress());
-    VersionCreationResponse response = venice.getNewStoreVersion();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
-            ExecutionStatus.STARTED.toString()));
-    List<VeniceControllerWrapper> oldControllers = venice.getVeniceControllers();
-    List<VeniceControllerWrapper> newControllers = new ArrayList<>();
-    assertFalse(helixAsAServiceWrapper.getClusterLeader(venice.getClusterName()).getId()
-        .startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX));
-    // Start the rolling bounce process
-    for (VeniceControllerWrapper oldController : oldControllers) {
-      venice.stopVeniceController(oldController.getPort());
-      oldController.close();
-      newControllers.add(venice.addVeniceController(enableControllerAndStorageClusterHAASProperties));
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      VersionCreationResponse response = venice.getNewStoreVersion();
+      venice.useControllerClient(controllerClient -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+            () -> assertEquals(controllerClient.queryJobStatus(response.getKafkaTopic()).getStatus(), ExecutionStatus.STARTED.toString()));
+      });
+
+      List<VeniceControllerWrapper> oldControllers = venice.getVeniceControllers();
+      List<VeniceControllerWrapper> newControllers = new ArrayList<>();
+      assertFalse(helixAsAServiceWrapper.getClusterLeader(venice.getClusterName()).getId().startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX));
+      // Start the rolling bounce process
+      for (VeniceControllerWrapper oldController : oldControllers) {
+        venice.stopVeniceController(oldController.getPort());
+        oldController.close();
+        newControllers.add(venice.addVeniceController(enableControllerAndStorageClusterHAASProperties));
+      }
+      assertTrue(helixAsAServiceWrapper.getClusterLeader(venice.getClusterName()).getId().startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX));
+
+      venice.useControllerClient(controllerClient -> {
+        // Make sure the previous ongoing push can be completed.
+        controllerClient.writeEndOfPush(response.getName(), Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          JobStatusQueryResponse jobStatusQueryResponse = controllerClient.queryJobStatus(response.getKafkaTopic());
+          assertFalse(jobStatusQueryResponse.isError(), "JobStatusQueryResponse error: " + jobStatusQueryResponse.getError());
+          assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.COMPLETED.toString());
+        });
+      });
     }
-    assertTrue(helixAsAServiceWrapper.getClusterLeader(venice.getClusterName()).getId()
-        .startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX));
-    // Make sure the previous ongoing push can be completed.
-    venice.getControllerClient().writeEndOfPush(response.getName(),
-        Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
-            ExecutionStatus.COMPLETED.toString()));
-    helixAsAServiceWrapper.close();
-    venice.close();
   }
 
   private HelixAsAServiceWrapper startAndWaitForHAASToBeAvailable(String zkAddress) {

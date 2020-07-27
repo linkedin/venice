@@ -54,9 +54,8 @@ public class TestVsonStoreBatch {
 
   @AfterClass
   public void cleanup() {
-    if (veniceCluster != null) {
-      veniceCluster.close();
-    }
+    IOUtils.closeQuietly(controllerClient);
+    IOUtils.closeQuietly(veniceCluster);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

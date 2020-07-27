@@ -125,114 +125,116 @@ public abstract class TestRestartServerDuringIngestion {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic);
-    veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
+      veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 
-    /**
-     * Restart storage node during batch ingestion.
-     */
-    Map<byte[], byte[]> sortedInputRecords = generateInput(1000, true, 0, serializer);
-    Set<Integer> restartPointSetForSortedInput = new HashSet();
-    restartPointSetForSortedInput.add(134);
-    restartPointSetForSortedInput.add(346);
-    restartPointSetForSortedInput.add(678);
-    restartPointSetForSortedInput.add(831);
-    int cur = 0;
-    for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
-      if (restartPointSetForSortedInput.contains(++cur)) {
-        // Restart server
-        cluster.stopVeniceServer(serverWrapper.getPort());
-        TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-          PartitionAssignment partitionAssignment =
-              cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
-          // Ensure all of server are shutdown, no partition assigned.
-          return partitionAssignment.getAssignedNumberOfPartitions() == 0;
-        });
-        cluster.restartVeniceServer(serverWrapper.getPort());
+      /**
+       * Restart storage node during batch ingestion.
+       */
+      Map<byte[], byte[]> sortedInputRecords = generateInput(1000, true, 0, serializer);
+      Set<Integer> restartPointSetForSortedInput = new HashSet();
+      restartPointSetForSortedInput.add(134);
+      restartPointSetForSortedInput.add(346);
+      restartPointSetForSortedInput.add(678);
+      restartPointSetForSortedInput.add(831);
+      int cur = 0;
+      for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
+        if (restartPointSetForSortedInput.contains(++cur)) {
+          // Restart server
+          cluster.stopVeniceServer(serverWrapper.getPort());
+          TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+            PartitionAssignment partitionAssignment =
+                cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
+            // Ensure all of server are shutdown, no partition assigned.
+            return partitionAssignment.getAssignedNumberOfPartitions() == 0;
+          });
+          cluster.restartVeniceServer(serverWrapper.getPort());
+        }
+        veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
       }
-      veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
-    }
 
-    veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+      veniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
-    // Wait push completed.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
-        () -> cluster.getMasterVeniceController()
-            .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), topic)
-            .getExecutionStatus()
-            .equals(ExecutionStatus.COMPLETED));
+      // Wait push completed.
+      TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+          () -> cluster.getMasterVeniceController()
+              .getVeniceAdmin()
+              .getOffLinePushStatus(cluster.getClusterName(), topic)
+              .getExecutionStatus()
+              .equals(ExecutionStatus.COMPLETED));
 
-    /**
-     * There is a delay before router realizes that servers are up, it's possible that the
-     * router couldn't find any replica because there is only one server in the cluster and
-     * the only server just gets restarted. Restart all routers to get the fresh state of
-     * the cluster.
-     */
-    restartAllRouters();
+      /**
+       * There is a delay before router realizes that servers are up, it's possible that the
+       * router couldn't find any replica because there is only one server in the cluster and
+       * the only server just gets restarted. Restart all routers to get the fresh state of
+       * the cluster.
+       */
+      restartAllRouters();
 
-    // Build a venice client to verify all the data
-    AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(cluster.getRandomRouterURL())
-            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
-    );
+      // Build a venice client to verify all the data
+      AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(cluster.getRandomRouterURL())
+              .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
+      );
 
-    for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
-      String key = deserializer.deserialize(entry.getKey()).toString();
-      CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
-      CharSequence returnedValue = storeClient.get(key).get();
-      Assert.assertEquals(returnedValue, expectedValue);
-    }
-
-    /**
-     * Restart storage node during streaming ingestion.
-     */
-    Map<byte[], byte[]> unsortedInputRecords = generateInput(1000, false, 5000, serializer);
-    Set<Integer> restartPointSetForUnsortedInput = new HashSet();
-    restartPointSetForUnsortedInput.add(134);
-    restartPointSetForUnsortedInput.add(346);
-    restartPointSetForUnsortedInput.add(678);
-    restartPointSetForUnsortedInput.add(831);
-    cur = 0;
-
-    VeniceWriter<byte[], byte[], byte[]> streamingWriter = veniceWriterFactory.createBasicVeniceWriter(
-        Version.composeRealTimeTopic(storeName));
-    for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
-      if (restartPointSetForUnsortedInput.contains(++cur)) {
-        // Restart server
-        cluster.stopVeniceServer(serverWrapper.getPort());
-        TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-          PartitionAssignment partitionAssignment =
-              cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
-          // Ensure all of server are shutdown, no partition assigned.
-          return partitionAssignment.getAssignedNumberOfPartitions() == 0;
-        });
-        cluster.restartVeniceServer(serverWrapper.getPort());
+      for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
+        String key = deserializer.deserialize(entry.getKey()).toString();
+        CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
+        CharSequence returnedValue = storeClient.get(key).get();
+        Assert.assertEquals(returnedValue, expectedValue);
       }
-      streamingWriter.put(entry.getKey(), entry.getValue(), 1, null);
-    }
 
-    // Wait until all partitions have ready-to-serve instances
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment partitionAssignment =
-          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
-      boolean allPartitionsReady = true;
-      for (Partition partition : partitionAssignment.getAllPartitions()) {
-        if (partition.getReadyToServeInstances().size() == 0) {
-          allPartitionsReady = false;
-          break;
+      /**
+       * Restart storage node during streaming ingestion.
+       */
+      Map<byte[], byte[]> unsortedInputRecords = generateInput(1000, false, 5000, serializer);
+      Set<Integer> restartPointSetForUnsortedInput = new HashSet();
+      restartPointSetForUnsortedInput.add(134);
+      restartPointSetForUnsortedInput.add(346);
+      restartPointSetForUnsortedInput.add(678);
+      restartPointSetForUnsortedInput.add(831);
+      cur = 0;
+
+      try (VeniceWriter<byte[], byte[], byte[]> streamingWriter = veniceWriterFactory.createBasicVeniceWriter(
+          Version.composeRealTimeTopic(storeName))) {
+        for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
+          if (restartPointSetForUnsortedInput.contains(++cur)) {
+            // Restart server
+            cluster.stopVeniceServer(serverWrapper.getPort());
+            TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+              PartitionAssignment partitionAssignment =
+                  cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
+              // Ensure all of server are shutdown, no partition assigned.
+              return partitionAssignment.getAssignedNumberOfPartitions() == 0;
+            });
+            cluster.restartVeniceServer(serverWrapper.getPort());
+          }
+          streamingWriter.put(entry.getKey(), entry.getValue(), 1, null);
         }
       }
-      return allPartitionsReady;
-    });
-    restartAllRouters();
-    // Verify all the key/value pairs
-    for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
-      String key = deserializer.deserialize(entry.getKey()).toString();
-      CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
-      CharSequence returnedValue = storeClient.get(key).get();
-      Assert.assertEquals(returnedValue, expectedValue);
+
+      // Wait until all partitions have ready-to-serve instances
+      TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+        PartitionAssignment partitionAssignment =
+            cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
+        boolean allPartitionsReady = true;
+        for (Partition partition : partitionAssignment.getAllPartitions()) {
+          if (partition.getReadyToServeInstances().size() == 0) {
+            allPartitionsReady = false;
+            break;
+          }
+        }
+        return allPartitionsReady;
+      });
+      restartAllRouters();
+      // Verify all the key/value pairs
+      for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
+        String key = deserializer.deserialize(entry.getKey()).toString();
+        CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
+        CharSequence returnedValue = storeClient.get(key).get();
+        Assert.assertEquals(returnedValue, expectedValue);
+      }
     }
   }
 

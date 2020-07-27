@@ -106,8 +106,9 @@ public class PushJobDetailsTest {
     pushJobProps.setProperty(POLL_JOB_STATUS_INTERVAL_MS, String.valueOf(1000));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
-    KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps);
-    testPushJob.run();
+    try (KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps)) {
+      testPushJob.run();
+    }
 
     // Verify the sent push job details.
     try (AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client =
@@ -165,8 +166,9 @@ public class PushJobDetailsTest {
     pushJobProps.setProperty(POLL_JOB_STATUS_INTERVAL_MS, String.valueOf(1000));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
-    KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps);
-    assertThrows(VeniceException.class, testPushJob::run);
+    try (KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps)) {
+      assertThrows(VeniceException.class, testPushJob::run);
+    }
     try (AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client =
         ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig(
             VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)

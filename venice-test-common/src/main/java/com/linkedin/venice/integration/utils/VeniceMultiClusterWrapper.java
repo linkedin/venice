@@ -42,46 +42,61 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
       Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup, Optional<VeniceProperties> veniceProperties,
       boolean multiD2) {
-    ZkServerWrapper zkServerWrapper = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
-    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
-    BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
-    String clusterToD2 = "";
-    String[] clusterNames = new String[numberOfClusters];
-    for (int i = 0; i < numberOfClusters; i++) {
-      String clusterName = randomizeClusterName ? TestUtils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
-      clusterNames[i] = clusterName;
-      if (multiD2) {
-        clusterToD2 += clusterName + ":venice-" + i + ",";
-      } else {
-        clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName) + ",";
-      }
-    }
-    clusterToD2 = clusterToD2.substring(0, clusterToD2.length()-1);
-
-    // Create controllers for multi-cluster
+    ZkServerWrapper zkServerWrapper = null;
+    KafkaBrokerWrapper kafkaBrokerWrapper = null;
+    BrooklinWrapper brooklinWrapper = null;
+    Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();
     Map<Integer, VeniceControllerWrapper> controllerMap = new HashMap<>();
 
-    Properties controllerProperties = new Properties();
-    if (multiColoSetup) {
-      // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
-      controllerProperties.put(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
+    try {
+      zkServerWrapper = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
+      kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+      brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
+      String clusterToD2 = "";
+      String[] clusterNames = new String[numberOfClusters];
+      for (int i = 0; i < numberOfClusters; i++) {
+        String clusterName = randomizeClusterName ? TestUtils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
+        clusterNames[i] = clusterName;
+        if (multiD2) {
+          clusterToD2 += clusterName + ":venice-" + i + ",";
+        } else {
+          clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName) + ",";
+        }
+      }
+      clusterToD2 = clusterToD2.substring(0, clusterToD2.length()-1);
+
+      // Create controllers for multi-cluster
+      Properties controllerProperties = new Properties();
+      if (multiColoSetup) {
+        // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
+        controllerProperties.put(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
+      }
+      for (int i = 0; i < numberOfControllers; i++) {
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicaFactor, partitionSize,
+            delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false, controllerProperties);
+        controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
+      }
+      for (int i = 0; i < numberOfClusters; i++) {
+        // Create a wrapper for cluster without controller.
+        VeniceClusterWrapper clusterWrapper =
+            ServiceFactory.getVeniceClusterWrapperForMultiCluster(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
+                clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist,
+                enableAutoJoinWhitelist, delayToReblanceMS, minActiveReplica, sslToStorageNodes, false, veniceProperties);
+        clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
+      }
+      final ZkServerWrapper finalZkServerWrapper = zkServerWrapper;
+      final KafkaBrokerWrapper finalKafkaBrokerWrapper = kafkaBrokerWrapper;
+      final BrooklinWrapper finalBrooklinWrapper = brooklinWrapper;
+      return (serviceName, port) -> new VeniceMultiClusterWrapper(null, finalZkServerWrapper, finalKafkaBrokerWrapper,
+          finalBrooklinWrapper, clusterWrapperMap, controllerMap);
+    } catch (Exception e) {
+      IOUtils.closeQuietly(zkServerWrapper);
+      IOUtils.closeQuietly(kafkaBrokerWrapper);
+      IOUtils.closeQuietly(brooklinWrapper);
+      clusterWrapperMap.values().forEach(ProcessWrapper::close);
+      controllerMap.values().forEach(ProcessWrapper::close);
+      throw e;
     }
-    for (int i = 0; i < numberOfControllers; i++) {
-      VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicaFactor, partitionSize,
-          delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false, controllerProperties);
-      controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
-    }
-    Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();
-    for (int i = 0; i < numberOfClusters; i++) {
-      // Create a wrapper for cluster without controller.
-      VeniceClusterWrapper clusterWrapper =
-          ServiceFactory.getVeniceClusterWrapperForMultiCluster(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
-              clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist,
-              enableAutoJoinWhitelist, delayToReblanceMS, minActiveReplica, sslToStorageNodes, false, veniceProperties);
-      clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
-    }
-    return (serviceName, port) -> new VeniceMultiClusterWrapper(null, zkServerWrapper, kafkaBrokerWrapper,
-        brooklinWrapper, clusterWrapperMap, controllerMap);
   }
 
   @Override

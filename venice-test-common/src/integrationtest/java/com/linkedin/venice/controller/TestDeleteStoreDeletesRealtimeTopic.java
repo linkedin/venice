@@ -55,18 +55,24 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
 
     //write streaming records
-    SystemProducer veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
-    for (int i=1; i<=10; i++) {
-      sendStreamingRecord(veniceProducer, storeName, i);
+    SystemProducer veniceProducer = null;
+    try {
+      veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+      for (int i=1; i<=10; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
+    } finally {
+      if (null != veniceProducer) {
+        veniceProducer.stop();
+      }
     }
-    veniceProducer.stop();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1, "The empty push has not activated yet...");
     });
 
-    AvroGenericStoreClient client =
+    client =
         ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
                 .setVeniceURL(venice.getRandomRouterURL()));
