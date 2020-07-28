@@ -182,4 +182,11 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isEnableBatchPushFromAdminInChildController();
   }
 
+  public long getBackupVersionDefaultRetentionMs() {
+    return getCommonConfig().getBackupVersionDefaultRetentionMs();
+  }
+
+  public boolean isBackupVersionRetentionBasedCleanupEnabled() {
+    return getCommonConfig().isBackupVersionRetentionBasedCleanupEnabled();
+  }
 }

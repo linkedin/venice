@@ -118,6 +118,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -230,6 +231,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
+
+    /**
+     * This map is used to guard concurrent modification to the same store, so far it is only being used
+     * by function: {@link #deleteOneStoreVersion} since it could be invoked in different threads:
+     * 1. Invocation from {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask} for version deletion/store deletion.
+     * 2. Invocation from {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} to clean up error/historical versions.
+     * 3. Invocation from {@link StoreBackupVersionCleanupService} to clean up backup version based on retention policy.
+     */
+    private final Map<String, ReentrantLock> perStoreLockMap = new ConcurrentHashMap<>();
 
     public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
         this(multiClusterConfigs, metricsRepository, false, Optional.empty(), Optional.empty());
@@ -1665,15 +1675,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        ReentrantLock storeLock = perStoreLockMap.computeIfAbsent(storeName, (s) -> new ReentrantLock());
         resources.lockForMetadataOperation();
+        storeLock.lock();
         try {
+            Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
+            if (!store.containsVersion(versionNumber)) {
+                logger.info("Version: " + versionNumber + " doesn't exist in store: " + storeName + ", will skip `deleteOneStoreVersion`");
+                return;
+            }
             String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
             logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
             deleteHelixResource(clusterName, resourceName);
             logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
             killOfflinePush(clusterName, resourceName, true);
 
-            Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
             if (!store.isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
                 // Do not delete topic replicator during store migration
                 // In such case, the topic replicator will be deleted after store migration, triggered by a new push job
@@ -1697,6 +1713,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             }
         } finally {
+            storeLock.unlock();
             resources.unlockForMetadataOperation();
         }
     }
@@ -2352,6 +2369,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setBackupVersionRetentionMs(String clusterName, String storeName,
+        long backupVersionRetentionMs) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setBackupVersionRetentionMs(backupVersionRetentionMs);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -2462,7 +2487,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<String> etledUserProxyAccount,
         Optional<Boolean> nativeReplicationEnabled,
         Optional<String> pushStreamSourceAddress,
-        Optional<IncrementalPushPolicy> incrementalPushPolicy) {
+        Optional<IncrementalPushPolicy> incrementalPushPolicy,
+        Optional<Long> backupVersionRetentionMs) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -2663,6 +2689,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     store.setEtlStoreConfig(etlStoreConfig);
                     return store;
                 });
+            }
+            if (backupVersionRetentionMs.isPresent()) {
+                setBackupVersionRetentionMs(clusterName, storeName, backupVersionRetentionMs.get());
             }
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {

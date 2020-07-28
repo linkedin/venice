@@ -6,6 +6,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -27,10 +28,11 @@ public class VeniceController {
   private static final Logger logger = Logger.getLogger(VeniceController.class);
 
   //services
-  VeniceControllerService controllerService;
-  AdminSparkServer adminServer;
-  AdminSparkServer secureAdminServer;
-  TopicCleanupService topicCleanupService;
+  private VeniceControllerService controllerService;
+  private AdminSparkServer adminServer;
+  private AdminSparkServer secureAdminServer;
+  private TopicCleanupService topicCleanupService;
+  private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
 
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -87,10 +89,19 @@ public class VeniceController {
           multiClusterConfigs.adminCheckReadMethodForKafka(),
           accessController);
     }
+    storeBackupVersionCleanupService = Optional.empty();
     if (multiClusterConfigs.isParent()) {
       topicCleanupService = new TopicCleanupServiceForParentController(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
     } else {
       topicCleanupService = new TopicCleanupService(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
+      if (multiClusterConfigs.isBackupVersionRetentionBasedCleanupEnabled()) {
+        Admin admin = controllerService.getVeniceHelixAdmin();
+        if (!(admin instanceof VeniceHelixAdmin)) {
+          throw new VeniceException("'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");
+        }
+        storeBackupVersionCleanupService = Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin)admin, multiClusterConfigs));
+        logger.info("StoreBackupVersionCleanupService is enabled");
+      }
     }
   }
 
@@ -104,6 +115,7 @@ public class VeniceController {
       secureAdminServer.start();
     }
     topicCleanupService.start();
+    storeBackupVersionCleanupService.ifPresent( s -> s.start());
     // start d2 service at the end
     d2ServerList.forEach( d2Server -> {
       d2Server.forceStart();
@@ -121,6 +133,7 @@ public class VeniceController {
     });
     //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     AbstractVeniceService.stopIfNotNull(topicCleanupService);
+    storeBackupVersionCleanupService.ifPresent(s -> AbstractVeniceService.stopIfNotNull(s));
     AbstractVeniceService.stopIfNotNull(adminServer);
     AbstractVeniceService.stopIfNotNull(secureAdminServer);
     AbstractVeniceService.stopIfNotNull(controllerService);

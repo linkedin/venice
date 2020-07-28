@@ -453,7 +453,8 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.etledUserProxyAccount.toString()),
         Optional.ofNullable(message.nativeReplicationEnabled),
         Optional.ofNullable(message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString()),
-        IncrementalPushPolicy.optionalValueOf(message.incrementalPushPolicy));
+        IncrementalPushPolicy.optionalValueOf(message.incrementalPushPolicy),
+        Optional.ofNullable(message.backupVersionRetentionMs));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
