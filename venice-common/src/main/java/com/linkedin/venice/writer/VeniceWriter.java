@@ -884,6 +884,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           } else {
             throw new VeniceException(errorMessage + ", will bubble up.");
           }
+        } else if (e.getCause() != null && e.getCause().getClass().equals(TopicAuthorizationException.class)) {
+          throw new VeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
         } else {
           throw new VeniceException("Got an exception while trying to send a control message (" +
               ControlMessageType.valueOf(controlMessage).name() + ")", e);

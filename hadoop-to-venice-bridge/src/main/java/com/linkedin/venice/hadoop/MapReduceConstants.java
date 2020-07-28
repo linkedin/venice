@@ -9,6 +9,7 @@ public class MapReduceConstants {
   public static final String COUNTER_GROUP_KAFKA = "Kafka";
   public static final String COUNTER_OUTPUT_RECORDS = "Output Records";
   public static final String EMPTY_RECORD = "empty record";
+  public static final String AUTHORIZATION_FAILURES = "authorization failures";
 
   public static final String COUNTER_GROUP_KAFKA_BROKER = "Kafka metrics aggregated per broker";
   public static final String KAFKA_PRODUCER_METRIC_FOR_BROKER = "%s for %s";
