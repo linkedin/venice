@@ -165,6 +165,16 @@ public class ConfigKeys {
    */
   public static final String TOPIC_DELETION_STATUS_POLL_INTERVAL_MS = "topic.deletion.status.poll.interval.ms";
 
+  /**
+   * The following config is to control the default retention time in milliseconds if it is not specified in store level.
+   */
+  public static final String CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS = "controller.backup.version.default.retention.ms";
+
+  /**
+   * The following config is to control whether to enable backup version cleanup based on retention policy or not.
+   */
+  public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED = "controller.backup.version.retention.based.cleanup.enabled";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";

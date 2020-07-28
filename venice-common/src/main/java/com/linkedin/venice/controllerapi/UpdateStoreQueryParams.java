@@ -62,7 +62,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
             .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress())
-            .setIncrementalPushPolicy(srcStore.getIncrementalPushPolicy());
+            .setIncrementalPushPolicy(srcStore.getIncrementalPushPolicy())
+            .setBackupVersionRetentionMs(srcStore.getBackupVersionRetentionMs());
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -364,6 +365,14 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<IncrementalPushPolicy> getIncrementalPushPolicy() {
     return Optional.ofNullable(params.get(INCREMENTAL_PUSH_POLICY)).map(IncrementalPushPolicy::valueOf);
+  }
+
+  public UpdateStoreQueryParams setBackupVersionRetentionMs(long backupVersionRetentionMs) {
+    putLong(BACKUP_VERSION_RETENTION_MS, backupVersionRetentionMs);
+    return this;
+  }
+  public Optional<Long> getBackupVersionRetentionMs() {
+    return getLong(BACKUP_VERSION_RETENTION_MS);
   }
 
   //***************** above this line are getters and setters *****************

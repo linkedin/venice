@@ -251,6 +251,20 @@ public class Store {
    */
   private IncrementalPushPolicy incrementalPushPolicy = IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC;
 
+  /**
+   * This time is used to track the time when a new version is promoted to current version.
+   * For now, it is mostly to decide whether a backup version can be removed or not based on retention.
+   * For the existing store before this code change, it will be set to be current timestamp.
+   */
+  private long latestVersionPromoteToCurrentTimestamp = System.currentTimeMillis();
+
+  /**
+   * Backup retention time, and if it is not set (-1), Venice Controller will use the default configured retention.
+   * Check {@link com.linkedin.venice.ConfigKeys#CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS}.
+   */
+  private long backupVersionRetentionMs = -1;
+
+
   public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
       RoutingStrategy routingStrategy, ReadStrategy readStrategy,
       OfflinePushStrategy offlinePushStrategy) {
@@ -666,6 +680,22 @@ public class Store {
     this.incrementalPushPolicy = incrementalPushPolicy;
   }
 
+  public long getLatestVersionPromoteToCurrentTimestamp() {
+    return latestVersionPromoteToCurrentTimestamp;
+  }
+
+  public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
+    this.latestVersionPromoteToCurrentTimestamp = latestVersionPromoteToCurrentTimestamp;
+  }
+
+  public long getBackupVersionRetentionMs() {
+    return backupVersionRetentionMs;
+  }
+
+  public void setBackupVersionRetentionMs(long backupVersionRetentionMs) {
+    this.backupVersionRetentionMs = backupVersionRetentionMs;
+  }
+
   /**
    * Add a version into store.
    *
@@ -921,6 +951,8 @@ public class Store {
     result = 31 * result + (partitionerConfig != null ? partitionerConfig.hashCode() : 0);
     result = 31 * result + (storeMetadataSystemStoreEnabled ? 1 : 0);
     result = 31 * result + incrementalPushPolicy.hashCode();
+    result = 31 * result + (int) (backupVersionRetentionMs ^ (backupVersionRetentionMs >>> 32));
+
     return result;
   }
 
@@ -969,6 +1001,7 @@ public class Store {
     if (!partitionerConfig.equals(store.partitionerConfig)) return false;
     if (storeMetadataSystemStoreEnabled != store.storeMetadataSystemStoreEnabled) return false;
     if (incrementalPushPolicy != store.incrementalPushPolicy) return false;
+    if (backupVersionRetentionMs != store.backupVersionRetentionMs) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
         && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
   }
@@ -1019,6 +1052,7 @@ public class Store {
     clonedStore.setEtlStoreConfig(etlStoreConfig);
     clonedStore.setStoreMetadataSystemStoreEnabled(storeMetadataSystemStoreEnabled);
     clonedStore.setIncrementalPushPolicy(incrementalPushPolicy);
+    clonedStore.setBackupVersionRetentionMs(backupVersionRetentionMs);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion(), true);
     }

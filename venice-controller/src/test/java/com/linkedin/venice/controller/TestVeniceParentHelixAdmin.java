@@ -292,7 +292,8 @@ public class TestVeniceParentHelixAdmin {
         Optional<String> etledUserProxyAccount,
         Optional<Boolean> nativeReplicationEnabled,
         Optional<String> pushStreamSourceAddress,
-        Optional<IncrementalPushPolicy> incrementalPushPolicy) {
+        Optional<IncrementalPushPolicy> incrementalPushPolicy,
+        Optional<Long> backupVersionRetentionMs) {
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
       }
@@ -1131,137 +1132,145 @@ public class TestVeniceParentHelixAdmin {
     return Schema.parse(schemaStr);
   }
 
+  private void testBackupVersionRetentionUpdate(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    String storeName = TestUtils.getUniqueString("test_store_");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String valueSchemaStr ="\"string\"";
+    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
+    Assert.assertNotNull(newStoreResponse);
+    Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
+    long backupVersionRetentionMs = TimeUnit.HOURS.toMillis(1);
+    ControllerResponse controllerResponse = parentControllerClient.updateStore(storeName,
+        new UpdateStoreQueryParams().setBackupVersionRetentionMs(backupVersionRetentionMs));
+    Assert.assertNotNull(controllerResponse);
+    Assert.assertFalse(controllerResponse.isError(), "Error in store update response: " + controllerResponse.getError());
+
+    // Verify the update in Parent Controller
+    StoreResponse storeResponseFromParentController = parentControllerClient.getStore(storeName);
+    Assert.assertFalse(storeResponseFromParentController.isError(), "Error in store response from Parent Controller: " + storeResponseFromParentController.getError());
+    Assert.assertEquals(storeResponseFromParentController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
+    // Verify the update in Child Controller
+    TestUtils.waitForNonDeterministicAssertion(30000, TimeUnit.MILLISECONDS, () -> {
+      StoreResponse storeResponseFromChildController = childControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponseFromChildController.isError(), "Error in store response from Child Controller: " + storeResponseFromChildController.getError());
+      Assert.assertEquals(storeResponseFromChildController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
+    });
+  }
+
+  private void testSuperSetSchemaGen(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    // Adding store
+    String storeName = TestUtils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    Schema valueSchema = generateSchema(false);
+
+    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    Assert.assertNotNull(newStoreResponse);
+    Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setReadComputationEnabled(true);
+    params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
+    params.setAutoSchemaPushJobEnabled(true);
+    ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, params);
+    Assert.assertNotNull(updateStoreResponse);
+    Assert.assertFalse(updateStoreResponse.isError(), "error in updateStoreResponse: " + updateStoreResponse.getError());
+
+    valueSchema = generateSchema(true);
+    SchemaResponse addSchemaRespone = parentControllerClient.addValueSchema(storeName, valueSchema.toString());
+    Assert.assertNotNull(addSchemaRespone);
+    Assert.assertFalse(addSchemaRespone.isError(), "error in addSchemaRespone: " + addSchemaRespone.getError());
+
+    MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
+    Assert.assertNotNull(schemaResponse);
+    Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
+    Assert.assertNotNull(schemaResponse.getSchemas());
+    Assert.assertEquals(schemaResponse.getSchemas().length,3);
+
+    StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+    Assert.assertNotNull(storeResponse);
+    Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+    Assert.assertNotNull(storeResponse.getStore());
+    Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() != -1);
+
+    valueSchema = generateSuperSetSchemaNewField();
+    addSchemaRespone = parentControllerClient.addValueSchema(storeName, valueSchema.toString());
+    Assert.assertNotNull(addSchemaRespone);
+    Assert.assertFalse(addSchemaRespone.isError(), "error in addSchemaRespone: " + addSchemaRespone.getError());
+
+    schemaResponse = parentControllerClient.getAllValueSchema(storeName);
+    Assert.assertNotNull(schemaResponse);
+    Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
+    Assert.assertNotNull(schemaResponse.getSchemas());
+    Assert.assertEquals(schemaResponse.getSchemas().length,4);
+  }
+
+  private void testSuperSetSchemaGenWithSameUpcomingSchema(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    // Adding store
+    String storeName = TestUtils.getUniqueString("test_store");;
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    Schema valueSchema = generateSchema(false);
+
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setReadComputationEnabled(true);
+    params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
+    params.setAutoSchemaPushJobEnabled(true);
+    parentControllerClient.updateStore(storeName, params);
+
+    valueSchema = generateSuperSetSchema();
+    parentControllerClient.addValueSchema(storeName, valueSchema.toString());
+
+    MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
+
+    Assert.assertEquals(schemaResponse.getSchemas().length,2);
+    StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() == -1);
+  }
+
+  private void testAddValueSchemaDocUpdate(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    // Adding store
+    String storeName = TestUtils.getUniqueString("test_store");;
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
+    String schemaStrDoc = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
+    Schema valueSchema = Schema.parse(schemaStr);
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    valueSchema = Schema.parse(schemaStrDoc);
+    parentControllerClient.addValueSchema(storeName, valueSchema.toString());
+    MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
+    Assert.assertEquals(schemaResponse.getSchemas().length,2);
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testSuperSetSchemaGen(boolean isControllerSslEnabled) throws IOException {
+   public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) {
     try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
         VeniceControllerWrapper childControllerWrapper =
             ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper controllerWrapper =
+        VeniceControllerWrapper parentControllerWrapper =
             ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
                 new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled)) {
-      String controllerUrl = isControllerSslEnabled ? controllerWrapper.getSecureControllerUrl() : controllerWrapper.getControllerUrl();
-      Optional<SSLFactory> sslFactory = isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
+      String childControllerUrl =
+          isControllerSslEnabled ? childControllerWrapper.getSecureControllerUrl() : childControllerWrapper.getControllerUrl();
+      String parentControllerUrl =
+          isControllerSslEnabled ? parentControllerWrapper.getSecureControllerUrl() : parentControllerWrapper.getControllerUrl();
+      Optional<SSLFactory> sslFactory =
+          isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
+      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
+          ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
 
-      // Adding store
-      String storeName = "test_store";
-      String owner = "test_owner";
-      String keySchemaStr = "\"long\"";
-      Schema valueSchema = generateSchema(false);
+        testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
 
-      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory)) {
-        NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
-        Assert.assertNotNull(newStoreResponse);
-        Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
+        testSuperSetSchemaGen(parentControllerClient, childControllerClient);
 
-        UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-        params.setReadComputationEnabled(true);
-        params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
-        params.setAutoSchemaPushJobEnabled(true);
-        ControllerResponse updateStoreResponse = controllerClient.updateStore(storeName, params);
-        Assert.assertNotNull(updateStoreResponse);
-        Assert.assertFalse(updateStoreResponse.isError(), "error in updateStoreResponse: " + updateStoreResponse.getError());
+        testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient, childControllerClient);
 
-        valueSchema = generateSchema(true);
-        SchemaResponse addSchemaRespone = controllerClient.addValueSchema(storeName, valueSchema.toString());
-        Assert.assertNotNull(addSchemaRespone);
-        Assert.assertFalse(addSchemaRespone.isError(), "error in addSchemaRespone: " + addSchemaRespone.getError());
-
-        MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
-        Assert.assertNotNull(schemaResponse);
-        Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
-        Assert.assertNotNull(schemaResponse.getSchemas());
-        Assert.assertEquals(schemaResponse.getSchemas().length,3);
-
-        StoreResponse storeResponse = controllerClient.getStore(storeName);
-        Assert.assertNotNull(storeResponse);
-        Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
-        Assert.assertNotNull(storeResponse.getStore());
-        Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() != -1);
-
-        valueSchema = generateSuperSetSchemaNewField();
-        addSchemaRespone = controllerClient.addValueSchema(storeName, valueSchema.toString());
-        Assert.assertNotNull(addSchemaRespone);
-        Assert.assertFalse(addSchemaRespone.isError(), "error in addSchemaRespone: " + addSchemaRespone.getError());
-
-        schemaResponse = controllerClient.getAllValueSchema(storeName);
-        Assert.assertNotNull(schemaResponse);
-        Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
-        Assert.assertNotNull(schemaResponse.getSchemas());
-        Assert.assertEquals(schemaResponse.getSchemas().length,4);
-      }
-    }
-  }
-
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testSuperSetSchemaGenWithSameUpcomingSchema(boolean isControllerSslEnabled) throws IOException {
-    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-        VeniceControllerWrapper childControllerWrapper =
-            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
-        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper controllerWrapper =
-            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-                new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled)) {
-      String controllerUrl = isControllerSslEnabled ? controllerWrapper.getSecureControllerUrl() : controllerWrapper.getControllerUrl();
-      Optional<SSLFactory> sslFactory = isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
-
-      // Adding store
-      String storeName = "test_store";
-      String owner = "test_owner";
-      String keySchemaStr = "\"long\"";
-      Schema valueSchema = generateSchema(false);
-
-      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory)) {
-        controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
-
-        UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-        params.setReadComputationEnabled(true);
-        params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
-        params.setAutoSchemaPushJobEnabled(true);
-        controllerClient.updateStore(storeName, params);
-
-        valueSchema = generateSuperSetSchema();
-        controllerClient.addValueSchema(storeName, valueSchema.toString());
-
-        MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
-
-        Assert.assertEquals(schemaResponse.getSchemas().length,2);
-        StoreResponse storeResponse = controllerClient.getStore(storeName);
-        Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() == -1);
-      }
-    }
-  }
-
-  @Test
-  public void testAddValueSchemaDocUpdate() throws IOException {
-    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-        VeniceControllerWrapper childControllerWrapper =
-            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, false);
-        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper controllerWrapper =
-            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-                new VeniceControllerWrapper[]{childControllerWrapper}, false)) {
-      String controllerUrl = controllerWrapper.getControllerUrl();
-      Optional<SSLFactory> sslFactory =  Optional.empty();
-
-      // Adding store
-      String storeName = "test_store";
-      String owner = "test_owner";
-      String keySchemaStr = "\"long\"";
-      String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
-      String schemaStrDoc = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
-
-      Schema valueSchema = Schema.parse(schemaStr);
-
-      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory)) {
-        controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
-
-        valueSchema = Schema.parse(schemaStrDoc);
-        controllerClient.addValueSchema(storeName, valueSchema.toString());
-
-        MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
-
-        Assert.assertEquals(schemaResponse.getSchemas().length,2);
+        testAddValueSchemaDocUpdate(parentControllerClient, childControllerClient);
       }
     }
   }

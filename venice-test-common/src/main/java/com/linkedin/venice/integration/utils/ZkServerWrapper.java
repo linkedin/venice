@@ -25,7 +25,7 @@ import org.apache.zookeeper.server.quorum.QuorumPeerConfig;
  */
 public class ZkServerWrapper extends ProcessWrapper {
   // Class-level state and APIs
-  private static final boolean useSingleton = true;
+  static final boolean useSingleton = true;
   private static final ConcurrentLinkedQueue<String> chroots = new ConcurrentLinkedQueue<>();
   private static volatile ZkServerWrapper singleton = null;
   private String chroot; // only used for singleton, never includes a leading slash

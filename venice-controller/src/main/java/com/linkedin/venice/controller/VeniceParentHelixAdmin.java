@@ -1159,7 +1159,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> etledUserProxyAccount,
       Optional<Boolean> nativeReplicationEnabled,
       Optional<String> pushStreamSourceAddress,
-      Optional<IncrementalPushPolicy> incrementalPushPolicy) {
+      Optional<IncrementalPushPolicy> incrementalPushPolicy,
+      Optional<Long> backupVersionRetentionMs) {
     acquireLock(clusterName, storeName);
 
     try {
@@ -1307,6 +1308,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.largestUsedVersionNumber = largestUsedVersionNumber.isPresent() ? largestUsedVersionNumber.get() : store.getLargestUsedVersionNumber();
 
       setStore.incrementalPushPolicy = incrementalPushPolicy.map(IncrementalPushPolicy::getValue).orElseGet(() -> store.getIncrementalPushPolicy().getValue());
+      setStore.backupVersionRetentionMs = backupVersionRetentionMs.isPresent() ? backupVersionRetentionMs.get() : store.getBackupVersionRetentionMs();
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();

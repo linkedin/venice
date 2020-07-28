@@ -151,7 +151,15 @@ public abstract class ProcessWrapper implements Closeable {
 
   private void closeAudit(String context) {
     if (!closeCalled) {
-      System.err.println(context + ": " + this.getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
+      if (!(this.getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.useSingleton)) {
+        /**
+         * Since {@link ZKServerWrapper} is using singleton mode, currently, there is no way to close it explicitly, but at exit.
+         * So no need to report the following error for {@link ZkServerWrapper}, and this hook will be in charge of closing it properly.
+         */
+        System.err.println(context + ": " + this.getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
+      }
+      close();
+      System.out.println(this.getClass().getSimpleName() + " closed successfully");
     } else if (!closeSucceeded) {
       System.err.println(context + ": " + this.getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
     }

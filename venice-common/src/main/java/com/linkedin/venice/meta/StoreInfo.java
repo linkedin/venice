@@ -51,6 +51,7 @@ public class StoreInfo {
     storeInfo.setEtlStoreConfig(store.getEtlStoreConfig());
     storeInfo.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
     storeInfo.setPushStreamSourceAddress(store.getPushStreamSourceAddress());
+    storeInfo.setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     return storeInfo;
   }
   /**
@@ -233,6 +234,8 @@ public class StoreInfo {
    * Partitioner info of this store.
    */
   private PartitionerConfig partitionerConfig;
+
+  private long backupVersionRetentionMs;
 
   public StoreInfo() {
   }
@@ -554,5 +557,13 @@ public class StoreInfo {
 
   public void setPartitionerConfig(PartitionerConfig partitionerConfig) {
     this.partitionerConfig = partitionerConfig;
+  }
+
+  public long getBackupVersionRetentionMs() {
+    return backupVersionRetentionMs;
+  }
+
+  public void setBackupVersionRetentionMs(long backupVersionRetentionMs) {
+    this.backupVersionRetentionMs = backupVersionRetentionMs;
   }
 }
