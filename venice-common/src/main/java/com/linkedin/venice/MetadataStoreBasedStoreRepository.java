@@ -36,6 +36,7 @@ import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
@@ -62,37 +63,51 @@ import static java.lang.Thread.*;
 public class MetadataStoreBasedStoreRepository implements ReadOnlyStoreRepository, ReadOnlySchemaRepository {
   private static final Logger logger = Logger.getLogger(MetadataStoreBasedStoreRepository.class);
   private static final int KEY_SCHEMA_ID = 1;
+  private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND;
+  private static final int SUBSCRIBE_TIMEOUT_IN_SECONDS = 30;
 
+  // subscribedStores keeps track of all regular stores it is monitoring
   private final Set<String> subscribedStores = new HashSet<>();
   // Local cache for stores.
   private final Map<String, Store> storeMap = new VeniceConcurrentHashMap<>();
   // Local cache for key/value schemas. SchemaData supports one key schema per store only, which may need to be changed for key schema evolvability.
   private final Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
-  // subscribedStores keeps track of all regular stores it is monitoring
-
   // A lock to make sure that all updates are serialized and events are delivered in the correct order
   private final ReentrantLock updateLock = new ReentrantLock();
-
   // Local cache for system store clients.
   private final Map<String, AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue>> storeClientMap = new VeniceConcurrentHashMap<>();
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
   private final String clusterName;
   private final String routerUrl;
 
-  public MetadataStoreBasedStoreRepository(String clusterName, String routerUrl) {
+  public MetadataStoreBasedStoreRepository(String clusterName, String routerUrl, long refreshIntervalInSeconds) {
     this.clusterName = clusterName;
     this.routerUrl = routerUrl;
-    this.scheduler.scheduleAtFixedRate(this::refresh, 0, 3, TimeUnit.MINUTES);
+    this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
   }
 
-  public void subscribe(String storeName) {
+  public void subscribe(String storeName) throws InterruptedException {
     updateLock.lock();
     try {
-      subscribedStores.add(storeName);
-      refreshOneStore(storeName);
+      if (subscribedStores.contains(storeName)) {
+        return;
+      }
+      long timeoutTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(SUBSCRIBE_TIMEOUT_IN_SECONDS);
+      while (true) {
+        try {
+          refreshOneStore(storeName);
+          // Make sure refresh completes first before we add store to subscription, so periodic refresh thread won't throw exception.
+          subscribedStores.add(storeName);
+          return;
+        } catch (MissingKeyInStoreMetadataException e) {
+          if (System.currentTimeMillis() > timeoutTime) {
+            throw e;
+          }
+          Thread.sleep(WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
+        }
+      }
     } finally {
       updateLock.unlock();
     }
@@ -136,8 +151,7 @@ public class MetadataStoreBasedStoreRepository implements ReadOnlyStoreRepositor
     updateLock.lock();
     try {
       Store newStore = getStoreFromFromSystemStore(storeName);
-      // Make sure we don't add back stores that are unsubscribed.
-      if (newStore != null && subscribedStores.contains(storeName)) {
+      if (newStore != null) {
         putStore(newStore);
       } else {
         removeStore(storeName);
@@ -399,6 +413,10 @@ public class MetadataStoreBasedStoreRepository implements ReadOnlyStoreRepositor
     }
   }
 
+  protected List<Store> getStoresFromSystemStores() {
+    return subscribedStores.stream().map(this::getStoreFromFromSystemStore).collect(Collectors.toList());
+  }
+
   protected List<Version> getVersionsFromCurrentVersionStates(String storeName, CurrentVersionStates currentVersionStates) {
     List<Version> versionList = new ArrayList<>();
     for (StoreVersionState storeVersionState : currentVersionStates.currentVersionStates) {
@@ -490,10 +508,6 @@ public class MetadataStoreBasedStoreRepository implements ReadOnlyStoreRepositor
     store.setWriteComputationEnabled(storeProperties.writeComputationEnabled);
 
     return store;
-  }
-
-  protected List<Store> getStoresFromSystemStores() {
-    return subscribedStores.stream().map(this::getStoreFromFromSystemStore).collect(Collectors.toList());
   }
 
   protected Store putStore(Store newStore) {

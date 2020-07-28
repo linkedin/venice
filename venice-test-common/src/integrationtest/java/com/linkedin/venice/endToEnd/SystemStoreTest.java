@@ -240,7 +240,7 @@ public class SystemStoreTest {
     venice.refreshAllRouterMetaData();
 
     // Create MetadataStoreBasedStoreRepository
-    MetadataStoreBasedStoreRepository storeRepository = new MetadataStoreBasedStoreRepository(venice.getClusterName(), venice.getRandomRouterURL());
+    MetadataStoreBasedStoreRepository storeRepository = new MetadataStoreBasedStoreRepository(venice.getClusterName(), venice.getRandomRouterURL(), 60);
     // Create test listener to monitor store repository changes.
     AtomicInteger creationCount = new AtomicInteger(0);
     AtomicInteger changeCount = new AtomicInteger(0);
@@ -249,6 +249,10 @@ public class SystemStoreTest {
     storeRepository.registerStoreDataChangedListener(testListener);
     // Verify initial state
     assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.get(), "initialization");
+
+    // subscribe() method will wait for up to 30 seconds to subscribe to the store.
+    storeRepository.subscribe(regularVeniceStoreName);
+    assertListenerCounts(testListener, creationCount.addAndGet(1), changeCount.get(), deletionCount.get(), "store creations");
 
     StoreMetadataKey storeAttributesKey = new StoreMetadataKey();
     storeAttributesKey.keyStrings = Arrays.asList(regularVeniceStoreName);
@@ -273,22 +277,10 @@ public class SystemStoreTest {
         ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig
             (VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName),
                 StoreMetadataValue.class).setVeniceURL(venice.getRandomRouterURL()))) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        try {
-          assertNotNull(client.get(storeAttributesKey).get());
-          assertNotNull(client.get(storeTargetVersionStatesKey).get());
-          assertNotNull(client.get(storeCurrentStatesKey).get());
-          assertNotNull(client.get(storeCurrentVersionStatesKey).get());
-          assertNotNull(client.get(storeKeySchemasKey).get());
-          assertNotNull(client.get(storeValueSchemasKey).get());
-        } catch (Exception e) {
-          fail();
-        }
-      });
 
-      // We need to wait for store being fully populated before we subscribe to it.
+      // Subscribe to existing store won't change listener count.
       storeRepository.subscribe(regularVeniceStoreName);
-      assertListenerCounts(testListener, creationCount.addAndGet(1), changeCount.get(), deletionCount.get(), "store creations");
+      assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.get(), "store creations");
       Store store = storeRepository.getStore(regularVeniceStoreName);
       assertEquals(store.getName(), regularVeniceStoreName);
       assertEquals(store.getVersions().size(), 0);
