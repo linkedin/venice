@@ -65,7 +65,7 @@
     },
     {
       "name": "pushJobLatestCheckpoint",
-      "doc": "Latest checkpoint reached by the push job if available, 0 => INITIALIZE_PUSH_JOB, 1 => NEW_VERSION_CREATED, 2 =>  START_MAP_REDUCE_JOB, 3 => MAP_REDUCE_JOB_COMPLETED, 4 => START_JOB_STATUS_POLLING, 5 => JOB_STATUS_POLLING_COMPLETED",
+      "doc": "Latest checkpoint reached by the push job if available, negative values are known error checkpoints  0 => INITIALIZE_PUSH_JOB, 1 => NEW_VERSION_CREATED, 2 =>  START_MAP_REDUCE_JOB, 3 => MAP_REDUCE_JOB_COMPLETED, 4 => START_JOB_STATUS_POLLING, 5 => JOB_STATUS_POLLING_COMPLETED, -1 => QUOTA_EXCEEDED, -2 => WRITE_ACL_FAILED, -3 => DUP_KEY_WITH_DIFF_VALUE",
       "type": ["null", "int"],
       "default":  null
     },

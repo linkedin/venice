@@ -382,7 +382,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     START_MAP_REDUCE_JOB(2),
     MAP_REDUCE_JOB_COMPLETED(3),
     START_JOB_STATUS_POLLING(4),
-    JOB_STATUS_POLLING_COMPLETED(5);
+    JOB_STATUS_POLLING_COMPLETED(5),
+    QUOTA_EXCEEDED(-1),
+    WRITE_ACL_FAILED(-2),
+    DUP_KEY_WITH_DIFF_VALUE(-3);
 
     private int value;
 
@@ -627,6 +630,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         pushJobDetails.failureDetails = e.toString();
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
         updatePushJobDetailsWithConfigs();
+        if (pushJobDetails.pushJobLatestCheckpoint == PushJobCheckpoints.START_MAP_REDUCE_JOB.getValue()) {
+          updatePushJobDetailsWithMRDetails();
+        }
         sendPushJobDetails();
         closeVeniceWriter();
       } catch (Exception ex) {
@@ -806,6 +812,35 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
     } catch (Exception e) {
       logger.warn("Exception caught while updating push job details with configs. " + NON_CRITICAL_EXCEPTION, e);
+    }
+  }
+
+  /**
+   * Best effort attempt to get more details on reasons behind MR failure by looking at MR counters
+   */
+  private void updatePushJobDetailsWithMRDetails() {
+    try {
+      // Quota exceeded
+      long inputFileSize = runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_KEY_SIZE)
+          + runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_VALUE_SIZE);
+      long veniceDiskUsageEstimate = (long) (inputFileSize / storeSetting.storageEngineOverheadRatio);
+      if (veniceDiskUsageEstimate > storeSetting.storeStorageQuota) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
+        return;
+      }
+      // Write ACL failed
+      if (runningJob.getCounters().getGroup(COUNTER_GROUP_KAFKA).getCounter(AUTHORIZATION_FAILURES) > 0) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
+        return;
+      }
+      // Duplicate keys
+      if (!pushJobSetting.isDuplicateKeyAllowed &&
+          runningJob.getCounters().getGroup(COUNTER_GROUP_DATA_QUALITY).getCounter(DUPLICATE_KEY_WITH_DISTINCT_VALUE) > 0) {
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE);
+      }
+    } catch (Exception e) {
+      logger.info("Exception caught while trying to get more details on MR failure, reporting without it. "
+          + NON_CRITICAL_EXCEPTION, e);
     }
   }
 

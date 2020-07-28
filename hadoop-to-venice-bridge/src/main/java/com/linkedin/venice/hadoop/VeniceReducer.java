@@ -164,7 +164,14 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       previousReporter = reporter;
     }
 
-    veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
+    try {
+      veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
+    } catch (VeniceException e) {
+      if (e.getMessage().contains("do not have permission to write")) {
+        reporter.incrCounter(COUNTER_GROUP_KAFKA, AUTHORIZATION_FAILURES, 1);
+      }
+      throw e;
+    }
 
     ++messageSent;
 
