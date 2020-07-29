@@ -274,6 +274,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           partitionConsumptionState.setConsumeRemotely(false);
+          logger.info(consumerTaskId + " disabled remote consumption for partition " + partition);
           // subscribe back to VT/partition
           consumerSubscribe(topic, partitionConsumptionState, versionTopicOffset);
           logger.info(consumerTaskId + " demoted to standby for partition " + partition + "\n" + offsetRecord.toDetailedString());
@@ -356,9 +357,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               if (null == nativeReplicationSourceAddress || nativeReplicationSourceAddress.length() == 0) {
                 throw new VeniceException("Native replication is enabled but remote source address is not found");
               }
-              partitionConsumptionState.setConsumeRemotely(true);
-              // Add a new consumer using remote bootstrap address
-              getConsumer(partitionConsumptionState);
+              // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
+              if (!nativeReplicationSourceAddress.equals(this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG))) {
+                partitionConsumptionState.setConsumeRemotely(true);
+                logger.info(consumerTaskId + " enabled remote consumption for partition " + partition);
+                // Add a new consumer using remote bootstrap address
+                getConsumer(partitionConsumptionState);
+              }
             }
 
             // subscribe to the new upstream
@@ -399,6 +404,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
             consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
             partitionConsumptionState.setConsumeRemotely(false);
+            logger.info(consumerTaskId + " disabled remote consumption for partition " + partitionConsumptionState.getPartition());
             // Subscribe to local Kafka topic
             consumerSubscribe(kafkaVersionTopic, partitionConsumptionState, partitionConsumptionState.getOffsetRecord().getOffset());
           }
