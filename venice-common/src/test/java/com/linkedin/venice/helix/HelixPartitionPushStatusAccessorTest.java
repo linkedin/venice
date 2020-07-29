@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -25,7 +26,7 @@ import org.testng.annotations.Test;
 
 public class HelixPartitionPushStatusAccessorTest {
   private String clusterName = "UnitTestCLuster";
-  private HelixPartitionPushStatusAccessor accessor1, accessor2;
+  private HelixPartitionStatusAccessor accessor1, accessor2;
   private String topic = "testTopic";
 
   // Test behavior configuration
@@ -65,7 +66,7 @@ public class HelixPartitionPushStatusAccessorTest {
     manager1.connect();
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
-    accessor1 = new HelixPartitionPushStatusAccessor(manager1.getOriginalManager(),
+    accessor1 = new HelixPartitionStatusAccessor(manager1.getOriginalManager(),
         manager1.getInstanceName());
 
     httpPort2 = 50000 + (int) (System.currentTimeMillis() % 10000) + 1;
@@ -75,7 +76,7 @@ public class HelixPartitionPushStatusAccessorTest {
     manager2.connect();
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
-    accessor2 = new HelixPartitionPushStatusAccessor(manager2.getOriginalManager(),
+    accessor2 = new HelixPartitionStatusAccessor(manager2.getOriginalManager(),
         manager2.getInstanceName());
   }
 
@@ -149,5 +150,12 @@ public class HelixPartitionPushStatusAccessorTest {
 
     Assert.assertEquals(ExecutionStatus.COMPLETED, accessor1.getReplicaStatus(topic, partitionId0));
     Assert.assertEquals(ExecutionStatus.PROGRESS, accessor2.getReplicaStatus(topic, partitionId1));
+  }
+
+  @Test
+  public void testUpdateQuotaViolated() {
+    int partitionId = 0;
+    accessor1.updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_VIOLATED);
+    Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_VIOLATED, accessor1.getHybridQuotaReplicaStatus(topic, partitionId));
   }
 }

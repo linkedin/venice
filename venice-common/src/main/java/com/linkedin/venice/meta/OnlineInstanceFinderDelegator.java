@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.helix.HelixCustomizedViewRepository;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;

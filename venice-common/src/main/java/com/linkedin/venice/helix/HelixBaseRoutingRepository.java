@@ -218,7 +218,7 @@ public abstract class HelixBaseRoutingRepository
   }
 
   @Override
-  public boolean doseResourcesExistInIdealState(String resource) {
+  public boolean doesResourcesExistInIdealState(String resource) {
     PropertyKey key = keyBuilder.idealStates(resource);
     // Try to get the helix property for the given resource, if result is null means the resource does not exist in
     // ideal states.

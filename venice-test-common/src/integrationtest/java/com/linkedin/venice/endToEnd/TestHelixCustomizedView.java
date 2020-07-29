@@ -75,11 +75,11 @@ public class TestHelixCustomizedView {
     admin = new ZKHelixAdmin(veniceCluster.getZk().getAddress());
 
     Properties routerProperties = new Properties();
-    routerProperties.put(ConfigKeys.HELIX_CUSTOMIZED_VIEW_ENABLED, true);
+    routerProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
     veniceCluster.addVeniceRouter(routerProperties);
 
     Properties serverProperties = new Properties();
-    serverProperties.put(ConfigKeys.HELIX_CUSTOMIZED_VIEW_ENABLED, true);
+    serverProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
     // add two servers for enough SNs
     veniceCluster.addVeniceServer(new Properties(), serverProperties);
     veniceCluster.addVeniceServer(new Properties(), serverProperties);

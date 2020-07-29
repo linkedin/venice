@@ -100,6 +100,24 @@ public interface VeniceNotifier {
   default void completed(String kafkaTopic, int partitionId, long offset, String message) {}
 
   /**
+   * Quota is violated for a store.
+   */
+  default void quotaViolated(String kafkaTopic, int partitionId, long offset) {
+    quotaViolated(kafkaTopic, partitionId, offset, "");
+  }
+
+  default void quotaViolated(String kafkaTopic, int partitionId, long offset, String message) {}
+
+  /**
+   * Quota is not violated for a store.
+   */
+  default void quotaNotViolated(String kafkaTopic, int partitionId, long offset) {
+    quotaNotViolated(kafkaTopic, partitionId, offset, "");
+  }
+
+  default void quotaNotViolated(String kafkaTopic, int partitionId, long offset, String message) {}
+
+  /**
    * The Process is shutting down and clean up the resources associated with the Notifier.
    * N.B. When implementing the method, make it idempotent.
    */

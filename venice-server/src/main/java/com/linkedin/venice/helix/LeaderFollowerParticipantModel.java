@@ -53,7 +53,7 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   public LeaderFollowerParticipantModel(StoreIngestionService storeIngestionService, StorageService storageService,
       VeniceStoreConfig storeConfig, int partition, LeaderFollowerStateModelNotifier notifier,
       ReadOnlyStoreRepository metadataRepo,
-      Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
+      Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
     super(storeIngestionService, metadataRepo, storageService, storeConfig, partition, new SystemTime(),
         partitionPushStatusAccessorFuture, instanceName);
     this.notifier = notifier;

@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.controller.VeniceStateModel;
@@ -56,13 +57,13 @@ public abstract class AbstractParticipantModel extends StateModel {
   private final Time time;
 
   private final String storePartitionDescription;
-  private Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionStatusAccessorFuture;
-  private HelixPartitionPushStatusAccessor partitionPushStatusAccessor;
+  private Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionStatusAccessorFuture;
+  private HelixPartitionStatusAccessor partitionPushStatusAccessor;
   private final String instanceName;
 
   public AbstractParticipantModel(StoreIngestionService storeIngestionService, ReadOnlyStoreRepository metaDataRepo,
       StorageService storageService, VeniceStoreConfig storeConfig, int partition, Time time,
-      Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> accessorFuture, String instanceName) {
+      Optional<CompletableFuture<HelixPartitionStatusAccessor>> accessorFuture, String instanceName) {
     this.storeIngestionService = storeIngestionService;
     this.metaDataRepo = metaDataRepo;
     this.storageService = storageService;
@@ -169,6 +170,8 @@ public abstract class AbstractParticipantModel extends StateModel {
      */
     if (partitionPushStatusAccessor != null) {
       partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreName(), partition, ExecutionStatus.STARTED);
+      partitionPushStatusAccessor.updateHybridQuotaReplicaStatus(storeConfig.getStoreName(), partition,
+          HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     }
   }
 

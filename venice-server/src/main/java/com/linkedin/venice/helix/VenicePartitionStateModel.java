@@ -44,7 +44,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
         VeniceStoreConfig storeConfig, int partition, OnlineOfflineStateModelNotifier notifier,
         ReadOnlyStoreRepository readOnlyStoreRepository,
-        Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorCompletableFuture,
+        Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorCompletableFuture,
         String instanceName) {
         this(storeIngestionService, storageService, storeConfig, partition, notifier, new SystemTime(),
             readOnlyStoreRepository, partitionPushStatusAccessorCompletableFuture, instanceName);
@@ -53,7 +53,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
         VeniceStoreConfig storeConfig, int partition, OnlineOfflineStateModelNotifier notifier, Time time,
         ReadOnlyStoreRepository readOnlyStoreRepository,
-        Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
+        Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
         super(storeIngestionService, readOnlyStoreRepository, storageService, storeConfig, partition, time,
             partitionPushStatusAccessorFuture, instanceName);
         this.notifier = notifier;

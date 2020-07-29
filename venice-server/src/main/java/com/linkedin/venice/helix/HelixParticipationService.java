@@ -62,8 +62,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private HelixStatusMessageChannel messageChannel;
   private AbstractParticipantModelFactory onlineOfflineParticipantModelFactory;
   private AbstractParticipantModelFactory leaderFollowerParticipantModelFactory;
-  private HelixPartitionPushStatusAccessor partitionPushStatusAccessor;
-  private Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture;
+  private HelixPartitionStatusAccessor partitionPushStatusAccessor;
+  private Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture;
 
   public HelixParticipationService(StoreIngestionService storeIngestionService,
           StorageService storageService,
@@ -85,7 +85,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.metricsRepository = metricsRepository;
     this.instance = new Instance(participantName, Utils.getHostName(), port);
     this.managerFuture = managerFuture;
-    if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
+    if (veniceConfigLoader.getVeniceServerConfig().isHelixOfflinePushEnabled()) {
       this.partitionPushStatusAccessorFuture = Optional.of(new CompletableFuture<>());
     } else {
       this.partitionPushStatusAccessorFuture = Optional.empty();
@@ -245,7 +245,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
          * The accessor can only get created successfully after helix manager is created.
          */
         partitionPushStatusAccessor =
-            new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId());
+            new HelixPartitionStatusAccessor(manager.getOriginalManager(), instance.getNodeId());
         PartitionPushStatusNotifier partitionPushStatusNotifier =
             new PartitionPushStatusNotifier(partitionPushStatusAccessor);
         ingestionService.addCommonNotifier(partitionPushStatusNotifier);
