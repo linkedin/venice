@@ -109,6 +109,13 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
 
+        // Fail on adding derived schema if the value schema doesn't exist
+        SchemaEntry valueSchemaEntry = admin.getValueSchema(clusterName, storeName, valueSchemaId);
+        if (null == valueSchemaEntry) {
+          throw new VeniceException("Value schema for schema id: " + valueSchemaId + " of store: " + storeName
+              + " doesn't exist");
+        }
+
         DerivedSchemaEntry derivedSchemaEntry = admin.addDerivedSchema(clusterName, storeName, valueSchemaId,
             request.queryParams(DERIVED_SCHEMA));
         responseObject.setId(derivedSchemaEntry.getValueSchemaId());
