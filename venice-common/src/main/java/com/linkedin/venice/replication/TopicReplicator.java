@@ -136,7 +136,7 @@ public abstract class TopicReplicator {
                                     partitionCount,
                                     replicationFactor,
                                     store.getHybridStoreConfig().getRetentionTimeInMs(),
-                                    false, // RT topics are never compacted
+                                    !store.isWriteComputationEnabled(), // RT topics are compacted unless write compute is enabled
                                     Optional.empty(),
                                     false);
     } else {
@@ -147,6 +147,9 @@ public abstract class TopicReplicator {
       if (topicRetentionTimeInMs != store.getHybridStoreConfig().getRetentionTimeInMs()) {
         getTopicManager().updateTopicRetention(srcTopicName, store.getHybridStoreConfig().getRetentionTimeInMs());
       }
+      // Additionally, make sure compaction policy is correct (this funciton Noops if it is correct)
+      topicManager.updateTopicCompactionPolicy(srcTopicName, !store.isWriteComputationEnabled());
+
     }
   }
 

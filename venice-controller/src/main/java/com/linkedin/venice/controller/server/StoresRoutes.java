@@ -19,6 +19,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -554,6 +555,27 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route setTopicCompaction(Admin admin) {
+    return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreResponse veniceResponse) {
+        if(!isWhitelistUsers(request)) {
+          veniceResponse.setError("Access Denied!! Only admins can change topic compaction policy!");
+          return;
+        }
+        AdminSparkServer.validateParams(request, SET_TOPIC_COMPACTION.getParams(), admin);
+        //String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        try {
+          admin.getTopicManager().updateTopicCompactionPolicy(request.queryParams(TOPIC), Boolean.getBoolean(request.queryParams(TOPIC_COMPACTION_POLICY)));
+          veniceResponse.setName(request.queryParams(TOPIC));
+        } catch (TopicDoesNotExistException e){
+          veniceResponse.setError("Topic does not exist!! Message: " + e.getMessage());
+        }
+      }
     };
   }
 }
