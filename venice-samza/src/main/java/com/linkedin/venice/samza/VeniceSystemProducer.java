@@ -163,7 +163,11 @@ public class VeniceSystemProducer implements SystemProducer {
     }
     this.isStarted = true;
 
-    this.d2Client = new D2ClientBuilder().setZkHosts(veniceD2ZKHost).build();
+    this.d2Client = new D2ClientBuilder()
+        .setZkHosts(veniceD2ZKHost)
+        .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
+        .setIsSSLEnabled(sslFactory.isPresent())
+        .build();
     D2ClientUtils.startClient(d2Client);
     // Discover cluster
     D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse)
