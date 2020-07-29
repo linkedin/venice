@@ -676,7 +676,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       storeIngestionStats.recordDiskQuotaAllowed(storeName, currentQuota);
     }
     if (usingSharedConsumer) {
-
       /**
        * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
        * because of compaction or the disk quota could be adjusted even there is no record write.
@@ -2210,6 +2209,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), message, e);
   }
 
+  public void reportQuotaViolated(int partition) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    notificationDispatcher.reportQuotaViolated(partitionConsumptionState);
+  }
+
+  public void reportQuotaNotViolated(int partition) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    notificationDispatcher.reportQuotaNotViolated(partitionConsumptionState);
+  }
   /**
    * A function that would apply updates on the storage engine.
    */

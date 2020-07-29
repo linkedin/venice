@@ -501,7 +501,7 @@ public abstract class AbstractPushMonitor
   public void onRoutingDataDeleted(String kafkaTopic) {
     // Beside the external view, we also care about the ideal state here. If the resource was deleted from the externalview by mistake,
     // as long as the resource exists in the ideal state, helix will recover it automatically, thus push will keep working.
-    if(routingDataRepository.doseResourcesExistInIdealState(kafkaTopic)){
+    if(routingDataRepository.doesResourcesExistInIdealState(kafkaTopic)){
       logger.warn("Resource is remaining in the ideal state. Ignore the deletion in the external view.");
       return;
     }

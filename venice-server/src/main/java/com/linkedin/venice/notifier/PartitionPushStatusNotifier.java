@@ -1,7 +1,8 @@
 package com.linkedin.venice.notifier;
 
-import com.linkedin.venice.helix.HelixPartitionPushStatusAccessor;
+import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 
 
 /**
@@ -9,9 +10,9 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
  */
 public class PartitionPushStatusNotifier implements VeniceNotifier {
 
-  private HelixPartitionPushStatusAccessor accessor;
+  private HelixPartitionStatusAccessor accessor;
 
-  public PartitionPushStatusNotifier(HelixPartitionPushStatusAccessor accessor) {
+  public PartitionPushStatusNotifier(HelixPartitionStatusAccessor accessor) {
     this.accessor = accessor;
   }
 
@@ -40,6 +41,15 @@ public class PartitionPushStatusNotifier implements VeniceNotifier {
     accessor.updateReplicaStatus(topic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED);
   }
 
+  @Override
+  public void quotaViolated(String topic, int partitionId, long offset, String message) {
+    accessor.updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_VIOLATED);
+  }
+
+  @Override
+  public void quotaNotViolated(String topic, int partitionId, long offset, String message) {
+    accessor.updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
+  }
   @Override
   public void close() {
     // Do not need to close here. accessor should be closed by the outer class.

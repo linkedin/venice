@@ -241,13 +241,13 @@ public abstract class AbstractPushMonitorTest {
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     // Resource has been deleted from the external view but still existing in the ideal state.
-    doReturn(true).when(mockRoutingDataRepo).doseResourcesExistInIdealState(topic);
+    doReturn(true).when(mockRoutingDataRepo).doesResourcesExistInIdealState(topic);
     monitor.onRoutingDataDeleted(topic);
     // Job should keep running.
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED);
 
     // Resource has been deleted from both external view and ideal state.
-    doReturn(false).when(mockRoutingDataRepo).doseResourcesExistInIdealState(topic);
+    doReturn(false).when(mockRoutingDataRepo).doesResourcesExistInIdealState(topic);
     monitor.onRoutingDataDeleted(topic);
     // Job should be terminated in error status.
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);

@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import org.apache.helix.HelixManager;
 
 import java.util.HashMap;
@@ -8,19 +9,24 @@ import java.util.Map;
 
 
 /**
- * A class for accessing partition offline push status in Helix customized state (per Helix
+ * A class for accessing partition offline push and hybrid quota status in Helix customized state (per Helix
  * instance) on Zookeeper
  */
 
-public class HelixPartitionPushStatusAccessor extends HelixPartitionStateAccessor {
+public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   static final String PARTITION_DELIMITER = "_";
 
-  public HelixPartitionPushStatusAccessor(HelixManager helixManager, String instanceId) {
+  public HelixPartitionStatusAccessor(HelixManager helixManager, String instanceId) {
     super(helixManager, instanceId);
   }
 
   public void updateReplicaStatus(String topic, int partitionId, ExecutionStatus status) {
     super.updateReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
+        getPartitionNameFromId(topic, partitionId), status.name());
+  }
+
+  public void updateHybridQuotaReplicaStatus(String topic, int partitionId, HybridStoreQuotaStatus status) {
+    super.updateReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
         getPartitionNameFromId(topic, partitionId), status.name());
   }
 
@@ -32,10 +38,17 @@ public class HelixPartitionPushStatusAccessor extends HelixPartitionStateAccesso
   public void deleteReplicaStatus(String topic, int partitionId) {
     super.deleteReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
         getPartitionNameFromId(topic, partitionId));
+    super.deleteReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
+        getPartitionNameFromId(topic, partitionId));
   }
 
   public ExecutionStatus getReplicaStatus(String topic, int partitionId) {
     return ExecutionStatus.valueOf(super.getReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
+        getPartitionNameFromId(topic, partitionId)));
+  }
+
+  public HybridStoreQuotaStatus getHybridQuotaReplicaStatus(String topic, int partitionId) {
+    return HybridStoreQuotaStatus.valueOf(super.getReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
         getPartitionNameFromId(topic, partitionId)));
   }
 

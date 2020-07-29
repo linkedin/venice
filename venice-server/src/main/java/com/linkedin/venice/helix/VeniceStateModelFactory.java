@@ -20,7 +20,7 @@ public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
   public VeniceStateModelFactory(StoreIngestionService storeIngestionService, StorageService storageService,
       VeniceConfigLoader configService, ExecutorService executorService,
       ReadOnlyStoreRepository readOnlyStoreRepository,
-      Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
+      Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
     super(storeIngestionService, storageService, configService, executorService, readOnlyStoreRepository,
         partitionPushStatusAccessorFuture, instanceName);
 

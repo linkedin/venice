@@ -41,7 +41,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected AggVersionedStorageIngestionStats mockAggVersionedStorageIngestionStats;
   protected SafeHelixManager mockManager;
   protected HelixManager mockHelixManager;
-  protected HelixPartitionPushStatusAccessor mockPushStatusAccessor;
+  protected HelixPartitionStatusAccessor mockPushStatusAccessor;
   protected CustomizedStateProvider mockCustomizedStateProvider;
 
   @BeforeMethod
@@ -76,7 +76,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     Mockito.when(mockManager.getInstanceName()).thenReturn(instanceName);
 
     mockCustomizedStateProvider = Mockito.mock(CustomizedStateProvider.class);
-    mockPushStatusAccessor = Mockito.mock(HelixPartitionPushStatusAccessor.class);
+    mockPushStatusAccessor = Mockito.mock(HelixPartitionStatusAccessor.class);
     mockPushStatusAccessor.setCustomizedStateProvider(mockCustomizedStateProvider);
 
     testStateModel = getParticipantStateModel();

@@ -107,6 +107,7 @@ public class HybridStoreQuotaEnforcementTest {
     runTest(() -> {
       for (int i = 1; i <= storePartitionCount; i++) {
         Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
+        verify(storeIngestionTask, times(1)).reportQuotaViolated(i);
       }
     });
 

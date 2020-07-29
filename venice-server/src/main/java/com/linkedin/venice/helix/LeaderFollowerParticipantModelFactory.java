@@ -22,7 +22,7 @@ public class LeaderFollowerParticipantModelFactory extends AbstractParticipantMo
   public LeaderFollowerParticipantModelFactory(StoreIngestionService storeIngestionService,
       StorageService storageService, VeniceConfigLoader configService, ExecutorService executorService,
       ReadOnlyStoreRepository metadataRepo,
-      Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture,
+      Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture,
       String instanceName) {
     super(storeIngestionService, storageService, configService, executorService, metadataRepo,
         partitionPushStatusAccessorFuture, instanceName);

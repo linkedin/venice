@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import org.apache.log4j.Logger;
 
@@ -45,17 +46,12 @@ class IngestionNotificationDispatcher {
     boolean apply();
   }
 
-  private void report(PartitionConsumptionState pcs, ExecutionStatus reportType, NotifierFunction function, PreNotificationCheck preCheck) {
-    if (!reportType.isTaskStatus()) {
-      // Should never happen, but whatever...
-      throw new IllegalArgumentException("The " + IngestionNotificationDispatcher.class.getSimpleName() +
-          " can only be used to report task status.");
-    }
+  private void report(PartitionConsumptionState pcs, String reportType, NotifierFunction function, PreNotificationCheck preCheck) {
     if (null == pcs) {
+      // Problem: calling pcs.getPartition() with pcs null.
       logger.info("Partition " + pcs.getPartition() + " has been unsubscribed, no need to report " + reportType);
       return;
     }
-
     if (!preCheck.apply()) {
       return;
     }
@@ -71,13 +67,27 @@ class IngestionNotificationDispatcher {
     logger.info("Reported " + reportType + " to " + notifiers.size() + " notifiers for PartitionConsumptionState: " + pcs);
   }
 
+  void report(PartitionConsumptionState pcs, ExecutionStatus reportType, NotifierFunction function, PreNotificationCheck preCheck) {
+    if (!reportType.isTaskStatus()) {
+      // Should never happen, but whatever...
+      throw new IllegalArgumentException("The " + IngestionNotificationDispatcher.class.getSimpleName() +
+          " can only be used to report task status.");
+    }
+    report(pcs, reportType.name(), function, preCheck);
+  }
+
   void report(PartitionConsumptionState pcs, ExecutionStatus reportType, NotifierFunction function) {
-    report(pcs, reportType, function, () -> true);
+    report(pcs, reportType.name(), function, () -> true);
+  }
+
+  void report(PartitionConsumptionState pcs, HybridStoreQuotaStatus reportType, NotifierFunction function) {
+    report(pcs, reportType.name(), function, () -> true);
   }
 
   void reportStarted(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.STARTED, notifier -> notifier.started(topic, pcs.getPartition()));
   }
+
 
   void reportRestarted(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.STARTED, notifier -> notifier.restarted(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
@@ -116,6 +126,17 @@ class IngestionNotificationDispatcher {
           }
           return true;
         }
+    );
+  }
+
+  void reportQuotaNotViolated(PartitionConsumptionState pcs) {
+    report(pcs, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED,
+        notifier -> notifier.quotaNotViolated(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
+  }
+
+  void reportQuotaViolated(PartitionConsumptionState pcs) {
+    report(pcs, HybridStoreQuotaStatus.QUOTA_VIOLATED,
+        notifier -> notifier.quotaViolated(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset())
     );
   }
 

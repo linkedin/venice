@@ -28,14 +28,14 @@ import org.apache.log4j.Logger;
 
 
 /**
- * Extend HelixBaseRoutingRepository to leverage customized view data.
+ * Extend HelixBaseRoutingRepository to leverage customized view data for offline push.
  */
-public class HelixCustomizedViewRepository extends HelixBaseRoutingRepository {
-  private static final Logger logger = Logger.getLogger(HelixCustomizedViewRepository.class);
+public class HelixOfflinePushRepository extends HelixBaseRoutingRepository {
+  private static final Logger logger = Logger.getLogger(HelixOfflinePushRepository.class);
 
   private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
 
-  public HelixCustomizedViewRepository(SafeHelixManager manager) {
+  public HelixOfflinePushRepository(SafeHelixManager manager) {
     super(manager);
     dataSource.put(PropertyType.CUSTOMIZEDVIEW, Arrays.asList(HelixPartitionState.OFFLINE_PUSH.name()));
   }

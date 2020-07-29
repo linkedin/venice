@@ -56,7 +56,7 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
   /**
    * Whether the resources names exist in ideal state or not.
    */
-  boolean doseResourcesExistInIdealState(String resource);
+  boolean doesResourcesExistInIdealState(String resource);
 
   /**
    * Given resource name and partition number, return the current leader instance.

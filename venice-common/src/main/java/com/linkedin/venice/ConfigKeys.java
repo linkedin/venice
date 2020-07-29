@@ -1171,9 +1171,14 @@ public class ConfigKeys {
   public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
 
   /**
-   * A config that determines whether to use Helix customized view
+   * A config that determines whether to use Helix customized view for offline push
    */
-  public static final String HELIX_CUSTOMIZED_VIEW_ENABLED = "helix.customized.view.enabled";
+  public static final String HELIX_OFFLINE_PUSH_ENABLED = "helix.offline.push.enabled";
+  /**
+   * A config that determines whether to use Helix customized view for hybrid store quota
+   */
+  public static final String HELIX_HYBRID_STORE_QUOTA_ENABLED = "helix.hybrid.store.quota.enabled";
+
   /**
    * A time after which a bad SSD will trigger server shutdown.
    */

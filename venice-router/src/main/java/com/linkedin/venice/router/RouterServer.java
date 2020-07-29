@@ -5,10 +5,11 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
-import com.linkedin.venice.helix.HelixCustomizedViewRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
+import com.linkedin.venice.helix.HelixOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
@@ -132,6 +133,7 @@ public class RouterServer extends AbstractVeniceService {
   private SafeHelixManager manager;
   private HelixReadOnlySchemaRepository schemaRepository;
   private HelixBaseRoutingRepository routingDataRepository;
+  private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private HelixReadOnlyStoreRepository metadataRepository;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
@@ -187,7 +189,7 @@ public class RouterServer extends AbstractVeniceService {
     try {
       String routerConfigFilePath = args[0];
       props = Utils.parseProperties(routerConfigFilePath);
-    } catch (Exception e){
+    } catch (Exception e) {
       throw new VeniceException("No config file parameter found", e);
     }
 
@@ -243,8 +245,10 @@ public class RouterServer extends AbstractVeniceService {
         new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName(),
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.routingDataRepository =
-        config.isHelixCustomizedViewEnabled() ? new HelixCustomizedViewRepository(manager)
+        config.isHelixOfflinePushEnabled() ? new HelixOfflinePushRepository(manager)
             : new HelixExternalViewRepository(manager);
+    this.hybridStoreQuotaRepository =
+        config.isHelixHybridStoreQuotaEnabled()? Optional.of(new HelixHybridStoreQuotaRepository(manager)) : Optional.empty();
     this.storeConfigRepository =
         new HelixReadOnlyStoreConfigRepository(zkClient, adapter, config.getRefreshAttemptsForZkReconnect(),
             config.getRefreshIntervalForZkReconnectInMs());
@@ -403,7 +407,7 @@ public class RouterServer extends AbstractVeniceService {
 
     OnlineInstanceFinderDelegator onlineInstanceFinder =
         new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository,
-            partitionStatusOnlineInstanceFinder, config.isHelixCustomizedViewEnabled());
+            partitionStatusOnlineInstanceFinder, config.isHelixOfflinePushEnabled());
 
     dictionaryRetrievalService = new DictionaryRetrievalService(onlineInstanceFinder, config, sslFactoryForRequests, metadataRepository);
 
@@ -715,6 +719,9 @@ public class RouterServer extends AbstractVeniceService {
       routersClusterManager.refresh();
       routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getPort()));
       routingDataRepository.refresh();
+      if (hybridStoreQuotaRepository.isPresent()) {
+        hybridStoreQuotaRepository.get().refresh();
+      }
 
       // Setup read requests throttler.
       RouterThrottler throttler;
@@ -808,6 +815,10 @@ public class RouterServer extends AbstractVeniceService {
     metadataRepository.refresh();
     schemaRepository.refresh();
     routingDataRepository.refresh();
+    if (hybridStoreQuotaRepository.isPresent()) {
+      hybridStoreQuotaRepository.get().refresh();
+    }
+
     partitionStatusOnlineInstanceFinder.refresh();
   }
 }
