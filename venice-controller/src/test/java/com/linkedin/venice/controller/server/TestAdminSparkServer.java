@@ -100,6 +100,7 @@ public class TestAdminSparkServer {
   public void tearDown() {
     IOUtils.closeQuietly(controllerClient);
     IOUtils.closeQuietly(cluster);
+    IOUtils.closeQuietly(parentController);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
