@@ -101,4 +101,6 @@ public class ControllerApiConstants {
   public static final String IS_SYSTEM_STORE = "is_system_store";
 
   public static final String INCREMENTAL_PUSH_POLICY = "incremental_push_policy";
+
+  public static final String TOPIC_COMPACTION_POLICY = "topic_compaction_policy";
 }
