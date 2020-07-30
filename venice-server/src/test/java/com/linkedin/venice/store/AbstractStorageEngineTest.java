@@ -1,7 +1,6 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -17,7 +16,6 @@ import org.testng.annotations.Test;
 import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.store.bdb.BdbServerConfig.*;
 
 
 public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
@@ -213,14 +211,14 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     deferredWritePartitionConfig.setDeferredWrite(true);
     testStoreEngine.addStoragePartition(transactionalPartitionConfig);
     // Current partition should be transactional
-    AbstractStoragePartition storagePartition = testStoreEngine.getStoragePartition(newPartitionId);
+    AbstractStoragePartition storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
     Assert.assertNotNull(storagePartition);
     Assert.assertTrue(storagePartition.verifyConfig(transactionalPartitionConfig));
     Assert.assertFalse(storagePartition.verifyConfig(deferredWritePartitionConfig));
 
     testStoreEngine.adjustStoragePartition(deferredWritePartitionConfig);
 
-    storagePartition = testStoreEngine.getStoragePartition(newPartitionId);
+    storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
     Assert.assertNotNull(storagePartition);
     Assert.assertFalse(storagePartition.verifyConfig(transactionalPartitionConfig));
     Assert.assertTrue(storagePartition.verifyConfig(deferredWritePartitionConfig));
@@ -237,14 +235,14 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     deferredWritePartitionConfig.setDeferredWrite(true);
     testStoreEngine.addStoragePartition(deferredWritePartitionConfig);
     // Current partition should be deferred-write
-    AbstractStoragePartition storagePartition = testStoreEngine.getStoragePartition(newPartitionId);
+    AbstractStoragePartition storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
     Assert.assertNotNull(storagePartition);
     Assert.assertFalse(storagePartition.verifyConfig(transactionalPartitionConfig));
     Assert.assertTrue(storagePartition.verifyConfig(deferredWritePartitionConfig));
 
     testStoreEngine.adjustStoragePartition(transactionalPartitionConfig);
 
-    storagePartition = testStoreEngine.getStoragePartition(newPartitionId);
+    storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
     Assert.assertNotNull(storagePartition);
     Assert.assertTrue(storagePartition.verifyConfig(transactionalPartitionConfig));
     Assert.assertFalse(storagePartition.verifyConfig(deferredWritePartitionConfig));

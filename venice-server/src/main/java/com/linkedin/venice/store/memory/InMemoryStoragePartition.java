@@ -4,13 +4,9 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.utils.ByteArray;
-import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
-import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
-import java.io.IOException;
+
 import java.nio.ByteBuffer;
-import java.util.AbstractMap;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;

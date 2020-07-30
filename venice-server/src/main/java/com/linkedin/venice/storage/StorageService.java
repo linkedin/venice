@@ -86,7 +86,7 @@ public class StorageService extends AbstractVeniceService {
     restoreAllStores(configLoader);
   }
 
-  public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats ) {
+  public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats) {
     this(configLoader, s -> {}, null, storageEngineStats, null);
   }
 

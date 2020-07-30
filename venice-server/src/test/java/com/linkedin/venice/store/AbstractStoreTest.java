@@ -3,7 +3,6 @@ package com.linkedin.venice.store;
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.store.Store;
 import org.testng.Assert;
 
 
@@ -16,7 +15,7 @@ import org.testng.Assert;
  */
 public abstract class AbstractStoreTest {
 
-  protected Store testStore;
+  protected AbstractStorageEngine<?> testStore;
   protected int numOfPartitions = 1;
   int keySize = 50;
   int valueSize = 500;
@@ -121,21 +120,5 @@ public abstract class AbstractStoreTest {
     } catch (Exception e) {
       //This is expected.
     }
-  }
-
-
-  public void testPutNullKey() {
-    byte[] key = null;
-    byte[] value = RandomGenUtils.getRandomBytes(valueSize);
-    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
-    try {
-      doPut(partitionId, key, value);
-    } catch (IllegalArgumentException e) {
-      // This is expected
-      return;
-    } catch (Exception e) {
-      Assert.fail("Exception was thrown: " + e.getMessage(), e);
-    }
-    Assert.fail("Put succeeded for key: null and value: " + value.toString() + " unexpectedly");
   }
 }

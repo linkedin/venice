@@ -6,12 +6,13 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.log4j.Logger;
+
 import java.io.File;
 import java.util.HashSet;
 import java.util.Set;
-import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
-import org.rocksdb.Options;
 
 
 class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
@@ -86,13 +87,6 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       } else {
         LOGGER.info("Finished removing database dir: " + storeDbPath + " for store: " + getName());
       }
-    }
-  }
-
-  @Override
-  public void close() {
-    if (this.isOpen.compareAndSet(true, false)) {
-      forEachPartition(RocksDBStoragePartition::close);
     }
   }
 

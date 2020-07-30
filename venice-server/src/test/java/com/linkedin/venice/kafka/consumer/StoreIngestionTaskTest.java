@@ -395,7 +395,6 @@ public class StoreIngestionTaskTest {
         isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true,
         false, "", PARTITION_FOO);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
-    doNothing().when(mockAbstractStorageEngine).prepareStorageForRead(any());
 
     Future testSubscribeTaskFuture = null;
     try {

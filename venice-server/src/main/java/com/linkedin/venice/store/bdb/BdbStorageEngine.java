@@ -21,21 +21,16 @@ import static com.linkedin.venice.store.bdb.BdbStoragePartition.*;
  * BDB-JE Storage Engine
  */
 public class BdbStorageEngine extends AbstractStorageEngine<BdbStoragePartition> {
-
   private final Environment environment;
-
-  private final AtomicBoolean isOpen;
   private final BdbServerConfig bdbServerConfig;
   private final BdbRuntimeConfig bdbRuntimeConfig;
   protected final boolean checkpointerOffForBatchWrites;
-  private volatile int numOutstandingBatchWriteJobs = 0;
 
   public BdbStorageEngine(VeniceStoreConfig storeDef,
                           Environment environment) throws VeniceException {
     super(storeDef.getStoreName());
 
     this.environment = environment;
-    this.isOpen = new AtomicBoolean(true);
     this.bdbServerConfig = storeDef.getBdbServerConfig();
     this.bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
     this.checkpointerOffForBatchWrites = bdbRuntimeConfig.isCheckpointerOffForBatchWrites();
@@ -69,12 +64,6 @@ public class BdbStorageEngine extends AbstractStorageEngine<BdbStoragePartition>
   @Override
   public BdbStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return new BdbStoragePartition(storagePartitionConfig, environment, bdbServerConfig);
-  }
-
-  public void close() {
-    if (this.isOpen.compareAndSet(true, false)) {
-      forEachPartition(BdbStoragePartition::close);
-    }
   }
 
   @Override

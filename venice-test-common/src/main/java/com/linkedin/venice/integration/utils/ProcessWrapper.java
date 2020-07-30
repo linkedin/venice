@@ -152,15 +152,8 @@ public abstract class ProcessWrapper implements Closeable {
   private void closeAudit(String context) {
     if (!closeCalled) {
       System.err.println(context + ": " + this.getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
-      close();
-      System.out.println(this.getClass().getSimpleName() + " closed successfully");
     } else if (!closeSucceeded) {
       System.err.println(context + ": " + this.getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
     }
-  }
-
-  @Override
-  public void finalize() {
-    closeAudit("GC-time");
   }
 }

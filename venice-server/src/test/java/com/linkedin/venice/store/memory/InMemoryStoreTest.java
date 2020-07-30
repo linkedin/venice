@@ -51,11 +51,4 @@ public class InMemoryStoreTest extends AbstractStoreTest {
   {
     super.testGetInvalidKeys();
   }
-
-  @Test
-  public void testPutNullKey(){
-    super.testPutNullKey();
-  }
-
-
 }

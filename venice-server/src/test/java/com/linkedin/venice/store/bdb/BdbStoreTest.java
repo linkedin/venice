@@ -56,9 +56,4 @@ public class BdbStoreTest extends AbstractStoreTest {
   public void testGetInvalidKeys() {
     super.testGetInvalidKeys();
   }
-
-  @Test
-  public void testPutNullKey() {
-    super.testPutNullKey();
-  }
 }
