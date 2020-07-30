@@ -52,6 +52,7 @@ public class StoreInfo {
     storeInfo.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
     storeInfo.setPushStreamSourceAddress(store.getPushStreamSourceAddress());
     storeInfo.setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
+    storeInfo.setIncrementalPushPolicy(store.getIncrementalPushPolicy());
     return storeInfo;
   }
   /**
@@ -236,6 +237,11 @@ public class StoreInfo {
   private PartitionerConfig partitionerConfig;
 
   private long backupVersionRetentionMs;
+
+  /**
+   * Incremental Push Policy to reconcile with real time pushes.
+   */
+  private IncrementalPushPolicy incrementalPushPolicy;
 
   public StoreInfo() {
   }
@@ -565,5 +571,13 @@ public class StoreInfo {
 
   public void setBackupVersionRetentionMs(long backupVersionRetentionMs) {
     this.backupVersionRetentionMs = backupVersionRetentionMs;
+  }
+
+  public IncrementalPushPolicy getIncrementalPushPolicy() {
+    return incrementalPushPolicy;
+  }
+
+  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
+    this.incrementalPushPolicy = incrementalPushPolicy;
   }
 }

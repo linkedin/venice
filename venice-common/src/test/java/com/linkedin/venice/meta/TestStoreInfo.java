@@ -30,4 +30,18 @@ public class TestStoreInfo {
     Assert.assertNull(deserializedMissingFieldCodehouse.getHybridStoreConfig());
   }
 
+  @Test
+  public void testStoreInfoReturnsIncrementalPushPolicy() throws IOException {
+    Store store = new Store("testStore", "", 10, PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+    store.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+
+    StoreInfo storeInfo = StoreInfo.fromStore(store);
+    Assert.assertEquals(storeInfo.getIncrementalPushPolicy(), IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+
+    // Serializing and deserializing to ensure data is present in the json
+    String serializedStoreInfo = fasterXmlMapper.writeValueAsString(storeInfo);
+    StoreInfo deserializedStoreInfo = fasterXmlMapper.readValue(serializedStoreInfo, StoreInfo.class);
+    Assert.assertEquals(deserializedStoreInfo.getIncrementalPushPolicy(), IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+  }
 }
