@@ -70,8 +70,8 @@ public class ProducerConsumerReaderIntegrationTest {
   @AfterMethod
   public void cleanUp() {
     IOUtils.closeQuietly(storeClient);
-    IOUtils.closeQuietly(veniceCluster);
     IOUtils.closeQuietly(veniceWriter);
+    IOUtils.closeQuietly(veniceCluster);
   }
 
   @Test
@@ -113,18 +113,7 @@ public class ProducerConsumerReaderIntegrationTest {
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<String, String>());
 
-    // Wait for storage node to finish consuming, and new version to be activated
-    final int pushVersion = Version.parseVersionFromKafkaTopicName(topicName);
-    String controllerUrl = veniceCluster.getAllControllersURLs();
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
-          .getStore()
-          .getCurrentVersion();
-      return currentVersion == pushVersion;
-    });
-
-    // Read (but make sure Router is up-to-date with new version)
-    waitForRouterReady(key);
+    veniceCluster.waitVersion(storeName, Version.parseVersionFromKafkaTopicName(topicName));
 
     Object newValue = storeClient.get(key).get();
     Assert.assertEquals(newValue.toString(), value, "The key '" + key + "' does not contain the expected value!");
@@ -171,34 +160,27 @@ public class ProducerConsumerReaderIntegrationTest {
       k++;
     }
 
-    try(VeniceWriter<byte[], byte[], byte[]> basicVeniceWriter = writerFactory.createBasicVeniceWriter(topicName);
-        VeniceWriter<String, String, byte[]> veniceWriter1 =
-            veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer);
-        VeniceWriter<String, String, byte[]> veniceWriter2 =
-            veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer)) {
+    try (VeniceWriter<byte[], byte[], byte[]> basicVeniceWriter = writerFactory.createBasicVeniceWriter(topicName)) {
       basicVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
-      // Two writers with the same Guid that write the same data (same partition) to the kafka topic at different rates.
-      // In the end the second writer will have produced only half of the records produced by the first writer.
-      int j = 0;
-      for (int i = 0; i < data.size(); i++) {
-        veniceWriter1.put(data.get(i).getFirst(), data.get(i).getSecond(), valueSchemaId);
-        if (i % 2 == 0) {
-          veniceWriter2.put(data.get(j).getFirst(), data.get(j).getSecond(), valueSchemaId);
-          j++;
+      try (VeniceWriter<String, String, byte[]> veniceWriter1 =
+               veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer);
+           VeniceWriter<String, String, byte[]> veniceWriter2 =
+               veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer)) {
+        // Two writers with the same Guid that write the same data (same partition) to the kafka topic at different rates.
+        // In the end the second writer will have produced only half of the records produced by the first writer.
+        int j = 0;
+        for (int i = 0; i < data.size(); i++) {
+          veniceWriter1.put(data.get(i).getFirst(), data.get(i).getSecond(), valueSchemaId);
+          if (i % 2 == 0) {
+            veniceWriter2.put(data.get(j).getFirst(), data.get(j).getSecond(), valueSchemaId);
+            j++;
+          }
         }
       }
       basicVeniceWriter.broadcastEndOfPush(new HashMap<>());
     }
 
-    // Wait for ingestion to complete.
-    try (ControllerClient controllerClient =
-        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL())) {
-      final int pushVersion = Version.parseVersionFromKafkaTopicName(topicName);
-      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
-        return currentVersion == pushVersion;
-      });
-    }
+    veniceCluster.waitVersion(storeName, Version.parseVersionFromKafkaTopicName(topicName));
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       // Read and verify the ingested data.
@@ -207,17 +189,6 @@ public class ProducerConsumerReaderIntegrationTest {
         Assert.assertNotNull(value, "Value should not be null for key: " + keyValue.getFirst());
         Assert.assertEquals(value.toString(), keyValue.getSecond(), "Unexpected key value pair!");
       }
-    });
-  }
-
-  private void waitForRouterReady(final String key) {
-    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
-      try {
-        storeClient.get(key).get();
-      } catch (Exception e) {
-        return false;
-      }
-      return true;
     });
   }
 }

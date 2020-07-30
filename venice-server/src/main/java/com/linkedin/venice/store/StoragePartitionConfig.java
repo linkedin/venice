@@ -41,14 +41,20 @@ public class StoragePartitionConfig {
 
   public void setReadOnly(boolean readOnly) {
     this.readOnly = readOnly;
-  }
-
-  public void setWriteOnlyConfig(boolean writeOnly) {
-    writeOnlyConfig = writeOnly;
+    if (readOnly) {
+      setWriteOnlyConfig(false);
+    }
   }
 
   public boolean isWriteOnlyConfig() {
     return writeOnlyConfig;
+  }
+
+  public void setWriteOnlyConfig(boolean writeOnly) {
+    writeOnlyConfig = writeOnly;
+    if (writeOnly) {
+      setReadOnly(false);
+    }
   }
 
   @Override
@@ -90,6 +96,6 @@ public class StoragePartitionConfig {
   @Override
   public String toString() {
     return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite +
-        ", read-only: " + readOnly + ", writeOnlyConfig: " + writeOnlyConfig;
+        ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig;
   }
 }

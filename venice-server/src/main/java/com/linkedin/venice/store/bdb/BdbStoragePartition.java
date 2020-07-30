@@ -6,16 +6,20 @@ import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.store.exception.InvalidDatabaseNameException;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
-import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
-import com.sleepycat.je.*;
-import java.util.Collections;
-import java.util.Map;
-import java.nio.ByteBuffer;
+
+import com.sleepycat.je.Database;
+import com.sleepycat.je.DatabaseConfig;
+import com.sleepycat.je.DatabaseEntry;
+import com.sleepycat.je.DatabaseException;
+import com.sleepycat.je.Environment;
+import com.sleepycat.je.LockMode;
+import com.sleepycat.je.OperationStatus;
+
 import org.apache.log4j.Logger;
 
-import java.io.IOException;
-import java.util.AbstractMap;
+import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.linkedin.venice.meta.PersistenceType.*;
@@ -203,49 +207,6 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  /**
-   * Get an iterator over pairs of entries in the partition. The key is the first
-   * element in the pair and the value is the second element.
-   * <p/>
-   * Note that the iterator need not be threadsafe, and that it must be
-   * manually closed after use.
-   *
-   * This function is kept since it could be used for BDB->RocksDB migration purpose.
-   *
-   * @return An iterator over the entries in this AbstractStoragePartition.
-   */
-  public AbstractCloseablePartitionEntriesIterator partitionEntries() {
-    try {
-      Cursor cursor = getBdbDatabase().openCursor(null, null);
-      // evict data brought in by the cursor walk right away
-      if (this.minimizeScanImpact) {
-        cursor.setCacheMode(CacheMode.EVICT_BIN);
-      }
-
-      return new ClosableBdbPartitionEntriesIterator(cursor, this);
-    } catch (DatabaseException e) {
-      //this.bdbEnvironmentStats.reportException(e);
-      logger.error(e);
-      throw new VeniceException(e);
-    }
-  }
-
-  /**
-   * /**
-   * Get an iterator over keys in the partition.
-   * <p/>
-   * Note that the iterator need not be threadsafe, and that it must be
-   * manually closed after use.
-   *
-   * This function is kept since it could be used for BDB->RocksDB migration purpose.
-   *
-   * @return An iterator over the keys in this AbstractStoragePartition.
-   */
-  public CloseablePartitionKeysIterator partitionKeys() {
-    return new CloseablePartitionKeysIterator(partitionEntries());
-  }
-
-
   interface BDBOperation {
     void perform();
   }
@@ -312,56 +273,6 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
     return storagePartitionConfig.isDeferredWrite() == databaseConfig.getDeferredWrite() &&
         storagePartitionConfig.isReadOnly() == databaseConfig.getReadOnly();
-  }
-
-  private class ClosableBdbPartitionEntriesIterator extends AbstractCloseablePartitionEntriesIterator {
-
-    private volatile boolean isOpen;
-    final Cursor cursor;
-    final BdbStoragePartition partition;
-
-    ClosableBdbPartitionEntriesIterator(Cursor cursor, BdbStoragePartition partition) {
-      this.isOpen = true;
-      this.cursor = cursor;
-      this.partition = partition;
-    }
-
-    @Override
-    public void close() throws IOException {
-      try {
-        if (isOpen) {
-          cursor.close();
-          isOpen = false;
-        }
-      } catch (DatabaseException e) {
-        logger.error(e);
-      }
-    }
-
-    @Override
-    public boolean fetchNextEntry() {
-      DatabaseEntry keyEntry = new DatabaseEntry();
-      DatabaseEntry valueEntry = new DatabaseEntry();
-      try {
-        OperationStatus status = cursor.getNext(keyEntry, valueEntry, LockMode.READ_UNCOMMITTED);
-
-        if (OperationStatus.NOTFOUND == status) {
-          // we have reached the end of the cursor
-          return false;
-        }
-        this.currentEntry = new AbstractMap.SimpleEntry(keyEntry.getData(), valueEntry.getData());
-        return true;
-      } catch (DatabaseException e) {
-        // partition.bdbEnvironmentStats.reportException(e);
-        logger.error(e);
-        throw new VeniceException(e);
-      }
-    }
-
-    @Override
-    public void remove() {
-      //To change body of implemented methods use File | Settings | File Templates.
-    }
   }
 
   private String getBdbDatabaseName() {

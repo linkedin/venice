@@ -1,29 +1,29 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.utils.SparseConcurrentList;
-import com.linkedin.venice.utils.Utils;
+
+import org.apache.log4j.Logger;
+
+import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -43,20 +43,14 @@ import org.apache.log4j.Logger;
  * The point of having one storage engine(environment) or one database for one partition, is to simplify the complexity of rebalancing/partition migration/host swap.
  * The team agreed to take (2.2) as default storage-partition model for now, and run performance tests to see if it goes well.
  */
-public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> implements Store {
-  private static final String VERSION_METADATA_KEY = "VERSION_METADATA";
-  private static final String METADATA_MIGRATION_KEY = "METADATA_MIGRATION";
-  private static final String METADATA_MIGRATION_VALUE = "DUMMY_VALUE";
-  private static final String PARTITION_METADATA_PREFIX = "P_";
-  private final String storeName;
-  // Storing StoreVersionState in metadata partition requires specific serializer.
-  private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
-  private final AtomicReference<StoreVersionState> storeVersionStateCache = new AtomicReference<>();
+public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition> implements Closeable {
+  private static final Logger logger = Logger.getLogger(AbstractStorageEngine.class);
+  private static final VeniceKafkaSerializer<StoreVersionState> versionStateSerializer =
+      AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
 
-  protected final AtomicBoolean isOpen;
-  protected final Logger logger = Logger.getLogger(AbstractStorageEngine.class);
-  protected final List<P> partitionList;
-  protected P metadataPartition;
+  private static final byte[] VERSION_METADATA_KEY = "VERSION_METADATA".getBytes();
+  private static final byte[] METADATA_MIGRATION_KEY = "METADATA_MIGRATION".getBytes();
+  private static final String PARTITION_METADATA_PREFIX = "P_";
 
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
   public static final int METADATA_PARTITION_ID = 1000_000_000;
@@ -68,15 +62,23 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    */
   private static final int LEGACY_METADATA_PARTITION_ID = 100_000_000;
 
+  private final String storeName;
+  private final List<Partition> partitionList = new SparseConcurrentList<>();
+  private Partition metadataPartition = null;
+  private final AtomicReference<StoreVersionState> versionStateCache = new AtomicReference<>();
+
   public AbstractStorageEngine(String storeName) {
     this.storeName = storeName;
-    this.isOpen = new AtomicBoolean(true);
-    this.partitionList = new SparseConcurrentList<>();
-    this.metadataPartition = null;
-    this.storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+  }
+
+  public String getName() {
+    return storeName;
   }
 
   public abstract PersistenceType getType();
+  public abstract long getStoreSizeInBytes();
+  protected abstract Set<Integer> getPersistedPartitionIds();
+  public abstract Partition createStoragePartition(StoragePartitionConfig partitionConfig);
 
   /**
    * Load the existing storage partitions.
@@ -87,7 +89,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
 
     /** See JavaDoc on {@link LEGACY_METADATA_PARTITION_ID} for more details on this cleanup logic. */
     if (partitionIds.contains(LEGACY_METADATA_PARTITION_ID)) {
-      P legacyMetadataPartition = createStoragePartition(new StoragePartitionConfig(storeName, LEGACY_METADATA_PARTITION_ID));
+      Partition legacyMetadataPartition = createStoragePartition(new StoragePartitionConfig(storeName, LEGACY_METADATA_PARTITION_ID));
       if (isMetadataMigrationCompleted(legacyMetadataPartition)) {
         throw new StorageInitializationException("Detected the presence of an active LEGACY_METADATA_PARTITION_ID.");
         /**
@@ -135,8 +137,8 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
     return isMetadataMigrationCompleted(this.metadataPartition);
   }
 
-  private boolean isMetadataMigrationCompleted(P someMetadataPartition) {
-    return null != someMetadataPartition.get(METADATA_MIGRATION_KEY.getBytes());
+  private boolean isMetadataMigrationCompleted(Partition someMetadataPartition) {
+    return null != someMetadataPartition.get(METADATA_MIGRATION_KEY);
   }
 
   /**
@@ -154,10 +156,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
     validateBootstrap(bdbStorageMetadataService);
 
     // Set the migration key indicating that the migration is done for this store.
-    metadataPartition.put(
-        METADATA_MIGRATION_KEY.getBytes(),
-        METADATA_MIGRATION_VALUE.getBytes()
-    );
+    metadataPartition.put(METADATA_MIGRATION_KEY, "DUMMY_VALUE".getBytes());
   }
 
   /**
@@ -231,65 +230,43 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
     }
   }
 
-  /**
-   * List the existing partition ids for current storage engine persisted previously
-   * @return
-   */
-  protected abstract Set<Integer> getPersistedPartitionIds();
+  public synchronized void preparePartitionForReading(int partitionId) {
+    if (!containsPartition(partitionId)) {
+      logger.warn("Partition " + storeName + "_" + partitionId + " was removed before reopening.");
+      return;
+    }
 
-  public abstract P createStoragePartition(StoragePartitionConfig storagePartitionConfig);
-
-  public synchronized void addStoragePartition(int partitionId) {
-    addStoragePartition(new StoragePartitionConfig(storeName, partitionId));
-  }
-
-  /**
-   * Prepare the opened storage partition for reading.
-   * Currently it will reset the L0 compaction trigger configs to lower value.
-   * @param storagePartitionConfig
-   */
-  public synchronized void prepareStorageForRead(StoragePartitionConfig storagePartitionConfig) {
-    storagePartitionConfig.setWriteOnlyConfig(false);
-    adjustStoragePartition(storagePartitionConfig);
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setWriteOnlyConfig(false);
+    adjustStoragePartition(partitionConfig);
   }
 
   /**
    * Adjust the opened storage partition according to the provided storagePartitionConfig.
    * It will throw exception if there is no opened storage partition for the given partition id.
-   * @param storagePartitionConfig
    */
-  protected synchronized void adjustStoragePartition(StoragePartitionConfig storagePartitionConfig) {
-    validateStoreName(storagePartitionConfig);
-    int partitionId = storagePartitionConfig.getPartitionId();
-    if (!containsPartition(partitionId)) {
-      throw new VeniceException("There is no opened storage partition for store: " + getName() +
-      ", partition id: " + partitionId + ", please open it first");
-    }
-    AbstractStoragePartition partition = this.partitionList.get(partitionId);
-    if (partition.verifyConfig(storagePartitionConfig)) {
+  public synchronized void adjustStoragePartition(StoragePartitionConfig partitionConfig) {
+    validateStoreName(partitionConfig);
+    int partitionId = partitionConfig.getPartitionId();
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    if (partition.verifyConfig(partitionConfig)) {
       logger.info("No adjustment needed for store name: " + getName() + ", partition id: " + partitionId);
       return;
     }
     // Need to re-open storage partition according to the provided partition config
-    logger.info("Reopen database with storage partition config: " + storagePartitionConfig);
+    logger.info("Reopen database with storage partition config: " + partitionConfig);
     closePartition(partitionId);
-    addStoragePartition(storagePartitionConfig);
+    addStoragePartition(partitionConfig);
   }
 
-  private void validateStoreName(StoragePartitionConfig storagePartitionConfig) {
-    if (!storagePartitionConfig.getStoreName().equals(getName())) {
-      throw new VeniceException("Store name in partition config: " + storagePartitionConfig.getStoreName() + " doesn't match current store engine: " + getName());
-    }
+  public void addStoragePartition(int partitionId) {
+    addStoragePartition(new StoragePartitionConfig(storeName, partitionId));
   }
 
-  /**
-   * Adds a partition to the current store
-   *
-   * @param storagePartitionConfig - config for the partition to be added
-   */
   public synchronized void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     validateStoreName(storagePartitionConfig);
     int partitionId = storagePartitionConfig.getPartitionId();
+
     if (partitionId == METADATA_PARTITION_ID) {
       throw new StorageInitializationException("The metadata partition is not allowed to be set via this function!");
     }
@@ -302,8 +279,20 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
       throw new StorageInitializationException("Partition " + partitionId + " of store " + this.getName() + " already exists.");
     }
 
-    P partition = createStoragePartition(storagePartitionConfig);
+    Partition partition = createStoragePartition(storagePartitionConfig);
     this.partitionList.set(partitionId, partition);
+  }
+
+  public synchronized void closePartition(int partitionId) {
+    AbstractStoragePartition partition = this.partitionList.remove(partitionId);
+    if (partition == null) {
+      logger.error("Failed to close a non existing partition: " + partitionId + " Store " + this.getName() );
+      return;
+    }
+    partition.close();
+    if (getNumberOfPartitions() == 0) {
+      logger.info("All Partitions closed for " + this.getName() );
+    }
   }
 
   /**
@@ -330,7 +319,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
      * guarantee the drop-partition order in bulk deletion, but if metadata partition get removed first, then it needs not
      * to clear partition offset.
      */
-    if (metadataPartitionCreated() && (partitionId != METADATA_PARTITION_ID)) {
+    if (metadataPartitionCreated() && partitionId != METADATA_PARTITION_ID) {
       clearPartitionOffset(partitionId);
     }
 
@@ -359,33 +348,176 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
       dropPartition(partitionId);
     }
     if (metadataPartitionCreated()) {
-      // Clear the version metadata state that stores both inside cache and metadata partition of the AbstractStorageEngine.
-      clearStoreVersionState();
       metadataPartition.drop();
       metadataPartition = null;
+      versionStateCache.set(null);
     }
     logger.info("Finished dropping store: " + getName());
   }
 
-  public synchronized void closePartition(int partitionId) {
-    if (!containsPartition(partitionId)) {
-      logger.error("Failed to close a non existing partition: " + partitionId + " Store " + this.getName() );
-      return;
+  public synchronized Map<String, String> sync(int partitionId) {
+    AbstractStoragePartition partition = partitionList.get(partitionId);
+    if (partition == null) {
+      logger.warn("Partition " + partitionId + " doesn't exist, no sync operation will be executed");
+      return Collections.emptyMap();
     }
-    AbstractStoragePartition partition = this.partitionList.remove(partitionId);
-    partition.close();
-    if(getNumberOfPartitions() == 0) {
-      logger.info("All Partitions closed for Store " + this.getName() );
+    return partition.sync();
+  }
+
+  @Override
+  public synchronized void close() throws VeniceException {
+    partitionList.forEach(Partition::close);
+    partitionList.clear();
+    if (metadataPartitionCreated()) {
+      metadataPartition.close();
+      metadataPartition = null;
+      versionStateCache.set(null);
     }
   }
 
   /**
-   * Get store name served by this storage engine
-   *
-   * @return associated storeName
+   * A lot of storage engines support efficient methods for performing large
+   * number of writes (puts/deletes) against the data source. This method puts
+   * the storage engine in this batch write mode
    */
-  public String getName() {
-    return this.storeName;
+  public synchronized void beginBatchWrite(StoragePartitionConfig storagePartitionConfig, Map<String, String> checkpointedInfo) {
+    logger.info("Begin batch write for storage partition config: " + storagePartitionConfig + " with checkpointed info: " + checkpointedInfo);
+    /**
+     * We want to adjust the storage partition first since it will possibly re-open the underlying database in
+     * different mode.
+     */
+    adjustStoragePartition(storagePartitionConfig);
+    getPartitionOrThrow(storagePartitionConfig.getPartitionId()).beginBatchWrite(checkpointedInfo);
+  }
+
+  /**
+   * @return true if the storage engine successfully returned to normal mode
+   */
+  public synchronized void endBatchWrite(StoragePartitionConfig storagePartitionConfig) {
+    logger.info("End batch write for storage partition config: " + storagePartitionConfig);
+    getPartitionOrThrow(storagePartitionConfig.getPartitionId()).endBatchWrite();
+    /**
+     * After end of batch push, we would like to adjust the underlying database for the future ingestion, such as from streaming.
+     */
+    adjustStoragePartition(storagePartitionConfig);
+  }
+
+  public void put(int partitionId, byte[] key, byte[] value) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    partition.put(key, value);
+  }
+
+  public void put(int partitionId, byte[] key, ByteBuffer value) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    partition.put(key, value);
+  }
+
+  public byte[] get(int partitionId, byte[] key) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    return partition.get(key);
+  }
+
+  public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    return partition.get(key, valueToBePopulated);
+  }
+
+  public byte[] get(int partitionId, ByteBuffer keyBuffer) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    return partition.get(keyBuffer);
+  }
+
+  public void delete(int partitionId, byte[] key) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    partition.delete(key);
+  }
+
+  /**
+   * Put the offset associated with the partitionId into the metadata partition.
+   */
+  public synchronized void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
+    }
+    if (!containsPartition(partitionId)) {
+      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
+    }
+    metadataPartition.put(getPartitionMetadataKey(partitionId), offsetRecord.toBytes());
+  }
+
+  /**
+   * Retrieve the offset associated with the partitionId from the metadata partition.
+   */
+  public synchronized Optional<OffsetRecord> getPartitionOffset(int partitionId) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
+    }
+    if (!containsPartition(partitionId)) {
+      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
+    }
+    byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId));
+    if (null == value) {
+      return Optional.empty();
+    }
+    return Optional.of(new OffsetRecord(value));
+  }
+
+  /**
+   * Clear the offset associated with the partitionId in the metadata partition.
+   */
+  public synchronized void clearPartitionOffset(int partitionId) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
+    }
+    if (!containsPartition(partitionId)) {
+      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
+    }
+    metadataPartition.delete(getPartitionMetadataKey(partitionId));
+  }
+
+  /**
+   * Put the store version state into the metadata partition.
+   */
+  public synchronized void putStoreVersionState(StoreVersionState versionState) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    versionStateCache.set(versionState);
+    metadataPartition.put(VERSION_METADATA_KEY, versionStateSerializer.serialize(getName(), versionState));
+  }
+
+  /**
+   * Retrieve the store version state from the metadata partition.
+   */
+  public synchronized Optional<StoreVersionState> getStoreVersionState() {
+    StoreVersionState versionState = versionStateCache.get();
+    if (versionState != null) {
+      return Optional.of(versionState);
+    }
+    byte[] value = metadataPartition.get(VERSION_METADATA_KEY);
+    if (null == value) {
+      return Optional.empty();
+    }
+    versionState = versionStateSerializer.deserialize(storeName, value);
+    versionStateCache.set(versionState);
+    return Optional.of(versionState);
+  }
+
+  /**
+   * Clear the store version state in the metadata partition.
+   */
+  public synchronized void clearStoreVersionState() {
+    versionStateCache.set(null);
+    metadataPartition.delete(VERSION_METADATA_KEY);
   }
 
   /**
@@ -405,18 +537,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * @return the number of non-null partitions in {@link #partitionList}
    */
   protected long getNumberOfPartitions() {
-    return this.partitionList.stream().filter(p -> null != p).count();
-  }
-
-  protected void forEachPartition(Consumer<P> partitionConsumer) {
-    this.partitionList.forEach(partitionConsumer);
-    if (metadataPartitionCreated()) {
-      partitionConsumer.accept(metadataPartition);
-    }
-  }
-
-  private boolean metadataPartitionCreated() {
-    return null != metadataPartition;
+    return this.partitionList.stream().filter(Objects::nonNull).count();
   }
 
   /**
@@ -426,221 +547,37 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    */
   public synchronized Set<Integer> getPartitionIds() {
     return this.partitionList.stream()
-        .filter(p -> null != p)
-        .map(p -> p.partitionId)
-        .collect(Collectors.toSet());
+               .filter(Objects::nonNull)
+               .map(Partition::getPartitionId)
+               .collect(Collectors.toSet());
   }
 
-  /**
-   * A lot of storage engines support efficient methods for performing large
-   * number of writes (puts/deletes) against the data source. This method puts
-   * the storage engine in this batch write mode
-   */
-  public void beginBatchWrite(StoragePartitionConfig storagePartitionConfig, Map<String, String> checkpointedInfo) {
-    logger.info("Begin batch write for storage partition config: " + storagePartitionConfig + " with checkpointed info: " + checkpointedInfo);
-    final int partitionId = storagePartitionConfig.getPartitionId();
-    /**
-     * We want to adjust the storage partition first since it will possibly re-open the underlying database in
-     * different mode.
-     */
-    adjustStoragePartition(storagePartitionConfig);
-    getStoragePartition(partitionId).beginBatchWrite(checkpointedInfo);
-  }
-
-  /**
-   * @return true if the storage engine successfully returned to normal mode
-   */
-  public void endBatchWrite(StoragePartitionConfig storagePartitionConfig) {
-    logger.info("End batch write for storage partition config: " + storagePartitionConfig);
-    final int partitionId = storagePartitionConfig.getPartitionId();
-    getStoragePartition(partitionId).endBatchWrite();
-    /**
-     * After end of batch push, we would like to adjust the underlying database for the future ingestion, such as from streaming.
-     */
-    adjustStoragePartition(storagePartitionConfig);
-  }
-
-  protected void validatePartitionForKey(int logicalPartitionId, Object key, String operationType) {
-    Utils.notNull(key, "Key cannot be null.");
-    if (!containsPartition(logicalPartitionId)) {
-      String errorMessage = operationType + " request failed. Invalid partition id: "
-          + logicalPartitionId + " Store " + getName();
-      logger.error(errorMessage);
-      throw new PersistenceFailureException(errorMessage);
+  public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
+    AbstractStoragePartition partition = partitionList.get(partitionId);
+    if (partition == null) {
+      VeniceException e = new PersistenceFailureException("Partition: " + partitionId + " of store: " + getName() + " does't exist");
+      logger.error(e.getMessage(), e.getCause());
+      throw e;
     }
+    return partition;
   }
-
-  public void put(int logicalPartitionId, byte[] key, byte[] value) throws VeniceException {
-    validatePartitionForKey(logicalPartitionId, key, "Put");
-    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
-    partition.put(key, value);
-  }
-
-  public void put(int logicalPartitionId, byte[] key, ByteBuffer value) throws VeniceException {
-    validatePartitionForKey(logicalPartitionId, key, "Put");
-    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
-    partition.put(key, value);
-  }
-
-  /**
-   * Put the offset associated with the partitionId into the metadata partition.
-   */
-  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
-    if (!containsPartition(partitionId)) {
-      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
-    }
-    metadataPartition.put(
-        composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes(),
-        offsetRecord.toBytes()
-    );
-  }
-
-  /**
-   * Retrieve the offset associated with the partitionId from the metadata partition.
-   */
-  public Optional<OffsetRecord> getPartitionOffset(int partitionId) {
-    if (!containsPartition(partitionId)) {
-      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
-    }
-    if (!metadataPartitionCreated()) {
-      throw new StorageInitializationException("Metadata partition not created!");
-    }
-    byte[] key = composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes();
-    byte[] value = metadataPartition.get(key);
-    if (null == value) {
-      return Optional.empty();
-    }
-    return Optional.of(new OffsetRecord(value));
-  }
-
-  /**
-   * Clear the offset associated with the partitionId in the metadata partition.
-   */
-  public void clearPartitionOffset(int partitionId) {
-    if (!containsPartition(partitionId)) {
-      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
-    }
-    if (partitionId == METADATA_PARTITION_ID) {
-      throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
-    }
-    if (!metadataPartitionCreated()) {
-      throw new StorageInitializationException("Metadata partition not created!");
-    }
-    metadataPartition.delete(composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes());
-  }
-
-  /**
-   * Put the store version state into the metadata partition.
-   */
-  public void putStoreVersionState(StoreVersionState record) {
-    metadataPartition.put(
-        VERSION_METADATA_KEY.getBytes(),
-        storeVersionStateSerializer.serialize(getName(), record)
-    );
-  }
-
-  /**
-   * Retrieve the store version state from the metadata partition.
-   */
-  public Optional<StoreVersionState> getStoreVersionState() {
-    // If store version state cache is set, return the cache value directly.
-    StoreVersionState storeVersionState = storeVersionStateCache.get();
-    if (storeVersionState != null) {
-      return Optional.of(storeVersionState);
-    }
-    byte[] value = metadataPartition.get(VERSION_METADATA_KEY.getBytes());
-    if (null == value) {
-      return Optional.empty();
-    }
-    storeVersionState = storeVersionStateSerializer.deserialize(storeName, value);
-    // Update store version state cache.
-    storeVersionStateCache.set(storeVersionState);
-    return Optional.of(storeVersionState);
-  }
-
-  /**
-   * Clear the store version state in the metadata partition.
-   */
-  public void clearStoreVersionState() {
-    // Delete the cached store version state.
-    storeVersionStateCache.set(null);
-    metadataPartition.delete(VERSION_METADATA_KEY.getBytes());
-  }
-
-  /**
-   * Retrieve the store version's CompressionStrategy from cached StoreVersionState.
-   */
-  public CompressionStrategy getStoreVersionCompressionStrategy() {
-    return getStoreVersionState()
-        .map(storeVersionState -> CompressionStrategy.valueOf(storeVersionState.compressionStrategy))
-        .orElse(CompressionStrategy.NO_OP);
-  }
-
-  /**
-   * Retrieve the store version's chunked flag from cached StoreVersionState.
-   */
-  public boolean isStoreVersionChunked() {
-    return getStoreVersionState().map(storeVersionState -> storeVersionState.chunked).orElse(false);
-  }
-
-
-  public void delete(int logicalPartitionId, byte[] key) throws VeniceException {
-    validatePartitionForKey(logicalPartitionId, key, "Delete");
-    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
-    partition.delete(key);
-  }
-
-  public byte[] get(int logicalPartitionId, byte[] key) throws VeniceException {
-    validatePartitionForKey(logicalPartitionId, key, "Get");
-    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
-    return partition.get(key);
-  }
-
-  public ByteBuffer get(int logicalPartitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
-    validatePartitionForKey(logicalPartitionId, key, "Get");
-    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
-    return partition.get(key, valueToBePopulated);
-  }
-
-  public byte[] get(int logicalPartitionId, ByteBuffer keyBuffer) throws VeniceException {
-    validatePartitionForKey(logicalPartitionId, keyBuffer, "Get");
-    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
-    return partition.get(keyBuffer);
-  }
-
-  public Map<String, String> sync(int partitionId) {
-    if (!containsPartition(partitionId)) {
-      logger.warn("Partition " + partitionId + " doesn't exist, no sync operation will be executed");
-      return Collections.emptyMap();
-    }
-    AbstractStoragePartition partition = this.partitionList.get(partitionId);
-    return partition.sync();
-  }
-
-  public void close() throws PersistenceFailureException {
-    this.isOpen.compareAndSet(true, false);
-  }
-
-  public Logger getLogger(){
-    return logger;
-  }
-
-  // for test purpose
-  public AbstractStoragePartition getStoragePartition(int partitionId) {
-    if (!containsPartition(partitionId)) {
-      throw new VeniceException("Partition: " + partitionId + " of store: " + getName() + " doesn't exist");
-    }
-    return this.partitionList.get(partitionId);
-  }
-
-  public abstract long getStoreSizeInBytes();
 
   public long getPartitionSizeInBytes(int partitionId) {
-    AbstractStoragePartition partition = this.partitionList.get(partitionId);
-    return partition.getPartitionSizeInBytes();
+    AbstractStoragePartition partition = partitionList.get(partitionId);
+    return partition != null ? partition.getPartitionSizeInBytes() : 0;
   }
 
-  public String composeMetadataPartitionKey(String metadataPrefix, int partitionId) {
-    return metadataPrefix + partitionId;
+  private static byte[] getPartitionMetadataKey(int partitionId) {
+    return (PARTITION_METADATA_PREFIX + partitionId).getBytes();
+  }
+
+  private boolean metadataPartitionCreated() {
+    return null != metadataPartition;
+  }
+
+  private void validateStoreName(StoragePartitionConfig storagePartitionConfig) {
+    if (!storagePartitionConfig.getStoreName().equals(getName())) {
+      throw new VeniceException("Store name in partition config: " + storagePartitionConfig.getStoreName() + " doesn't match current store engine: " + getName());
+    }
   }
 }

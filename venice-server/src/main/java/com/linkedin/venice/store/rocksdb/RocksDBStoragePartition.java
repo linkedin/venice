@@ -5,15 +5,7 @@ import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.utils.ByteUtils;
-import java.io.File;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
@@ -27,6 +19,16 @@ import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileWriter;
 import org.rocksdb.Statistics;
 import org.rocksdb.WriteOptions;
+
+import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static com.linkedin.venice.store.AbstractStorageEngine.*;
 
@@ -97,6 +99,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    * Whether the database is read only or not.
    */
   private final boolean readOnly;
+  private final boolean writeOnly;
   private final Optional<Statistics> aggStatistics;
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
@@ -122,6 +125,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       this.deferredWrite = storagePartitionConfig.isDeferredWrite();
     }
     this.readOnly = storagePartitionConfig.isReadOnly();
+    this.writeOnly = storagePartitionConfig.isWriteOnlyConfig();
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeName, partitionId);
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     this.options = options;
@@ -145,7 +149,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
     registerDBStats();
     LOGGER.info("Opened RocksDB for store: " + storeName + ", partition id: " + partitionId + " in "
-        + (this.readOnly ? "read only" : "read write") + " mode and " + (this.deferredWrite ? "deferred write" : " non deferred write") + " mode");
+        + (this.readOnly ? "read-only" : "read-write") + " mode and " + (this.deferredWrite ? "deferred write" : "non-deferred write") + " mode");
   }
 
   private void makeSureAllPreviousSSTFilesBeforeCheckpointingExist() {
@@ -182,7 +186,12 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private Options getStoreOptions(StoragePartitionConfig storagePartitionConfig) {
     Options options = new Options();
+
     options.setEnv(factory.getEnv());
+    options.setRateLimiter(factory.getRateLimiter());
+    options.setSstFileManager(factory.getSstFileManager());
+    options.setWriteBufferManager(factory.getWriteBufferManager());
+
     options.setCreateIfMissing(true);
     options.setCompressionType(rocksDBServerConfig.getRocksDBOptionsCompressionType());
     options.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
@@ -190,11 +199,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
     options.setMaxOpenFiles(rocksDBServerConfig.getMaxOpenFiles());
     options.setTargetFileSizeBase(rocksDBServerConfig.getTargetFileSizeInBytes());
-
-    options.setWriteBufferManager(factory.getWriteBufferManager());
-    options.setSstFileManager(factory.getSstFileManager());
     options.setMaxFileOpeningThreads(rocksDBServerConfig.getMaxFileOpeningThreads());
-    options.setRateLimiter(factory.getRateLimiter());
 
     /**
      * Disable the stat dump threads, which will create excessive threads, which will eventually crash
@@ -203,7 +208,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setStatsDumpPeriodSec(0);
     options.setStatsPersistPeriodSec(0);
 
-    aggStatistics.ifPresent(stat -> options.setStatistics(stat));
+    aggStatistics.ifPresent(options::setStatistics);
 
     if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
       PlainTableConfig tableConfig = new PlainTableConfig();
@@ -228,23 +233,24 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
       tableConfig.setFormatVersion(2); // Latest version
       options.setTableFormatConfig(tableConfig);
+
+      if (storagePartitionConfig.isWriteOnlyConfig()) {
+        options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
+        options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
+        options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
+      } else {
+        options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
+        options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
+        options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
+      }
     }
+
     // Memtable options
     options.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
     options.setMaxWriteBufferNumber(rocksDBServerConfig.getRocksDBMaxMemtableCount());
     options.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
     options.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
     options.setMemtableHugePageSize(rocksDBServerConfig.getMemTableHugePageSize());
-
-    if (!storagePartitionConfig.isWriteOnlyConfig()) {
-      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
-      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
-      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
-    } else {
-      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
-      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
-      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
-    }
     return options;
   }
 
@@ -332,6 +338,10 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void put(byte[] key, byte[] value) {
+    if (readOnly) {
+      throw new VeniceException("Cannot make writes while partition is opened in read-only mode" +
+                                    ", partition=" + storeName + "_" + partitionId);
+    }
     try {
       if (deferredWrite) {
         if (null == currentSSTFileWriter) {
@@ -350,6 +360,10 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
+    if (readOnly) {
+      throw new VeniceException("Cannot make writes while partition is opened in read-only mode" +
+                                    ", partition=" + storeName + "_" + partitionId);
+    }
     /**
      * The reason to create a new byte array to contain the value is that the overhead to create/release
      * {@link Slice} and {@link org.rocksdb.DirectSlice} is high since the creation/release are JNI operation.
@@ -539,11 +553,13 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    * @return
    */
   @Override
-  public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
+  public boolean verifyConfig(StoragePartitionConfig partitionConfig) {
     if (options.tableFormatConfig() instanceof PlainTableConfig) {
-      return readOnly == storagePartitionConfig.isReadOnly();
+      return readOnly == partitionConfig.isReadOnly();
     }
-    return deferredWrite == storagePartitionConfig.isDeferredWrite() && readOnly == storagePartitionConfig.isReadOnly();
+    return deferredWrite == partitionConfig.isDeferredWrite() &&
+               readOnly == partitionConfig.isReadOnly() &&
+               writeOnly == partitionConfig.isWriteOnlyConfig();
   }
 
   /**

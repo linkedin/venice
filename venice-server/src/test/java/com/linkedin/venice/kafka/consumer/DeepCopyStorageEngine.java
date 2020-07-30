@@ -1,15 +1,12 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 
@@ -146,12 +143,8 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  public AbstractStoragePartition getStoragePartition(int partitionId) {
-    return this.delegate.getStoragePartition(partitionId);
-  }
-
-  public synchronized void prepareStorageForRead(StoragePartitionConfig storagePartitionConfig) {
-    this.delegate.prepareStorageForRead(storagePartitionConfig);
+  public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
+    return this.delegate.getPartitionOrThrow(partitionId);
   }
 
   @Override

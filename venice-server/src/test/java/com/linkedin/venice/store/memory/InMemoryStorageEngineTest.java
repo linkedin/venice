@@ -72,11 +72,6 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @Test
-  public void testPutNullKey(){
-    super.testPutNullKey();
-  }
-
-  @Test
   public void testPartitioning()
       throws Exception {
     super.testPartitioning();
