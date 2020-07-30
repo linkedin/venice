@@ -577,10 +577,10 @@ public class RouterServer extends AbstractVeniceService {
     }
     // Graceful shutdown
     Thread.sleep(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds()));
-    if (!serverFuture.cancel(false)){
+    if (serverFuture != null && !serverFuture.cancel(false)){
       serverFuture.awaitUninterruptibly();
     }
-    if (!secureServerFuture.cancel(false)){
+    if (secureServerFuture != null && !secureServerFuture.cancel(false)){
       secureServerFuture.awaitUninterruptibly();
     }
     /**
