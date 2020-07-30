@@ -148,7 +148,7 @@ public abstract class TopicReplicator {
         getTopicManager().updateTopicRetention(srcTopicName, store.getHybridStoreConfig().getRetentionTimeInMs());
       }
       // Additionally, make sure compaction policy is correct (this funciton Noops if it is correct)
-      topicManager.updateTopicCompactionPolicy(srcTopicName, !store.isWriteComputationEnabled());
+      getTopicManager().updateTopicCompactionPolicy(srcTopicName, !store.isWriteComputationEnabled());
 
     }
   }
