@@ -1,6 +1,8 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
@@ -90,9 +92,12 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     logger.info("Cleared all store configs in local");
   }
 
+  //TODO This needs to be revisited if we want to support migrating Venice stores with materialized metadata system store.
   @Override
   public Optional<StoreConfig> getStoreConfig(String storeName) {
-    StoreConfig config = storeConfigMap.get().get(storeName);
+    String veniceStoreName = VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE
+        ? VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName): storeName;
+    StoreConfig config = storeConfigMap.get().get(veniceStoreName);
     if (config != null) {
       return Optional.of(config);
     } else {
