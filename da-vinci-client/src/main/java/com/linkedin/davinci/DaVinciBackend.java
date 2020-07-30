@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -12,6 +13,7 @@ import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -50,7 +52,7 @@ public class DaVinciBackend implements Closeable {
 
   private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;
-  private final DaVinciStoreRepository storeRepository;
+  private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
   private final MetricsRepository metricsRepository;
   private final RocksDBMemoryStats rocksDBMemoryStats;
@@ -60,7 +62,7 @@ public class DaVinciBackend implements Closeable {
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
 
-  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader) {
+  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, boolean useSystemStoreBasedRepository) {
     this.configLoader = configLoader;
 
     metricsRepository =
@@ -72,12 +74,18 @@ public class DaVinciBackend implements Closeable {
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, ".davinci-zk-client"));
 
     String clusterName = configLoader.getVeniceClusterConfig().getClusterName();
-    storeRepository = new DaVinciStoreRepository(zkClient, adapter, clusterName);
-    storeRepository.refresh();
 
-    schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
-    schemaRepository.refresh();
+    if (useSystemStoreBasedRepository) {
+      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository = new MetadataStoreBasedStoreRepository(clusterName, clientConfig, 60);
+      storeRepository = metadataStoreBasedStoreRepository;
+      schemaRepository = metadataStoreBasedStoreRepository;
+    } else {
+      storeRepository = new DaVinciStoreRepository(zkClient, adapter, clusterName);
+      storeRepository.refresh();
 
+      schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
+      schemaRepository.refresh();
+    }
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
     rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats") : null;
@@ -117,7 +125,12 @@ public class DaVinciBackend implements Closeable {
         continue;
       }
 
-      storeRepository.subscribe(storeName);
+      try {
+        storeRepository.subscribe(storeName);
+      } catch (InterruptedException e) {
+        logger.info("Subscribe method is interrupted " + e.getMessage());
+        Thread.currentThread().interrupt();
+      }
       Version version = getLatestVersion(storeName).orElse(null);
       if (version == null || version.kafkaTopicName().equals(kafkaTopicName) == false) {
         logger.info("Deleting obsolete local version " + kafkaTopicName);
@@ -175,7 +188,7 @@ public class DaVinciBackend implements Closeable {
     return configLoader;
   }
 
-  DaVinciStoreRepository getStoreRepository() {
+  SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
   }
 

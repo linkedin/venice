@@ -46,6 +46,7 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClient.class);
 
+  protected static final String USE_SYSTEM_STORE_REPOSITORY = "UseSystemStoreRepository";
   protected final DaVinciConfig daVinciConfig;
   protected final ClientConfig clientConfig;
   protected final VeniceProperties backendConfig;
@@ -275,9 +276,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     return new VeniceConfigLoader(config, config);
   }
 
-  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader) {
+  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, boolean useSystemStoreBasedRepository) {
     if (daVinciBackend == null) {
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader), backend -> {
+      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, useSystemStoreBasedRepository), backend -> {
         daVinciBackend = null;
         backend.close();
       });
@@ -293,7 +294,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
     logger.info("Starting Da Vinci client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader);
+    initBackend(clientConfig, configLoader, backendConfig.getBoolean(USE_SYSTEM_STORE_REPOSITORY, false));
 
     try {
       storeBackend = daVinciBackend.get().getStoreOrThrow(getStoreName());

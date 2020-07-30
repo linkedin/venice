@@ -22,6 +22,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentStoreStates;
@@ -60,7 +61,7 @@ import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 import static java.lang.Thread.*;
 
 
-public class MetadataStoreBasedStoreRepository implements ReadOnlyStoreRepository, ReadOnlySchemaRepository {
+public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository {
   private static final Logger logger = Logger.getLogger(MetadataStoreBasedStoreRepository.class);
   private static final int KEY_SCHEMA_ID = 1;
   private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND;
@@ -80,14 +81,15 @@ public class MetadataStoreBasedStoreRepository implements ReadOnlyStoreRepositor
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
   private final String clusterName;
-  private final String routerUrl;
+  private final ClientConfig<StoreMetadataValue> clientConfig;
 
-  public MetadataStoreBasedStoreRepository(String clusterName, String routerUrl, long refreshIntervalInSeconds) {
+  public MetadataStoreBasedStoreRepository(String clusterName, ClientConfig<StoreMetadataValue> clientConfig, long refreshIntervalInSeconds) {
     this.clusterName = clusterName;
-    this.routerUrl = routerUrl;
+    this.clientConfig = clientConfig;
     this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
   }
 
+  @Override
   public void subscribe(String storeName) throws InterruptedException {
     updateLock.lock();
     try {
@@ -113,6 +115,7 @@ public class MetadataStoreBasedStoreRepository implements ReadOnlyStoreRepositor
     }
   }
 
+  @Override
   public void unsubscribe(String storeName) {
     updateLock.lock();
     try {
@@ -577,10 +580,9 @@ public class MetadataStoreBasedStoreRepository implements ReadOnlyStoreRepositor
 
   protected AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> getAvroClientForSystemStore(String storeName) {
     storeClientMap.computeIfAbsent(storeName,  k -> {
-      ClientConfig<StoreMetadataValue> clientConfig = ClientConfig.defaultSpecificClientConfig(
-              VeniceSystemStoreUtils.getMetadataStoreName(storeName),
-              StoreMetadataValue.class).setVeniceURL(this.routerUrl);
-      return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
+      ClientConfig<StoreMetadataValue> clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
+          .setStoreName(VeniceSystemStoreUtils.getMetadataStoreName(storeName));
+      return ClientFactory.getAndStartSpecificAvroClient(clonedClientConfig);
     });
     return storeClientMap.get(storeName);
   }

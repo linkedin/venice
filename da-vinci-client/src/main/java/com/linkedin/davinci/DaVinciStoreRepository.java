@@ -7,13 +7,14 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 
+import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
 import java.util.HashSet;
 import java.util.Set;
 
-public class DaVinciStoreRepository extends HelixReadOnlyStoreRepository {
+public class DaVinciStoreRepository extends HelixReadOnlyStoreRepository implements SubscriptionBasedReadOnlyStoreRepository {
   private static final Logger logger = Logger.getLogger(HelixReadOnlyStoreRepository.class);
 
   private final Set<String> subscription = new HashSet<>();
@@ -22,7 +23,8 @@ public class DaVinciStoreRepository extends HelixReadOnlyStoreRepository {
     super(zkClient, compositeSerializer, clusterName, 0, 0);
   }
 
-  public void subscribe(String storeName) {
+  @Override
+  public void subscribe(String storeName) throws InterruptedException {
     updateLock.lock();
     try {
       subscription.add(storeName);
@@ -35,6 +37,7 @@ public class DaVinciStoreRepository extends HelixReadOnlyStoreRepository {
     }
   }
 
+  @Override
   public void unsubscribe(String storeName) {
     updateLock.lock();
     try {

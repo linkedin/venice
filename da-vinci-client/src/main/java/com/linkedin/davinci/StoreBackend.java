@@ -25,7 +25,12 @@ public class StoreBackend {
   StoreBackend(DaVinciBackend backend, String storeName) {
     this.backend = backend;
     this.storeName = storeName;
-    backend.getStoreRepository().subscribe(storeName);
+    try {
+      backend.getStoreRepository().subscribe(storeName);
+    } catch (InterruptedException e) {
+      logger.info("Subscribe method is interrupted " + e.getMessage());
+      Thread.currentThread().interrupt();
+    }
   }
 
   synchronized void close() {
