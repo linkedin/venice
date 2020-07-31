@@ -336,22 +336,33 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
+  public synchronized void dropMetadataPartition() {
+    if (metadataPartitionCreated()) {
+      metadataPartition.drop();
+      metadataPartition = null;
+      versionStateCache.set(null);
+    }
+  }
+
   /**
    * Drop the whole store
    */
   public synchronized void drop() {
+    // check if its already dropped.
+    if (getNumberOfPartitions() == 0 && !metadataPartitionCreated()) {
+      return;
+    }
+
     logger.info("Started dropping store: " + getName());
+    // partitionList is implementaion of SparseConcurrentList which sets element to null on `remove`. So its fine
+    // to call size() while removing elements from the list.
     for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
       if (!containsPartition(partitionId)) {
         continue;
       }
       dropPartition(partitionId);
     }
-    if (metadataPartitionCreated()) {
-      metadataPartition.drop();
-      metadataPartition = null;
-      versionStateCache.set(null);
-    }
+    dropMetadataPartition();
     logger.info("Finished dropping store: " + getName());
   }
 
