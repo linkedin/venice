@@ -4008,7 +4008,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     /**
      * Child controller will create the VT topic and trigger an empty push. Set up Helix resources and push monitor then
-     * sync/write relevant current store state to the RT.
+     * sync/write relevant current store state to the RT. The child controller will also check and waits on
+     * (by throwing {@link VeniceRetriableException}) any previously truncated VT topic to be deleted.
      */
     @Override
     public void materializeMetadataStoreVersion(String clusterName, String storeName, int metadataStoreVersionNumber) {
@@ -4017,8 +4018,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Store zkSharedStoreMetadata = getStore(clusterName, VeniceSystemStore.METADATA_STORE.getPrefix());
         checkMetadataStorePrerequisites(clusterName, storeName, metadataStoreVersionNumber, veniceStore,
             zkSharedStoreMetadata);
-        createMetadataStoreResources(clusterName, storeName, metadataStoreVersionNumber, zkSharedStoreMetadata);
         String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
+        String metadataVTName = Version.composeKafkaTopic(metadataStoreName, metadataStoreVersionNumber);
+        String metadataRTName = Version.composeRealTimeTopic(metadataStoreName);
+        if (getTopicManager().containsTopic(metadataVTName) && isTopicTruncated(metadataVTName)) {
+            throw new VeniceRetriableException("Waiting for previously materialized VT to be deleted for store: "
+                + metadataStoreName + ", version: " + metadataStoreVersionNumber);
+        }
+        if (getTopicManager().containsTopic(metadataRTName) && isTopicTruncated(metadataRTName)) {
+            throw new VeniceRetriableException("Waiting for previously materialized RT to be deleted for store: "
+                + metadataStoreName);
+        }
+        createMetadataStoreResources(clusterName, storeName, metadataStoreVersionNumber, zkSharedStoreMetadata);
         writeEndOfPush(clusterName, metadataStoreName, metadataStoreVersionNumber, true);
         getRealTimeTopic(clusterName, metadataStoreName);
         metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, veniceStore);
@@ -4080,6 +4091,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber) {
         String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
         deleteOldVersionInStore(clusterName, metadataStoreName, versionNumber);
+        // Cleanup the RT topic
+        truncateKafkaTopic(Version.composeRealTimeTopic(metadataStoreName));
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setStoreMetadataSystemStoreEnabled(false);
             return store;

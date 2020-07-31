@@ -568,7 +568,9 @@ public interface Admin extends AutoCloseable, Closeable {
 
     /**
      * Dematerialize the specified Zk shared metadata store version for the given Venice store name and set the
-     * storeMetadataSystemStoreEnabled flag to false.
+     * storeMetadataSystemStoreEnabled flag to false. This should only be called when we no longer want metadata system
+     * store for a Venice store. Version retirement will be handled by {@link VeniceHelixAdmin}.retireOldStoreVersions
+     * invoked by {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} upon new push completion.
      */
     void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber);
 }
