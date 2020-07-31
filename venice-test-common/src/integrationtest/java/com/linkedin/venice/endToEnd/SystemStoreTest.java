@@ -318,7 +318,7 @@ public class SystemStoreTest {
       currentVersionStates = (CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion;
       assertEquals(currentVersionStates.currentVersionStates.get(0).status.toString(), STARTED.name());
       parentControllerClient.writeEndOfPush(regularVeniceStoreName, newVersionResponse.getVersion());
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, () -> {
         assertEquals(((CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion)
             .currentVersion, newVersionResponse.getVersion());
       });
@@ -382,6 +382,8 @@ public class SystemStoreTest {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
       assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
+      assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin()
+          .isTopicTruncated(Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName))));
     });
   }
 
