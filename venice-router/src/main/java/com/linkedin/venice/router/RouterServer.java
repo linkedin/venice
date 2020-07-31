@@ -613,7 +613,7 @@ public class RouterServer extends AbstractVeniceService {
       router.get().shutdown();
     }
     secureRouter.shutdown();
-    if (!router.isPresent()) {
+    if (router.isPresent()) {
       router.get().waitForShutdown();
     }
     logger.info("Non-secure router has been shutdown completely");
