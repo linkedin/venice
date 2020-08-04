@@ -38,6 +38,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   private final int port;
   private final Admin admin;
+  private final boolean enforceSSL;
   private final boolean sslEnabled;
   private final boolean checkReadMethodForKafka;
   private final Optional<SSLConfig> sslConfig;
@@ -54,9 +55,10 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Service httpService;
 
 
-  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters,
+  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters, boolean enforceSSL,
       Optional<SSLConfig> sslConfig, boolean checkReadMethodForKafka, Optional<DynamicAccessController> accessController) {
     this.port = port;
+    this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
     this.sslConfig = sslConfig;
     this.checkReadMethodForKafka = checkReadMethodForKafka;
@@ -99,6 +101,21 @@ public class AdminSparkServer extends AbstractVeniceService {
         stats = nonclusterSpecificStats;
       }
       stats.recordRequest();
+      /**
+       * If SSL is enforced, there is nothing to do in the secure admin server which has SSL enabled already;
+       * but in the insecure admin server, we need to fail most of the routes except cluster/master-controller
+       * discovery.
+       *
+       * TODO: Currently we allow insecure access to cluster/master-controller discovery because D2Client inside
+       *       VeniceSystemProducer is not secure yet; once the new D2Client is used everywhere, we are safe to
+       *       switch the controller D2 announcement result to the secure URL and stop insecure access to
+       *       cluster/master-controller discovery.
+       */
+      if (enforceSSL && !sslEnabled) {
+        if (!CLUSTER_DISCOVERY.getPath().equals(request.uri()) && !MASTER_CONTROLLER.getPath().equals(request.uri())) {
+          httpService.halt(403, "Access denied, Venice Controller has enforced SSL.");
+        }
+      }
       request.attribute(REQUEST_START_TIME, System.currentTimeMillis());
       request.attribute(REQUEST_SUCCEED, true);
     });
