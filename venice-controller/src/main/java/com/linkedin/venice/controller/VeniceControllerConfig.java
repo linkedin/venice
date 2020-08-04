@@ -70,6 +70,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long errorPartitionProcessingCycleDelay;
   private final long backupVersionDefaultRetentionMs;
   private final boolean backupVersionRetentionBasedCleanupEnabled;
+  private final boolean enforceSSLOnly;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -155,6 +156,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.errorPartitionProcessingCycleDelay = props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
     this.backupVersionDefaultRetentionMs = props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
     this.backupVersionRetentionBasedCleanupEnabled = props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false); // disabled by default
+    this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure routes
   }
 
   public int getAdminPort() {
@@ -321,6 +323,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isBackupVersionRetentionBasedCleanupEnabled() {
     return backupVersionRetentionBasedCleanupEnabled;
+  }
+
+  public boolean isControllerEnforceSSLOnly() {
+    return enforceSSLOnly;
   }
 
   /**

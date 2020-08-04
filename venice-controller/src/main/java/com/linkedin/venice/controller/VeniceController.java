@@ -91,6 +91,7 @@ public class VeniceController {
         controllerService.getVeniceHelixAdmin(),
         metricsRepository,
         multiClusterConfigs.getClusters(),
+        multiClusterConfigs.isControllerEnforceSSLOnly(),
         Optional.empty(),
         false,
         Optional.empty());
@@ -101,7 +102,9 @@ public class VeniceController {
       secureAdminServer = new AdminSparkServer(
           multiClusterConfigs.getAdminSecurePort(),
           controllerService.getVeniceHelixAdmin(),
-          metricsRepository, multiClusterConfigs.getClusters(),
+          metricsRepository,
+          multiClusterConfigs.getClusters(),
+          true,
           multiClusterConfigs.getSslConfig(),
           multiClusterConfigs.adminCheckReadMethodForKafka(),
           accessController);

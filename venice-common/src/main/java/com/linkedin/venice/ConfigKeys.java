@@ -175,6 +175,11 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED = "controller.backup.version.retention.based.cleanup.enabled";
 
+  /**
+   * Whether controller should enforce SSL.
+   */
+  public static final String CONTROLLER_ENFORCE_SSL = "controller.enforce.ssl";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";
