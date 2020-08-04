@@ -476,9 +476,14 @@ public abstract class AbstractPushMonitor
         }
 
         Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(pushStatus, partitionAssignment);
-        if (!status.getFirst().equals(pushStatus.getCurrentStatus()) && status.getFirst().isTerminal()) {
-          logger.info("Offline push status will be changed to " + status.toString() + " for topic: " + kafkaTopic + " from status: " + pushStatus.getCurrentStatus());
-          handleOfflinePushUpdate(pushStatus, status.getFirst(), status.getSecond());
+        if (!status.getFirst().equals(pushStatus.getCurrentStatus())) {
+          if (status.getFirst().isTerminal()) {
+            logger.info("Offline push status will be changed to " + status.toString() + " for topic: " + kafkaTopic + " from status: " + pushStatus.getCurrentStatus());
+            handleOfflinePushUpdate(pushStatus, status.getFirst(), status.getSecond());
+          } else if (status.getFirst().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
+            // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
+            checkWhetherToStartBufferReplayForHybrid(pushStatus);
+          }
         }
       } else {
         logger.info("Can not find a running offline push for topic:" + partitionAssignment.getTopic() + ", ignore the routing data changed notification. OfflinePushStatus: " + pushStatus);

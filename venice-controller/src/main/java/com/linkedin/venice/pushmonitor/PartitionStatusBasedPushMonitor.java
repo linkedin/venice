@@ -27,16 +27,21 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
 
   @Override
   public void onPartitionStatusChange(OfflinePushStatus offlinePushStatus) {
-    boolean isTerminalStatus = offlinePushStatus.getCurrentStatus().isTerminal();
+    String kafkaTopic = offlinePushStatus.getKafkaTopic();
     /**
      * If the current push status is not terminal, we need the special check inside PartitionStatusBasedPushMonitor
      * to figure out whether the entire push job is terminal now after receiving one partition status change.
      */
-    if (!isTerminalStatus) {
-      updatePushStatusByPartitionStatus(offlinePushStatus, getRoutingDataRepository().getPartitionAssignments(offlinePushStatus.getKafkaTopic()));
-    }
+    if (getRoutingDataRepository().containsKafkaTopic(kafkaTopic)) {
+      boolean isTerminalStatus = offlinePushStatus.getCurrentStatus().isTerminal();
+      if (!isTerminalStatus) {
+        updatePushStatusByPartitionStatus(offlinePushStatus, getRoutingDataRepository().getPartitionAssignments(kafkaTopic));
+      }
 
-    super.onPartitionStatusChange(offlinePushStatus);
+      super.onPartitionStatusChange(offlinePushStatus);
+    } else {
+      logger.info("Received partition status changed notification for topic: " + kafkaTopic + " unknown to RoutingDataRepository");
+    }
   }
 
   private void updatePushStatusByPartitionStatus(OfflinePushStatus offlinePushStatus, PartitionAssignment partitionAssignment) {

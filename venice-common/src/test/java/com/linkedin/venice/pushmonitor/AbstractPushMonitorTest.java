@@ -333,6 +333,9 @@ public abstract class AbstractPushMonitorTest {
     // All replicas are in STARTED status
     ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(0, replicaStatuses);
 
+    // External view exists
+    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
+
     // Check hybrid push status
     testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
@@ -380,6 +383,9 @@ public abstract class AbstractPushMonitorTest {
     // All replicas are in STARTED status
     ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(0, replicaStatuses);
 
+    // External view exists
+    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
+
     // Check hybrid push status
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
@@ -417,6 +423,9 @@ public abstract class AbstractPushMonitorTest {
     // Start a push
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
+    // External view exists
+    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
 
     int threadCount = 8;
     Thread[] threads = new Thread[threadCount];
