@@ -111,6 +111,10 @@ public class LumosSnapshotsPublisher extends AbstractJob {
     for (Map.Entry<String, StoreFilesInfo> entry : storeToSnapshotPath.entrySet()) {
       String storeName = entry.getKey();
       StoreFilesInfo snapshotInfo = entry.getValue();
+      if (!storeToControllerClient.containsKey(storeName)) {
+        logger.warn("Skipped fetching store and version info for store " + storeName + " since it's cluster information is unavailable");
+        continue;
+      }
       StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
       StoreInfo storeInfo = storeResponse.getStore();
 
