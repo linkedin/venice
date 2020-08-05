@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.controller.VeniceStateModel;
@@ -144,25 +145,35 @@ public abstract class AbstractParticipantModel extends StateModel {
 
 
   @Override
-  public void reset() {}
+  public void reset() {
+    try {
+      waitPartitionPushStatusAccessor();
+    } catch (Exception e) {
+      throw new VeniceException("Error when initializing partition push status accessor, "
+          + "reset failed. ", e);
+    }
+    /**
+     * reset the customized view to default state before instance gets shut down.
+     */
+    if (partitionPushStatusAccessor != null) {
+      partitionPushStatusAccessor.updateReplicaStatus(storeConfig.getStoreName(), partition, ExecutionStatus.STARTED);
+    }
+  }
 
   /**
    * set up a new store partition and start the ingestion
    */
   protected void setupNewStorePartition(boolean isLeaderFollowerModel) {
-    if (partitionStatusAccessorFuture.isPresent() && partitionPushStatusAccessor == null) {
-      /**
-       * Waiting for push accessor to get initialized before starting ingestion.
-       * Otherwise, it's possible that store ingestion starts without having the
-       * accessor ready to get notified.
-       */
-      try {
-        partitionPushStatusAccessor =
-            partitionStatusAccessorFuture.get().get(WAIT_PARTITION_ACCESSOR_TIME_OUT_MS, TimeUnit.MILLISECONDS);
-      } catch (Exception e) {
-        throw new VeniceException("Error when initializing partition push status accessor, "
-            + "will not start ingestion for store partition. ", e);
-      }
+    /**
+     * Waiting for push accessor to get initialized before starting ingestion.
+     * Otherwise, it's possible that store ingestion starts without having the
+     * accessor ready to get notified.
+     */
+    try {
+      waitPartitionPushStatusAccessor();
+    } catch (Exception e) {
+      throw new VeniceException("Error when initializing partition push status accessor, "
+          + "will not start ingestion for store partition. ", e);
     }
     /**
      * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
@@ -221,6 +232,12 @@ public abstract class AbstractParticipantModel extends StateModel {
    * remove customized state for this partition if there is one
    */
   protected void removeCustomizedState() {
+    try {
+      waitPartitionPushStatusAccessor();
+    } catch (Exception e) {
+      throw new VeniceException("Error when initializing partition push status accessor, "
+          + "failed to remove customized state. ", e);
+    }
     if (partitionPushStatusAccessor != null) {
       String storeName = getStoreConfig().getStoreName();
       boolean isSuccess = false;
@@ -290,6 +307,13 @@ public abstract class AbstractParticipantModel extends StateModel {
       logger.error(errorMsg, e);
       // Please note, after throwing this exception, this node will become ERROR for this resource.
       throw new VeniceException(errorMsg, e);
+    }
+  }
+
+  private void waitPartitionPushStatusAccessor() throws Exception {
+    if (partitionStatusAccessorFuture.isPresent() && partitionPushStatusAccessor == null) {
+    partitionPushStatusAccessor =
+            partitionStatusAccessorFuture.get().get(WAIT_PARTITION_ACCESSOR_TIME_OUT_MS, TimeUnit.MILLISECONDS);
     }
   }
 
