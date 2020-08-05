@@ -649,6 +649,20 @@ public class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testReadyToServePartition(boolean isLeaderFollowerModelEnabled) throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    Store mockStore = mock(Store.class);
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
+    doReturn(true).when(mockStore).isHybrid();
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).preparePartitionForReading(PARTITION_FOO);
+    }, isLeaderFollowerModelEnabled);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testResetPartition(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();

@@ -36,6 +36,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -186,7 +187,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final VeniceServerConfig serverConfig;
 
   /** Used for reporting error when the {@link #partitionConsumptionStateMap} is empty */
-  protected final int partitionId;
+  protected final int errorPartitionId;
 
   // use this checker to check whether ingestion completion can be reported for a partition
   protected final ReadyToServeCheck defaultReadyToServeChecker;
@@ -254,7 +255,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService kafkaConsumerService,
       VeniceServerConfig serverConfig,
-      int partitionId) {
+      int errorPartitionId) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -330,7 +331,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.aggKafkaConsumerService = kafkaConsumerService;
 
-    this.partitionId = partitionId;
+    this.errorPartitionId = errorPartitionId;
 
     buildRocksDBMemoryEnforcer();
   }
@@ -786,11 +787,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // recovered, it will send STARTED message to controller again)
       if (t instanceof Exception) {
         logger.error(consumerTaskId + " failed with Exception.", t);
-        reportError(partitionConsumptionStateMap.values(), partitionId,
+        reportError(partitionConsumptionStateMap.values(), errorPartitionId,
             "Caught Exception during ingestion.", (Exception)t);
       } else {
         logger.error(consumerTaskId + " failed with Error!!!", t);
-        reportError(partitionConsumptionStateMap.values(), partitionId,
+        reportError(partitionConsumptionStateMap.values(), errorPartitionId,
             "Caught non-exception Throwable during ingestion in " + getClass().getSimpleName() + "'s run() function.", new VeniceException(t));
       }
       storeIngestionStats.recordIngestionFailure(storeName);
@@ -2126,21 +2127,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (extraDisjunctionCondition ||
           (partitionConsumptionState.isEndOfPushReceived() && !partitionConsumptionState.isCompletionReported())) {
         if (isReadyToServe(partitionConsumptionState)) {
-          logger.info("Reopen partition " + kafkaVersionTopic + "_" + partitionId + " for reading after ready-to-serve.");
-          AbstractStorageEngine<?> engine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
-          if (engine == null) {
-            logger.warn("Storage engine " + kafkaVersionTopic + " was removed before reopening");
-          } else {
-            engine.preparePartitionForReading(partitionId);
+          int partition = partitionConsumptionState.getPartition();
+          Store store = storeRepository.getStore(storeName);
+          if (store != null && store.isHybrid()) {
+            logger.info("Reopen partition " + kafkaVersionTopic + "_" + partition + " for reading after ready-to-serve.");
+            AbstractStorageEngine<?> engine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+            if (engine == null) {
+              logger.warn("Storage engine " + kafkaVersionTopic + " was removed before reopening");
+            } else {
+              engine.preparePartitionForReading(partition);
+            }
           }
 
           if (partitionConsumptionState.isCompletionReported()) {
             // Completion has been reported so extraDisjunctionCondition must be true to enter here.
-            logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " synced offset: "
+            logger.info(consumerTaskId + " Partition " + partition + " synced offset: "
                 + partitionConsumptionState.getOffsetRecord().getOffset());
           } else {
             notificationDispatcher.reportCompleted(partitionConsumptionState);
-            logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " is ready to serve");
+            logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
           }
         } else {
           notificationDispatcher.reportProgress(partitionConsumptionState);

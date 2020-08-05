@@ -526,7 +526,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @param partitionId The partition to look for
    * @return True/False, does the partition exist on this node
    */
-  public boolean containsPartition(int partitionId) {
+  public synchronized boolean containsPartition(int partitionId) {
     return null != this.partitionList.get(partitionId);
   }
 
@@ -536,7 +536,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    *
    * @return the number of non-null partitions in {@link #partitionList}
    */
-  protected long getNumberOfPartitions() {
+  protected synchronized long getNumberOfPartitions() {
     return this.partitionList.stream().filter(Objects::nonNull).count();
   }
 
@@ -552,7 +552,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
                .collect(Collectors.toSet());
   }
 
-  public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
+  public synchronized AbstractStoragePartition getPartitionOrThrow(int partitionId) {
     AbstractStoragePartition partition = partitionList.get(partitionId);
     if (partition == null) {
       VeniceException e = new PersistenceFailureException("Partition: " + partitionId + " of store: " + getName() + " does't exist");
@@ -562,7 +562,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return partition;
   }
 
-  public long getPartitionSizeInBytes(int partitionId) {
+  public synchronized long getPartitionSizeInBytes(int partitionId) {
     AbstractStoragePartition partition = partitionList.get(partitionId);
     return partition != null ? partition.getPartitionSizeInBytes() : 0;
   }

@@ -132,6 +132,10 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
     return this.delegate.get(logicalPartitionId, keyBuffer);
   }
 
+  public void preparePartitionForReading(int partition) {
+     delegate.preparePartitionForReading(partition);
+  }
+
   @Override
   public Map<String, String> sync(int partitionId) {
     return this.delegate.sync(partitionId);
