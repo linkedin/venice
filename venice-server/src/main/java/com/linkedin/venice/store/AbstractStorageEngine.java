@@ -235,9 +235,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       logger.warn("Partition " + storeName + "_" + partitionId + " was removed before reopening.");
       return;
     }
-
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     partitionConfig.setWriteOnlyConfig(false);
+
     adjustStoragePartition(partitionConfig);
   }
 
@@ -406,11 +406,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   public synchronized void endBatchWrite(StoragePartitionConfig storagePartitionConfig) {
     logger.info("End batch write for storage partition config: " + storagePartitionConfig);
-    getPartitionOrThrow(storagePartitionConfig.getPartitionId()).endBatchWrite();
+    AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
+    partition.endBatchWrite();
     /**
      * After end of batch push, we would like to adjust the underlying database for the future ingestion, such as from streaming.
      */
     adjustStoragePartition(storagePartitionConfig);
+
+    if (!partition.validateBatchIngestion()) {
+      throw new VeniceException("Storage temp files not fully ingested for store: " + storeName);
+    }
   }
 
   public void put(int partitionId, byte[] key, byte[] value) throws VeniceException {

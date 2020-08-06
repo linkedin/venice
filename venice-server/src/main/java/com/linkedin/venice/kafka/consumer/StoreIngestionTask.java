@@ -1285,6 +1285,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void processEndOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+
     // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
     partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
 
@@ -2129,16 +2130,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (isReadyToServe(partitionConsumptionState)) {
           int partition = partitionConsumptionState.getPartition();
           Store store = storeRepository.getStore(storeName);
+
           if (store != null && store.isHybrid()) {
-            logger.info("Reopen partition " + kafkaVersionTopic + "_" + partition + " for reading after ready-to-serve.");
             AbstractStorageEngine<?> engine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
             if (engine == null) {
               logger.warn("Storage engine " + kafkaVersionTopic + " was removed before reopening");
             } else {
+              logger.info("Reopen partition " + kafkaVersionTopic + "_" + partition + " for reading after ready-to-serve.");
               engine.preparePartitionForReading(partition);
             }
           }
-
           if (partitionConsumptionState.isCompletionReported()) {
             // Completion has been reported so extraDisjunctionCondition must be true to enter here.
             logger.info(consumerTaskId + " Partition " + partition + " synced offset: "

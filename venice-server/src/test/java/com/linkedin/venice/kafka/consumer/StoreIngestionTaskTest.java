@@ -35,6 +35,7 @@ import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -655,10 +656,54 @@ public class StoreIngestionTaskTest {
     Store mockStore = mock(Store.class);
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
     doReturn(true).when(mockStore).isHybrid();
+    doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
+    StoragePartitionConfig storagePartitionConfigFoo = new StoragePartitionConfig(topic, PARTITION_FOO);
+    storagePartitionConfigFoo.setWriteOnlyConfig(false);
+    StoragePartitionConfig storagePartitionConfigBar = new StoragePartitionConfig(topic, PARTITION_BAR);
 
     runTest(getSet(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).preparePartitionForReading(PARTITION_FOO);
+    }, isLeaderFollowerModelEnabled);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testReadyToServePartitionValidateIngestionSuccess(boolean isLeaderFollowerModelEnabled) throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    Store mockStore = mock(Store.class);
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
+    doReturn(false).when(mockStore).isHybrid();
+    doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
+    mockAbstractStorageEngine.addStoragePartition(PARTITION_FOO);
+    AbstractStoragePartition mockPartition = mock(AbstractStoragePartition.class);
+    doReturn(mockPartition).when(mockAbstractStorageEngine).getPartitionOrThrow(PARTITION_FOO);
+    doReturn(true).when(mockPartition).validateBatchIngestion();
+    StoragePartitionConfig storagePartitionConfigFoo = new StoragePartitionConfig(topic, PARTITION_FOO);
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
+    }, isLeaderFollowerModelEnabled);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testReadyToServePartitionWriteOnly(boolean isLeaderFollowerModelEnabled) throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    Store mockStore = mock(Store.class);
+
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
+    doReturn(true).when(mockStore).isHybrid();
+    mockAbstractStorageEngine.addStoragePartition(PARTITION_FOO);
+
+    doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
+    StoragePartitionConfig storagePartitionConfigFoo = new StoragePartitionConfig(topic, PARTITION_FOO);
+    storagePartitionConfigFoo.setWriteOnlyConfig(true);
+    StoragePartitionConfig storagePartitionConfigBar = new StoragePartitionConfig(topic, PARTITION_BAR);
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
+      verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
     }, isLeaderFollowerModelEnabled);
   }
 

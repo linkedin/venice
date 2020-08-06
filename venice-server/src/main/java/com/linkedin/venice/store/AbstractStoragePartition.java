@@ -84,4 +84,8 @@ public abstract class AbstractStoragePartition {
    * @return partition database size
    */
   public abstract long getPartitionSizeInBytes();
+
+  public  boolean validateBatchIngestion() {
+    return true;
+  }
 }

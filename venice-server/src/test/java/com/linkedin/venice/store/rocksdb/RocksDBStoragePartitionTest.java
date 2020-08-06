@@ -19,6 +19,8 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static org.testng.FileAssert.*;
+
 
 public class RocksDBStoragePartitionTest {
   private static final String DATA_BASE_DIR = TestUtils.getUniqueTempPath();
@@ -138,8 +140,11 @@ public class RocksDBStoragePartitionTest {
         }
       }
     }
+
     if (sorted) {
+      Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
+      Assert.assertTrue(storagePartition.validateBatchIngestion());
     }
 
     // Verify all the key/value pairs
