@@ -9,6 +9,7 @@ import com.linkedin.ddsstorage.router.api.Scatter;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -41,6 +42,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 import static org.mockito.Mockito.*;
 
 
@@ -211,10 +213,7 @@ public class TestVeniceDelegateMode {
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(true).when(config).isStickyRoutingEnabledForMultiGet();
-    doReturn(false).when(config).isGreedyMultiGet();
-
-
+    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         config,
         mock(RouterStats.class),
@@ -305,9 +304,7 @@ public class TestVeniceDelegateMode {
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(false).when(config).isStickyRoutingEnabledForMultiGet();
-    doReturn(false).when(config).isGreedyMultiGet();
-
+    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         config,
@@ -404,9 +401,7 @@ public class TestVeniceDelegateMode {
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(false).when(config).isStickyRoutingEnabledForMultiGet();
-    doReturn(false).when(config).isGreedyMultiGet();
-
+    doReturn(GROUP_BY_PRIMARY_HOST_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
        config,
@@ -440,8 +435,7 @@ public class TestVeniceDelegateMode {
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     hostFinder = getHostFinder(partitionInstanceMap, true);
     doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(true).when(config).isStickyRoutingEnabledForMultiGet();
-    doReturn(false).when(config).isGreedyMultiGet();
+    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     scatterMode = new VeniceDelegateMode(
         config,
@@ -563,8 +557,7 @@ public class TestVeniceDelegateMode {
 
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(true).when(config).isStickyRoutingEnabledForMultiGet();
-    doReturn(false).when(config).isGreedyMultiGet();
+    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         config,
@@ -618,5 +611,129 @@ public class TestVeniceDelegateMode {
 
     chosenHost = VeniceDelegateMode.avoidSlowHost(path, key, hosts);
     Assert.assertEquals(chosenHost, fastHost);
+  }
+
+  @Test
+  public void testScatterForMultiGetWithHelixAssistedRouting() throws RouterException {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String resourceName = storeName + "_v1";
+    RouterKey key1 = new RouterKey("key_1".getBytes());
+    key1.setPartitionId(1);
+    RouterKey key2 = new RouterKey("key_2".getBytes());
+    key2.setPartitionId(2);
+    RouterKey key3 = new RouterKey("key_3".getBytes());
+    key3.setPartitionId(3);
+    RouterKey key4 = new RouterKey("key_4".getBytes());
+    key4.setPartitionId(4);
+    RouterKey key5 = new RouterKey("key_5".getBytes());
+    key5.setPartitionId(5);
+    RouterKey key6 = new RouterKey("key_6".getBytes());
+    key6.setPartitionId(6);
+    List<RouterKey> keys = new ArrayList<>();
+    keys.add(key1);
+    keys.add(key2);
+    keys.add(key3);
+    keys.add(key4);
+    keys.add(key5);
+    keys.add(key6);
+    VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET, keys);
+    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    String requestMethod = HttpMethod.POST.name();
+
+    Map<RouterKey, String> keyPartitionMap = new HashMap<>();
+    String p1 = HelixUtils.getPartitionName(resourceName, 1);
+    String p2 = HelixUtils.getPartitionName(resourceName, 2);
+    String p3 = HelixUtils.getPartitionName(resourceName, 3);
+    String p4 = HelixUtils.getPartitionName(resourceName, 4);
+    String p5 = HelixUtils.getPartitionName(resourceName, 5);
+    String p6 = HelixUtils.getPartitionName(resourceName, 6);
+    keyPartitionMap.put(key1, p1);
+    keyPartitionMap.put(key2, p2);
+    keyPartitionMap.put(key3, p3);
+    keyPartitionMap.put(key4, p4);
+    keyPartitionMap.put(key5, p5);
+    keyPartitionMap.put(key6, p6);
+    PartitionFinder partitionFinder = getPartitionFinder(keyPartitionMap);
+
+    Instance instance1 = new Instance("host1_123", "host1", 123);
+    Instance instance2 = new Instance("host2_123", "host2", 123);
+    Instance instance3 = new Instance("host3_123", "host3", 123);
+    Instance instance4 = new Instance("host4_123", "host4", 123);
+    List<Instance> instanceListForP1 = new ArrayList<>();
+    instanceListForP1.add(instance1);
+    instanceListForP1.add(instance3);
+    List<Instance> instanceListForP2 = new ArrayList<>();
+    instanceListForP2.add(instance1);
+    instanceListForP2.add(instance3);
+    List<Instance> instanceListForP3 = new ArrayList<>();
+    instanceListForP3.add(instance1);
+    instanceListForP3.add(instance3);
+    List<Instance> instanceListForP4 = new ArrayList<>();
+    instanceListForP4.add(instance2);
+    instanceListForP4.add(instance4);
+    List<Instance> instanceListForP5 = new ArrayList<>();
+    instanceListForP5.add(instance2);
+    instanceListForP5.add(instance4);
+    List<Instance> instanceListForP6 = new ArrayList<>();
+    instanceListForP6.add(instance2);
+    instanceListForP6.add(instance4);
+    Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
+    partitionInstanceMap.put(p1, instanceListForP1);
+    partitionInstanceMap.put(p2, instanceListForP2);
+    partitionInstanceMap.put(p3, instanceListForP3);
+    partitionInstanceMap.put(p4, instanceListForP4);
+    partitionInstanceMap.put(p5, instanceListForP5);
+    partitionInstanceMap.put(p6, instanceListForP6);
+
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
+    HostHealthMonitor monitor = getHostHealthMonitor();
+    ReadRequestThrottler throttler = getReadRequestThrottle(false);
+    VeniceRouterConfig config = mock(VeniceRouterConfig.class);
+    doReturn(false).when(config).isStickyRoutingEnabledForSingleGet();
+    doReturn(HELIX_ASSISTED_ROUTING).when(config).getMultiKeyRoutingStrategy();
+
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
+        config,
+        mock(RouterStats.class),
+        mock(RouteHttpRequestStats.class)
+    );
+    scatterMode.initReadRequestThrottler(throttler);
+
+    HelixInstanceConfigRepository helixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
+    // Two groups
+    doReturn(2).when(helixInstanceConfigRepository).getGroupNum();
+    doReturn(0).when(helixInstanceConfigRepository).getInstanceGroupId(instance1.getNodeId());
+    doReturn(0).when(helixInstanceConfigRepository).getInstanceGroupId(instance2.getNodeId());
+    doReturn(1).when(helixInstanceConfigRepository).getInstanceGroupId(instance3.getNodeId());
+    doReturn(1).when(helixInstanceConfigRepository).getInstanceGroupId(instance4.getNodeId());
+    scatterMode.initInstanceConfigRepository(helixInstanceConfigRepository);
+
+    Scatter<Instance, VenicePath, RouterKey> finalScatter =
+        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+
+    Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
+    Assert.assertEquals(requests.size(), 2);
+
+    // each request should only have one 'Instance'
+    requests.stream().forEach(request -> Assert.assertEquals(request.getHosts().size(), 1,
+        "There should be only one host for each request"));
+    Set<Instance> instanceSet = new HashSet<>();
+    requests.stream().forEach(request -> instanceSet.add(request.getHosts().get(0)));
+    Assert.assertTrue(instanceSet.contains(instance1) && instanceSet.contains(instance2));
+
+    // The second request should pick up another group
+    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    finalScatter =
+        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+
+    requests = finalScatter.getOnlineRequests();
+    Assert.assertEquals(requests.size(), 2);
+
+    // each request should only have one 'Instance'
+    requests.stream().forEach(request -> Assert.assertEquals(request.getHosts().size(), 1,
+        "There should be only one host for each request"));
+    instanceSet.clear();
+    requests.stream().forEach(request -> instanceSet.add(request.getHosts().get(0)));
+    Assert.assertTrue(instanceSet.contains(instance1) && instanceSet.contains(instance2));
   }
 }

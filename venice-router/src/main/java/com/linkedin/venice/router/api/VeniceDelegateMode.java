@@ -11,6 +11,7 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherMode;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -47,45 +48,64 @@ public class VeniceDelegateMode extends ScatterGatherMode {
    * This mode will assume there is only host for single-get request (sticky routing), and the scattering logic is
    * optimized based on this assumption.
    */
-  private final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET;
+  private final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET = new ScatterGatherModeForStickySingleGet();
 
   /**
    * This mode will group all requests to the same host into a single request.  Hosts are selected as the first host returned
    * by the VeniceHostFinder, so we must shuffle the order to get an even distribution.
    */
-  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_MULTI_GET = ScatterGatherMode.GROUP_BY_PRIMARY_HOST;
+  private static final ScatterGatherMode GROUP_BY_PRIMARY_HOST_MODE_FOR_MULTI_KEY_REQUEST = ScatterGatherMode.GROUP_BY_PRIMARY_HOST;
 
   /**
    * This mode will do the aggregation per host first, and then initiate a request per host.
    */
-  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_MULTI_GET_GREEDY = ScatterGatherMode.GROUP_BY_GREEDY_HOST;
+  private static final ScatterGatherMode GROUP_BY_GREEDY_MODE_FOR_MULTI_KEY_REQUEST = ScatterGatherMode.GROUP_BY_GREEDY_HOST;
 
   /**
    * This mode assumes there is only one host per partition (sticky routing), and the scattering logic is optimized
    * based on this assumption.
    */
-  private final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET;
+  private final ScatterGatherMode KEY_BASED_STICKY_MODE_FOR_MULTI_KEY_REQUEST = new KeyBasedStickyRoutingModeForMultiKeyRequest();
+
+  /**
+   * Helix assisted routing to limit the fanout size for the large fanout use cases.
+   */
+  private final ScatterGatherMode HELIX_ASSISTED_MODE_FOR_MULTI_KEY_REQUEST = new HelixAssistedScatterGatherMode();
 
   private RouterThrottler readRequestThrottler;
   private RouteHttpRequestStats routeHttpRequestStats;
 
+  private HelixInstanceConfigRepository instanceConfigRepository;
 
   private final boolean stickyRoutingEnabledForSingleGet;
-  private final boolean stickyRoutingEnabledForMultiGet;
-  private final boolean greedyMultiget;
   private final boolean isLeastLoadedHostEnabled;
+  private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
+  private final ScatterGatherMode scatterGatherModeForMultiKeyRequest;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
   public VeniceDelegateMode(VeniceRouterConfig config, RouterStats<AggRouterHttpRequestStats> routerStats, RouteHttpRequestStats routeHttpRequestStats) {
     super("VENICE_DELEGATE_MODE", false);
     this.stickyRoutingEnabledForSingleGet = config.isStickyRoutingEnabledForSingleGet();
-    this.stickyRoutingEnabledForMultiGet = config.isStickyRoutingEnabledForMultiGet();
-    this.greedyMultiget = config.isGreedyMultiGet();
     this.routerStats = routerStats;
     this.routeHttpRequestStats = routeHttpRequestStats;
     this.isLeastLoadedHostEnabled = config.isLeastLoadedHostSelectionEnabled();
-    this.SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET = new ScatterGatherModeForStickySingleGet();
-    this.SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET = new ScatterGatherModeForStickyMultiGet();
+    this.multiKeyRoutingStrategy = config.getMultiKeyRoutingStrategy();
+    switch (this.multiKeyRoutingStrategy) {
+      case GROUP_BY_PRIMARY_HOST_ROUTING:
+        this.scatterGatherModeForMultiKeyRequest = GROUP_BY_PRIMARY_HOST_MODE_FOR_MULTI_KEY_REQUEST;
+        break;
+      case GREEDY_ROUTING:
+        this.scatterGatherModeForMultiKeyRequest = GROUP_BY_GREEDY_MODE_FOR_MULTI_KEY_REQUEST;
+        break;
+      case KEY_BASED_STICKY_ROUTING:
+        this.scatterGatherModeForMultiKeyRequest = KEY_BASED_STICKY_MODE_FOR_MULTI_KEY_REQUEST;
+        break;
+      case HELIX_ASSISTED_ROUTING:
+        this.scatterGatherModeForMultiKeyRequest = HELIX_ASSISTED_MODE_FOR_MULTI_KEY_REQUEST;
+        break;
+      default:
+        throw new VeniceException("Unknown multi-key routing strategy: " + this.multiKeyRoutingStrategy);
+    }
   }
 
   public void initReadRequestThrottler(RouterThrottler requestThrottler) {
@@ -96,6 +116,14 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     this.readRequestThrottler = requestThrottler;
   }
 
+  public void initInstanceConfigRepository(HelixInstanceConfigRepository instanceConfigRepository) {
+    if (null != this.instanceConfigRepository) {
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
+          "HelixInstanceConfigRepository has already been initialized before, and no further update expected!");
+    }
+    this.instanceConfigRepository = instanceConfigRepository;
+  }
+
   @Nonnull
   @Override
   public <H, P extends ResourcePath<K>, K, R> Scatter<H, P, K> scatter(@Nonnull Scatter<H, P, K> scatter,
@@ -104,7 +132,11 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       Metrics metrics) throws RouterException {
     if (null == readRequestThrottler) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
-          "Read request throttle has not been setup yet");
+          "Read request throttler has not been setup yet");
+    }
+    if (multiKeyRoutingStrategy.equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING) && null == instanceConfigRepository) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
+          "HelixInstanceConfigRepository has not been setup yet");
     }
     P path = scatter.getPath();
     if (!  (path instanceof VenicePath)) {
@@ -126,15 +158,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       case MULTI_GET_STREAMING:
       case COMPUTE:
       case COMPUTE_STREAMING:
-        if (stickyRoutingEnabledForMultiGet) {
-          scatterMode = SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET;
-        } else {
-          if (greedyMultiget){
-            scatterMode = SCATTER_GATHER_MODE_FOR_MULTI_GET_GREEDY;
-          } else {
-            scatterMode = SCATTER_GATHER_MODE_FOR_MULTI_GET;
-          }
-        }
+        scatterMode = scatterGatherModeForMultiKeyRequest;
         break;
       case SINGLE_GET:
         if (stickyRoutingEnabledForSingleGet) {
@@ -310,12 +334,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     }
   }
 
-  /**
-   * This mode assumes there is only one available host per partition (sticky routing),
-   * and it is optimized based on this assumption to avoid unnecessary memory allocation and speed up scattering logic.
-   */
-  class ScatterGatherModeForStickyMultiGet extends ScatterGatherMode {
-
+  abstract class ScatterGatherModeForMultiKeyRequest extends ScatterGatherMode {
     /**
      * This class contains all the partitions/keys belonging to the same host.
      */
@@ -339,9 +358,30 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         this.partitionNames.add(partitionName);
       }
     }
+    protected ScatterGatherModeForMultiKeyRequest(@Nonnull String name) {
+      super(name, false);
+    }
 
-    protected ScatterGatherModeForStickyMultiGet() {
-      super("SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET", false);
+    /**
+     * This function is used to select a host if there are multiple healthy replicas for the given partition.
+     * @throws RouterException
+     */
+    protected abstract <H, K> void selectHostForPartition(String partitionName, List<H> partitionReplicas, List<K> partitionKeys,
+        VenicePath venicePath, Map<H, KeyPartitionSet<H, K>> hostMap, Optional<Integer> helixGroupNum, Optional<Integer> assignedHelixGroupId) throws RouterException;
+
+    /**
+     * This method is for {@link HelixAssistedScatterGatherMode}.
+     * @return
+     */
+    protected Optional<Integer> getHelixGroupNum() {
+      return Optional.empty();
+    }
+    /**
+     * This method is for {@link HelixAssistedScatterGatherMode}.
+     * @return
+     */
+    protected Optional<Integer> getAssignedHelixGroupId(VenicePath venicePath) {
+      return Optional.empty();
     }
 
     @Nonnull
@@ -355,6 +395,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
             "VenicePath is expected, but received " + path.getClass());
       }
+      VenicePath venicePath = (VenicePath)path;
       /**
        * Group by partition
        *
@@ -372,40 +413,15 @@ public class VeniceDelegateMode extends ScatterGatherMode {
        * Group by host
        */
       Map<H, KeyPartitionSet<H, K>> hostMap = new HashMap<>();
+      Optional<Integer> helixGroupNum = getHelixGroupNum();
+      Optional<Integer> assignedHelixGroupId = getAssignedHelixGroupId(venicePath);
       for (Map.Entry<Integer, List<K>> entry : partitionKeys.entrySet()) {
         String partitionName = HelixUtils.getPartitionName(resourceName, entry.getKey());
         List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partitionName, hostHealthMonitor, roles);
+
         if (hosts.isEmpty()) {
           scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), new TreeSet<>(entry.getValue()), partitionName));
-        } else if (hosts.size() > 1) {
-          for (K key : entry.getValue()) {
-            /**
-             * Key based sticky routing for multi-get requests;
-             * for each key, use the hashcode of each key to choose a host; in this way, keys are evenly distributed
-             * to all the hosts; besides, it's guaranteed that the same key will always go to the same host unless
-             * some hosts are down/stopped.
-             */
-            VenicePath venicePath = (VenicePath)path;
-            H host;
-            // when least loaded host selection is enabled we pass the entire hosts list, else just pass a single host
-            if (isLeastLoadedHostEnabled) {
-              host = selectLeastLoadedHost(hosts, venicePath, resourceName);
-            } else {
-              host = avoidSlowHost(venicePath, key, hosts);
-            }
-
-            /**
-             * Using {@link HashMap#get} and checking whether the result is null or not
-             * is faster than {@link HashMap#containsKey(Object)} and {@link HashMap#get}
-             */
-            KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(host);
-            if (null == keyPartitionSet) {
-              keyPartitionSet = new KeyPartitionSet<>(Collections.singletonList(host));
-              hostMap.put(host, keyPartitionSet);
-            }
-            keyPartitionSet.addKeyPartition(key, partitionName);
-          }
-        } else {
+        } else if (hosts.size() == 1) {
           H host = hosts.get(0);
           KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(host);
           if (null == keyPartitionSet) {
@@ -413,6 +429,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             hostMap.put(host, keyPartitionSet);
           }
           keyPartitionSet.addKeyPartitions(entry.getValue(), partitionName);
+        } else {
+          selectHostForPartition(partitionName, hosts, entry.getValue(), venicePath, hostMap, helixGroupNum, assignedHelixGroupId);
         }
       }
 
@@ -424,6 +442,138 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
 
       return scatter;
+    }
+  }
+
+  /**
+   * This mode assumes there is only one available host per partition (sticky routing),
+   * and it is optimized based on this assumption to avoid unnecessary memory allocation and speed up scattering logic.
+   */
+  class KeyBasedStickyRoutingModeForMultiKeyRequest extends ScatterGatherModeForMultiKeyRequest {
+    protected KeyBasedStickyRoutingModeForMultiKeyRequest() {
+      super("SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET");
+    }
+
+    @Override
+    protected <H, K> void selectHostForPartition(String partitionName, List<H> partitionReplicas, List<K> partitionKeys,
+        VenicePath venicePath, Map<H, KeyPartitionSet<H, K>> hostMap, Optional<Integer> helixGroupNum, Optional<Integer> assignedHelixGroupId) throws RouterException {
+      String resourceName = venicePath.getResourceName();
+      for (K key : partitionKeys) {
+        /**
+         * Key based sticky routing for multi-get requests;
+         * for each key, use the hashcode of each key to choose a host; in this way, keys are evenly distributed
+         * to all the hosts; besides, it's guaranteed that the same key will always go to the same host unless
+         * some hosts are down/stopped.
+         */
+        H selectedHost;
+        if (isLeastLoadedHostEnabled) {
+          // when least loaded host selection is enabled we pass the entire hosts list, else just pass a single host
+          selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath, resourceName);
+        } else {
+          selectedHost = avoidSlowHost(venicePath, key, partitionReplicas);
+        }
+        /**
+         * Using {@link HashMap#get} and checking whether the result is null or not
+         * is faster than {@link HashMap#containsKey(Object)} and {@link HashMap#get}
+         */
+        KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(selectedHost);
+        if (null == keyPartitionSet) {
+          keyPartitionSet = new KeyPartitionSet<>(Collections.singletonList(selectedHost));
+          hostMap.put(selectedHost, keyPartitionSet);
+        }
+        keyPartitionSet.addKeyPartition(key, partitionName);
+      }
+    }
+  }
+
+  /**
+   * This following mode will leverage Helix Zone/Group for routing.
+   * Here are the steps:
+   * 1. Router will assign an unique id to each Router request(the retry requests/scattered requests belonging
+   *    to the same Router request will share the same request id).
+   * 2. {@link HelixAssistedScatterGatherMode} will assign a group id to each request in a round-robin fashion to guarantee
+   *    the evenness across different groups.
+   * 3. If there is no healthy replica in the assigned group, it will try to find a healthy replica from the nearest group
+   *    in one direction. For example, if there are 3 groups: 0, 1, 2 and group 1 is assigned to current request, and if
+   *    there is no healthy replica in group 1, it will first look at group 2, then group 0.
+   *
+   * The idea behind this routing mode is that:
+   * 1. Each Helix group will contain a full replication for a given resource.
+   * 2. This routing mode will try best to limit the fanout inside one group.
+   * So in this way, even with increased replication factors/Helix groups, the fanout size won't change, and this could
+   * be a way to horizontally scale the large fanout use cases.
+   */
+  class HelixAssistedScatterGatherMode extends ScatterGatherModeForMultiKeyRequest {
+    HelixAssistedScatterGatherMode() {
+      super("HELIX_ASSISTED_SCATTER_GATHER_MODE");
+    }
+
+    @Override
+    protected Optional<Integer> getHelixGroupNum() {
+      return Optional.of(instanceConfigRepository.getGroupNum());
+    }
+
+    @Override
+    protected Optional<Integer> getAssignedHelixGroupId(VenicePath venicePath) {
+      long requestId = venicePath.getRequestId();
+      int groupNum = getHelixGroupNum().get();
+      int assignedGroupId = 0;
+      if (groupNum > 0) {
+        assignedGroupId = (int) (requestId % groupNum);
+      }
+
+      return Optional.of(assignedGroupId);
+    }
+
+    @Override
+    protected <H, K> void selectHostForPartition(String partitionName, List<H> partitionReplicas, List<K> partitionKeys,
+        VenicePath venicePath, Map<H, KeyPartitionSet<H, K>> hostMap, Optional<Integer> helixGroupNum, Optional<Integer> assignedHelixGroupId) throws RouterException {
+      H selectedHost = null;
+      int groupDistance = Integer.MAX_VALUE;
+      int assignedGroupId = assignedHelixGroupId.get();
+      int groupNum = helixGroupNum.get();
+
+      for (H host : partitionReplicas) {
+        if (!(host instanceof Instance)) {
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(venicePath.getStoreName()), Optional.of(venicePath.getRequestType()),
+              INTERNAL_SERVER_ERROR, "The chosen host is not an 'Instance'");
+        }
+        Instance instance = (Instance)host;
+        String nodeId = instance.getNodeId();
+        if (!venicePath.canRequestStorageNode(nodeId)) {
+          // Skip the slow host
+          continue;
+        }
+        int currentGroupId = instanceConfigRepository.getInstanceGroupId(nodeId);
+        if (assignedGroupId == currentGroupId) {
+          selectedHost = host;
+          break;
+        }
+        int currentDistance = currentGroupId > assignedGroupId ?
+            (currentGroupId - assignedGroupId) :
+            (currentGroupId + groupNum - assignedGroupId);
+        if (currentDistance < groupDistance) {
+          groupDistance = currentDistance;
+          selectedHost = host;
+        }
+      }
+      if (selectedHost == null) {
+        if (venicePath.isRetryRequest()) {
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(venicePath.getStoreName()),
+              Optional.of(venicePath.getRequestType()), SERVICE_UNAVAILABLE,
+              "Retry request aborted! Could not find any healthy replica.", RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
+        } else {
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(venicePath.getStoreName()),
+              Optional.of(venicePath.getRequestType()), SERVICE_UNAVAILABLE,
+              "Could not find any healthy replica.");
+        }
+      }
+      KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(selectedHost);
+      if (null == keyPartitionSet) {
+        keyPartitionSet = new KeyPartitionSet<>(Collections.singletonList(selectedHost));
+        hostMap.put(selectedHost, keyPartitionSet);
+      }
+      keyPartitionSet.addKeyPartitions(partitionKeys, partitionName);
     }
   }
 

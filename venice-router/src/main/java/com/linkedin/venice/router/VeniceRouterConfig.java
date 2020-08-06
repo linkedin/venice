@@ -1,6 +1,8 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.cache.CacheEviction;
 import com.linkedin.venice.router.cache.CacheType;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
@@ -13,6 +15,8 @@ import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.helix.HelixInstanceConfigRepository.*;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 
 
 /**
@@ -42,7 +46,6 @@ public class VeniceRouterConfig {
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
   private boolean stickyRoutingEnabledForSingleGet;
-  private boolean stickyRoutingEnabledForMultiGet;
   private double perStorageNodeReadQuotaBuffer;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
@@ -59,7 +62,6 @@ public class VeniceRouterConfig {
   private boolean dnsCacheEnabled;
   private String hostPatternForDnsCache;
   private long dnsCacheRefreshIntervalInMs;
-  private boolean greedyMultiGet;
   private long singleGetTardyLatencyThresholdMs;
   private long multiGetTardyLatencyThresholdMs;
   private long computeTardyLatencyThresholdMs;
@@ -105,7 +107,8 @@ public class VeniceRouterConfig {
   private boolean helixCustomizedViewEnabled;
   private int ioThreadCountInPoolMode;
   private boolean leastLoadedHostSelectionEnabled;
-
+  private boolean useGroupFieldInHelixDomain;
+  private VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -145,8 +148,6 @@ public class VeniceRouterConfig {
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     stickyRoutingEnabledForSingleGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET, true);
-    stickyRoutingEnabledForMultiGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_MULTI_GET, true);
-    greedyMultiGet = props.getBoolean(ROUTER_GREEDY_MULTIGET, true); //TODO, if testing shows it isn't desirable, change this default
     perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
@@ -239,6 +240,24 @@ public class VeniceRouterConfig {
     helixCustomizedViewEnabled = props.getBoolean(HELIX_CUSTOMIZED_VIEW_ENABLED, false);
     ioThreadCountInPoolMode = props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
     leastLoadedHostSelectionEnabled = props.getBoolean(ROUTER_LEAST_LOADED_HOST_ENABLED, false);
+
+    String helixVirtualGroupFieldNameInDomain = props.getString(ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN,
+        GROUP_FIELD_NAME_IN_DOMAIN);
+    if (helixVirtualGroupFieldNameInDomain.equals(GROUP_FIELD_NAME_IN_DOMAIN)) {
+      useGroupFieldInHelixDomain = true;
+    } else if (helixVirtualGroupFieldNameInDomain.equals(ZONE_FIELD_NAME_IN_DOMAIN)) {
+      useGroupFieldInHelixDomain = false;
+    } else {
+      throw new VeniceException("Unknown value: " + helixVirtualGroupFieldNameInDomain + " for config: " + ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN + ", and "
+          + "allowed values: [" + GROUP_FIELD_NAME_IN_DOMAIN + ", " + ZONE_FIELD_NAME_IN_DOMAIN + "]");
+    }
+    String multiKeyRoutingStrategyStr = props.getString(ROUTER_MULTI_KEY_ROUTING_STRATEGY, KEY_BASED_STICKY_ROUTING.name());
+    try {
+      multiKeyRoutingStrategy = VeniceMultiKeyRoutingStrategy.valueOf(multiKeyRoutingStrategyStr);
+    } catch (Exception e) {
+      throw new VeniceException("Invalid " + ROUTER_MULTI_KEY_ROUTING_STRATEGY + " config: " + multiKeyRoutingStrategyStr +
+          ", and allowed values: " + Arrays.toString(VeniceMultiKeyRoutingStrategy.values()));
+    }
   }
 
   public String getClusterName() {
@@ -263,14 +282,6 @@ public class VeniceRouterConfig {
 
   public boolean isStickyRoutingEnabledForSingleGet() {
     return stickyRoutingEnabledForSingleGet;
-  }
-
-  public boolean isStickyRoutingEnabledForMultiGet() {
-    return stickyRoutingEnabledForMultiGet;
-  }
-
-  public boolean isGreedyMultiGet() {
-    return greedyMultiGet;
   }
 
   public double getHeartbeatTimeoutMs() {
@@ -572,6 +583,14 @@ public class VeniceRouterConfig {
 
   public int getIoThreadCountInPoolMode() {
     return ioThreadCountInPoolMode;
+  }
+
+  public boolean isUseGroupFieldInHelixDomain() {
+    return useGroupFieldInHelixDomain;
+  }
+
+  public VeniceMultiKeyRoutingStrategy getMultiKeyRoutingStrategy() {
+    return multiKeyRoutingStrategy;
   }
 
   /**

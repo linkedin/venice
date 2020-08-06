@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.HelixCustomizedViewRepository;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -26,6 +27,7 @@ import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VeniceHostHealth;
 import com.linkedin.venice.router.api.VeniceMetricsProvider;
+import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
@@ -108,6 +110,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+
 
 public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
@@ -131,6 +135,7 @@ public class RouterServer extends AbstractVeniceService {
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
   private PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder;
+  private HelixInstanceConfigRepository instanceConfigRepository;
 
   // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
   private AsyncFuture<SocketAddress> serverFuture = null;
@@ -406,7 +411,7 @@ public class RouterServer extends AbstractVeniceService {
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder,
         config.isStickyRoutingEnabledForSingleGet(),
-        config.isStickyRoutingEnabledForMultiGet(),
+        config.getMultiKeyRoutingStrategy().equals(KEY_BASED_STICKY_ROUTING),
         routerStats,
         healthMonitor);
 
@@ -629,6 +634,9 @@ public class RouterServer extends AbstractVeniceService {
     metadataRepository.clear();
     storeConfigRepository.clear();
     liveInstanceMonitor.clear();
+    if (instanceConfigRepository != null) {
+      instanceConfigRepository.clear();
+    }
     if (manager != null) {
       manager.disconnect();
     }
@@ -703,7 +711,6 @@ public class RouterServer extends AbstractVeniceService {
       routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getPort()));
       routingDataRepository.refresh();
 
-
       // Setup read requests throttler.
       RouterThrottler throttler;
       if (config.isReadThrottlingEnabled()) {
@@ -714,6 +721,15 @@ public class RouterServer extends AbstractVeniceService {
       }
 
       scatterGatherMode.initReadRequestThrottler(throttler);
+      if (config.getMultiKeyRoutingStrategy().equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING)) {
+        /**
+         * This statement should be invoked after {@link #manager} is connected.
+         */
+        instanceConfigRepository =
+            new HelixInstanceConfigRepository(manager, config.isUseGroupFieldInHelixDomain());
+        instanceConfigRepository.refresh();
+        scatterGatherMode.initInstanceConfigRepository(instanceConfigRepository);
+      }
       dispatcher.initReadRequestThrottler(throttler);
 
       // Dictionary retrieval service should start only after "metadataRepository.refresh()" otherwise it won't be able

@@ -20,12 +20,15 @@ import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
 
 
 public abstract class VenicePath implements ResourcePath<RouterKey> {
+  private static final AtomicLong REQUEST_ID_GENERATOR = new AtomicLong(0);
+
   private final String resourceName;
   private Collection<RouterKey> partitionKeys;
   private final String storeName;
@@ -41,7 +44,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private Optional<VeniceChunkedResponse> chunkedResponse = Optional.empty();
   // Response decompressor
   private Optional<VeniceResponseDecompressor> responseDecompressor = Optional.empty();
-
+  private long requestId = -1;
 
   public VenicePath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
     this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new SystemTime());
@@ -54,6 +57,13 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     this.smartLongTailRetryEnabled = smartLongTailRetryEnabled;
     this.smartLongTailRetryAbortThresholdMs = smartLongTailRetryAbortThresholdMs;
     this.time = time;
+  }
+
+  public synchronized long getRequestId() {
+    if (requestId < 0) {
+      requestId = REQUEST_ID_GENERATOR.getAndIncrement();
+    }
+    return requestId;
   }
 
   public boolean isSmartLongTailRetryEnabled() {
@@ -116,6 +126,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
     this.chunkedResponse = originalPath.chunkedResponse;
     this.responseDecompressor = originalPath.responseDecompressor;
+
+    this.requestId = originalPath.getRequestId();
   }
 
   public boolean isRetryRequest() {

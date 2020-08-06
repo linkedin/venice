@@ -48,6 +48,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 import static org.mockito.Mockito.*;
 
 public class RouterRequestThrottlingTest {
@@ -176,8 +177,7 @@ public class RouterRequestThrottlingTest {
     // mock a scatter gather helper for multi-key requests
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(true).when(config).isStickyRoutingEnabledForSingleGet();
-    doReturn(true).when(config).isStickyRoutingEnabledForMultiGet();
-    doReturn(true).when(config).isGreedyMultiGet();
+    doReturn(KEY_BASED_STICKY_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
     // multi-get/compute requests are throttled in VeniceDelegateMode
     VeniceDelegateMode delegateMode = new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));

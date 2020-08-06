@@ -492,16 +492,17 @@ public class ConfigKeys {
   public static final String ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET = "router.enable.sticky.routing.for.single.get";
 
   /**
-   * Whether sticky routing for multi-get is enabled in Router.
+   * This config is used to define the routing strategy for multi-key requests.
+   * Please check {@text VeniceMultiKeyRoutingStrategy} to find available routing strategy.
    */
-  public static final String ROUTER_ENABLE_STICKY_ROUTING_FOR_MULTI_GET = "router.enable.sticky.routing.for.multi.get";
+  public static final String ROUTER_MULTI_KEY_ROUTING_STRATEGY = "router.multi.key.routing.strategy";
 
   /**
-   * Only takes effect if ROUTER_ENABLE_STICKY_ROUTING_FOR_MULTI_GET is set to false, greedy multiget means we try to
-   * serve a multiget request by clustering as many partitions to as few hosts as possible.  Set this to false to
-   * randomly select a replica for each partition, then group requests to the same host together.
+   * The Helix virtual group field name in domain, and the allowed values: {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#GROUP_FIELD_NAME_IN_DOMAIN}
+   * and {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#ZONE_FIELD_NAME_IN_DOMAIN}.
    */
-  public static final String ROUTER_GREEDY_MULTIGET = "router.greedy.multiget";
+  public static final String ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN = "router.helix.virtual.group.field.in.domain";
+
   /**
    * The buffer we will add to the per storage node read quota. E.g 0.5 means 50% extra quota.
    */
