@@ -457,7 +457,7 @@
               "name": "backupVersionRetentionMs",
               "type": "long",
               "doc": "Backup version retention time after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy",
-              "default": "-1"
+              "default": -1
             }
           ]
         },
