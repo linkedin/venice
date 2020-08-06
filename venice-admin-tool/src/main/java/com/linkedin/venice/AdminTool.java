@@ -323,6 +323,9 @@ public class AdminTool {
         case DUMP_CONTROL_MESSAGES:
           dumpControlMessages(cmd);
           break;
+        case DUMP_KAFKA_TOPIC:
+          dumpKafkaTopic(cmd);
+          break;
         case MIGRATE_STORE:
           migrateStore(cmd);
           break;
@@ -907,6 +910,33 @@ public class AdminTool {
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
 
     new ControlMessageDumper(consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch().display();
+  }
+
+  private static void dumpKafkaTopic(CommandLine cmd) {
+    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+
+    consumerProps.setProperty(BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+    consumerProps.setProperty(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
+    consumerProps.setProperty(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
+
+    String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    // optional arguments
+    int partitionNumber = (null == getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION)) ? -1 : Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
+    int startingOffset = (null == getOptionalArgument(cmd, Arg.STARTING_OFFSET)) ? -1 : Integer.parseInt(getOptionalArgument(cmd, Arg.STARTING_OFFSET));
+    int messageCount = (null == getOptionalArgument(cmd, Arg.MESSAGE_COUNT)) ? -1 : Integer.parseInt(getOptionalArgument(cmd, Arg.MESSAGE_COUNT));
+    String parentDir = "./";
+    if (getOptionalArgument(cmd, Arg.PARENT_DIRECTORY) != null) {
+      parentDir = getOptionalArgument(cmd, Arg.PARENT_DIRECTORY);
+    }
+    int maxConsumeAttempts = 3;
+    if (getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS) != null) {
+      maxConsumeAttempts = Integer.valueOf(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
+    }
+
+    new KafkaTopicDumper(
+        controllerClient, consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount, parentDir, maxConsumeAttempts)
+        .fetch().dumpToFile();
   }
 
   private static void migrateStore(CommandLine cmd) {

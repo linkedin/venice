@@ -144,6 +144,8 @@ public enum Command {
       new Arg[] {CLUSTER, KAFKA_BOOTSTRAP_SERVERS, STARTING_OFFSET, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE}),
   DUMP_CONTROL_MESSAGES("dump-control-messages", "Dump control messages in a partition",
       new Arg[] {KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION, STARTING_OFFSET, MESSAGE_COUNT}),
+  DUMP_KAFKA_TOPIC("dump-kafka-topic", "Dump a Kafka topic for a Venice cluster.  If start offset and message count are not specified, the entire partition will be dumped.  PLEASE REFRAIN FROM USING SERVER CERTIFICATES, IT IS A GDPR VIOLATION, GET ADDED TO THE STORE ACL'S OR GET FAST ACCESS TO THE KAFKA TOPIC!!",
+      new Arg[] {KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL}),
   MIGRATE_STORE("migrate-store", "Migrate store from one cluster to another within the same fabric",
       new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST}),
   MIGRATION_STATUS("migration-status", "Get store migration status",
