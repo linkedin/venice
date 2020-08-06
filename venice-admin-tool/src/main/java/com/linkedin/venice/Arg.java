@@ -69,6 +69,8 @@ public enum Arg {
       "Configuration file for querying key in Venice client through SSL."),
   STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
   MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
+  PARENT_DIRECTORY("parent_output_directory", "pod", true, "A directory where output can be dumped to.  If dumping a kafka topic, the output will be dumped under this directory."),
+  MAX_POLL_ATTEMPTS("max_poll_attempts", "mpa", true, "The max amount of attempts to poll new data from a Kafka topic (should no new data be available)."),
   WRITE_COMPUTATION_ENABLED("write-computation-enabled", "wc", true, "Whether or not write computation is enabled for a store"),
   READ_COMPUTATION_ENABLED("read-computation-enabled", "rc", true, "Enable/Disable read computation for a store"),
   BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR("bootstrap-to-online-timeout", "btot", true, "Set the maximum number of hours allowed for the store to transition from bootstrap to online"),
