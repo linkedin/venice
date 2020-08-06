@@ -201,22 +201,7 @@ class IngestionNotificationDispatcher {
             String logMessage = "Partition: " + pcs.getPartition() + " has already been ";
             boolean report = true;
 
-            /**
-             * We shouldn't change the condition to be {@link pcs.isComplete()} since
-             * {@link CorruptDataException} could still be thrown before completing the ingestion for hybrid
-             * (catching up the configured offset lag), since checksum validation error
-             * is not suppressed in {@link com.linkedin.venice.kafka.validation.ProducerTracker},
-             * and only {@link com.linkedin.venice.exceptions.validation.MissingDataException}
-             * is suppressed.
-             *
-             * TODO: maybe {@link com.linkedin.venice.kafka.validation.ProducerTracker} should suppress
-             * checksum validation error as well to make it consistent.
-             *
-             * But anyway, we might still want to have this check since other exceptions could be propagated
-             * during ingestion, such as Kafka related ingestion, and we don't want to turn the replica
-             * into `error` state, which will impact the serving of online requests.
-             */
-            if (pcs.isEndOfPushReceived()) {
+            if (pcs.isComplete()) {
               logMessage += "marked as completed so an error will not be reported.";
               report = false;
             }

@@ -313,13 +313,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
      * Note: this function should be invoked after {@link #sync()} to make sure
      * the last SST file written is finished.
      */
-    File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
-    String[] sstFiles = tempSSTFileDir.list(
-        (dir, name) -> RocksDBUtils.isTempSSTFile(name) && new File(dir, name).length() > 0);
-    List<String> sstFilePaths = new ArrayList<>();
-    for (String sstFile : sstFiles) {
-      sstFilePaths.add(tempSSTFileDir + File.separator + sstFile);
-    }
+    List<String> sstFilePaths = getTemporarySSTFilePaths();
     if (0 == sstFilePaths.size()) {
       LOGGER.info("No valid sst file found, so will skip the sst file ingestion for store: " + storeName + ", partition: " + partitionId);
       return;
@@ -334,6 +328,35 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     } catch (RocksDBException e) {
       throw new VeniceException("Received exception during RocksDB#ingestExternalFile", e);
     }
+  }
+
+  public synchronized boolean validateBatchIngestion() {
+    List<String> files = getTemporarySSTFilePaths();
+    if (files.isEmpty()) {
+      return true;
+    }
+    for (String path : files) {
+      File file = new File(path);
+      if (file.length() != 0) {
+        LOGGER.error("Non-empty sst found when validating batch ingestion: " + path);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private List<String> getTemporarySSTFilePaths() {
+    File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
+    String[] sstFiles = tempSSTFileDir.list(
+        (dir, name) -> RocksDBUtils.isTempSSTFile(name) && new File(dir, name).length() > 0);
+    List<String> sstFilePaths = new ArrayList<>();
+    if (sstFiles == null) {
+      return sstFilePaths;
+    }
+    for (String sstFile : sstFiles) {
+      sstFilePaths.add(tempSSTFileDir + File.separator + sstFile);
+    }
+    return sstFilePaths;
   }
 
   @Override
@@ -549,7 +572,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   /**
    * Check {@link AbstractStoragePartition#verifyConfig(StoragePartitionConfig)}.
    *
-   * @param storagePartitionConfig
+   * @param partitionConfig
    * @return
    */
   @Override
