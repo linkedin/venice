@@ -58,6 +58,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.config.BlockingQueueType.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 
@@ -111,6 +112,8 @@ public abstract class TestRead {
     routerProperties.put(ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED, true);
     routerProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, true);
     routerProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 1);
+    routerProperties.put(ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY, HELIX_ASSISTED_ROUTING.name());
+    routerProperties.put(ConfigKeys.ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN, "zone");
     veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
