@@ -4,6 +4,7 @@ import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
@@ -212,6 +213,23 @@ public class ServiceFactory {
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, zkAddress, kafkaBrokerWrapper, true, replicationFactor,
             DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, childControllers, properties, clusterToD2, sslToKafka, true));
+  }
+
+  /**
+   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService} which takes an authorizerService
+   * and which will be working in parent mode.
+   */
+  public static VeniceControllerWrapper getVeniceParentController(
+      String clusterName,
+      String zkAddress,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      VeniceControllerWrapper[] childControllers,
+      boolean sslToKafka,
+      Optional<AuthorizerService> authorizerService) {
+    return getStatefulService(
+        VeniceControllerWrapper.SERVICE_NAME,
+        VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, EMPTY_VENICE_PROPS, sslToKafka, authorizerService));
   }
 
   /**

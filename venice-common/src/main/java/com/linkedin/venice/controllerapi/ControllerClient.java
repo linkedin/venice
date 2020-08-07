@@ -314,6 +314,16 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
+  public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema, String accessPermissions) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(OWNER, owner)
+        .add(KEY_SCHEMA, keySchema)
+        .add(VALUE_SCHEMA, valueSchema)
+        .add(ACCESS_PERMISSION, accessPermissions);
+    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+  }
+
   public ControllerResponse createNewZkSharedStoreWithDefaultConfigs(String storeName, String owner) {
     ControllerResponse response = createNewZkSharedStore(storeName, owner);
     if (!response.isError()) {
@@ -708,6 +718,21 @@ public class ControllerClient implements Closeable {
         .add(STATUS, isLFEnabled)
         .add(STORE_TYPE, storeType);
     return request(ControllerRoute.ENABLE_LF_MODEL, params, MultiStoreResponse.class);
+  }
+
+  public AclResponse updateAclForStore(String storeName, String accessPermissions) {
+    QueryParams params = newParams().add(NAME, storeName).add(ACCESS_PERMISSION, accessPermissions);
+    return request(ControllerRoute.UPDATE_ACL, params, AclResponse.class);
+  }
+
+  public AclResponse getAclForStore(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_ACL, params, AclResponse.class);
+  }
+
+  public AclResponse deleteAclForStore(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.DELETE_ACL, params, AclResponse.class);
   }
 
   protected static QueryParams getQueryParamsToDiscoverCluster(String storeName) {

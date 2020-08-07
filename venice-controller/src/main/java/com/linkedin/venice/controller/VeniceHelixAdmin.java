@@ -478,7 +478,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public synchronized void addStore(String clusterName, String storeName, String owner, String keySchema,
-        String valueSchema, boolean isSystemStore) {
+        String valueSchema, boolean isSystemStore, Optional<String> accessPermissions) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         logger.info("Start creating store: " + storeName);
         resources.lockForMetadataOperation();
@@ -4122,5 +4122,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeConfig.setMigrationSrcCluster(srcClusterName);
         storeConfig.setMigrationDestCluster(destClusterName);
         storeConfigAccessor.updateConfig(storeConfig);
+    }
+
+    @Override
+    public void  updateAclForStore(String clusterName, String storeName, String accessPermissions) {
+        throw new VeniceUnsupportedOperationException("updateAclForStore is not supported in child controller!");
+    }
+
+    @Override
+    public String getAclForStore(String clusterName, String storeName) {
+        throw new VeniceUnsupportedOperationException("getAclForStore is not supported!");
+    }
+
+    @Override
+    public void deleteAclForStore(String clusterName, String storeName) {
+        throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported!");
+    }
+
+    protected Store checkPreConditionForAclOp(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        Store store = repository.getStore(storeName);
+        if (store == null) {
+            throwStoreDoesNotExist(clusterName, storeName);
+        }
+        return store;
     }
 }
