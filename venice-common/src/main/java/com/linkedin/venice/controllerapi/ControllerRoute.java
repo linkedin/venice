@@ -13,7 +13,7 @@ public enum ControllerRoute {
   EMPTY_PUSH("/empty_push", HttpMethod.POST, Arrays.asList(NAME, STORE_SIZE, PUSH_JOB_ID)), // do an empty push into a new version for this store
   END_OF_PUSH("/end_of_push", HttpMethod.POST, Arrays.asList(NAME, VERSION)), // write an END OF PUSH message into the topic
   STORE("/store", HttpMethod.GET, Arrays.asList(NAME)), // get all information about that store
-  NEW_STORE("/new_store", HttpMethod.POST, Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER, IS_SYSTEM_STORE),
+  NEW_STORE("/new_store", HttpMethod.POST, Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER, IS_SYSTEM_STORE, ACCESS_PERMISSION),
   MIGRATE_STORE("/migrate_store", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   COMPLETE_MIGRATION("/complete_migration", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   ABORT_MIGRATION("/abort_migration", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
@@ -97,7 +97,10 @@ public enum ControllerRoute {
 
   DEMATERIALIZE_METADATA_STORE_VERSION("/dematerialize_metadata_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION)),
   FUTURE_VERSION("/list_future_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
-  SET_TOPIC_COMPACTION("/set_topic_compaction", HttpMethod.POST, Arrays.asList(TOPIC, TOPIC_COMPACTION_POLICY));
+  SET_TOPIC_COMPACTION("/set_topic_compaction", HttpMethod.POST, Arrays.asList(TOPIC, TOPIC_COMPACTION_POLICY)),
+  UPDATE_ACL("/update_acl", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, ACCESS_PERMISSION)),
+  GET_ACL("/get_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+  DELETE_ACL("/delete_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
 
 
   private final String path;

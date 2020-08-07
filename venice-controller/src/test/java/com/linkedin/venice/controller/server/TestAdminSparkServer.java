@@ -65,42 +65,22 @@ import org.testng.annotations.Test;
 import static com.linkedin.venice.meta.LeaderFollowerEnabled.*;
 
 
-public class TestAdminSparkServer {
+public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   /**
    * Seems that Helix has limit on the number of resource each node is able to handle.
    * If the test case needs more than one storage node like testing failover etc, please put it into {@link TestAdminSparkServerWithMultiServers}
    *
    * And please collect the store and version you created in the end of your test case.
    */
-  private static final int TEST_TIMEOUT = 20 * Time.MS_PER_SECOND;
-  private static final int STORAGE_NODE_COUNT = 1;
-
-  private VeniceClusterWrapper cluster;
-  private ControllerClient controllerClient;
-  private VeniceControllerWrapper parentController;
 
   @BeforeClass
   public void setUp() {
-    cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0);
-    controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
-
-    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-    parentController = ServiceFactory.getVeniceParentController(
-        cluster.getClusterName(),
-        parentZk.getAddress(),
-        cluster.getKafka(),
-        new VeniceControllerWrapper[] {cluster.getMasterVeniceController()},
-        false);
-
-    TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> parentController.isMasterController(cluster.getClusterName()));
+    super.setUp(false, Optional.empty());
   }
 
   @AfterClass
   public void tearDown() {
-    IOUtils.closeQuietly(controllerClient);
-    IOUtils.closeQuietly(cluster);
-    IOUtils.closeQuietly(parentController);
+    super.tearDown();
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -1,6 +1,13 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.authorization.AceEntry;
+import com.linkedin.venice.authorization.AclBinding;
+import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.authorization.Method;
+import com.linkedin.venice.authorization.Permission;
+import com.linkedin.venice.authorization.Principal;
+import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.common.VeniceSystemStore;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -86,6 +93,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -103,6 +111,11 @@ import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
+import org.codehaus.jackson.JsonNode;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.node.ArrayNode;
+import org.codehaus.jackson.node.JsonNodeFactory;
+import org.codehaus.jackson.node.ObjectNode;
 
 
 /**
@@ -158,12 +171,14 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final int waitingTimeForConsumptionMs;
 
+  private final Optional<AuthorizerService> authorizerService;
+
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
-    this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty());
+    this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty());
   }
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
-      boolean sslEnabled, Optional<SSLConfig> sslConfig) {
+      boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<AuthorizerService> authorizerService) {
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
@@ -172,6 +187,7 @@ public class VeniceParentHelixAdmin implements Admin {
         this.veniceHelixAdmin.getAdapterSerializer());
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
+    this.authorizerService = authorizerService;
     if (sslEnabled) {
       try {
         String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
@@ -454,11 +470,14 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
-      boolean isSystemStore) {
+      boolean isSystemStore, Optional<String> accessPermissions) {
     acquireLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
+
+      //Provisioning ACL needs to be the first step in store creation process.
+      provisionAclsForStore(storeName, accessPermissions);
 
       // Write store creation message to Kafka
       StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
@@ -485,6 +504,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber) {
     acquireLock(clusterName, storeName);
     try {
+      logger.info("Deleting store: " + storeName + " from cluster: " + clusterName);
       Store store = veniceHelixAdmin.checkPreConditionForDeletion(clusterName, storeName);
       DeleteStore deleteStore = (DeleteStore) AdminMessageType.DELETE_STORE.getNewInstance();
       deleteStore.clusterName = clusterName;
@@ -496,6 +516,9 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = deleteStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+
+      //Deleting ACL needs to be the last step in store deletion process.
+      cleanUpAclsForStore(storeName);
     } finally {
       releaseLock(clusterName);
     }
@@ -2168,4 +2191,163 @@ public class VeniceParentHelixAdmin implements Admin {
     etlStoreConfigRecord.futureVersionETLEnabled = futureVersionETLEnabled.orElse(etlStoreConfig.isFutureVersionETLEnabled());
     return etlStoreConfigRecord;
   }
+
+  /**
+   * This parses the input accessPermission string to create ACL's and provision them using the authorizerService interface.
+   * @param storeName store being provisioned.
+   * @param accessPermissions json string respresenting the accesspermissions.
+   */
+  private void provisionAclsForStore(String storeName, Optional<String> accessPermissions) {
+    //provision the ACL's needed to read/write venice store and kafka topic
+    if (authorizerService.isPresent() && accessPermissions.isPresent()) {
+      Resource resource = new Resource(storeName);
+      Iterator<JsonNode> readPermissions = null;
+      Iterator<JsonNode> writePermissions = null;
+      ObjectMapper mapper = new ObjectMapper();
+      try {
+        JsonNode root = mapper.readTree(accessPermissions.get());
+        JsonNode perms = root.path("AccessPermissions");
+        if (perms.has("Read")) {
+          readPermissions = perms.path("Read").getElements();
+        }
+        if (perms.has("Write")) {
+          writePermissions = perms.path("Write").getElements();
+        }
+      } catch (Exception e) {
+        logger.error("ACLProvisioning: invalid accessPermission schema for store:" + storeName, e);
+        throw new VeniceException(e);
+      }
+
+      try {
+        AclBinding aclBinding = new AclBinding(resource);
+        if (readPermissions != null) {
+          while (readPermissions.hasNext()) {
+            String readPerm = readPermissions.next().getTextValue();
+            Principal principal = new Principal(readPerm);
+            AceEntry readAceEntry = new AceEntry(principal, Method.Read, Permission.ALLOW);
+            aclBinding.addAceEntry(readAceEntry);
+          }
+        }
+        if (writePermissions != null) {
+          while (writePermissions.hasNext()) {
+            String writePerm = writePermissions.next().getTextValue();
+            Principal principal = new Principal(writePerm);
+            AceEntry writeAceEntry = new AceEntry(principal, Method.Write, Permission.ALLOW);
+            aclBinding.addAceEntry(writeAceEntry);
+          }
+        }
+        authorizerService.get().setAcls(aclBinding);
+      } catch (Exception e) {
+        logger.error("ACLProvisioning: failure in setting ACL's for store:" + storeName, e);
+        throw new VeniceException(e);
+      }
+    }
+  }
+
+  /**
+   * This fetches currently provisioned ACL's using authorizerService interface and converts them to output json.
+   * @param storeName store name
+   * @return a json string represnting currently provisioned ACL's or empty string if co ACL's are present currently.
+   */
+  private String fetchAclsForStore(String storeName) {
+    String result = "";
+    try {
+      Resource resource = new Resource(storeName);
+      AclBinding aclBinding = authorizerService.get().describeAcls(resource);
+      if (aclBinding == null) {
+        logger.error("ACLProvisioning: null ACL returned for store:" + storeName);
+        return result;
+      }
+
+      //return empty string in case there is no ACL's present currently.
+      if (aclBinding.countAceEntries() == 0) {
+        return "";
+      }
+
+      JsonNodeFactory factory = JsonNodeFactory.instance;
+      ObjectMapper mapper = new ObjectMapper();
+      ObjectNode root = factory.objectNode();
+      ObjectNode perms = factory.objectNode();
+      ArrayNode readP = factory.arrayNode();
+      ArrayNode writeP = factory.arrayNode();
+      for (AceEntry aceEntry : aclBinding.getAceEntries()) {
+        if (aceEntry.getMethod() == Method.Read) {
+          readP.add(aceEntry.getPrincipal().getName());
+        } else if (aceEntry.getMethod() == Method.Write) {
+          writeP.add(aceEntry.getPrincipal().getName());
+        }
+      }
+      perms.put("Read", readP);
+      perms.put("Write", writeP);
+      root.put("AccessPermissions", perms);
+      result = mapper.writeValueAsString(root);
+      return result;
+    } catch (Exception e) {
+      logger.error("ACLProvisioning: failure in getting ACL's for store:" + storeName, e);
+      throw new VeniceException(e);
+    }
+  }
+
+  /**
+   * This deletes all existing ACL's for a store using the authorizerService interface.
+   * @param storeName store being provisioned.
+   */
+  private void cleanUpAclsForStore(String storeName) {
+    if (authorizerService.isPresent()) {
+      Resource resource = new Resource(storeName);
+      try {
+        authorizerService.get().clearAcls(resource);
+      } catch (Exception e) {
+        logger.error("ACLProvisioning: failure in deleting ACL's for store ", e);
+        throw new VeniceException(e);
+      }
+    }
+  }
+
+  @Override
+  public void updateAclForStore(String clusterName, String storeName, String accessPermissions) {
+    acquireLock(clusterName, storeName);
+    try {
+      logger.info("ACLProvisioning: UpdateAcl:" + storeName + " in cluster: " + clusterName);
+      if (!authorizerService.isPresent()) {
+        throw new VeniceUnsupportedOperationException("updateAclForStore is not supported yet!");
+      }
+      veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
+      provisionAclsForStore(storeName, Optional.of(accessPermissions));
+    } finally {
+      releaseLock(clusterName);
+    }
+  }
+
+  @Override
+  public String getAclForStore(String clusterName, String storeName) {
+    acquireLock(clusterName, storeName);
+    try {
+      logger.info("ACLProvisioning: GetAcl:" + storeName + " in cluster: " + clusterName);
+      if (!authorizerService.isPresent()) {
+        throw new VeniceUnsupportedOperationException("getAclForStore is not supported yet!");
+      }
+      veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
+      String accessPerms = fetchAclsForStore(storeName);
+      return accessPerms;
+    } finally {
+      releaseLock(clusterName);
+    }
+  }
+
+  @Override
+  public void deleteAclForStore(String clusterName, String storeName) {
+    acquireLock(clusterName, storeName);
+    try {
+      logger.info("ACLProvisioning: DeleteAcl:" + storeName + " in cluster: " + clusterName);
+      if (!authorizerService.isPresent()) {
+        throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported yet!");
+      }
+      veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
+      cleanUpAclsForStore(storeName);
+    } finally {
+      releaseLock(clusterName);
+    }
+  }
+
 }

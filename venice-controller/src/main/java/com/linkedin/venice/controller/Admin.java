@@ -74,11 +74,16 @@ public interface Admin extends AutoCloseable, Closeable {
     boolean isClusterValid(String clusterName);
 
     default void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
-        addStore(clusterName, storeName, owner, keySchema, valueSchema, false);
+        addStore(clusterName, storeName, owner, keySchema, valueSchema, false, Optional.empty());
+    }
+
+    default void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
+        boolean isSystemStore) {
+        addStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, Optional.empty());
     }
 
     void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
-        boolean isSystemStore);
+        boolean isSystemStore, Optional<String> accessPermissions);
 
     void migrateStore(String srcClusterName, String destClusterName, String storeName);
 
@@ -573,4 +578,27 @@ public interface Admin extends AutoCloseable, Closeable {
      * invoked by {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} upon new push completion.
      */
     void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber);
+
+    /**
+     * provision a new set of ACL for a venice store and it's associated kafka topic.
+     * @param clusterName
+     * @param storeName
+     * @param accessPermisions
+     */
+    void updateAclForStore(String clusterName, String storeName, String accessPermisions);
+
+    /**
+     * fetch the current set of ACL provisioned for a venice store and it's associated kafka topic.
+     * @param clusterName
+     * @param storeName
+     * @return The string representation of the accessPermissions. It will return empty string in case store is not present.
+     */
+    String getAclForStore(String clusterName, String storeName);
+
+    /**
+     * Delete the current set of ACL provisioned for a venice store and it's associated kafka topic.
+     * @param clusterName
+     * @param storeName
+     */
+    void deleteAclForStore(String clusterName, String storeName);
 }

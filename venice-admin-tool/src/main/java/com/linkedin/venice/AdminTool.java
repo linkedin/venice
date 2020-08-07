@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -364,6 +365,18 @@ public class AdminTool {
           break;
         case DEMATERIALIZE_METADATA_STORE_VERSION:
           dematerializeMetadataStoreVersion(cmd);
+          break;
+        case NEW_STORE_ACL:
+          createNewStoreWithAcl(cmd);
+          break;
+        case UPDATE_STORE_ACL:
+          updateStoreWithAcl(cmd);
+          break;
+        case GET_STORE_ACL:
+          getAclForStore(cmd);
+          break;
+        case DELETE_STORE_ACL:
+          deleteAclForStore(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -1495,6 +1508,48 @@ public class AdminTool {
     printObject(response);
   }
 
+  private static void createNewStoreWithAcl(CommandLine cmd)
+      throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.NEW_STORE);
+    String keySchemaFile = getRequiredArgument(cmd, Arg.KEY_SCHEMA, Command.NEW_STORE);
+    String keySchema = readFile(keySchemaFile);
+    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
+    String valueSchema = readFile(valueSchemaFile);
+    String aclPerms = getRequiredArgument(cmd, Arg.ACL_PERMS, Command.NEW_STORE);
+    String owner = getOptionalArgument(cmd, Arg.OWNER, "");
+    boolean isVsonStore = Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    if (isVsonStore) {
+      keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
+      valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
+    }
+    verifyValidSchema(keySchema);
+    verifyValidSchema(valueSchema);
+    verifyStoreExistence(store, false);
+    NewStoreResponse response = controllerClient.createNewStore(store, owner, keySchema, valueSchema, aclPerms);
+    printObject(response);
+  }
+
+  private static void updateStoreWithAcl(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE_ACL);
+    String aclPerms = getRequiredArgument(cmd, Arg.ACL_PERMS, Command.UPDATE_STORE_ACL);
+    verifyStoreExistence(store, true);
+    AclResponse response = controllerClient.updateAclForStore(store, aclPerms);
+    printObject(response);
+  }
+
+  private static void getAclForStore(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE_ACL);
+    verifyStoreExistence(store, true);
+    AclResponse response = controllerClient.getAclForStore(store);
+    printObject(response);
+  }
+
+  private static void deleteAclForStore(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
+    verifyStoreExistence(store, true);
+    AclResponse response = controllerClient.deleteAclForStore(store);
+    printObject(response);
+  }
 
   private static void printErrAndExit(String err) {
     Map<String, String> errMap = new HashMap<>();

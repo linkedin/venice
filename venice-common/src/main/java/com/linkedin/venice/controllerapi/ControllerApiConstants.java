@@ -105,4 +105,6 @@ public class ControllerApiConstants {
   public static final String TOPIC_COMPACTION_POLICY = "topic_compaction_policy";
 
   public static final String BACKUP_VERSION_RETENTION_MS = "backup_version_retention_ms";
+
+  public static final String ACCESS_PERMISSION = "access_permission";
 }

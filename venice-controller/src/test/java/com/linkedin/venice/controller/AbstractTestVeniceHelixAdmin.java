@@ -174,22 +174,22 @@ class AbstractTestVeniceHelixAdmin {
     Assert.fail("No VeniceHelixAdmin became master for cluster: " + cluster + " after timeout: " + timeout);
   }
 
-  VeniceHelixAdmin getMaster(List<VeniceHelixAdmin> admins, String cluster){
+  VeniceHelixAdmin getMaster(List<VeniceHelixAdmin> admins, String cluster) {
     for (VeniceHelixAdmin admin : admins) {
       if (admin.isMasterController(cluster)) {
         return admin;
       }
     }
-    throw new VeniceException("no master found for cluster: "+cluster);
+    throw new VeniceException("no master found for cluster: " + cluster);
   }
 
-  VeniceHelixAdmin getSlave(List<VeniceHelixAdmin> admins, String cluster){
+  VeniceHelixAdmin getSlave(List<VeniceHelixAdmin> admins, String cluster) {
     for (VeniceHelixAdmin admin : admins) {
       if (!admin.isMasterController(cluster)) {
         return admin;
       }
     }
-    throw new VeniceException("no slave found for cluster: "+cluster);
+    throw new VeniceException("no slave found for cluster: " + cluster);
   }
 
   /**

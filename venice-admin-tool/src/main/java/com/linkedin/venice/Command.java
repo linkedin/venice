@@ -173,8 +173,16 @@ public enum Command {
   MATERIALIZE_METADATA_STORE_VERSION("materialize-metadata-store-version", "Materialize the metadata system store for an existing Venice store",
       new Arg[] {URL, CLUSTER, STORE, VERSION}),
   DEMATERIALIZE_METADATA_STORE_VERSION("dematerialize-metadata-store-version", "Dematerialize the metadata system store for an existing Venice store",
-      new Arg[] {URL, CLUSTER, STORE, VERSION});
-
+      new Arg[] {URL, CLUSTER, STORE, VERSION}),
+  NEW_STORE_ACL("new-store-acl", "Create a new store with ACL permissions set",
+      new Arg[]{URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA, ACL_PERMS},
+      new Arg[]{OWNER, VSON_STORE}),
+  UPDATE_STORE_ACL("update-store-acl", "Update ACL's for an existing store",
+      new Arg[] {URL, CLUSTER, STORE, ACL_PERMS}),
+  GET_STORE_ACL("get-store-acl", "Get ACL's for an existing store",
+      new Arg[] {URL, CLUSTER, STORE}),
+  DELETE_STORE_ACL("delete-store-acl", "Delete ACL's for an existing store",
+      new Arg[] {URL, CLUSTER, STORE});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;
