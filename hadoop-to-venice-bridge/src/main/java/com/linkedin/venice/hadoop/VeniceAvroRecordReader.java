@@ -2,11 +2,14 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.utils.Pair;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericDatumReader;
@@ -27,49 +30,92 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
   private InputStream hdfsInputStream;
   private DataFileStream avroDataFileStream;
 
-  private Schema schema;
+  private Schema storeSchema;
+  private Schema fileSchema;
 
-  public VeniceAvroRecordReader(String topicName, String keyFieldStr, String valueFieldStr, FileSystem fs, Path hdfsPath) {
+  private boolean isSourceETL;
+
+  /**
+   * This constructor is used when data is read from HDFS.
+   * @param topicName Topic which is to be published to
+   * @param keyFieldStr Field name of the key field
+   * @param valueFieldStr Field name of the value field
+   * @param fs File system where the source data exists
+   * @param hdfsPath Path of the avro file in the File system
+   * @param isSourceETL If the input source is output of Venice ETL. This will strip the value field of the union schema
+   */
+  public VeniceAvroRecordReader(String topicName, String keyFieldStr, String valueFieldStr, FileSystem fs, Path hdfsPath, boolean isSourceETL) {
     super(topicName);
     if (fs != null && hdfsPath != null) {
       try {
         this.hdfsInputStream = fs.open(hdfsPath);
         avroDataFileStream = new DataFileStream(hdfsInputStream, new GenericDatumReader());
-        schema = avroDataFileStream.getSchema();
+        fileSchema = avroDataFileStream.getSchema();
       } catch (IOException e) {
         throw new VeniceException("Encountered exception reading Avro data from " + hdfsPath.toString() + ". Check if "
             + "the file exists and the data is in Avro format.", e);
       }
     }
-
+    this.isSourceETL = isSourceETL;
     setupSchema(keyFieldStr, valueFieldStr);
   }
 
-  public VeniceAvroRecordReader(String topicName, Schema schema, String keyFieldStr, String valueFieldStr) {
+  /**
+   * This constructor is used in the Mapper.
+   * @param topicName Topic which is to be published to
+   * @param fileSchema Schema of the source files
+   * @param keyFieldStr Field name of the key field
+   * @param valueFieldStr Field name of the value field
+   * @param isSourceETL If the input source is output of Venice ETL. This will strip the value field of the union schema
+   */
+  public VeniceAvroRecordReader(String topicName, Schema fileSchema, String keyFieldStr, String valueFieldStr, boolean isSourceETL) {
     super(topicName);
-    this.schema = schema;
+    this.fileSchema = fileSchema;
+    this.isSourceETL = isSourceETL;
     setupSchema(keyFieldStr, valueFieldStr);
   }
 
   private void setupSchema(String keyFieldStr, String valueFieldStr) {
-    Schema.Field keyField = schema.getField(keyFieldStr);
-    Schema.Field valueField = schema.getField(valueFieldStr);
+    Schema.Field keyField = fileSchema.getField(keyFieldStr);
+    Schema.Field valueField = fileSchema.getField(valueFieldStr);
 
     if (keyField == null) {
-      throw new VeniceSchemaFieldNotFoundException(keyFieldStr, "Could not find field: " + keyFieldStr + " from " + schema.toString());
+      throw new VeniceSchemaFieldNotFoundException(keyFieldStr, "Could not find field: " + keyFieldStr + " from " + fileSchema.toString());
     }
 
     if (valueField == null) {
-      throw new VeniceSchemaFieldNotFoundException(valueFieldStr, "Could not find field: " + valueFieldStr + " from " + schema.toString());
+      throw new VeniceSchemaFieldNotFoundException(valueFieldStr, "Could not find field: " + valueFieldStr + " from " + fileSchema.toString());
     }
 
-    String keySchemaStr = keyField.schema().toString();
-    keyFieldPos = keyField.pos();
+    if (isSourceETL) {
+      List<Schema.Field> storeSchemaFields = new LinkedList<>();
 
-    String valueSchemaStr = valueField.schema().toString();
-    valueFieldPos = valueField.pos();
+      for (Schema.Field fileField : fileSchema.getFields()) {
+        Schema fieldSchema = fileField.schema();
+        // In our ETL jobs, when we see a "delete" record, we set the value as "null" and set the DELETED_TS to the
+        // timestamp when this record was deleted. To allow the value field to be set as "null", we make the schema of
+        // the value field as a union schema of "null" and the original value schema. To push back to Venice from ETL
+        // data, we strip the schema of the value field of the union type, leaving just the original value schema thus
+        // passing the schema validation.
+        if (fileField.name().equals(valueFieldStr)) {
+          fieldSchema = VsonAvroSchemaAdapter.stripFromUnion(fieldSchema);
+        }
+        storeSchemaFields.add(new Schema.Field(fileField.name(), fieldSchema, fileField.doc(), fileField.defaultValue(), fileField.order()));
+      }
 
-    configure(keySchemaStr, valueSchemaStr);
+      storeSchema = Schema.createRecord(fileSchema.getName(), fileSchema.getDoc(), fileSchema.getNamespace(), fileSchema.isError());
+      storeSchema.setFields(storeSchemaFields);
+    } else {
+      storeSchema = fileSchema;
+    }
+
+    Schema.Field storeKeyField = storeSchema.getField(keyFieldStr);
+    Schema.Field storeValueField = storeSchema.getField(valueFieldStr);
+
+    keyFieldPos = storeKeyField.pos();
+    valueFieldPos = storeValueField.pos();
+
+    configure(storeKeyField.schema().toString(), storeValueField.schema().toString());
   }
 
   @Override
@@ -98,8 +144,12 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
     return valueDatum;
   }
 
-  public Schema getSchema() {
-    return schema;
+  public Schema getFileSchema() {
+    return fileSchema;
+  }
+
+  public Schema getStoreSchema() {
+    return storeSchema;
   }
 
   @NotNull
@@ -142,10 +192,14 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
         AvroWrapper<IndexedRecord> hadoopKey = new AvroWrapper<>((IndexedRecord) avroObject);
         NullWritable hadoopValue = NullWritable.get();
         byte[] keyBytes = recordReader.getKeySerializer().serialize(topic, recordReader.getAvroKey(hadoopKey, hadoopValue));
-        byte[] valueBytes = recordReader.getValueSerializer().serialize(topic, recordReader.getAvroValue(hadoopKey, hadoopValue));
+        Object avroValue = recordReader.getAvroValue(hadoopKey, hadoopValue);
+        byte[] valueBytes = null;
+        if (avroValue != null) {
+          valueBytes = recordReader.getValueSerializer().serialize(topic, avroValue);
+        }
         return Pair.create(keyBytes, valueBytes);
       } catch (VeniceException e) {
-        e.printStackTrace();
+        LOGGER.error("Failed to get next record", e);
       }
       return null;
     }

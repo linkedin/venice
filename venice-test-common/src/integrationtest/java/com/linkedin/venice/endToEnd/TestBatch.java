@@ -1,7 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import com.linkedin.venice.Arg;
-import com.linkedin.venice.ControlMessageDumper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -51,14 +49,11 @@ import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
-import static org.apache.kafka.clients.consumer.ConsumerConfig.*;
-import static org.testng.Assert.*;
 
 //TODO: write a H2VWrapper that can handle the whole flow
 
@@ -506,6 +501,37 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     }, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, invocationCount = 3)
+  public void testBatchFromETL() throws Exception {
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeETLFileWithUserSchema(inputDir, false);
+      return new Pair<>(Schema.parse(ETL_KEY_SCHEMA_STRING), Schema.parse(ETL_VALUE_SCHEMA_STRING));
+    }, properties -> {
+      properties.setProperty(KEY_FIELD_PROP, "key");
+      properties.setProperty(VALUE_FIELD_PROP, "value");
+      properties.setProperty(SOURCE_ETL, "true");
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      // test single get
+      for (int i = 1; i <= 50; i ++) {
+        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+        GenericRecord value = new GenericData.Record(Schema.parse(ETL_VALUE_SCHEMA_STRING));
+
+        key.put("id", Integer.toString(i));
+        value.put("name", "test_name_" + i);
+
+        Assert.assertEquals(avroClient.get(key).get().toString(), value.toString());
+      }
+
+      for (int i = 51; i <= 100; i ++) {
+        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+        key.put("id", Integer.toString(i));
+
+        Assert.assertEquals(avroClient.get(key).get(), null);
+      }
+    }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
   protected String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator) throws Exception {
