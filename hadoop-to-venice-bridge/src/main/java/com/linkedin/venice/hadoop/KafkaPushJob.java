@@ -122,6 +122,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public final static String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
   public final static String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
   public final static String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
+  public final static String SOURCE_ETL = "source.etl";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -328,6 +329,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     long pollJobStatusIntervalMs;
     long jobStatusInUnknownStateTimeoutMs;
     boolean sendControlMessagesDirectly;
+    boolean isSourceETL;
     boolean enableWriteCompute;
   }
   private PushJobSetting pushJobSetting;
@@ -461,6 +463,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     pushJobSetting.jobStatusInUnknownStateTimeoutMs = props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
     pushJobSetting.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
     pushJobSetting.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
+    pushJobSetting.isSourceETL = props.getBoolean(SOURCE_ETL, false);
 
     if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -726,11 +729,14 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       schemaInfo.keyField = props.getString(KEY_FIELD_PROP);
       schemaInfo.valueField = props.getString(VALUE_FIELD_PROP);
 
-      Schema avroSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
+      Pair<Schema, Schema> avroSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
-      schemaInfo.fileSchemaString = avroSchema.toString();
-      schemaInfo.keySchemaString = extractAvroSubSchema(avroSchema, schemaInfo.keyField).toString();
-      schemaInfo.valueSchemaString = extractAvroSubSchema(avroSchema, schemaInfo.valueField).toString();
+      Schema fileSchema = avroSchema.getFirst();
+      Schema storeSchema = avroSchema.getSecond();
+
+      schemaInfo.fileSchemaString = fileSchema.toString();
+      schemaInfo.keySchemaString = extractAvroSubSchema(storeSchema, schemaInfo.keyField).toString();
+      schemaInfo.valueSchemaString = extractAvroSubSchema(storeSchema, schemaInfo.valueField).toString();
     } else {
       logger.info("Detected Vson input format, will convert to Avro automatically.");
       //key / value fields are optional for Vson input
@@ -1431,6 +1437,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         "record-queue-time-avg,request-latency-avg,record-send-rate,byte-rate"));
 
     conf.set(ZSTD_COMPRESSION_LEVEL, props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
+    conf.setBoolean(SOURCE_ETL, pushJobSetting.isSourceETL);
   }
 
   protected void setupInputFormatConf(JobConf jobConf, SchemaInfo schemaInfo, String inputDirectory) {
@@ -1498,7 +1505,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024)
         + " MB, estimated with a factor of " + INPUT_DATA_SIZE_FACTOR);
     logger.info("Is incremental push: " + pushJobSetting.isIncrementalPush);
-    logger.info("Is duplicated key allowed" + pushJobSetting.isDuplicateKeyAllowed);
+    logger.info("Is duplicated key allowed: " + pushJobSetting.isDuplicateKeyAllowed);
+    logger.info("Is source ETL data: " + pushJobSetting.isSourceETL);
   }
   /**
    * Do not change this method argument type.
@@ -1562,19 +1570,19 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     return field.schema();
   }
 
-  private Schema getAvroFileHeader(FileSystem fs, Path path, boolean buildDictionary) {
+  private Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean buildDictionary) {
     logger.debug("path:" + path.toUri().getPath());
 
     String keyField = props.getString(KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP);
-    VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(null, keyField, valueField, fs, path);
+    VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(null, keyField, valueField, fs, path, pushJobSetting.isSourceETL);
 
     // If dictionary compression is enabled for version, read the records to get training samples
     if (buildDictionary && storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       loadZstdTrainingSamples(recordReader);
     }
 
-    return recordReader.getSchema();
+    return new Pair<>(recordReader.getFileSchema(), recordReader.getStoreSchema());
   }
 
   private Pair<VsonSchema, VsonSchema> getVsonFileHeader(FileSystem fs, Path path, boolean buildDictionary) {
@@ -1612,8 +1620,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   //Avro-based file composes key and value schema as a whole
-  private Schema checkAvroSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList, AtomicLong inputFileDataSize) {
-    Schema avroSchema = getAvroFileHeader(fs, fileStatusList[0].getPath(), false);
+  private Pair<Schema, Schema> checkAvroSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList, AtomicLong inputFileDataSize) {
+    Pair<Schema, Schema> avroSchema = getAvroFileHeader(fs, fileStatusList[0].getPath(), false);
     parallelExecuteHDFSOperation(fileStatusList, "checkAvroSchemaConsistency", fileStatus -> {
       if (fileStatus.isDirectory()) {
         // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
@@ -1621,7 +1629,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
             " should not have sub directory: " + fileStatus.getPath().getName());
       }
       inputFileDataSize.addAndGet(fileStatus.getLen());
-      Schema newSchema = getAvroFileHeader(fs, fileStatus.getPath(), true);
+      Pair<Schema, Schema> newSchema = getAvroFileHeader(fs, fileStatus.getPath(), true);
       if (!avroSchema.equals(newSchema)) {
         throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Avro schema found. File: %s.\n"
                 + "Expected file schema: %s.\n Real File schema: %s.", fileStatus.getPath().getName(),

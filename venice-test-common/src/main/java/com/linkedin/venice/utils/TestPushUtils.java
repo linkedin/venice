@@ -65,6 +65,70 @@ public class TestPushUtils {
       "  ] " +
       " } ";
 
+  public static final String ETL_KEY_SCHEMA_STRING = "{\n" +
+      "    \"type\":\"record\",\n" +
+      "    \"name\":\"key\",\n" +
+      "    \"namespace\":\"com.linkedin.vencie.testkey\",\n" +
+      "    \"fields\":[\n" +
+      "        {\n" +
+      "            \"name\":\"id\",\n" +
+      "            \"type\":\"string\"\n" +
+      "        }\n" +
+      "    ]\n" +
+      "}";
+
+  public static final String ETL_VALUE_SCHEMA_STRING = "{\n" +
+      "    \"type\":\"record\",\n" +
+      "    \"name\":\"value\",\n" +
+      "    \"namespace\":\"com.linkedin.vencie.testvalue\",\n" +
+      "    \"fields\":[\n" +
+      "        {\n" +
+      "            \"name\":\"name\",\n" +
+      "            \"type\":\"string\"\n" +
+      "        }\n" +
+      "    ],\n" +
+      "    \"version\":10\n" +
+      "}";
+
+  public static final String ETL_SCHEMA_STRING = "{\n" +
+      "    \"type\":\"record\",\n" +
+      "    \"name\":\"storeName_v1\",\n" +
+      "    \"namespace\":\"KAFKA\",\n" +
+      "    \"fields\":[\n" +
+      "        {\n" +
+      "            \"name\":\"key\",\n" +
+      "            \"type\":" + ETL_KEY_SCHEMA_STRING + ",\n" +
+      "            \"doc\":\"Raw bytes of the key\",\n" +
+      "            \"attributes_json\":\"{\\\"delta\\\":false,\\\"pk\\\":true,\\\"type\\\":\\\"record\\\"}\"\n" +
+      "        },\n" +
+      "        {\n" +
+      "            \"name\":\"value\",\n" +
+      "            \"type\":[\n" +
+      "                \"null\",\n" + ETL_VALUE_SCHEMA_STRING +
+      "            ],\n" +
+      "            \"doc\":\"Raw bytes of the value\",\n" +
+      "            \"attributes_json\":\"{\\\"delta\\\":false,\\\"pk\\\":false,\\\"type\\\":\\\"union\\\"}\"\n" +
+      "        },\n" +
+      "        {\n" +
+      "            \"name\":\"offset\",\n" +
+      "            \"type\":\"long\",\n" +
+      "            \"doc\":\"The offset of this record in Kafka\",\n" +
+      "            \"attributes_json\":\"{\\\"delta\\\":true,\\\"pk\\\":false,\\\"type\\\":\\\"long\\\"}\"\n" +
+      "        },\n" +
+      "        {\n" +
+      "            \"name\":\"DELETED_TS\",\n" +
+      "            \"type\":[\n" +
+      "                \"null\",\n" +
+      "                \"long\"\n" +
+      "            ],\n" +
+      "            \"doc\":\"If the current record is a PUT, this field will be null; if it's a DELETE, this field will be the offset of the record in Kafka\",\n" +
+      "            \"default\":null,\n" +
+      "            \"attributes_json\":\"{\\\"delta\\\":false,\\\"pk\\\":false,\\\"type\\\":\\\"union\\\"}\"\n" +
+      "        }\n" +
+      "    ],\n" +
+      "    \"attributes_json\":\"{\\\"instance\\\":\\\"gobblin\\\",\\\"dumpdate\\\":1596776399999,\\\"isFull\\\":false,\\\"begin_date\\\":1596772800000,\\\"end_date\\\":1596776399999,\\\"total_records\\\":-1,\\\"isSharded\\\":false,\\\"isSecured\\\":false,\\\"permission_group\\\":\\\"\\\",\\\"datasource_colo\\\":\\\"prod-ltx1\\\",\\\"table_type\\\":\\\"SNAPSHOT_APPEND\\\",\\\"isDBChange\\\":true,\\\"validation_high_water\\\":-1,\\\"validation_drop_date\\\":-1,\\\"deleted_records\\\":0,\\\"full_dropdate\\\":0,\\\"base_dropdate\\\":1596700799999,\\\"lumos_operation\\\":\\\"QSB\\\",\\\"lumos_process_time\\\":1596780124566}\"\n" +
+      "}";
+
   public static final String USER_SCHEMA_STRING_WITH_DEFAULT = "{" +
       "  \"namespace\" : \"example.avro\",  " +
       "  \"type\": \"record\",   " +
@@ -211,6 +275,52 @@ public class TestPushUtils {
             user.put("id", Integer.toString(i));
             user.put("name", name + i);
             user.put("age", i);
+            writer.append(user);
+          }
+        });
+  }
+
+  public static Schema writeETLFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
+      throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_etl_user.avro";
+    } else {
+      fileName = "simple_etl_user";
+    }
+
+    return writeAvroFile(parentDir, fileName, ETL_SCHEMA_STRING,
+        (recordSchema, writer) -> {
+          String name = "test_name_";
+          for (int i = 1; i <= 50; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+            GenericRecord value = new GenericData.Record(Schema.parse(ETL_VALUE_SCHEMA_STRING));
+
+            key.put("id", Integer.toString(i));
+            value.put("name", name + i);
+
+            user.put("key", key);
+            user.put("value", value);
+            user.put("offset", (long)i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 51; i <= 100; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+            key.put("id", Integer.toString(i));
+
+            user.put("key", key);
+            user.put("value", null);
+            user.put("offset", (long)i);
+            user.put("DELETED_TS", (long)i);
+
             writer.append(user);
           }
         });

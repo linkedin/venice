@@ -16,7 +16,8 @@ public class VeniceAvroMapper extends AbstractVeniceMapper<AvroWrapper<IndexedRe
     String keyField = props.getString(KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP);
     String topicName = props.getString(TOPIC_PROP);
+    boolean isSourceETL = props.getBoolean(SOURCE_ETL);
 
-    this.veniceRecordReader = new VeniceAvroRecordReader(topicName, fileSchema, keyField, valueField);
+    this.veniceRecordReader = new VeniceAvroRecordReader(topicName, fileSchema, keyField, valueField, isSourceETL);
   }
 }
