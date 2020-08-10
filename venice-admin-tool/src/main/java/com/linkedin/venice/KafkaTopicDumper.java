@@ -89,14 +89,13 @@ public class KafkaTopicDumper {
     TopicPartition partition = new TopicPartition(topic, partitionNumber);
     consumer.assign(Collections.singletonList(partition));
     consumer.seek(partition, startingOffset);
+    Map<TopicPartition, Long> partitionToEndOffset = consumer.endOffsets(Collections.singletonList(partition));
+    logger.info("End offset for partition " + partition.partition() + " is " + partitionToEndOffset.get(partition));
+    this.endOffset = partitionToEndOffset.get(partition);
     if (messageCount < 0) {
-      Map<TopicPartition, Long> partitionToEndOffset = consumer.endOffsets(Collections.singletonList(partition));
-      logger.info("End offset for partition " + partition.partition() + " is " + partitionToEndOffset.get(partition));
       this.messageCount = partitionToEndOffset.get(partition);
-      this.endOffset = partitionToEndOffset.get(partition);
     } else {
       this.messageCount = messageCount;
-      this.endOffset = -1;
     }
     this.kafkaRecordList = new ArrayList<>((int)this.messageCount);
   }
