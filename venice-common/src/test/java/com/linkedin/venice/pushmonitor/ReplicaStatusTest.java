@@ -1,6 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -19,54 +18,38 @@ public class ReplicaStatusTest {
     Assert.assertEquals(replicaStatus.getCurrentProgress(), 0);
   }
 
-  private void testValidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
+  private void testStatusesUpdate(ExecutionStatus from, ExecutionStatus... statuses) {
     for (ExecutionStatus status : statuses) {
       ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
       replicaStatus.setCurrentStatus(from);
       replicaStatus.updateStatus(status);
-      Assert.assertEquals(replicaStatus.getCurrentStatus(), status, status + " should be valid from:" + from);
-    }
-  }
-
-  public void testInvalidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
-    for (ExecutionStatus status : statuses) {
-      ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
-      replicaStatus.setCurrentStatus(from);
-      try {
-        replicaStatus.updateStatus(status);
-        Assert.fail(status + " is invalid from:" + from);
-      } catch (VeniceException e) {
-        //expected.
-      }
+      Assert.assertEquals(replicaStatus.getCurrentStatus(), status);
     }
   }
 
   @Test
   public void testUpdateStatusFromSTARTED() {
-    testValidTargetStatuses(STARTED, PROGRESS, ERROR, COMPLETED);
+    testStatusesUpdate(STARTED, PROGRESS, ERROR, COMPLETED);
   }
 
   @Test
   public void testUpdateStatusFromPROGRESS() {
-    testValidTargetStatuses(PROGRESS, STARTED, PROGRESS, ERROR, COMPLETED);
+    testStatusesUpdate(PROGRESS, STARTED, PROGRESS, ERROR, COMPLETED);
   }
 
   @Test
   public void testUpdateStatusFromERROR() {
-    testValidTargetStatuses(ERROR, STARTED);
-    testInvalidTargetStatuses(ERROR, PROGRESS, ERROR, COMPLETED);
+    testStatusesUpdate(ERROR, STARTED);
   }
 
   @Test
   public void testUpdateStatusFromEndOfPushReceived() {
-    testValidTargetStatuses(END_OF_PUSH_RECEIVED, STARTED, ERROR, COMPLETED, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED);
-    testInvalidTargetStatuses(END_OF_PUSH_RECEIVED, END_OF_PUSH_RECEIVED, PROGRESS);
+    testStatusesUpdate(END_OF_PUSH_RECEIVED, STARTED, ERROR, COMPLETED, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED);
   }
 
   @Test
   public void testUpdateStatusFromStartOfBufferReplayReceived() {
-    testValidTargetStatuses(START_OF_BUFFER_REPLAY_RECEIVED, STARTED, ERROR, PROGRESS, COMPLETED);
-    testInvalidTargetStatuses(START_OF_BUFFER_REPLAY_RECEIVED, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED );
+    testStatusesUpdate(START_OF_BUFFER_REPLAY_RECEIVED, STARTED, ERROR, PROGRESS, COMPLETED);
   }
 
   @Test
@@ -74,13 +57,12 @@ public class ReplicaStatusTest {
     /**
      * For grandfathering, it's possible that END_OF_PUSH_RECEIVED status will come after a TOPIC_SWITCH status
      */
-    testValidTargetStatuses(TOPIC_SWITCH_RECEIVED, END_OF_PUSH_RECEIVED, STARTED, ERROR, PROGRESS, COMPLETED);
+    testStatusesUpdate(TOPIC_SWITCH_RECEIVED, END_OF_PUSH_RECEIVED, STARTED, ERROR, PROGRESS, COMPLETED);
   }
 
   @Test
   public void testUpdateStatusFromCOMPLETED() {
-    testValidTargetStatuses(COMPLETED, STARTED, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, TOPIC_SWITCH_RECEIVED);
-    testInvalidTargetStatuses(COMPLETED, PROGRESS, COMPLETED);
+    testStatusesUpdate(COMPLETED, STARTED, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, TOPIC_SWITCH_RECEIVED);
   }
 
   @Test
