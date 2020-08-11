@@ -161,7 +161,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   }
 
   protected StoreReadThrottler getStoreReadThrottler(String storeName) {
-    return storesThrottlers.get().get(storeName);
+    return storesThrottlers.get().get(VeniceSystemStoreUtils.getZkStoreName(storeName));
   }
 
   private StoreReadThrottler buildStoreReadThrottler(String storeName, int currentVersion, long storeQuotaPerRouter) {
@@ -202,7 +202,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
     synchronized (storesThrottlers) {
-      StoreReadThrottler storeReadThrottler = storesThrottlers.get().get(storeName);
+      StoreReadThrottler storeReadThrottler = storesThrottlers.get().get(VeniceSystemStoreUtils.getZkStoreName(storeName));
       if (storeReadThrottler == null) {
         logger.error("Could not found throttler for store: " + storeName);
         return;
@@ -234,7 +234,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       logger.info("Store: " + store.getName() + " is created. Add a throttler with quota:" + storeQuotaPerRouter
           + " for this store.");
       storesThrottlers.get()
-          .put(store.getName(),
+          .put(VeniceSystemStoreUtils.getZkStoreName(store.getName()),
               buildStoreReadThrottler(store.getName(), store.getCurrentVersion(), storeQuotaPerRouter));
     });
   }
@@ -269,7 +269,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   public void handleStoreDeleted(String storeName) {
     updateStoreThrottler(() -> {
       logger.info("Store: " + storeName + " has been deleted. Remove the throttler for this store.");
-      StoreReadThrottler throttler = storesThrottlers.get().remove(storeName);
+      StoreReadThrottler throttler = storesThrottlers.get().remove(VeniceSystemStoreUtils.getZkStoreName(storeName));
       stats.recordQuota(storeName, 0);
       routingDataRepository.unSubscribeRoutingDataChange(
           Version.composeKafkaTopic(storeName, throttler.getCurrentVersion()), this);
@@ -279,7 +279,8 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   @Override
   public void handleStoreChanged(Store store) {
     updateStoreThrottler(() -> {
-      StoreReadThrottler storeReadThrottler = storesThrottlers.get().get(store.getName());
+      StoreReadThrottler storeReadThrottler =
+          storesThrottlers.get().get(VeniceSystemStoreUtils.getZkStoreName(store.getName()));
       if (storeReadThrottler == null) {
         logger.warn(
             "Throttler have not been created for store:" + store.getName() + ". Router might miss the creation event.");
@@ -288,13 +289,13 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       }
 
       long storeQuotaPerRouter = calculateStoreQuotaPerRouter(store.getReadQuotaInCU());
-      if (storeQuotaPerRouter != storesThrottlers.get().get(store.getName()).getQuota()) {
+      if (storeQuotaPerRouter != storesThrottlers.get().get(VeniceSystemStoreUtils.getZkStoreName(store.getName())).getQuota()) {
         // Handle store's quota was updated.
         logger.info("Read quota has been changed for store: " + store.getName() + ". Old Quota: "
             + storeReadThrottler.getQuota() + ", New Quota: " + storeQuotaPerRouter
             + ", Update the entire store reads throttler.");
         storesThrottlers.get()
-            .put(store.getName(),
+            .put(VeniceSystemStoreUtils.getZkStoreName(store.getName()),
                 buildStoreReadThrottler(store.getName(), store.getCurrentVersion(), storeQuotaPerRouter));
       }
       if (store.getCurrentVersion() != storeReadThrottler.getCurrentVersion()) {

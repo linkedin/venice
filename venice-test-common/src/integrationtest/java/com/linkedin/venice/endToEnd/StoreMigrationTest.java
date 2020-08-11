@@ -4,9 +4,12 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
+import com.linkedin.venice.common.StoreMetadataType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -20,6 +23,9 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
+import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
+import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -28,6 +34,7 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -53,6 +60,7 @@ public class StoreMigrationTest {
   private String destClusterName;
   private String parentControllerUrl;
   private String childControllerUrl0;
+  private int zkSharedStoreVersion = 1;
 
   @BeforeClass
   public void setup() {
@@ -79,6 +87,19 @@ public class StoreMigrationTest {
 
     // Populate store
     populateStore(parentControllerUrl, STORE_NAME, 1);
+
+    // Create and configure the Zk shared store for metadata system stores.
+    String zkSharedStoreName;
+    for (String clusterName : clusterNames) {
+      ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl);
+      zkSharedStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName);
+      Assert.assertFalse(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(
+          zkSharedStoreName, "test").isError(), "Failed to create the Zk shared store");
+      Assert.assertFalse(parentControllerClient.newZkSharedStoreVersion(zkSharedStoreName).isError(),
+          "Failed to create new Zk shared store version");
+      Assert.assertEquals(parentControllerClient.getStore(zkSharedStoreName).getStore().getCurrentVersion(),
+          zkSharedStoreVersion);
+    }
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       StoreResponse storeResponse = srcControllerClient.getStore(STORE_NAME);
@@ -166,6 +187,54 @@ public class StoreMigrationTest {
     });
 
     endMigration(parentControllerUrl);
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testMigrateStoreWithMetadataSystemStoreMultiDatacenter() throws Exception {
+    // materialize metadata store in the source cluster
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
+    Assert.assertFalse(srcControllerClient.materializeMetadataStoreVersion(STORE_NAME, zkSharedStoreVersion).isError());
+    String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
+    String destD2ServiceName = "venice-" + destClusterName.substring(destClusterName.length() - 1);
+    D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrappers.get(0).getClusters().get(srcClusterName).getZk().getAddress());
+    ClientConfig<StoreMetadataValue> clientConfig = ClientConfig.defaultSpecificClientConfig(
+        VeniceSystemStoreUtils.getMetadataStoreName(STORE_NAME), StoreMetadataValue.class)
+        .setD2ServiceName(srcD2ServiceName)
+        .setD2Client(d2Client)
+        .setStoreName(VeniceSystemStoreUtils.getMetadataStoreName(STORE_NAME));
+    // Refresh router repositories to ensure client connects to the correct cluster during initialization
+    refreshAllRouterMetaData();
+    try (AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client =
+        ClientFactory.getAndStartSpecificAvroClient(clientConfig)) {
+      StoreMetadataKey storeAttributesKey = new StoreMetadataKey();
+      storeAttributesKey.keyStrings = Arrays.asList(STORE_NAME);
+      storeAttributesKey.metadataType = StoreMetadataType.STORE_ATTRIBUTES.getValue();
+      String metadataStoreTopic =
+          Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(STORE_NAME), zkSharedStoreVersion);
+      TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, srcControllerClient, 30, TimeUnit.SECONDS,
+          Optional.empty());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNotNull(client.get(storeAttributesKey).get());
+      });
+
+      startMigration(parentControllerUrl);
+      completeMigration();
+
+      try {
+        // Verify the metadata store is materialized in the destination cluster and contains correct values.
+        TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, destControllerClient, 30, TimeUnit.SECONDS,
+            Optional.empty());
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          Assert.assertNotNull(client.get(storeAttributesKey).get());
+        });
+        StoreAttributes storeAttributes = (StoreAttributes) client.get(storeAttributesKey).get().metadataUnion;
+        Assert.assertEquals(storeAttributes.sourceCluster.toString(), destClusterName,
+            "Unexpected source cluster post store migration");
+      } finally {
+        endMigration(parentControllerUrl);
+      }
+    }
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)

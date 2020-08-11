@@ -92,7 +92,10 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     logger.info("Cleared all store configs in local");
   }
 
-  //TODO This needs to be revisited if we want to support migrating Venice stores with materialized metadata system store.
+  /**
+   * The corresponding Venice store config is returned for metadata system store's store config. This is the most
+   * natural way to handle cluster discovery for metadata system stores and store migration.
+   */
   @Override
   public Optional<StoreConfig> getStoreConfig(String storeName) {
     String veniceStoreName = VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE

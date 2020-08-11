@@ -10,7 +10,6 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.StoreMetadataType;
-import com.linkedin.venice.common.VeniceSystemStore;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -79,9 +78,8 @@ public class SystemStoreTest {
   private String participantMessageStoreName;
   private VeniceServerWrapper veniceServerWrapper;
   private String clusterName;
-  private String zkSharedStoreName = VeniceSystemStore.METADATA_STORE.getPrefix();
+  private String zkSharedStoreName;
   private int metadataStoreVersionNumber;
-  private D2Client d2Client;
 
   @BeforeClass
   public void setup() {
@@ -96,7 +94,8 @@ public class SystemStoreTest {
     venice = ServiceFactory.getVeniceCluster(1, 0, 1, 1,
         100000, false, false, enableParticipantMessageStore);
     clusterName = venice.getClusterName();
-    d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+    zkSharedStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName);
+    D2Client d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
     serverFeatureProperties.put(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
         .setD2Client(d2Client));
@@ -250,8 +249,10 @@ public class SystemStoreTest {
     venice.refreshAllRouterMetaData();
 
     // Create a base client config for metadata store repository.
-    ClientConfig<StoreMetadataValue> clientConfig = ClientConfig.defaultSpecificClientConfig(regularVeniceStoreName, StoreMetadataValue.class)
-        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME).setD2Client(d2Client).setVeniceURL(venice.getZk().getAddress());
+    D2Client testMetadataStoreD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+    ClientConfig<StoreMetadataValue> clientConfig = ClientConfig.defaultSpecificClientConfig(regularVeniceStoreName,
+        StoreMetadataValue.class).setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+        .setD2Client(testMetadataStoreD2Client).setVeniceURL(venice.getZk().getAddress());
     // Create MetadataStoreBasedStoreRepository
     MetadataStoreBasedStoreRepository storeRepository = new MetadataStoreBasedStoreRepository(venice.getClusterName(), clientConfig, 60);
     // Create test listener to monitor store repository changes.
@@ -399,7 +400,7 @@ public class SystemStoreTest {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     long memoryLimit = 1024 * 1024 * 1024; // 1GB
     daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(testMetadataStoreD2Client, metricsRepository, backendConfig);
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig)) {
       client.subscribeAll().get();
       GenericRecord actualValueRecord = client.get("testKey").get();
