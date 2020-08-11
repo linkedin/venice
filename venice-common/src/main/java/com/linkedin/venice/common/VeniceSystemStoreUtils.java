@@ -76,4 +76,8 @@ public class VeniceSystemStoreUtils {
     }
     return metadataStoreName.substring(index + METADATA_STORE.getPrefix().length() + SEPARATOR.length());
   }
+
+  public static String getSharedZkNameForMetadataStore(String clusterName) {
+    return METADATA_STORE.getPrefix() + SEPARATOR + clusterName;
+  }
 }

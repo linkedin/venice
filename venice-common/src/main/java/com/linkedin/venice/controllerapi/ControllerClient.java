@@ -306,7 +306,7 @@ public class ControllerClient implements Closeable {
       throw new VeniceException("Cannot create new Zk shared store, " + storeName + "is not a known Zk shared store");
     }
     QueryParams params = newParams()
-        .add(NAME, systemStore.getPrefix())
+        .add(NAME, storeName)
         .add(OWNER, owner)
         .add(KEY_SCHEMA, systemStore.getKeySchema())
         .add(VALUE_SCHEMA, systemStore.getValueSchema())

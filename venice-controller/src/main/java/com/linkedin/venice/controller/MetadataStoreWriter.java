@@ -56,6 +56,7 @@ public class MetadataStoreWriter {
     key.metadataType = StoreMetadataType.STORE_ATTRIBUTES.getValue();
     StoreMetadataValue value = new StoreMetadataValue();
     StoreAttributes storeAttributes = (StoreAttributes) StoreMetadataType.STORE_ATTRIBUTES.getNewInstance();
+    // TODO Revisit the way we populate sourceCluster and otherClusters when we decide to materialize Venice store in multiple clusters.
     storeAttributes.sourceCluster = clusterName;
     storeAttributes.otherClusters = new ArrayList<>();
     storeAttributes.configs = populateStoreProperties(store);

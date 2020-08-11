@@ -2137,7 +2137,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber) {
+  public void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber, boolean deleteRT) {
     String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
     veniceHelixAdmin.checkPreConditionForSingleVersionDeletion(clusterName, metadataStoreName, versionNumber);
     DeleteOldVersion deleteOldVersion = (DeleteOldVersion) AdminMessageType.DELETE_OLD_VERSION.getNewInstance();

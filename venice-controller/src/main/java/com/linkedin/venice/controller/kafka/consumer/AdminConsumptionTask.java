@@ -500,7 +500,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
     }
     if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE
-        && !VeniceSystemStore.METADATA_STORE.getPrefix().equals(storeName)) {
+        && !VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName).equals(storeName)) {
       storeName = VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName);
     }
     return storeName;
