@@ -1,6 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.util.LinkedList;
@@ -32,70 +31,13 @@ public class ReplicaStatus {
   }
 
   public void updateStatus(ExecutionStatus newStatus) {
-    if (validateReplicaStatusTransition(newStatus)) {
-      currentStatus = newStatus;
-      addHistoricStatus(newStatus);
-    } else {
-      throw new VeniceException("Can not transit from " + currentStatus + " to " + newStatus);
-    }
+    currentStatus = newStatus;
+    addHistoricStatus(newStatus);
   }
 
   public void updateStatus(ExecutionStatus newStatus, String incrementalPushVersion) {
     setIncrementalPushVersion(incrementalPushVersion);
     updateStatus(newStatus);
-  }
-
-  /**
-   * Judge whether current status could be transferred to new status. Note, because each status could be transferred to
-   * START again in case that replica is re-allocated to the same server again after it was moved out.
-   * <p>
-   * Replica status' state machine.
-   * e.g.
-   * <ul>
-   *   <li>STARTED->PROGRESS</li>
-   *   <li>STARTED->ERROR</li>
-   *   <li>STARTED->COMPLETED</li>
-   *   <li>STARTED->STARTED</li>
-   * </ul>
-   * @param newStatus
-   * @return
-   */
-  private boolean validateReplicaStatusTransition(ExecutionStatus newStatus) {
-    boolean isValid;
-    switch (currentStatus) {
-      case STARTED:
-      case PROGRESS:
-        isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED, WARNING, ERROR, COMPLETED);
-        break;
-      case WARNING:
-        isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
-        break;
-      case ERROR:
-        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
-        break;
-      case COMPLETED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, TOPIC_SWITCH_RECEIVED);
-        break;
-      case END_OF_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED, WARNING, ERROR, COMPLETED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
-        break;
-      case START_OF_BUFFER_REPLAY_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, PROGRESS, COMPLETED);
-        break;
-      case TOPIC_SWITCH_RECEIVED:
-        /**
-         * For grandfathering, it's possible that END_OF_PUSH_RECEIVED status will come after a TOPIC_SWITCH status
-         */
-        isValid = Utils.verifyTransition(newStatus, STARTED, TOPIC_SWITCH_RECEIVED, END_OF_PUSH_RECEIVED, WARNING, ERROR, PROGRESS, COMPLETED, START_OF_INCREMENTAL_PUSH_RECEIVED);
-        break;
-      case START_OF_INCREMENTAL_PUSH_RECEIVED:
-      case END_OF_INCREMENTAL_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, WARNING, ERROR, COMPLETED);
-        break;
-      default:
-        isValid = false;
-    }
-    return isValid;
   }
 
   public String getInstanceId() {
