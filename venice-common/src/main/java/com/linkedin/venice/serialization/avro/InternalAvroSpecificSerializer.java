@@ -181,7 +181,11 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       }
       if (byteArrayOutputStream.size() < PAYLOAD_OFFSET) {
         // In some code paths, we override the payload offset so that we can have some padding at the beginning.
-        for (int i = 0; i < PAYLOAD_OFFSET - byteArrayOutputStream.size(); i++) {
+        // N.B. The size of byteArrayOutputStream increases after writing a byte. We should use a fixed number
+        // in the termination expression instead of PAYLOAD_OFFSET - byteArrayOutputStream.size(), which terminates
+        // the loop earlier
+        int paddingSize = PAYLOAD_OFFSET - byteArrayOutputStream.size();
+        for (int i = 0; i < paddingSize; i++) {
           byteArrayOutputStream.write(0);
         }
       }
