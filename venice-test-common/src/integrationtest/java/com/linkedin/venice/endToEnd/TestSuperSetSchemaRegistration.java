@@ -120,7 +120,6 @@ public class TestSuperSetSchemaRegistration {
       // set up superset schema gen configs
       UpdateStoreQueryParams params = new UpdateStoreQueryParams();
       params.setReadComputationEnabled(true);
-      params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
       params.setAutoSchemaPushJobEnabled(true);
       veniceCluster.updateStore(storeName, params);
 
