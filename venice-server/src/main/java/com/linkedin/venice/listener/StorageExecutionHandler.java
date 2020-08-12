@@ -269,7 +269,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     if (keyValueProfilingEnabled) {
       response.setOptionalKeySizeList(Optional.of(Arrays.asList(key.length)));
-      response.setOptionalValueSizeList(Optional.of(Arrays.asList(valueRecord.getDataSize())));
+      response.setOptionalValueSizeList(Optional.of(Arrays.asList(response.isFound() ? valueRecord.getDataSize() : 0)));
     }
 
     return response;
