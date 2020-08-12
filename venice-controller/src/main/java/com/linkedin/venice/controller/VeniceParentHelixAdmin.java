@@ -1393,7 +1393,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
       Schema existingSchema = veniceHelixAdmin.getLatestValueSchema(clusterName, store);
 
-      if (store.isSuperSetSchemaAutoGenerationForReadComputeEnabled() && existingSchema != null) {
+      if (store.isReadComputationEnabled() && existingSchema != null) {
         Schema upcomingSchema = Schema.parse(valueSchemaStr);
         Schema newSuperSetSchema = AvroSchemaUtils.generateSuperSetSchema(existingSchema, upcomingSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();

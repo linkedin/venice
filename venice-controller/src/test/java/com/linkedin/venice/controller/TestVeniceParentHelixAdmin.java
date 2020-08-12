@@ -1072,7 +1072,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
-    params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
     params.setAutoSchemaPushJobEnabled(true);
     ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, params);
     Assert.assertNotNull(updateStoreResponse);
@@ -1118,7 +1117,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
-    params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
     params.setAutoSchemaPushJobEnabled(true);
     parentControllerClient.updateStore(storeName, params);
 
