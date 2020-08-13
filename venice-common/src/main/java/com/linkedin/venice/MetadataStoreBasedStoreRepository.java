@@ -507,7 +507,6 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
     store.setSingleGetRouterCacheEnabled(storeProperties.singleGetRouterCacheEnabled);
     store.setStoreMetadataSystemStoreEnabled(true);
     store.setStorageQuotaInByte(storeProperties.storageQuotaInByte);
-    store.setSuperSetSchemaAutoGenerationForReadComputeEnabled(storeProperties.superSetSchemaAutoGenerationForReadComputeEnabled);
     store.setWriteComputationEnabled(storeProperties.writeComputationEnabled);
 
     return store;

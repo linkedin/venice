@@ -7,7 +7,7 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 
 @SuppressWarnings("all")
 public class UpdateStore extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"UpdateStore\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"partitionNum\",\"type\":\"int\"},{\"name\":\"currentVersion\",\"type\":\"int\"},{\"name\":\"enableReads\",\"type\":\"boolean\"},{\"name\":\"enableWrites\",\"type\":\"boolean\"},{\"name\":\"storageQuotaInByte\",\"type\":\"long\",\"default\":21474836480},{\"name\":\"readQuotaInCU\",\"type\":\"long\",\"default\":1800},{\"name\":\"hybridStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"HybridStoreConfigRecord\",\"fields\":[{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"},{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"}]}],\"default\":null},{\"name\":\"accessControlled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"compressionStrategy\",\"type\":\"int\",\"doc\":\"Using int because Avro Enums are not evolvable\",\"default\":0},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"singleGetRouterCacheEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"batchGetRouterCacheEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"batchGetLimit\",\"type\":\"int\",\"doc\":\"The max key number allowed in batch get request, and Venice will use cluster-level config if the limit (not positive) is not valid\",\"default\":-1},{\"name\":\"numVersionsToPreserve\",\"type\":\"int\",\"doc\":\"The max number of versions the store should preserve. Venice will use cluster-level config if the number is 0 here.\",\"default\":0},{\"name\":\"incrementalPushEnabled\",\"type\":\"boolean\",\"doc\":\"a flag to see if the store supports incremental push or not\",\"default\":false},{\"name\":\"isMigrating\",\"type\":\"boolean\",\"doc\":\"Whether or not the store is in the process of migration\",\"default\":false},{\"name\":\"writeComputationEnabled\",\"type\":\"boolean\",\"doc\":\"Whether write-path computation feature is enabled for this store\",\"default\":false},{\"name\":\"readComputationEnabled\",\"type\":\"boolean\",\"doc\":\"Whether read-path computation feature is enabled for this store\",\"default\":false},{\"name\":\"bootstrapToOnlineTimeoutInHours\",\"type\":\"int\",\"doc\":\"Maximum number of hours allowed for the store to transition from bootstrap to online state\",\"default\":24},{\"name\":\"leaderFollowerModelEnabled\",\"type\":\"boolean\",\"doc\":\"Whether or not to use leader follower state transition model for upcoming version\",\"default\":false},{\"name\":\"backupStrategy\",\"type\":\"int\",\"doc\":\"Strategies to store backup versions.\",\"default\":0},{\"name\":\"clientDecompressionEnabled\",\"type\":\"boolean\",\"default\":true},{\"name\":\"schemaAutoRegisterFromPushJobEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"superSetSchemaAutoGenerationForReadComputeEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"hybridStoreOverheadBypass\",\"type\":\"boolean\",\"default\":false},{\"name\":\"hybridStoreDiskQuotaEnabled\",\"type\":\"boolean\",\"doc\":\"Whether or not to enable disk storage quota for a hybrid store\",\"default\":false},{\"name\":\"ETLStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"ETLStoreConfigRecord\",\"fields\":[{\"name\":\"etledUserProxyAccount\",\"type\":[\"null\",\"string\"]},{\"name\":\"regularVersionETLEnabled\",\"type\":\"boolean\"},{\"name\":\"futureVersionETLEnabled\",\"type\":\"boolean\"}]}],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfigRecord\",\"fields\":[{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}},{\"name\":\"amplificationFactor\",\"type\":\"int\"}]}],\"default\":null},{\"name\":\"nativeReplicationEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"pushStreamSourceAddress\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"largestUsedVersionNumber\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"incrementalPushPolicy\",\"type\":\"int\",\"doc\":\"Incremental Push Policy to reconcile with real time pushes. Using int because Avro Enums are not evolvable 0 => PUSH_TO_VERSION_TOPIC, 1 => INCREMENTAL_PUSH_SAME_AS_REAL_TIME\",\"default\":0},{\"name\":\"backupVersionRetentionMs\",\"type\":\"long\",\"doc\":\"Backup version retention time after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy\",\"default\":-1}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"UpdateStore\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"partitionNum\",\"type\":\"int\"},{\"name\":\"currentVersion\",\"type\":\"int\"},{\"name\":\"enableReads\",\"type\":\"boolean\"},{\"name\":\"enableWrites\",\"type\":\"boolean\"},{\"name\":\"storageQuotaInByte\",\"type\":\"long\",\"default\":21474836480},{\"name\":\"readQuotaInCU\",\"type\":\"long\",\"default\":1800},{\"name\":\"hybridStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"HybridStoreConfigRecord\",\"fields\":[{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"},{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"}]}],\"default\":null},{\"name\":\"accessControlled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"compressionStrategy\",\"type\":\"int\",\"doc\":\"Using int because Avro Enums are not evolvable\",\"default\":0},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"singleGetRouterCacheEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"batchGetRouterCacheEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"batchGetLimit\",\"type\":\"int\",\"doc\":\"The max key number allowed in batch get request, and Venice will use cluster-level config if the limit (not positive) is not valid\",\"default\":-1},{\"name\":\"numVersionsToPreserve\",\"type\":\"int\",\"doc\":\"The max number of versions the store should preserve. Venice will use cluster-level config if the number is 0 here.\",\"default\":0},{\"name\":\"incrementalPushEnabled\",\"type\":\"boolean\",\"doc\":\"a flag to see if the store supports incremental push or not\",\"default\":false},{\"name\":\"isMigrating\",\"type\":\"boolean\",\"doc\":\"Whether or not the store is in the process of migration\",\"default\":false},{\"name\":\"writeComputationEnabled\",\"type\":\"boolean\",\"doc\":\"Whether write-path computation feature is enabled for this store\",\"default\":false},{\"name\":\"readComputationEnabled\",\"type\":\"boolean\",\"doc\":\"Whether read-path computation feature is enabled for this store\",\"default\":false},{\"name\":\"bootstrapToOnlineTimeoutInHours\",\"type\":\"int\",\"doc\":\"Maximum number of hours allowed for the store to transition from bootstrap to online state\",\"default\":24},{\"name\":\"leaderFollowerModelEnabled\",\"type\":\"boolean\",\"doc\":\"Whether or not to use leader follower state transition model for upcoming version\",\"default\":false},{\"name\":\"backupStrategy\",\"type\":\"int\",\"doc\":\"Strategies to store backup versions.\",\"default\":0},{\"name\":\"clientDecompressionEnabled\",\"type\":\"boolean\",\"default\":true},{\"name\":\"schemaAutoRegisterFromPushJobEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"hybridStoreOverheadBypass\",\"type\":\"boolean\",\"default\":false},{\"name\":\"hybridStoreDiskQuotaEnabled\",\"type\":\"boolean\",\"doc\":\"Whether or not to enable disk storage quota for a hybrid store\",\"default\":false},{\"name\":\"ETLStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"ETLStoreConfigRecord\",\"fields\":[{\"name\":\"etledUserProxyAccount\",\"type\":[\"null\",\"string\"]},{\"name\":\"regularVersionETLEnabled\",\"type\":\"boolean\"},{\"name\":\"futureVersionETLEnabled\",\"type\":\"boolean\"}]}],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfigRecord\",\"fields\":[{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}},{\"name\":\"amplificationFactor\",\"type\":\"int\"}]}],\"default\":null},{\"name\":\"nativeReplicationEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"pushStreamSourceAddress\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"largestUsedVersionNumber\",\"type\":[\"null\",\"int\"],\"default\":null},{\"name\":\"incrementalPushPolicy\",\"type\":\"int\",\"doc\":\"Incremental Push Policy to reconcile with real time pushes. Using int because Avro Enums are not evolvable 0 => PUSH_TO_VERSION_TOPIC, 1 => INCREMENTAL_PUSH_SAME_AS_REAL_TIME\",\"default\":0},{\"name\":\"backupVersionRetentionMs\",\"type\":\"long\",\"doc\":\"Backup version retention time after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy\",\"default\":-1}]}");
   public java.lang.CharSequence clusterName;
   public java.lang.CharSequence storeName;
   public java.lang.CharSequence owner;
@@ -44,7 +44,6 @@ public class UpdateStore extends org.apache.avro.specific.SpecificRecordBase imp
   public int backupStrategy;
   public boolean clientDecompressionEnabled;
   public boolean schemaAutoRegisterFromPushJobEnabled;
-  public boolean superSetSchemaAutoGenerationForReadComputeEnabled;
   public boolean hybridStoreOverheadBypass;
   /** Whether or not to enable disk storage quota for a hybrid store */
   public boolean hybridStoreDiskQuotaEnabled;
@@ -87,16 +86,15 @@ public class UpdateStore extends org.apache.avro.specific.SpecificRecordBase imp
     case 23: return backupStrategy;
     case 24: return clientDecompressionEnabled;
     case 25: return schemaAutoRegisterFromPushJobEnabled;
-    case 26: return superSetSchemaAutoGenerationForReadComputeEnabled;
-    case 27: return hybridStoreOverheadBypass;
-    case 28: return hybridStoreDiskQuotaEnabled;
-    case 29: return ETLStoreConfig;
-    case 30: return partitionerConfig;
-    case 31: return nativeReplicationEnabled;
-    case 32: return pushStreamSourceAddress;
-    case 33: return largestUsedVersionNumber;
-    case 34: return incrementalPushPolicy;
-    case 35: return backupVersionRetentionMs;
+    case 26: return hybridStoreOverheadBypass;
+    case 27: return hybridStoreDiskQuotaEnabled;
+    case 28: return ETLStoreConfig;
+    case 29: return partitionerConfig;
+    case 30: return nativeReplicationEnabled;
+    case 31: return pushStreamSourceAddress;
+    case 32: return largestUsedVersionNumber;
+    case 33: return incrementalPushPolicy;
+    case 34: return backupVersionRetentionMs;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -130,16 +128,15 @@ public class UpdateStore extends org.apache.avro.specific.SpecificRecordBase imp
     case 23: backupStrategy = (java.lang.Integer)value$; break;
     case 24: clientDecompressionEnabled = (java.lang.Boolean)value$; break;
     case 25: schemaAutoRegisterFromPushJobEnabled = (java.lang.Boolean)value$; break;
-    case 26: superSetSchemaAutoGenerationForReadComputeEnabled = (java.lang.Boolean)value$; break;
-    case 27: hybridStoreOverheadBypass = (java.lang.Boolean)value$; break;
-    case 28: hybridStoreDiskQuotaEnabled = (java.lang.Boolean)value$; break;
-    case 29: ETLStoreConfig = (com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord)value$; break;
-    case 30: partitionerConfig = (com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord)value$; break;
-    case 31: nativeReplicationEnabled = (java.lang.Boolean)value$; break;
-    case 32: pushStreamSourceAddress = (java.lang.CharSequence)value$; break;
-    case 33: largestUsedVersionNumber = (java.lang.Integer)value$; break;
-    case 34: incrementalPushPolicy = (java.lang.Integer)value$; break;
-    case 35: backupVersionRetentionMs = (java.lang.Long)value$; break;
+    case 26: hybridStoreOverheadBypass = (java.lang.Boolean)value$; break;
+    case 27: hybridStoreDiskQuotaEnabled = (java.lang.Boolean)value$; break;
+    case 28: ETLStoreConfig = (com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord)value$; break;
+    case 29: partitionerConfig = (com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord)value$; break;
+    case 30: nativeReplicationEnabled = (java.lang.Boolean)value$; break;
+    case 31: pushStreamSourceAddress = (java.lang.CharSequence)value$; break;
+    case 32: largestUsedVersionNumber = (java.lang.Integer)value$; break;
+    case 33: incrementalPushPolicy = (java.lang.Integer)value$; break;
+    case 34: backupVersionRetentionMs = (java.lang.Long)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

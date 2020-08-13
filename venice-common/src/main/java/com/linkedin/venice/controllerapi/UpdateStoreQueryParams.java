@@ -57,7 +57,6 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
             .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
-            .setAutoSupersetSchemaEnabledFromReadComputeStore(srcStore.isSuperSetSchemaAutoGenerationForReadComputeEnabled())
             .setBackupStrategy(srcStore.getBackupStrategy())
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
@@ -307,14 +306,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getAutoSchemaRegisterPushJobEnabled() {
     return getBoolean(AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED);
-  }
-
-  public UpdateStoreQueryParams setAutoSupersetSchemaEnabledFromReadComputeStore(boolean autoSchemaAdminEnabled) {
-    return putBoolean(AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED, autoSchemaAdminEnabled);
-  }
-
-  public Optional<Boolean> getAutoSupersetSchemaEnabledForReadComputeStore() {
-    return getBoolean(AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED);
   }
 
   public UpdateStoreQueryParams setBackupStrategy(BackupStrategy backupStrategy) {

@@ -213,8 +213,6 @@ public class MetadataStoreWriter {
     storeProperties.schemaAutoRegisterFromPushJobEnabled = store.isSchemaAutoRegisterFromPushJobEnabled();
     storeProperties.singleGetRouterCacheEnabled = store.isSingleGetRouterCacheEnabled();
     storeProperties.storageQuotaInByte = store.getStorageQuotaInByte();
-    storeProperties.superSetSchemaAutoGenerationForReadComputeEnabled =
-        store.isSuperSetSchemaAutoGenerationForReadComputeEnabled();
     storeProperties.systemStore = store.isSystemStore();
     storeProperties.nativeReplicationEnabled = store.isNativeReplicationEnabled();
     storeProperties.pushStreamSourceAddress = store.getPushStreamSourceAddress();

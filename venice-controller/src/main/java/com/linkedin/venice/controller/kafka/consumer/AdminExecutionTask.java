@@ -400,7 +400,6 @@ public class AdminExecutionTask implements Callable<Void> {
           .setLeaderFollowerModel(message.leaderFollowerModelEnabled)
           .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
           .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
-          .setAutoSupersetSchemaEnabledFromReadComputeStore(message.superSetSchemaAutoGenerationForReadComputeEnabled)
           .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled);
       if (message.ETLStoreConfig != null) {
         params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -447,7 +446,6 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.leaderFollowerModelEnabled),
         Optional.of(BackupStrategy.fromInt(message.backupStrategy)),
         Optional.of(message.schemaAutoRegisterFromPushJobEnabled),
-        Optional.of(message.superSetSchemaAutoGenerationForReadComputeEnabled),
         Optional.of(message.hybridStoreDiskQuotaEnabled),
         Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.regularVersionETLEnabled),
         Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.futureVersionETLEnabled),
