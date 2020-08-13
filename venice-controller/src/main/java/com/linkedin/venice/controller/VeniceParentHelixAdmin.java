@@ -1175,7 +1175,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> leaderFollowerModelEnabled,
       Optional<BackupStrategy> backupStrategy,
       Optional<Boolean> autoSchemaRegisterPushJobEnabled,
-      Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled,
       Optional<Boolean> hybridStoreDiskQuotaEnabled,
       Optional<Boolean> regularVersionETLEnabled,
       Optional<Boolean> futureVersionETLEnabled,
@@ -1318,12 +1317,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.backupStrategy = (backupStrategy.orElse(store.getBackupStrategy())).ordinal();
 
       setStore.schemaAutoRegisterFromPushJobEnabled = autoSchemaRegisterPushJobEnabled.orElse(store.isSchemaAutoRegisterFromPushJobEnabled());
-      if (superSetSchemaAutoGenerationForReadComputeEnabled.isPresent() && superSetSchemaAutoGenerationForReadComputeEnabled.get()) {
-        if (!setStore.readComputationEnabled) {
-          throw new VeniceException("Cannot set autoSchemaRegisterAdminEnabled to non-read-compute stores");
-        }
-        setStore.superSetSchemaAutoGenerationForReadComputeEnabled = superSetSchemaAutoGenerationForReadComputeEnabled.orElse(store.isSuperSetSchemaAutoGenerationForReadComputeEnabled());
-      }
+
       setStore.hybridStoreDiskQuotaEnabled = hybridStoreDiskQuotaEnabled.orElse(store.isHybridStoreDiskQuotaEnabled());
 
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(store, regularVersionETLEnabled, futureVersionETLEnabled, etledUserProxyAccount);

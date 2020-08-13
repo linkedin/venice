@@ -55,6 +55,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -1280,6 +1281,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
                         }
                     }
+                    store.setPersistenceType(PersistenceType.ROCKS_DB);
                     repository.updateStore(store);
                     if (store.isStoreMetadataSystemStoreEnabled()) {
                         if (multiClusterConfigs.isParent()) {
@@ -2377,16 +2379,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public void setSuperSetSchemaAutoGenerationForReadComputeEnabled(String clusterName, String storeName,
-        boolean superSetSchemaAutoGenerationForReadComputeEnabled) {
-        storeMetadataUpdate(clusterName, storeName, store -> {
-            if (store.isReadComputationEnabled()) {
-                store.setSuperSetSchemaAutoGenerationForReadComputeEnabled(superSetSchemaAutoGenerationForReadComputeEnabled);
-            }
-            return store;
-        });
-    }
-
     public void setHybridStoreDiskQuotaEnabled(String clusterName, String storeName,
         boolean hybridStoreDiskQuotaEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
@@ -2514,7 +2506,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> leaderFollowerModelEnabled,
         Optional<BackupStrategy> backupStrategy,
         Optional<Boolean> autoSchemaRegisterPushJobEnabled,
-        Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled,
         Optional<Boolean> hybridStoreDiskQuotaEnabled,
         Optional<Boolean> regularVersionETLEnabled,
         Optional<Boolean> futureVersionETLEnabled,
@@ -2707,8 +2698,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             autoSchemaRegisterPushJobEnabled.ifPresent(value ->
                 setAutoSchemaRegisterPushJobEnabled(clusterName, storeName, value));
-            superSetSchemaAutoGenerationForReadComputeEnabled.ifPresent(value ->
-                setSuperSetSchemaAutoGenerationForReadComputeEnabled(clusterName, storeName, value));
             hybridStoreDiskQuotaEnabled.ifPresent(value ->
                 setHybridStoreDiskQuotaEnabled(clusterName, storeName, value));
 

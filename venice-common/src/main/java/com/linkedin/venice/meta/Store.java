@@ -91,7 +91,7 @@ public class Store {
   /**
    * Type of persistence storage engine.
    */
-  private final PersistenceType persistenceType;
+  private PersistenceType persistenceType;
   /**
    * How to route the key to partition.
    */
@@ -219,11 +219,6 @@ public class Store {
    * Whether or not value schema auto registration enabled from push job for this store.
    */
   private boolean schemaAutoRegisteFromPushJobEnabled = false;
-
-  /**
-   * Whether or not value schema auto registration enabled from Admin interface for this store.
-   */
-  private boolean superSetSchemaAutoGenerationForReadComputeEnabled = false;
 
   /**
    * For read compute stores with auto super-set schema enabled, stores the latest super-set value schema ID.
@@ -359,6 +354,10 @@ public class Store {
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public PersistenceType getPersistenceType() {
     return persistenceType;
+  }
+
+  public void setPersistenceType(PersistenceType persistenceType) {
+    this.persistenceType = persistenceType;
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
@@ -630,14 +629,6 @@ public class Store {
 
   public void setSchemaAutoRegisterFromPushJobEnabled(boolean value) {
     schemaAutoRegisteFromPushJobEnabled = value;
-  }
-
-  public boolean isSuperSetSchemaAutoGenerationForReadComputeEnabled() {
-    return superSetSchemaAutoGenerationForReadComputeEnabled;
-  }
-
-  public void setSuperSetSchemaAutoGenerationForReadComputeEnabled(boolean value) {
-    superSetSchemaAutoGenerationForReadComputeEnabled = value;
   }
 
   public int getLatestSuperSetValueSchemaId() {
@@ -944,7 +935,6 @@ public class Store {
     result = 31 * result + (nativeReplicationEnabled ? 1 : 0);
     result = 31 * result + backupStrategy.hashCode();
     result = 31 * result + (schemaAutoRegisteFromPushJobEnabled ? 1 : 0);
-    result = 31 * result + (superSetSchemaAutoGenerationForReadComputeEnabled ? 1 : 0);
     result = 31 * result + latestSuperSetValueSchemaId;
     result = 31 * result + (hybridStoreDiskQuotaEnabled ? 1 : 0);
     result = 31 * result + (etlStoreConfig != null ? etlStoreConfig.hashCode() : 0);
@@ -995,7 +985,6 @@ public class Store {
     if (nativeReplicationEnabled != store.nativeReplicationEnabled) return false;
     if (backupStrategy != store.backupStrategy) return false;
     if (schemaAutoRegisteFromPushJobEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
-    if (superSetSchemaAutoGenerationForReadComputeEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
     if (latestSuperSetValueSchemaId != store.latestSuperSetValueSchemaId) return false;
     if (hybridStoreDiskQuotaEnabled != store.hybridStoreDiskQuotaEnabled) return false;
     if (!partitionerConfig.equals(store.partitionerConfig)) return false;
@@ -1046,7 +1035,6 @@ public class Store {
     clonedStore.setNativeReplicationEnabled(nativeReplicationEnabled);
     clonedStore.setBackupStrategy(backupStrategy);
     clonedStore.setSchemaAutoRegisterFromPushJobEnabled(schemaAutoRegisteFromPushJobEnabled);
-    clonedStore.setSuperSetSchemaAutoGenerationForReadComputeEnabled(superSetSchemaAutoGenerationForReadComputeEnabled);
     clonedStore.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
     clonedStore.setHybridStoreDiskQuotaEnabled(hybridStoreDiskQuotaEnabled);
     clonedStore.setEtlStoreConfig(etlStoreConfig);

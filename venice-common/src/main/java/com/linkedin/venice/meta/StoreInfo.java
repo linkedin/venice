@@ -45,7 +45,6 @@ public class StoreInfo {
     storeInfo.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
     storeInfo.setBackupStrategy(store.getBackupStrategy());
     storeInfo.setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
-    storeInfo.setSuperSetSchemaAutoGenerationForReadComputeEnabled(store.isSuperSetSchemaAutoGenerationForReadComputeEnabled());
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     storeInfo.setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     storeInfo.setEtlStoreConfig(store.getEtlStoreConfig());

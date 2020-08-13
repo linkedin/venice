@@ -86,7 +86,6 @@ public class ControllerApiConstants {
   public static final String BACKUP_STRATEGY = "backup_strategy";
 
   public static final String AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED = "auto_auto_register_for_pushjob_enabled";
-  public static final String AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED = "auto_superset_schema_register_for_read_compute_store_enabled";
 
   public static final String REGULAR_VERSION_ETL_ENABLED = "regular_version_etl_enabled";
 
