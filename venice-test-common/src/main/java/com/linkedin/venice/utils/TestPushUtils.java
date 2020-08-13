@@ -105,6 +105,26 @@ public class TestPushUtils {
       "  ] " +
       " } ";
 
+  public static final String NESTED_SCHEMA_STRING = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"nameRecord\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"firstName\", \"type\": \"string\", \"default\": \"\" },  " +
+      "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" }  " +
+      "  ]" +
+      " } ";
+
+  public static final String STRING_RECORD_SCHEMA_STRING = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"StringToRecord\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\"},  " +
+      "       { \"name\": \"name\", \"type\": " + NESTED_SCHEMA_STRING + " }  " +
+      "  ] " +
+      " } ";
+
   public static final String STRING_SCHEMA = "\"string\"";
 
   public static File getTempDataDirectory() {
@@ -212,6 +232,30 @@ public class TestPushUtils {
             writer.append(s2s);
           }
         });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToRecordSchema(File parentDir, boolean fileNameWithAvroSuffix) throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_string2record.avro";
+    } else {
+      fileName = "simple_string2record";
+    }
+    return writeAvroFile(parentDir, fileName, STRING_RECORD_SCHEMA_STRING,
+        (recordSchema, writer) -> {
+      Schema nameSchema = Schema.parse(NESTED_SCHEMA_STRING);
+      String firstName = "first_name_";
+      String lastName = "last_name_";
+      for (int i = 1; i <= 100; ++i) {
+        GenericRecord s2r = new GenericData.Record(recordSchema);
+        s2r.put("id", String.valueOf(i));
+        GenericRecord nameRecord = new GenericData.Record(nameSchema);
+        nameRecord.put("firstName", firstName + i);
+        nameRecord.put("lastName", lastName + i);
+        s2r.put("name", nameRecord);
+        writer.append(s2r);
+      }
+    });
   }
 
   /**
