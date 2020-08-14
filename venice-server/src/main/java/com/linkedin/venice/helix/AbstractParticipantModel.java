@@ -82,30 +82,35 @@ public abstract class AbstractParticipantModel extends StateModel {
 
   protected void executeStateTransition(Message message, NotificationContext context,
       Runnable handler) {
+    executeStateTransition(message, context, handler, false);
+  }
+
+  protected void executeStateTransition(Message message, NotificationContext context,
+      Runnable handler, boolean rollback) {
     String from = message.getFromState();
     String to = message.getToState();
-    logEntry(from, to, message, context);
+    logEntry(from, to, message, context, rollback);
     // Change name to indicate which st is occupied this thread.
     Thread.currentThread()
         .setName("Helix-ST-" + message.getResourceName() + "-" + partition + "-" + from + "->" + to);
     try {
       handler.run();
-      logCompletion(from, to, message, context);
+      logCompletion(from, to, message, context, rollback);
     } finally {
       // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
       Thread.currentThread().setName("Inactive ST thread.");
     }
   }
 
-  private void logEntry(String from, String to, Message message, NotificationContext context) {
-    logger.info(getStorePartitionDescription() + " initiating transition from " + from + " to " + to + " for resource: "
-        + getStoreConfig().getStoreName() + " Partition " + partition +
+  private void logEntry(String from, String to, Message message, NotificationContext context, boolean rollback) {
+    logger.info(getStorePartitionDescription() + " " + (rollback ? "rolling back" : "initiating") + " transition from "
+        + from + " to " + to + " for resource: " + getStoreConfig().getStoreName() + " Partition " + partition +
         " invoked with Message " + message + " and context " + context);
   }
 
-  private void logCompletion(String from, String to, Message message, NotificationContext context) {
-    logger.info(getStorePartitionDescription() + " completed transition from " + from + " to " + to + " for resource: "
-        + getStoreConfig().getStoreName() + " Partition " + partition +
+  private void logCompletion(String from, String to, Message message, NotificationContext context, boolean rollback) {
+    logger.info(getStorePartitionDescription() + " " + (rollback ? "rolled back" : "completed") + " transition from "
+        + from + " to " + to + " for resource: " + getStoreConfig().getStoreName() + " Partition " + partition +
         " invoked with Message " + message + " and context " + context);
   }
 
@@ -123,7 +128,8 @@ public abstract class AbstractParticipantModel extends StateModel {
        * be either recovered by bounce/Helix Reset or completely dropped after going through 'ERROR' to 'DROPPED' state transition.
        */
       stopConsumption();
-    });
+    },
+    true);
   }
 
   /**
