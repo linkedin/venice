@@ -129,6 +129,8 @@ public abstract class AbstractPushMonitor
               logger.info(
                   "Found a offline pushes could be terminated: " + offlinePushStatus.getKafkaTopic() + " status: " + status.getFirst());
               handleOfflinePushUpdate(offlinePushStatus, status.getFirst(), status.getSecond());
+            } else {
+              checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
             }
           } else {
             // In any case, we found the offline push status is STARTED, but the related version could not be found.

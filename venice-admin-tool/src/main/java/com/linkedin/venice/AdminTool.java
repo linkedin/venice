@@ -238,6 +238,7 @@ public class AdminTool {
           break;
         case ADD_DERIVED_SCHEMA:
           applyDerivedSchemaToStore(cmd);
+          break;
         case REMOVE_DERIVED_SCHEMA:
           removeDerivedSchema(cmd);
           break;
