@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutionException;
 
 import java.nio.charset.StandardCharsets;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.log4j.Logger;
@@ -98,7 +99,7 @@ public class ControllerTransport implements AutoCloseable {
   public <T extends ControllerResponse> T executeGet(String controllerUrl, String path, QueryParams params, Class<T> responseType, int timeoutMs)
       throws ExecutionException, TimeoutException {
     String encodedParams = URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
-    HttpGet request = new HttpGet(controllerUrl + "/" + path + "?" + encodedParams);
+    HttpGet request = new HttpGet(controllerUrl + "/" + StringUtils.stripStart(path, "/") + "?" + encodedParams);
     return executeRequest(request, responseType, timeoutMs);
   }
 
@@ -109,7 +110,7 @@ public class ControllerTransport implements AutoCloseable {
 
   public <T extends ControllerResponse> T executePost(String controllerUrl, String path, QueryParams params, Class<T> responseType, int timeoutMs)
       throws ExecutionException, TimeoutException {
-    HttpPost request = new HttpPost(controllerUrl + "/" + path);
+    HttpPost request = new HttpPost(controllerUrl + "/" + StringUtils.stripStart(path, "/"));
     try {
       request.setEntity(new UrlEncodedFormEntity(params.getNameValuePairs()));
     } catch (Exception e) {
