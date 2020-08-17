@@ -46,6 +46,7 @@ dependencies {
   implementation libraries.rocksdbjni
   implementation libraries.avroUtilFastserde
 
+  implementation project(':venice-consumer')
   implementation project(':venice-common')
   implementation project(':venice-controller')
   implementation (project(':venice-thin-client')) {

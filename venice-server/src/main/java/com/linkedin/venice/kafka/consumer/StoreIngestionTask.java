@@ -29,6 +29,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.kafka.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
@@ -150,7 +151,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
   /** Keeps track of every upstream producer this consumer task has seen so far. */
-  protected final Map<GUID, ProducerTracker> producerTrackerMap;
+  protected final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
   protected final AggStoreIngestionStats storeIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
@@ -159,7 +160,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final IngestionNotificationDispatcher notificationDispatcher;
   protected final Optional<ProducerTracker.DIVErrorMetricCallback> divErrorMetricCallback;
 
-  protected final Function<GUID, ProducerTracker> producerTrackerCreator;
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
 
@@ -282,7 +282,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.producerTrackerMap = new VeniceConcurrentHashMap<>();
+    this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManager = topicManager;
     this.cachedLatestOffsetGetter = new CachedLatestOffsetGetter(topicManager, storeConfig.getTopicOffsetCheckIntervalMs());
@@ -301,7 +301,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.notificationDispatcher = new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
 
     this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeName, versionNumber, e));
-    this.producerTrackerCreator = guid -> new ProducerTracker(guid, kafkaVersionTopic);
 
     this.diskUsage = diskUsage;
 
@@ -759,7 +758,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
          * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
          * hasn't been applied yet, when checkpointing happens in current thread; and you can check the returned
-         * {@link OffsetRecordTransformer} of {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)},
+         * {@link OffsetRecordTransformer} of {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)},
          * where `segment` could be changed by another message independent from current `offsetRecord`;
          */
         consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
@@ -926,9 +925,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // processConsumerActions.
       storageMetadataService.clearOffset(kafkaVersionTopic, partition);
       storageMetadataService.clearStoreVersionState(kafkaVersionTopic);
-      producerTrackerMap.values().forEach(
-          producerTracker -> producerTracker.clearPartition(partition)
-      );
+      kafkaDataIntegrityValidator.clearPartition(partition);
       throw e;
     }
   }
@@ -951,9 +948,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-              ProducerTracker producerTracker = producerTrackerMap.computeIfAbsent(producerGuid, producerTrackerCreator);
+              ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
               producerTracker.setPartitionState(partition, entry.getValue());
-              producerTrackerMap.put(producerGuid, producerTracker);
             }
         );
 
@@ -972,13 +968,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
         /**
          * Since the processing of the buffered messages are using {@link #partitionConsumptionStateMap} and
-         * {@link #producerTrackerMap}, we would like to drain all the buffered messages before cleaning up those
+         * {@link #kafkaDataValidationService}, we would like to drain all the buffered messages before cleaning up those
          * two variables to avoid the race condition.
          */
         partitionConsumptionStateMap.remove(partition);
-        producerTrackerMap.values().stream().forEach(
-            producerTracker -> producerTracker.clearPartition(partition)
-        );
+        kafkaDataIntegrityValidator.clearPartition(partition);
         break;
       case RESET_OFFSET:
         /**
@@ -1006,9 +1000,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);
         }
-        producerTrackerMap.values().stream().forEach(
-            producerTracker -> producerTracker.clearPartition(partition)
-        );
+        kafkaDataIntegrityValidator.clearPartition(partition);
         storageMetadataService.clearOffset(topic, partition);
         break;
       case KILL:
@@ -1160,7 +1152,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * The reason to transform the internal state only during checkpointing is that
      * the intermediate checksum generation is an expensive operation.
-     * See {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)}
+     * See {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)}
      * to find more details.
      */
     offsetRecord.transform();
@@ -1534,7 +1526,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * The reason to transform the internal state only during checkpointing is that
          * the intermediate checksum generation is an expensive operation.
-         * See {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)}
+         * See {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)}
          * to find more details.
          */
         offsetRecord.addOffsetRecordTransformer(kafkaValue.producerMetadata.producerGUID, offsetRecordTransformer.get());
@@ -1568,8 +1560,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private Optional<OffsetRecordTransformer> validateMessage(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean endOfPushReceived) {
-    final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
-    ProducerTracker producerTracker = producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerCreator);
     Optional<ProducerTracker.DIVErrorMetricCallback> errorCallback = divErrorMetricCallback;
     try {
       boolean tolerateMissingMessage = endOfPushReceived;
@@ -1580,11 +1570,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         errorCallback = Optional.empty();
         tolerateMissingMessage = true;
       }
-      return Optional.of(producerTracker.addMessage(consumerRecord, tolerateMissingMessage, errorCallback));
+      return Optional.of(kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, tolerateMissingMessage, errorCallback));
     } catch (FatalDataValidationException e) {
       /**
        * Check whether Kafka compaction is enabled in current topic.
-       * This function shouldn't be invoked very frequently since {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)}
+       * This function shouldn't be invoked very frequently since {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)}
        * will update the sequence id if it could tolerate the missing messages.
        *
        * If it is not this case, we need to revisit this logic since this operation is expensive.
@@ -1613,11 +1603,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else {
         /**
          * Verify the message again.
-         * The assumption here is that {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)}
+         * The assumption here is that {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)}
          * won't update the sequence id of the current segment if it couldn't tolerate missing messages.
          * In this case, no need to report error metric.
          */
-        return Optional.of(producerTracker.addMessage(consumerRecord, true, Optional.empty()));
+        return Optional.of(kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, true, Optional.empty()));
       }
     }
   }
