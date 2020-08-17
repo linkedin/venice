@@ -124,6 +124,14 @@ public enum ControllerRoute {
     return path;
   }
 
+  public boolean pathEquals(String uri) {
+    // strips slashes from beginning and end of passed in uri and does a string comparison
+    if(uri == null) {
+      return false;
+    }
+    return path.replaceAll("/", "").equals(uri.replaceAll("/", ""));
+  }
+
   public HttpMethod getHttpMethod() {
     return this.httpMethod;
   }

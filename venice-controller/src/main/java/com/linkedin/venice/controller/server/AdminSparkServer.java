@@ -112,7 +112,7 @@ public class AdminSparkServer extends AbstractVeniceService {
        *       cluster/master-controller discovery.
        */
       if (enforceSSL && !sslEnabled) {
-        if (!CLUSTER_DISCOVERY.getPath().equals(request.uri()) && !MASTER_CONTROLLER.getPath().equals(request.uri())) {
+        if (!CLUSTER_DISCOVERY.pathEquals(request.uri()) && !MASTER_CONTROLLER.pathEquals(request.uri())) {
           httpService.halt(403, "Access denied, Venice Controller has enforced SSL.");
         }
       }
@@ -291,11 +291,11 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   protected static void validateParams(Request request, List<String> requiredParams, Admin admin) {
     String clusterName = request.queryParams(CLUSTER);
-    if (Utils.isNullOrEmpty(clusterName) && !request.pathInfo().equals(CLUSTER_DISCOVERY.getPath())) {
+    if (Utils.isNullOrEmpty(clusterName) && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo())) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter");
     }
-    if (!request.pathInfo().equals(MASTER_CONTROLLER.getPath())
-        && !request.pathInfo().equals(CLUSTER_DISCOVERY.getPath()) && !admin.isMasterController(clusterName)) {
+    if (!MASTER_CONTROLLER.pathEquals(request.pathInfo())
+        && !CLUSTER_DISCOVERY.pathEquals(request.pathInfo()) && !admin.isMasterController(clusterName)) {
       // Skip master controller check for '/master_controller' and '/discover_cluster' request
       throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This controller " + Utils.getHostName() + " is not the active controller");
     }
