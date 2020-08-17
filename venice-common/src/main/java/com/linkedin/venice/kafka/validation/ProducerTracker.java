@@ -15,6 +15,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 
 import java.nio.ByteBuffer;
 import java.util.Date;
@@ -97,17 +98,13 @@ public class ProducerTracker {
    *         chances that a state change may be partially applied, which could cause weird bugs if it happened.
    * @throws DataValidationException
    */
-  public OffsetRecordTransformer addMessage(
+  public OffsetRecordTransformer validateMessageAndGetOffsetRecordTransformer(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean tolerateMissingMessage,
       Optional<DIVErrorMetricCallback> errorMetricCallback)
       throws DataValidationException {
 
-    Segment segment = trackSegment(consumerRecord, tolerateMissingMessage);
-    trackSequenceNumber(segment, consumerRecord, tolerateMissingMessage, errorMetricCallback);
-    // This is the last step, because we want failures in the previous steps to short-circuit execution.
-    trackCheckSum(segment, consumerRecord, tolerateMissingMessage, errorMetricCallback);
-    segment.setLastSuccessfulOffset(consumerRecord.offset());
+    Segment segment = validateMessage(consumerRecord, tolerateMissingMessage, errorMetricCallback);
 
     // We return a closure, so that it is the caller's responsibility to decide whether to execute the state change or not.
     return offsetRecord -> {
@@ -150,6 +147,18 @@ public class ProducerTracker {
     };
   }
 
+  protected Segment validateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+                                    boolean tolerateMissingMessage,
+                                    Optional<DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
+    Segment segment = trackSegment(consumerRecord, tolerateMissingMessage);
+    trackSequenceNumber(segment, consumerRecord, tolerateMissingMessage, errorMetricCallback);
+    // This is the last step, because we want failures in the previous steps to short-circuit execution.
+    trackCheckSum(segment, consumerRecord, tolerateMissingMessage, errorMetricCallback);
+    segment.setLastSuccessfulOffset(consumerRecord.offset());
+
+    return segment;
+  }
+
   /**
    * This function ensures that the segment number is either equal or greater than the previous segment
    * seen for this specific partition.
@@ -163,7 +172,7 @@ public class ProducerTracker {
    * @param consumerRecord
    * @throws DuplicateDataException if the incoming segment is lower than the previously seen segment.
    */
-  private Segment trackSegment(
+  protected Segment trackSegment(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean tolerateMissingMessage)
       throws DuplicateDataException {
@@ -283,7 +292,7 @@ public class ProducerTracker {
    * @throws MissingDataException if the incoming sequence number is greater than the previous sequence number + 1
    * @throws DuplicateDataException if the incoming sequence number is equal to or smaller than the previous sequence number
    */
-  private void trackSequenceNumber(
+  protected void trackSequenceNumber(
       Segment segment, ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean tolerateMissingMessage,
       Optional<DIVErrorMetricCallback> errorMetricCallback)
@@ -384,6 +393,65 @@ public class ProducerTracker {
           throw dataCorruptException;
         }
       }
+    }
+  }
+
+  /**
+   * This API is used for stateless DIV; it takes Kafka log compaction into consideration:
+   * i. If missing message happens for very old messages whose broker timestamps are older than the log compaction
+   *    delay threshold, it indicates that log compaction might already take place, so missing message is expected
+   *    and will be tolerated;
+   * ii. if the data are fresh and missing message is detected, error will be thrown.
+   *
+   * If "logCompactionDelayInMs" is not a positive number, it indicates there is no delay for Kafka log compaction,
+   * Kafka would compact message at any time for hybrid stores, so missing messages is expected; no error will be thrown.
+   *
+   * If "errorMetricCallback" is present, the callback will be triggered before throwing MISSING_MESSAGE exception;
+   * users can register their own callback to emit metrics, produce Kafka events, etc.
+   */
+  protected void validateSequenceNumber(
+      Segment segment,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      long logCompactionDelayInMs,
+      Optional<DIVErrorMetricCallback> errorMetricCallback)
+      throws MissingDataException {
+    int previousSequenceNumber = segment.getSequenceNumber();
+    int incomingSequenceNumber = consumerRecord.value().producerMetadata.messageSequenceNumber;
+
+    if (!segment.isStarted()) {
+      segment.start();
+      segment.setSequenceNumber(incomingSequenceNumber);
+      segment.setLastRecordTimestamp(consumerRecord.timestamp());
+    } else if (incomingSequenceNumber == previousSequenceNumber + 1) {
+      // Expected case, in steady state
+      segment.getAndIncrementSequenceNumber();
+      segment.setLastRecordTimestamp(consumerRecord.timestamp());
+    } else if (incomingSequenceNumber <= previousSequenceNumber) {
+      /**
+       * Duplicate message is acceptable, there is no data loss.
+       */
+      segment.setLastRecordTimestamp(consumerRecord.timestamp());
+    } else if (incomingSequenceNumber > previousSequenceNumber + 1) {
+      /**
+       * A gap is detected in sequence number. If the data are fresh, data are within the Kafka log compaction
+       * delay threshold, it indicates a clear data loss signal; if the broker timestamp of the data are older
+       * than the log compaction point, log compaction might delete the data before this message, so missing
+       * message is expected.
+       */
+      long lastRecordTimestamp = segment.getLastRecordTimestamp();
+      if (logCompactionDelayInMs > 0 && LatencyUtils.getElapsedTimeInMs(lastRecordTimestamp) < logCompactionDelayInMs) {
+        DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, consumerRecord);
+        logger.error("Encountered missing data message within the log compaction time window. Error msg:\n" + dataMissingException.getMessage());
+        if (errorMetricCallback.isPresent()) {
+          errorMetricCallback.get().execute(dataMissingException);
+        }
+        throw dataMissingException;
+      }
+      segment.setSequenceNumber(incomingSequenceNumber);
+      segment.setLastRecordTimestamp(consumerRecord.timestamp());
+    } else {
+      // Defensive coding, to prevent regressions in the above code from causing silent failures
+      throw new IllegalStateException("Unreachable code!");
     }
   }
 

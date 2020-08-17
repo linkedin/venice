@@ -103,7 +103,7 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
         getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
-    producerTracker.addMessage(controlMessageConsumerRecord, true, Optional.of(mockCallback));
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, Optional.of(mockCallback));
     verify(mockCallback, never()).execute(any());
 
     mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
@@ -114,7 +114,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
-    producerTracker.addMessage(firstConsumerRecord, true, Optional.of(mockCallback));
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, Optional.of(mockCallback));
 
     // Message with gap
     mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
@@ -125,7 +125,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> secondConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, secondMessageKey, secondMessage);
-    producerTracker.addMessage(secondConsumerRecord, true, Optional.of(mockCallback));
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(secondConsumerRecord, true, Optional.of(mockCallback));
     verify(mockCallback, times(1)).execute(any());
 
     // third message without gap
@@ -137,7 +137,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> thirdConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, thirdMessageKey, thirdMessage);
-    producerTracker.addMessage(thirdConsumerRecord, true, Optional.of(mockCallback));
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(thirdConsumerRecord, true, Optional.of(mockCallback));
     verify(mockCallback, never()).execute(any());
   }
 }

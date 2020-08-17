@@ -50,6 +50,7 @@ public class Segment {
   private boolean ended;
   private boolean finalSegment;
   private long lastSuccessfulOffset;
+  private long lastRecordTimestamp = -1;
 
   public Segment(
       int partition,
@@ -151,6 +152,14 @@ public class Segment {
 
   public void setLastSuccessfulOffset(long lastSuccessfulOffset) {
     this.lastSuccessfulOffset = lastSuccessfulOffset;
+  }
+
+  public long getLastRecordTimestamp() {
+    return lastRecordTimestamp;
+  }
+
+  public void setLastRecordTimestamp(long lastRecordTimestamp) {
+    this.lastRecordTimestamp = lastRecordTimestamp;
   }
 
   public void start() {
