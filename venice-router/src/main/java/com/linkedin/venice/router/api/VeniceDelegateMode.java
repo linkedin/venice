@@ -37,6 +37,25 @@ import javax.annotation.Nonnull;
 import static com.linkedin.venice.read.RequestType.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
+
+/**
+ * This class contains all the {@link ScatterGatherMode} being used in Venice Router.
+ * IMPORTANT!!!
+ * In {@link #scatter} function, only {@link RouterException} is expected, otherwise, the netty buffer leaking issue
+ * will happen.
+ * This vulnerability is related to DDS lib since {@link ScatterGatherMode#scatter} only catches {@link RouterException} to
+ * return the exceptional future, otherwise, that function will throw exception to miss the release operation in {@text com.linkedin.ddsstorage.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
+ * Here are the details:
+ * 1. If the current implementation of {@link #scatter} throws other exceptions than {@link RouterException}, {@link ScatterGatherMode#scatter}
+ *    will rethrow the exception instead of returning an exceptional future.
+ * 2. For long-tail retry, {@text com.linkedin.ddsstorage.router.ScatterGatherRequestHandlerImpl#prepareRetry} will retain the request
+ *    every time, and it will try to release the request in the handling function of "_scatterGatherHelper.scatter" in
+ *    {@text com.linkedin.ddsstorage.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
+ * 3. If #1 happens, the handling function mentioned in #2 won't be invoked, which means the release won't happen, and this
+ *    is causing the request leaking.
+ * TODO: maybe we should improve DDS lib to catch all kinds of exception in {@link ScatterGatherMode#scatter} to avoid
+ * this potential leaking issue.
+ */
 public class VeniceDelegateMode extends ScatterGatherMode {
   /**
    * This mode will initiate a request per partition, which is suitable for single-get, and it could be the default mode
@@ -430,7 +449,15 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           }
           keyPartitionSet.addKeyPartitions(entry.getValue(), partitionName);
         } else {
-          selectHostForPartition(partitionName, hosts, entry.getValue(), venicePath, hostMap, helixGroupNum, assignedHelixGroupId);
+          try {
+            selectHostForPartition(partitionName, hosts, entry.getValue(), venicePath, hostMap, helixGroupNum,
+                assignedHelixGroupId);
+          } catch (RouterException e) {
+            /**
+             * We don't want to throw exception here to fail the whole request since for streaming, partial scatter is acceptable.
+             */
+            scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), new TreeSet<>(entry.getValue()), partitionName));
+          }
         }
       }
 
@@ -559,11 +586,11 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
       if (selectedHost == null) {
         if (venicePath.isRetryRequest()) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(venicePath.getStoreName()),
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(venicePath.getStoreName()),
               Optional.of(venicePath.getRequestType()), SERVICE_UNAVAILABLE,
               "Retry request aborted! Could not find any healthy replica.", RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
         } else {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(venicePath.getStoreName()),
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(venicePath.getStoreName()),
               Optional.of(venicePath.getRequestType()), SERVICE_UNAVAILABLE,
               "Could not find any healthy replica.");
         }
@@ -616,7 +643,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
     }
 
-    throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(path.getStoreName()), Optional.of(path.getRequestType()),
+    throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(path.getStoreName()), Optional.of(path.getRequestType()),
         SERVICE_UNAVAILABLE, "Retry request aborted! Could not find any healthy replica.", RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
   }
 }

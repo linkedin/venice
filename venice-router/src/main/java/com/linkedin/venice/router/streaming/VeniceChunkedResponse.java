@@ -164,6 +164,29 @@ public class VeniceChunkedResponse {
     this.chunkedWriteHandler.setWriteMessageCallback(new WriteMessageCallbackImpl());
   }
 
+  private class StreamingCallbackOnlyFreeResponseOnSuccess<T> implements StreamingCallback<T> {
+    private final FullHttpResponse response;
+    private final ChannelPromise promise;
+    private StreamingCallbackOnlyFreeResponseOnSuccess(final FullHttpResponse response, final ChannelPromise promise) {
+      this.response = response;
+      this.promise = promise;
+    }
+
+    @Override
+    public void onCompletion(T result, Exception exception) {
+      if (null != exception) {
+        /**
+         * For failure scenario, we will allow {@link com.linkedin.ddsstorage.netty4.handlers.AsyncFullHttpRequestHandler#channelRead0}
+         * to release the message to avoid double free issue.
+         */
+        promise.setFailure(exception);
+      } else {
+        response.release();
+        promise.setSuccess();
+      }
+    }
+  }
+
   private class WriteMessageCallbackImpl implements VeniceChunkedWriteHandler.WriteMessageCallback {
 
     /**
@@ -196,8 +219,7 @@ public class VeniceChunkedResponse {
         return false;
       } else if (msg instanceof SuccessfulStreamingResponse) {
         // Full response to indicate that all the sub responses are good and handled
-        finish(promise);
-        ((SuccessfulStreamingResponse) msg).release();
+        finish(new StreamingCallbackOnlyFreeResponseOnSuccess<>(((SuccessfulStreamingResponse) msg), promise));
         return true;
       } else if (msg instanceof FullHttpResponse) {
         if (!responseMetadataWriteInitiated.get()) {
@@ -208,7 +230,7 @@ public class VeniceChunkedResponse {
         FullHttpResponse response = ((FullHttpResponse) msg);
         HttpResponseStatus status = response.status();
         if (! status.equals(HttpResponseStatus.OK)) {
-          finishWithError(response, promise);
+          finishWithError(response, new StreamingCallbackOnlyFreeResponseOnSuccess<>(response, promise));
           return true;
         } else {
           // Defensive code
@@ -325,8 +347,8 @@ public class VeniceChunkedResponse {
   /**
    * Finish the response without any error
    */
-  private void finish(ChannelPromise promise) {
-    Chunk lastChunk = new Chunk(EMPTY_BYTE_BUF, true, promise);
+  private void finish(StreamingCallback<Long> callback) {
+    Chunk lastChunk = new Chunk(EMPTY_BYTE_BUF, true, callback);
     if (maybeAddChunk(lastChunk)) {
       reportResponseSize();
       chunkedWriteHandler.resumeTransfer();
@@ -338,7 +360,7 @@ public class VeniceChunkedResponse {
   /**
    * Finish the response with an error
     */
-  private void finishWithError(FullHttpResponse errorResponse, ChannelPromise promise) {
+  private void finishWithError(FullHttpResponse errorResponse, StreamingCallback<Long> callback) {
     LOGGER.debug("Finishing the chunked transfer response with status: " + errorResponse.status());
 
     StreamingFooterRecordV1 footerRecord = new StreamingFooterRecordV1();
@@ -346,11 +368,6 @@ public class VeniceChunkedResponse {
     footerRecord.detail = errorResponse.content().nioBuffer();
     footerRecord.trailerHeaders = EMPTY_MAP;
     ByteBuffer footerByteBuffer = ByteBuffer.wrap(STREAMING_FOOTER_SERIALIZER.serialize(footerRecord));
-    /**
-     * After serialization, we don't need the original 'footerRecord' any more, since the serialization
-     * has already copied all the fields into a new byte array.
-     */
-    errorResponse.release();
 
     RequestType requestType = path.getRequestType();
     ByteBuf footerResponse;
@@ -371,7 +388,7 @@ public class VeniceChunkedResponse {
       return;
     }
 
-    Chunk lastChunk = new Chunk(footerResponse, true, promise);
+    Chunk lastChunk = new Chunk(footerResponse, true, callback);
 
     if (maybeAddChunk(lastChunk)) {
       reportResponseSize();
@@ -547,17 +564,6 @@ public class VeniceChunkedResponse {
     final long bytesToBeWritten;
     /** threshold to decide whether this chunk is done or not */
     final long writeCompleteThreshold;
-
-
-    public Chunk(ByteBuf buffer, boolean isLast, ChannelPromise promise) {
-      this(buffer, isLast, (result, exception) -> {
-        if (null != exception) {
-          promise.setFailure(exception);
-        } else {
-          promise.setSuccess();
-        }
-      });
-    }
 
     public Chunk(ByteBuf buffer, boolean isLast, StreamingCallback<Long> streamingCallback) {
       this.buffer = buffer;
