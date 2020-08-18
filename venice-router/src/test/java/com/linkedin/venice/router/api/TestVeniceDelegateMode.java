@@ -49,6 +49,10 @@ import static org.mockito.Mockito.*;
 public class TestVeniceDelegateMode {
 
   private VenicePath getVenicePath(String resourceName, RequestType requestType, List<RouterKey> keys) {
+    return getVenicePath(resourceName, requestType, keys, Collections.emptySet());
+  }
+
+  private VenicePath getVenicePath(String resourceName, RequestType requestType, List<RouterKey> keys, Set<String> slowStorageNodeSet) {
     return new VenicePath(resourceName, false, -1) {
       private final String ROUTER_REQUEST_VERSION = Integer.toString(
           ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
@@ -98,6 +102,11 @@ public class TestVeniceDelegateMode {
 
       public Collection<RouterKey> getPartitionKeys() {
         return keys;
+      }
+
+      @Override
+      public boolean canRequestStorageNode(String nodeId) {
+        return !slowStorageNodeSet.contains(nodeId);
       }
     };
   }
@@ -482,7 +491,7 @@ public class TestVeniceDelegateMode {
   }
 
   @Test
-  public void testScatterWitStreamingMultiGet() throws RouterException {
+  public void testScatterWithStreamingMultiGet() throws RouterException {
     String storeName = TestUtils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";
     RouterKey key1 = new RouterKey("key_1".getBytes());
@@ -611,6 +620,20 @@ public class TestVeniceDelegateMode {
 
     chosenHost = VeniceDelegateMode.avoidSlowHost(path, key, hosts);
     Assert.assertEquals(chosenHost, fastHost);
+
+    // When all the replicas are slow
+    VenicePath pathForAllSlowReplicas = mock(VenicePath.class);
+    doReturn("test_store").when(pathForAllSlowReplicas).getStoreName();
+    doReturn(RequestType.MULTI_GET).when(pathForAllSlowReplicas).getRequestType();
+    hosts.forEach(h -> doReturn(false).when(pathForAllSlowReplicas).canRequestStorageNode(h.getNodeId()));
+    try {
+      VeniceDelegateMode.avoidSlowHost(pathForAllSlowReplicas, key, hosts);
+      Assert.fail("RouterException is expected");
+    } catch (RouterException re) {
+      // expected
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception type: " + e.getClass().getSimpleName());
+    }
   }
 
   @Test
@@ -735,5 +758,18 @@ public class TestVeniceDelegateMode {
     instanceSet.clear();
     requests.stream().forEach(request -> instanceSet.add(request.getHosts().get(0)));
     Assert.assertTrue(instanceSet.contains(instance1) && instanceSet.contains(instance2));
+
+    // Test the scenario that all the replicas for a given partition are slow
+    // for partition 1, both instance1 and instance3 are slow
+    Set<String> slowStorageNodeSet = new HashSet<>();
+    slowStorageNodeSet.add(instance1.getNodeId());
+    slowStorageNodeSet.add(instance3.getNodeId());
+    VenicePath pathForAllSlowReplicas = getVenicePath(resourceName, RequestType.MULTI_GET_STREAMING, keys, slowStorageNodeSet);
+    scatter = new Scatter(pathForAllSlowReplicas, getPathParser(), VeniceRole.REPLICA);
+    finalScatter =
+        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+
+    requests = finalScatter.getOnlineRequests();
+    Assert.assertEquals(requests.size(), 1);
   }
 }
