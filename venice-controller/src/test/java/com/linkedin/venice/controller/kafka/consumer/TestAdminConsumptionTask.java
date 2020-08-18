@@ -322,6 +322,25 @@ public class TestAdminConsumptionTask {
   }
 
   @Test (timeOut = TIMEOUT)
+  public void testDelegateExceptionSetsFailingOffset() throws ExecutionException, InterruptedException, IOException {
+    long failingOffset = ((RecordMetadata) veniceWriter.put(
+        emptyKeyBytes, getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get()).offset();
+    AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
+    doThrow(StringIndexOutOfBoundsException.class).when(mockStats).recordAdminMessageDelegateLatency(anyDouble());
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, mockStats, 10000);
+    executor.submit(task);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(task.getFailingOffset(), failingOffset);
+    });
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test (timeOut = TIMEOUT)
   public void testConsumeFailedStats() throws IOException, InterruptedException {
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     veniceWriter.put(emptyKeyBytes,

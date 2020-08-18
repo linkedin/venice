@@ -223,13 +223,19 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           long executionId;
           try {
             executionId = delegateMessage(undelegatedRecords.peek());
-          } catch (DataValidationException e) {
+          } catch (DataValidationException dve) {
             // Very unlikely but DataValidationException could be thrown here.
             logger.error("Admin consumption task is blocked due to DataValidationException with offset "
-                + undelegatedRecords.peek().offset(), e);
+                + undelegatedRecords.peek().offset(), dve);
             failingOffset = undelegatedRecords.peek().offset();
             stats.recordFailedAdminConsumption();
             stats.recordAdminTopicDIVErrorReportCount();
+            break;
+          } catch (Exception e) {
+            logger.error("Admin consumption task is blocked due to Exception with offset "
+                + undelegatedRecords.peek().offset(), e);
+            failingOffset = undelegatedRecords.peek().offset();
+            stats.recordFailedAdminConsumption();
             break;
           }
           if (executionId == lastDelegatedExecutionId) {
