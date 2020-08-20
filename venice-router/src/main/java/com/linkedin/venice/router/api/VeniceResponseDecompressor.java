@@ -100,13 +100,14 @@ public class VeniceResponseDecompressor {
   }
 
   public FullHttpResponse processSingleGetResponse(FullHttpResponse response) {
-    if (response.status() != OK) {
-      return response;
-    }
-
     CompressionStrategy responseCompression = getResponseCompressionStrategy(response);
     if (canPassThroughResponse(responseCompression)) {
       // Decompress record on the client side if needed
+      return response;
+    }
+
+    if (response.status() != OK) {
+      response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
       return response;
     }
 
@@ -202,6 +203,9 @@ public class VeniceResponseDecompressor {
 
     for (FullHttpResponse response : responses) {
       if (response.status() != OK) {
+        if (!canPassThroughResponse(responseCompression)) {
+          response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+        }
         // Return error response directly for now.
         return response;
       }
@@ -244,6 +248,9 @@ public class VeniceResponseDecompressor {
          * client, and the ByteBuf will be released in the netty pipeline.
          */
         response.content().release();
+
+        // Content is already decompressed by service router above
+        responseCompression = CompressionStrategy.NO_OP;
       }
     }
 
@@ -255,8 +262,6 @@ public class VeniceResponseDecompressor {
        * Since all the overhead is introduced by the value compression, it might be fine to track them altogether.
        */
       stats.recordDecompressionTime(storeName, LatencyUtils.convertLatencyFromNSToMS(decompressionTimeInNs));
-      // Content is already decompressed by service router above
-      responseCompression = CompressionStrategy.NO_OP;
     }
 
     FullHttpResponse multiGetResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
