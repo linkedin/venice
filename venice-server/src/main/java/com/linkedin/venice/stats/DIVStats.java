@@ -25,6 +25,12 @@ public class DIVStats {
   private final Sensor producerBrokerLatencySensor;
   private final Sensor brokerConsumerLatencySensor;
   private final Sensor producerConsumerLatencySensor;
+  private final Sensor producerSourceBrokerLatencySensor;
+  private final Sensor sourceBrokerLeaderConsumerLatencySensor;
+  private final Sensor producerLeaderConsumerLatencySensor;
+  private final Sensor producerLocalBrokerLatencySensor;
+  private final Sensor localBrokerFollowerConsumerLatencySensor;
+  private final Sensor producerFollowerConsumerLatencySensor;
 
   private Avg producerBrokerLatencyAvgMs = new Avg();
   private Min producerBrokerLatencyMinMs = new Min();
@@ -35,6 +41,24 @@ public class DIVStats {
   private Avg producerConsumerLatencyAvgMs = new Avg();
   private Min producerConsumerLatencyMinMs = new Min();
   private Max producerConsumerLatencyMaxMs = new Max();
+  private Avg producerSourceBrokerLatencyAvgMs = new Avg();
+  private Min producerSourceBrokerLatencyMinMs = new Min();
+  private Max producerSourceBrokerLatencyMaxMs = new Max();
+  private Avg sourceBrokerLeaderConsumerLatencyAvgMs = new Avg();
+  private Min sourceBrokerLeaderConsumerLatencyMinMs = new Min();
+  private Max sourceBrokerLeaderConsumerLatencyMaxMs = new Max();
+  private Avg producerLeaderConsumerLatencyAvgMs = new Avg();
+  private Min producerLeaderConsumerLatencyMinMs = new Min();
+  private Max producerLeaderConsumerLatencyMaxMs = new Max();
+  private Avg producerLocalBrokerLatencyAvgMs = new Avg();
+  private Min producerLocalBrokerLatencyMinMs = new Min();
+  private Max producerLocalBrokerLatencyMaxMs = new Max();
+  private Avg localBrokerFollowerConsumerLatencyAvgMs = new Avg();
+  private Min localBrokerFollowerConsumerLatencyMinMs = new Min();
+  private Max localBrokerFollowerConsumerLatencyMaxMs = new Max();
+  private Avg producerFollowerConsumerLatencyAvgMs = new Avg();
+  private Min producerFollowerConsumerLatencyMinMs = new Min();
+  private Max producerFollowerConsumerLatencyMaxMs = new Max();
 
   private long benignLeaderOffsetRewindCount = 0;
   private long potentiallyLossyLeaderOffsetRewindCount = 0;
@@ -43,7 +67,7 @@ public class DIVStats {
   public DIVStats() {
     String sensorName = "producer_to_broker_latency";
     producerBrokerLatencySensor = localRepository.sensor(sensorName);
-    producerBrokerLatencySensor.add(sensorName+ producerBrokerLatencyAvgMs.getClass().getSimpleName(),
+    producerBrokerLatencySensor.add(sensorName + producerBrokerLatencyAvgMs.getClass().getSimpleName(),
         producerBrokerLatencyAvgMs);
     producerBrokerLatencySensor.add(sensorName + producerBrokerLatencyMaxMs.getClass().getSimpleName(),
         producerBrokerLatencyMaxMs);
@@ -67,6 +91,60 @@ public class DIVStats {
         producerConsumerLatencyMaxMs);
     producerConsumerLatencySensor.add(sensorName + producerConsumerLatencyMinMs.getClass().getSimpleName(),
         producerConsumerLatencyMinMs);
+
+    sensorName = "producer_to_source_broker_latency";
+    producerSourceBrokerLatencySensor = localRepository.sensor(sensorName);
+    producerSourceBrokerLatencySensor.add(sensorName + producerSourceBrokerLatencyAvgMs.getClass().getSimpleName(),
+        producerSourceBrokerLatencyAvgMs);
+    producerSourceBrokerLatencySensor.add(sensorName + producerSourceBrokerLatencyMaxMs.getClass().getSimpleName(),
+        producerSourceBrokerLatencyMaxMs);
+    producerSourceBrokerLatencySensor.add(sensorName + producerSourceBrokerLatencyMinMs.getClass().getSimpleName(),
+        producerSourceBrokerLatencyMinMs);
+
+    sensorName = "source_broker_to_leader_consumer_latency";
+    sourceBrokerLeaderConsumerLatencySensor = localRepository.sensor(sensorName);
+    sourceBrokerLeaderConsumerLatencySensor.add(sensorName + sourceBrokerLeaderConsumerLatencyAvgMs.getClass().getSimpleName(),
+        sourceBrokerLeaderConsumerLatencyAvgMs);
+    sourceBrokerLeaderConsumerLatencySensor.add(sensorName + sourceBrokerLeaderConsumerLatencyMaxMs.getClass().getSimpleName(),
+        sourceBrokerLeaderConsumerLatencyMaxMs);
+    sourceBrokerLeaderConsumerLatencySensor.add(sensorName + sourceBrokerLeaderConsumerLatencyMinMs.getClass().getSimpleName(),
+        sourceBrokerLeaderConsumerLatencyMinMs);
+
+    sensorName = "producer_to_leader_consumer_latency";
+    producerLeaderConsumerLatencySensor = localRepository.sensor(sensorName);
+    producerLeaderConsumerLatencySensor.add(sensorName + producerLeaderConsumerLatencyAvgMs.getClass().getSimpleName(),
+        producerLeaderConsumerLatencyAvgMs);
+    producerLeaderConsumerLatencySensor.add(sensorName + producerLeaderConsumerLatencyMaxMs.getClass().getSimpleName(),
+        producerLeaderConsumerLatencyMaxMs);
+    producerLeaderConsumerLatencySensor.add(sensorName + producerLeaderConsumerLatencyMinMs.getClass().getSimpleName(),
+        producerLeaderConsumerLatencyMinMs);
+
+    sensorName = "producer_to_local_broker_latency";
+    producerLocalBrokerLatencySensor = localRepository.sensor(sensorName);
+    producerLocalBrokerLatencySensor.add(sensorName + producerLocalBrokerLatencyAvgMs.getClass().getSimpleName(),
+        producerLocalBrokerLatencyAvgMs);
+    producerLocalBrokerLatencySensor.add(sensorName + producerLocalBrokerLatencyMaxMs.getClass().getSimpleName(),
+        producerLocalBrokerLatencyMaxMs);
+    producerLocalBrokerLatencySensor.add(sensorName + producerLocalBrokerLatencyMinMs.getClass().getSimpleName(),
+        producerLocalBrokerLatencyMinMs);
+
+    sensorName = "local_broker_to_follower_consumer_latency";
+    localBrokerFollowerConsumerLatencySensor = localRepository.sensor(sensorName);
+    localBrokerFollowerConsumerLatencySensor.add(sensorName + localBrokerFollowerConsumerLatencyAvgMs.getClass().getSimpleName(),
+        localBrokerFollowerConsumerLatencyAvgMs);
+    localBrokerFollowerConsumerLatencySensor.add(sensorName + localBrokerFollowerConsumerLatencyMaxMs.getClass().getSimpleName(),
+        localBrokerFollowerConsumerLatencyMaxMs);
+    localBrokerFollowerConsumerLatencySensor.add(sensorName + localBrokerFollowerConsumerLatencyMinMs.getClass().getSimpleName(),
+        localBrokerFollowerConsumerLatencyMinMs);
+
+    sensorName = "producer_to_follower_consumer_latency";
+    producerFollowerConsumerLatencySensor = localRepository.sensor(sensorName);
+    producerFollowerConsumerLatencySensor.add(sensorName + producerFollowerConsumerLatencyAvgMs.getClass().getSimpleName(),
+        producerFollowerConsumerLatencyAvgMs);
+    producerFollowerConsumerLatencySensor.add(sensorName + producerFollowerConsumerLatencyMaxMs.getClass().getSimpleName(),
+        producerFollowerConsumerLatencyMaxMs);
+    producerFollowerConsumerLatencySensor.add(sensorName + producerFollowerConsumerLatencyMinMs.getClass().getSimpleName(),
+        producerFollowerConsumerLatencyMinMs);
   }
 
   public long getDuplicateMsg() {
@@ -167,6 +245,102 @@ public class DIVStats {
 
   public void recordProducerConsumerLatencyMs(double value) {
     producerConsumerLatencySensor.record(value);
+  }
+
+  public double getProducerSourceBrokerLatencyAvgMs() {
+    return producerSourceBrokerLatencyAvgMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getProducerSourceBrokerLatencyMinMs() {
+    return producerSourceBrokerLatencyMinMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getProducerSourceBrokerLatencyMaxMs() {
+    return producerSourceBrokerLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public void recordProducerSourceBrokerLatencyMs(double value) {
+    producerSourceBrokerLatencySensor.record(value);
+  }
+
+  public double getSourceBrokerLeaderConsumerLatencyAvgMs() {
+    return sourceBrokerLeaderConsumerLatencyAvgMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getSourceBrokerLeaderConsumerLatencyMinMs() {
+    return sourceBrokerLeaderConsumerLatencyMinMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getSourceBrokerLeaderConsumerLatencyMaxMs() {
+    return sourceBrokerLeaderConsumerLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public void recordSourceBrokerLeaderConsumerLatencyMs(double value) {
+    sourceBrokerLeaderConsumerLatencySensor.record(value);
+  }
+
+  public double getProducerLeaderConsumerLatencyAvgMs() {
+    return producerLeaderConsumerLatencyAvgMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getProducerLeaderConsumerLatencyMinMs() {
+    return producerLeaderConsumerLatencyMinMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getProducerLeaderConsumerLatencyMaxMs() {
+    return producerLeaderConsumerLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public void recordProducerLeaderConsumerLatencyMs(double value) {
+    producerLeaderConsumerLatencySensor.record(value);
+  }
+
+  public double getProducerLocalBrokerLatencyAvgMs() {
+    return producerLocalBrokerLatencyAvgMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getProducerLocalBrokerLatencyMinMs() {
+    return producerLocalBrokerLatencyMinMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getProducerLocalBrokerLatencyMaxMs() {
+    return producerLocalBrokerLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public void recordProducerLocalBrokerLatencyMs(double value) {
+    producerLocalBrokerLatencySensor.record(value);
+  }
+
+  public double getLocalBrokerFollowerConsumerLatencyAvgMs() {
+    return localBrokerFollowerConsumerLatencyAvgMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getLocalBrokerFollowerConsumerLatencyMinMs() {
+    return localBrokerFollowerConsumerLatencyMinMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getLocalBrokerFollowerConsumerLatencyMaxMs() {
+    return localBrokerFollowerConsumerLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public void recordLocalBrokerFollowerConsumerLatencyMs(double value) {
+    localBrokerFollowerConsumerLatencySensor.record(value);
+  }
+
+  public double getProducerFollowerConsumerLatencyAvgMs() {
+    return producerFollowerConsumerLatencyAvgMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getProducerFollowerConsumerLatencyMinMs() {
+    return producerFollowerConsumerLatencyMinMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getProducerFollowerConsumerLatencyMaxMs() {
+    return producerFollowerConsumerLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public void recordProducerFollowerConsumerLatencyMs(double value) {
+    producerFollowerConsumerLatencySensor.record(value);
   }
 
   public void recordBenignLeaderOffsetRewind() {
