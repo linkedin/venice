@@ -991,6 +991,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return super.shouldProcessRecord(record);
   }
 
+  @Override
+  protected void recordWriterStats(long producerTimestampMs, long brokerTimestampMs, long consumerTimestampMs,
+      PartitionConsumptionState partitionConsumptionState) {
+    if (isNativeReplicationEnabled) {
+      // Emit latency metrics separately for leaders and followers
+      long producerBrokerLatencyMs = Math.max(brokerTimestampMs - producerTimestampMs, 0);
+      long brokerConsumerLatencyMs = Math.max(consumerTimestampMs - brokerTimestampMs, 0);
+      long producerConsumerLatencyMs = Math.max(consumerTimestampMs - producerTimestampMs, 0);
+      boolean isLeader = partitionConsumptionState.getLeaderState().equals(LEADER);
+      if (isLeader) {
+        versionedDIVStats.recordProducerSourceBrokerLatencyMs(storeName, versionNumber, producerBrokerLatencyMs);
+        versionedDIVStats.recordSourceBrokerLeaderConsumerLatencyMs(storeName, versionNumber, brokerConsumerLatencyMs);
+        versionedDIVStats.recordProducerLeaderConsumerLatencyMs(storeName, versionNumber, producerConsumerLatencyMs);
+      } else {
+        versionedDIVStats.recordProducerLocalBrokerLatencyMs(storeName, versionNumber, producerBrokerLatencyMs);
+        versionedDIVStats.recordLocalBrokerFollowerConsumerLatencyMs(storeName, versionNumber, brokerConsumerLatencyMs);
+        versionedDIVStats.recordProducerFollowerConsumerLatencyMs(storeName, versionNumber, producerConsumerLatencyMs);
+      }
+    } else {
+      super.recordWriterStats(producerTimestampMs, brokerTimestampMs, consumerTimestampMs, partitionConsumptionState);
+    }
+  }
+
   private void checkAndProduceToVersionTopic(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
     int partition = partitionConsumptionState.getPartition();
     long offset = partitionConsumptionState.getOffsetRecord().getOffset();

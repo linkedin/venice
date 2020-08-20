@@ -71,6 +71,36 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     getStats(storeName, version).recordProducerConsumerLatencyMs(value);
   }
 
+  public void recordProducerSourceBrokerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordProducerSourceBrokerLatencyMs(value);
+    getStats(storeName, version).recordProducerSourceBrokerLatencyMs(value);
+  }
+
+  public void recordSourceBrokerLeaderConsumerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordSourceBrokerLeaderConsumerLatencyMs(value);
+    getStats(storeName, version).recordSourceBrokerLeaderConsumerLatencyMs(value);
+  }
+
+  public void recordProducerLeaderConsumerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordProducerLeaderConsumerLatencyMs(value);
+    getStats(storeName, version).recordProducerLeaderConsumerLatencyMs(value);
+  }
+
+  public void recordProducerLocalBrokerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordProducerLocalBrokerLatencyMs(value);
+    getStats(storeName, version).recordProducerLocalBrokerLatencyMs(value);
+  }
+
+  public void recordLocalBrokerFollowerConsumerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordLocalBrokerFollowerConsumerLatencyMs(value);
+    getStats(storeName, version).recordLocalBrokerFollowerConsumerLatencyMs(value);
+  }
+
+  public void recordProducerFollowerConsumerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordProducerFollowerConsumerLatencyMs(value);
+    getStats(storeName, version).recordProducerFollowerConsumerLatencyMs(value);
+  }
+
   public void recordBenignLeaderOffsetRewind(String storeName, int version) {
     getTotalStats(storeName).recordBenignLeaderOffsetRewind();
     getStats(storeName, version).recordBenignLeaderOffsetRewind();

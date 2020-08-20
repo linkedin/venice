@@ -85,7 +85,6 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -1434,7 +1433,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     try {
       // Assumes the timestamp on the ConsumerRecord is the broker's timestamp when it received the message.
       recordWriterStats(kafkaValue.producerMetadata.messageTimestamp, consumerRecord.timestamp(),
-          System.currentTimeMillis());
+          System.currentTimeMillis(), partitionConsumptionState);
       FatalDataValidationException e = null;
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
       try {
@@ -1543,7 +1542,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return sizeOfPersistedData;
   }
 
-  private void recordWriterStats(long producerTimestampMs, long brokerTimestampMs, long consumerTimestampMs) {
+  protected void recordWriterStats(long producerTimestampMs, long brokerTimestampMs, long consumerTimestampMs,
+      PartitionConsumptionState partitionConsumptionState) {
     long producerBrokerLatencyMs = Math.max(brokerTimestampMs - producerTimestampMs, 0);
     long brokerConsumerLatencyMs = Math.max(consumerTimestampMs - brokerTimestampMs, 0);
     long producerConsumerLatencyMs = Math.max(consumerTimestampMs - producerTimestampMs, 0);
