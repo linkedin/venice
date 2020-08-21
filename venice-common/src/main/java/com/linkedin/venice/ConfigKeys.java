@@ -493,7 +493,7 @@ public class ConfigKeys {
 
   /**
    * This config is used to define the routing strategy for multi-key requests.
-   * Please check {@text VeniceMultiKeyRoutingStrategy} to find available routing strategy.
+   * Please check {@literal VeniceMultiKeyRoutingStrategy} to find available routing strategy.
    */
   public static final String ROUTER_MULTI_KEY_ROUTING_STRATEGY = "router.multi.key.routing.strategy";
 
@@ -502,6 +502,12 @@ public class ConfigKeys {
    * and {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#ZONE_FIELD_NAME_IN_DOMAIN}.
    */
   public static final String ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN = "router.helix.virtual.group.field.in.domain";
+
+  /**
+   * Helix group selection strategy when Helix assisted routing is enabled.
+   * Available strategies listed here: {@literal HelixGroupSelectionStrategyEnum}.
+   */
+  public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY = "router.helix.assisted.routing.group.selection.strategy";
 
   /**
    * The buffer we will add to the per storage node read quota. E.g 0.5 means 50% extra quota.
@@ -687,6 +693,13 @@ public class ConfigKeys {
    * If the connection warming takes longer than it, Router will put it in to serve online traffic by creating a new client without connection warming.
    */
   public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS  = "router.httpasyncclient.connection.warming.new.instance.delay.join.ms";
+
+  /**
+   * This config is used to control the socket timeout for connection warming requests.
+   * In some cases, we would like to have different(maybe longer timeout) than the regular requests considering the deployment procedure,
+   * and the connection warming requests could be very instensive.
+   */
+  public static final String ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS = "router.httpasyncclient.connection.warming.socket.timeout.ms";
 
   /**
    * Whether to enable async start in Router startup procedure.

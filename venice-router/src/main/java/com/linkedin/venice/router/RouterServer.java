@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.acl.RouterAclHandler;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
 import com.linkedin.venice.router.api.RouterKey;
@@ -136,6 +137,9 @@ public class RouterServer extends AbstractVeniceService {
   private HelixLiveInstanceMonitor liveInstanceMonitor;
   private PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder;
   private HelixInstanceConfigRepository instanceConfigRepository;
+  private HelixGroupSelector helixGroupSelector;
+  private VeniceResponseAggregator responseAggregator;
+  private TimeoutProcessor timeoutProcessor;
 
   // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
   private AsyncFuture<SocketAddress> serverFuture = null;
@@ -327,7 +331,7 @@ public class RouterServer extends AbstractVeniceService {
      *
      * Refer to more context on {@link VeniceRouterConfig#checkProperties(VeniceProperties)}
      */
-    TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry, true, 1);
+    timeoutProcessor = new TimeoutProcessor(registry, true, 1);
     Map<String, Object> serverSocketOptions = null;
 
     RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository);
@@ -466,6 +470,7 @@ public class RouterServer extends AbstractVeniceService {
       logger.info("Streaming is disabled in Router");
     }
 
+    responseAggregator = new VeniceResponseAggregator(routerStats);
     /**
      * No need to setup {@link com.linkedin.ddsstorage.router.api.HostHealthMonitor} here since
      * {@link VeniceHostFinder} will always do health check.
@@ -478,7 +483,7 @@ public class RouterServer extends AbstractVeniceService {
         .dispatchHandler(dispatcher)
         .scatterMode(scatterGatherMode)
         .responseAggregatorFactory(
-            new VeniceResponseAggregator(routerStats)
+            responseAggregator
             .withSingleGetTardyThreshold(config.getSingleGetTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
             .withMultiGetTardyThreshold(config.getMultiGetTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
             .withComputeTardyThreshold(config.getComputeTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
@@ -728,7 +733,10 @@ public class RouterServer extends AbstractVeniceService {
         instanceConfigRepository =
             new HelixInstanceConfigRepository(manager, config.isUseGroupFieldInHelixDomain());
         instanceConfigRepository.refresh();
-        scatterGatherMode.initInstanceConfigRepository(instanceConfigRepository);
+        helixGroupSelector = new HelixGroupSelector(metricsRepository, instanceConfigRepository, config.getHelixGroupSelectionStrategy(),
+            timeoutProcessor);
+        scatterGatherMode.initHelixGroupSelector(helixGroupSelector);
+        responseAggregator.initHelixGroupSelector(helixGroupSelector);
       }
       dispatcher.initReadRequestThrottler(throttler);
 

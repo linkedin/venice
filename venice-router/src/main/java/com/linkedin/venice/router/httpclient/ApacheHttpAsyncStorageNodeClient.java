@@ -36,8 +36,10 @@ import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.concurrent.FutureCallback;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.nio.protocol.BasicAsyncRequestProducer;
@@ -45,6 +47,7 @@ import org.apache.http.nio.protocol.BasicAsyncResponseConsumer;
 import org.apache.http.nio.protocol.HttpAsyncRequestProducer;
 import org.apache.http.nio.protocol.HttpAsyncResponseConsumer;
 import org.apache.http.pool.PoolStats;
+import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.log4j.Logger;
 
@@ -429,7 +432,12 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
       List<Future> connectionWarmupResponseFutures = new ArrayList<>(maxConnPerRoutePerClient);
       try {
         for (int cur = 0; cur < maxConnPerRoutePerClient; ++cur) {
-          Future responseFuture = client.execute(requestProducer, new BlockingAsyncResponseConsumer(latch, instanceUrl), dummyCallback);
+          HttpClientContext context = HttpClientContext.create();
+          RequestConfig.Builder requestConfigBuilder = RequestConfig.custom();
+          requestConfigBuilder.setSocketTimeout(routerConfig.getHttpasyncclientConnectionWarmingSocketTimeoutMs());
+          context.setRequestConfig(requestConfigBuilder.build());
+
+          Future responseFuture = client.execute(requestProducer, new BlockingAsyncResponseConsumer(latch, instanceUrl), context, dummyCallback);
           connectionWarmupResponseFutures.add(responseFuture);
           // To avoid overwhelming storage nodes
           Thread.sleep(connectionWarmingSleepIntervalMs);

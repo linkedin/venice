@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
@@ -14,6 +15,8 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
@@ -724,12 +727,15 @@ public class TestVeniceDelegateMode {
 
     HelixInstanceConfigRepository helixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
     // Two groups
-    doReturn(2).when(helixInstanceConfigRepository).getGroupNum();
+    doReturn(2).when(helixInstanceConfigRepository).getGroupCount();
     doReturn(0).when(helixInstanceConfigRepository).getInstanceGroupId(instance1.getNodeId());
     doReturn(0).when(helixInstanceConfigRepository).getInstanceGroupId(instance2.getNodeId());
     doReturn(1).when(helixInstanceConfigRepository).getInstanceGroupId(instance3.getNodeId());
     doReturn(1).when(helixInstanceConfigRepository).getInstanceGroupId(instance4.getNodeId());
-    scatterMode.initInstanceConfigRepository(helixInstanceConfigRepository);
+
+    HelixGroupSelector helixGroupSelector = new HelixGroupSelector(new MetricsRepository(), helixInstanceConfigRepository, HelixGroupSelectionStrategyEnum.ROUND_ROBIN,
+        mock(TimeoutProcessor.class));
+    scatterMode.initHelixGroupSelector(helixGroupSelector);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter =
         scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());

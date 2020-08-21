@@ -45,6 +45,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   // Response decompressor
   private Optional<VeniceResponseDecompressor> responseDecompressor = Optional.empty();
   private long requestId = -1;
+  private int helixGroupId = -1;
 
   public VenicePath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
     this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new SystemTime());
@@ -64,6 +65,14 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       requestId = REQUEST_ID_GENERATOR.getAndIncrement();
     }
     return requestId;
+  }
+
+  public int getHelixGroupId() {
+    return helixGroupId;
+  }
+
+  public void setHelixGroupId(int helixGroupId) {
+    this.helixGroupId = helixGroupId;
   }
 
   public boolean isSmartLongTailRetryEnabled() {
@@ -128,6 +137,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     this.responseDecompressor = originalPath.responseDecompressor;
 
     this.requestId = originalPath.getRequestId();
+    this.helixGroupId = originalPath.getHelixGroupId();
   }
 
   public boolean isRetryRequest() {
