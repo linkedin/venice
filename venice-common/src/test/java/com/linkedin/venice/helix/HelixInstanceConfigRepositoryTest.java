@@ -1,7 +1,6 @@
 package com.linkedin.venice.helix;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -52,7 +51,7 @@ public class HelixInstanceConfigRepositoryTest {
     HelixInstanceConfigRepository repo1 = new HelixInstanceConfigRepository(mock(SafeHelixManager.class), true);
     repo1.refresh();
     repo1.onInstanceConfigChange(instanceConfigs1, null);
-    Assert.assertEquals(repo1.getGroupNum(), 3);
+    Assert.assertEquals(repo1.getGroupCount(), 3);
     Assert.assertEquals(repo1.getInstanceGroupId(nodeId1), 0);
     Assert.assertEquals(repo1.getInstanceGroupId(nodeId2), 1);
     Assert.assertEquals(repo1.getInstanceGroupId(nodeId3), 2);

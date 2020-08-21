@@ -3,6 +3,7 @@ package com.linkedin.venice.router;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.cache.CacheEviction;
 import com.linkedin.venice.router.cache.CacheType;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
@@ -17,6 +18,7 @@ import org.apache.log4j.Logger;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.helix.HelixInstanceConfigRepository.*;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.*;
 
 
 /**
@@ -100,6 +102,7 @@ public class VeniceRouterConfig {
   private int httpasyncclientConnectionWarmingLowWaterMark;
   private int httpasyncclientConnectionWarmingExecutorThreadNum;
   private long httpasyncclientConnectionWarmingNewInstanceDelayJoinMs;
+  private int httpasyncclientConnectionWarmingSocketTimeoutMs;
   private boolean asyncStartEnabled;
   private boolean earlyThrottleEnabled;
   private long routerQuotaCheckWindow;
@@ -109,6 +112,7 @@ public class VeniceRouterConfig {
   private boolean leastLoadedHostSelectionEnabled;
   private boolean useGroupFieldInHelixDomain;
   private VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
+  private HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -232,6 +236,7 @@ public class VeniceRouterConfig {
     httpasyncclientConnectionWarmingLowWaterMark = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 60);
     httpasyncclientConnectionWarmingExecutorThreadNum = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM, 6); // 6 threads
     httpasyncclientConnectionWarmingNewInstanceDelayJoinMs = props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS, TimeUnit.MINUTES.toMillis(2)); // 2 mins
+    httpasyncclientConnectionWarmingSocketTimeoutMs = props.getInt(ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS, 5000); // 5 seconds
     asyncStartEnabled = props.getBoolean(ROUTER_ASYNC_START_ENABLED, false);
 
     maxRouterReadCapacityCu = props.getLong(ROUTER_MAX_READ_CAPACITY, 6000);
@@ -257,6 +262,13 @@ public class VeniceRouterConfig {
     } catch (Exception e) {
       throw new VeniceException("Invalid " + ROUTER_MULTI_KEY_ROUTING_STRATEGY + " config: " + multiKeyRoutingStrategyStr +
           ", and allowed values: " + Arrays.toString(VeniceMultiKeyRoutingStrategy.values()));
+    }
+    String helixGroupSelectionStrategyStr = props.getString(ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY, LEAST_LOADED.name());
+    try {
+      helixGroupSelectionStrategy = HelixGroupSelectionStrategyEnum.valueOf(helixGroupSelectionStrategyStr);
+    } catch (Exception e) {
+      throw new VeniceException("Invalid " + ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY + " config: " + helixGroupSelectionStrategyStr +
+          ", and allowed values: " + Arrays.toString(HelixGroupSelectionStrategyEnum.values()));
     }
   }
 
@@ -559,6 +571,10 @@ public class VeniceRouterConfig {
     return httpasyncclientConnectionWarmingNewInstanceDelayJoinMs;
   }
 
+  public int getHttpasyncclientConnectionWarmingSocketTimeoutMs() {
+    return httpasyncclientConnectionWarmingSocketTimeoutMs;
+  }
+
   public boolean isAsyncStartEnabled() {
     return asyncStartEnabled;
   }
@@ -591,6 +607,10 @@ public class VeniceRouterConfig {
 
   public VeniceMultiKeyRoutingStrategy getMultiKeyRoutingStrategy() {
     return multiKeyRoutingStrategy;
+  }
+
+  public HelixGroupSelectionStrategyEnum getHelixGroupSelectionStrategy() {
+    return helixGroupSelectionStrategy;
   }
 
   /**

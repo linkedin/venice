@@ -10,6 +10,7 @@ import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.SuccessfulStreamingResponse;
@@ -42,6 +43,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
+  private HelixGroupSelector helixGroupSelector;
+
   private static final RecordSerializer<MultiGetResponseRecordV1> recordSerializer =
       SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);;
   private static final RecordDeserializer<MultiGetResponseRecordV1> recordDeserializer =
@@ -69,6 +72,14 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   public VeniceResponseAggregator withComputeTardyThreshold(long timeout, TimeUnit unit) {
     this.computeTardyThresholdInMs = unit.toMillis(timeout);
     return this;
+  }
+
+  public void initHelixGroupSelector(HelixGroupSelector helixGroupSelector) {
+    if (this.helixGroupSelector != null) {
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
+          "HelixGroupSelector has already been initialized before, and no further update expected!");
+    }
+    this.helixGroupSelector = helixGroupSelector;
   }
 
   @Nonnull
@@ -114,6 +125,15 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
     // TODO: Need to investigate if any of the early terminations above could cause the in-flight request sensor to "leak"
 
+    /**
+     * Decrease the group counter in the following conditions:
+     * 1. The request is an original request (not retry requests).
+     * 2. {@link #helixGroupSelector} is not null.
+     * 3. HelixGroupId is valid since Helix-assisted routing is only enabled for multi-key request.
+      */
+    if (!venicePath.isRetryRequest() && helixGroupSelector != null && venicePath.getHelixGroupId() >= 0) {
+      helixGroupSelector.finishRequest(venicePath.getRequestId(), venicePath.getHelixGroupId());
+    }
     RequestType requestType = venicePath.getRequestType();
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
     String storeName = venicePath.getStoreName();

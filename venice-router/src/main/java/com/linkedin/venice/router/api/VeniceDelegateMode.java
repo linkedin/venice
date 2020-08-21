@@ -11,11 +11,11 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherMode;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
@@ -94,7 +94,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private RouterThrottler readRequestThrottler;
   private RouteHttpRequestStats routeHttpRequestStats;
 
-  private HelixInstanceConfigRepository instanceConfigRepository;
+  private HelixGroupSelector helixGroupSelector;
 
   private final boolean stickyRoutingEnabledForSingleGet;
   private final boolean isLeastLoadedHostEnabled;
@@ -135,12 +135,12 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     this.readRequestThrottler = requestThrottler;
   }
 
-  public void initInstanceConfigRepository(HelixInstanceConfigRepository instanceConfigRepository) {
-    if (null != this.instanceConfigRepository) {
+  public void initHelixGroupSelector(HelixGroupSelector helixGroupSelector) {
+    if (null != this.helixGroupSelector) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
-          "HelixInstanceConfigRepository has already been initialized before, and no further update expected!");
+          "HelixGroupSelector has already been initialized before, and no further update expected!");
     }
-    this.instanceConfigRepository = instanceConfigRepository;
+    this.helixGroupSelector = helixGroupSelector;
   }
 
   @Nonnull
@@ -153,9 +153,9 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
           "Read request throttler has not been setup yet");
     }
-    if (multiKeyRoutingStrategy.equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING) && null == instanceConfigRepository) {
+    if (multiKeyRoutingStrategy.equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING) && null == helixGroupSelector) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
-          "HelixInstanceConfigRepository has not been setup yet");
+          "HelixGroupSelector has not been setup yet");
     }
     P path = scatter.getPath();
     if (!  (path instanceof VenicePath)) {
@@ -537,19 +537,19 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
     @Override
     protected Optional<Integer> getHelixGroupNum() {
-      return Optional.of(instanceConfigRepository.getGroupNum());
+      return Optional.of(helixGroupSelector.getGroupCount());
     }
 
     @Override
     protected Optional<Integer> getAssignedHelixGroupId(VenicePath venicePath) {
-      long requestId = venicePath.getRequestId();
-      int groupNum = getHelixGroupNum().get();
-      int assignedGroupId = 0;
-      if (groupNum > 0) {
-        assignedGroupId = (int) (requestId % groupNum);
+      if (!venicePath.isRetryRequest()) {
+        /**
+         * This function only needs to assign a group id to the original Router request, and all the retried requests
+         * will share the same group id as the original Router request.
+         */
+        venicePath.setHelixGroupId(helixGroupSelector.selectGroup(venicePath.getRequestId(), getHelixGroupNum().get()));
       }
-
-      return Optional.of(assignedGroupId);
+      return Optional.of(venicePath.getHelixGroupId());
     }
 
     @Override
@@ -571,7 +571,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           // Skip the slow host
           continue;
         }
-        int currentGroupId = instanceConfigRepository.getInstanceGroupId(nodeId);
+        int currentGroupId = helixGroupSelector.getInstanceGroupId(nodeId);
         if (assignedGroupId == currentGroupId) {
           selectedHost = host;
           break;
