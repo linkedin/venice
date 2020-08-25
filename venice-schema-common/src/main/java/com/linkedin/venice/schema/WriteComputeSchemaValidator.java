@@ -39,6 +39,10 @@ public class WriteComputeSchemaValidator {
 
   private static boolean validateRecord(Schema originalSchema, Schema writeComputeSchema) {
     if (writeComputeSchema.getType() != RECORD) {
+      //If writeComputeSchema is a union type and contains DelOp, recurse on initial record
+      if (writeComputeSchema.getType() == UNION && writeComputeSchema.getTypes().get(1).getName().equals(DEL_OP.name)) {
+        return validateSchema(originalSchema, writeComputeSchema.getTypes().get(0));
+      }
       return false;
     }
 

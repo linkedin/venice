@@ -44,6 +44,22 @@ public class testWriteComputeAdapter {
       "  } ]\n" +
       "}";
 
+
+  private String simpleRecordSchemaStr = "{\n" +
+      "  \"type\" : \"record\",\n" +
+      "  \"name\" : \"simpleTestRecord\",\n" +
+      "  \"namespace\" : \"com.linkedin.avro\",\n" +
+      "  \"fields\" : [ {\n" +
+      "    \"name\" : \"field1\",\n" +
+      "    \"type\" : \"int\",\n" +
+      "    \"default\" : 0\n" +
+      "  }, {\n" +
+      "    \"name\" : \"field2\",\n" +
+      "    \"type\" : \"int\",\n" +
+      "    \"default\" : 0\n" +
+      " } ]\n" +
+      "}";
+
   @Test
   public void testCanUpdateArray() {
     Schema arraySchema = Schema.createArray(Schema.create(INT));
@@ -138,11 +154,11 @@ public class testWriteComputeAdapter {
     originalRecord.put("hasNext", true);
 
     //construct write compute operation record
-    Schema noOpSchema = recordWriteComputeSchema.getField("hits").schema().getTypes().get(0);
+    Schema noOpSchema = recordWriteComputeSchema.getTypes().get(0).getField("hits").schema().getTypes().get(0);
     GenericData.Record noOpRecord = new GenericData.Record(noOpSchema);
 
     //update "hasNext" to false
-    GenericData.Record recordUpdateRecord = new GenericData.Record(recordWriteComputeSchema);
+    GenericData.Record recordUpdateRecord = new GenericData.Record(recordWriteComputeSchema.getTypes().get(0));
     recordUpdateRecord.put("hits", noOpRecord);
     recordUpdateRecord.put("hasNext", true);
 
@@ -174,4 +190,26 @@ public class testWriteComputeAdapter {
     result = recordAdapter.updateRecord(null, recordUpdateRecord);
     Assert.assertEquals(((GenericData.Record)result).get("hasNext"), false);
   }
+
+  @Test
+  public void testCanDeleteFullRecord() {
+    Schema recordSchema = Schema.parse(simpleRecordSchemaStr);
+    Schema recordWriteComputeSchema = WriteComputeSchemaAdapter.parse(recordSchema);
+
+    WriteComputeAdapter recordAdapter =
+        WriteComputeAdapter.getWriteComputeAdapter(recordSchema, recordWriteComputeSchema);
+
+    //construct original record
+    GenericData.Record originalRecord = new GenericData.Record(recordSchema);
+    originalRecord.put("field1", 0);
+    originalRecord.put("field2", 1);
+
+    //construct write compute operation record
+    Schema deleteSchema = recordWriteComputeSchema.getTypes().get(1);
+    GenericData.Record deleteRecord = new GenericData.Record(deleteSchema);
+
+    Object result = recordAdapter.updateRecord(originalRecord, deleteRecord);
+    Assert.assertEquals(result, null);
+  }
+
 }

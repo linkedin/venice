@@ -4,6 +4,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -11,6 +12,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;
@@ -648,6 +650,14 @@ public class TestPushUtils {
         "test@linkedin.com", keySchemaStr, valueSchemaStr));
 
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    // Generate write compute schema
+    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(valueSchemaStr);
+    SchemaResponse derivedValueSchemaResponse = controllerClient.retryableRequest(5,
+        c -> c.addDerivedSchema(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), +1,
+            writeComputeSchema.toString()));
+
+    Assert.assertFalse(derivedValueSchemaResponse.isError(), "The DerivedValueSchemaResponse returned an error: " + derivedValueSchemaResponse.getError());
 
     ControllerResponse controllerResponse = controllerClient.retryableRequest(5, c -> c.updateStore(
         props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));

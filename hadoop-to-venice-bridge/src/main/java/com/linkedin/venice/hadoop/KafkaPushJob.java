@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -159,6 +160,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public static final String VENICE_MAP_ONLY = "venice.map.only";
 
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
+  public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";
   public static final String KAFKA_URL_PROP = "venice.kafka.url";
   public static final String TOPIC_PROP = "venice.kafka.topic";
 
@@ -298,6 +300,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   protected class SchemaInfo {
     boolean isAvro = true;
     int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
+    int derivedSchemaId = -1;
     String keyField;
     String valueField;
     String fileSchemaString;
@@ -966,9 +969,16 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private void validateValueSchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo,
       boolean schemaAutoRegisteFromPushJobEnabled) {
     logger.info("Validating value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
-    SchemaResponse valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
-        c.getValueSchemaID(setting.storeName, schemaInfo.valueSchemaString));
 
+    SchemaResponse valueSchemaResponse;
+
+    if (setting.enableWriteCompute) {
+      valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
+          c.getValueOrDerivedSchemaId(setting.storeName, schemaInfo.valueSchemaString));
+    } else {
+      valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
+          c.getValueSchemaID(setting.storeName, schemaInfo.valueSchemaString));
+    }
     if (valueSchemaResponse.isError() && !schemaAutoRegisteFromPushJobEnabled) {
       throw new VeniceException("Failed to validate value schema for store: " + setting.storeName
           + "\nError from the server: " + valueSchemaResponse.getError()
@@ -989,7 +999,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         }
       }
     }
+
     schemaInfo.valueSchemaId = valueSchemaResponse.getId();
+    if (setting.enableWriteCompute) {
+      schemaInfo.derivedSchemaId = valueSchemaResponse.getDerivedSchemaId();
+    }
+
     logger.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
   }
 
@@ -1392,6 +1407,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
 
     conf.setInt(VALUE_SCHEMA_ID_PROP, schemaInfo.valueSchemaId);
+    conf.setInt(DERIVED_SCHEMA_ID_PROP, schemaInfo.derivedSchemaId);
+    conf.setBoolean(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
 
     if (System.getenv(HADOOP_TOKEN_FILE_LOCATION) != null) {
       conf.set(MAPREDUCE_JOB_CREDENTIALS_BINARY, System.getenv(HADOOP_TOKEN_FILE_LOCATION));
