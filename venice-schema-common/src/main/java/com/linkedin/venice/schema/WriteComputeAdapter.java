@@ -82,6 +82,15 @@ public class WriteComputeAdapter {
       originalRecord = constructNewRecord(originalSchema);
     }
 
+    if (originalSchema.getType() == Schema.Type.RECORD && writeComputeSchema.getType() == Schema.Type.UNION) {
+      //if DEL_OP is in writeComputeRecord, return empty record
+      if (writeComputeRecord.getSchema().getName().equals(DEL_OP.name)) {
+        return null;
+      } else {
+        return updateRecord(originalSchema, writeComputeSchema.getTypes().get(0), originalRecord, writeComputeRecord);
+      }
+    }
+
 
     for (Schema.Field field : originalSchema.getFields()) {
       String fieldName = field.name();

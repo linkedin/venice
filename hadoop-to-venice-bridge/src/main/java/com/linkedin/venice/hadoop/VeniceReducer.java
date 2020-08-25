@@ -73,6 +73,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private int valueSchemaId = -1;
+  private int derivedValueSchemaId = -1;
+  private boolean enableWriteCompute = false;
 
   private VeniceProperties props;
   private JobID mapReduceJobId;
@@ -165,7 +167,11 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     }
 
     try {
-      veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
+      if (enableWriteCompute && derivedValueSchemaId > 0) {
+        veniceWriter.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
+      } else {
+        veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
+      }
     } catch (VeniceException e) {
       if (e.getMessage().contains("do not have permission to write")) {
         reporter.incrCounter(COUNTER_GROUP_KAFKA, AUTHORIZATION_FAILURES, 1);
@@ -244,6 +250,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
     prepushStorageQuotaCheck(job, props.getLong(STORAGE_QUOTA_PROP), props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO));
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
+    this.derivedValueSchemaId = props.getInt(DERIVED_SCHEMA_ID_PROP);
+    this.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE);
     this.minimumLoggingIntervalInMS = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
 
     if (checkDupKey) {

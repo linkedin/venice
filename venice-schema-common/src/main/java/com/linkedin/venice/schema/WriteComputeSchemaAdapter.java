@@ -63,7 +63,16 @@ public class WriteComputeSchemaAdapter {
     MAP_OPS("MapOps", new Function[] {
         schema -> new Field(MAP_UNION, (Schema) schema, null, OBJECT_NODE),
         schema -> new Field(MAP_DIFF, Schema.createArray(Schema.create(Schema.Type.STRING)), null, ARRAY_NODE)
-    });
+    }),
+
+    /**
+     * Marked to remove a record completely. This is used when returning writeComputeSchema with
+     * a RECORD type. The returned schema is a union of the record type and a delete operation
+     * record.
+     *
+     * Note: This is only used for non-nested records.
+     */
+    DEL_OP("DelOp");
 
     //a name that meets class naming convention
     final String name;
@@ -123,7 +132,8 @@ public class WriteComputeSchemaAdapter {
       name = schema.getName() + WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX;
     }
 
-    return parse(schema, name, null);
+    WriteComputeSchemaAdapter adapter = new WriteComputeSchemaAdapter();
+    return adapter.wrapDelOpUnion(parse(schema, name, null));
   }
 
   /**
@@ -383,6 +393,26 @@ public class WriteComputeSchemaAdapter {
     return createFlattenedUnion(list);
   }
 
+  /**
+   * Wrap up schema with DelOp record into a union. The origin schema
+   * must be a record schema
+   * @param schema
+   * @return an union schema that contains all schemas in the list plus Noop record
+   */
+  private Schema wrapDelOpUnion(Schema schema) {
+    if (schema.getType() != RECORD) {
+      throw new VeniceException("Can only wrap delete around RECORD schema types. The current schema is not of type RECORD");
+    }
+
+    LinkedList<Schema> list = new LinkedList<>();
+    list.add(schema);
+    list.add(getDelOpOperation(schema.getNamespace()));
+
+    return createFlattenedUnion(list);
+  }
+
+
+
   private Schema createFlattenedUnion(List<Schema> schemaList) {
     List<Schema> flattenedSchemaList = new ArrayList<>();
     for (Schema schema : schemaList) {
@@ -421,5 +451,15 @@ public class WriteComputeSchemaAdapter {
     noOpSchema.setFields(Collections.EMPTY_LIST);
 
     return noOpSchema;
+  }
+
+  public Schema getDelOpOperation(String namespace) {
+    Schema delOpSchema = Schema.createRecord(DEL_OP.getName(), null, namespace, false);
+
+    //Avro requires every record to have a list of fields even if it's empty... Otherwise, NPE
+    //will be thrown out during parsing the schema.
+    delOpSchema.setFields(Collections.EMPTY_LIST);
+
+    return delOpSchema;
   }
 }
