@@ -39,6 +39,16 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private final int smartLongTailRetryAbortThresholdMs;
   private long originalRequestStartTs = -1;
   private int longTailRetryThresholdMs = Integer.MAX_VALUE;
+  /**
+   * This slow storage node set, which will be decided by the scattered requests of the original request.
+   * And this set is mostly used to decide whether we should send retry request to any specific storage node or not.
+   *
+   * The detailed steps:
+   * 1. Add all the storage nodes which the original scattered request will be sent to to the set.
+   * 2. Remove the storage node from the set if the corresponding request is finished.
+   * When retry happens, the set will contain the storage nodes, which haven't finished the original scattered requests,
+   * which will be treated as slow storage nodes, and Router will try to avoid retry requests to the storage nodes from this set.
+   */
   private Set<String> slowStorageNodeSet = new ConcurrentSet<>();
   // Whether the request supports streaming or not
   private Optional<VeniceChunkedResponse> chunkedResponse = Optional.empty();
@@ -160,20 +170,27 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     this.longTailRetryThresholdMs = longTailRetryThresholdMs;
   }
 
-  private void addSlowStorageNode(String slowStorageNode) {
-    slowStorageNodeSet.add(slowStorageNode);
+  public void requestStorageNode(String storageNode) {
+    if (!isRetryRequest()) {
+      /**
+       * Only make decision based on the original request.
+       */
+      slowStorageNodeSet.add(storageNode);
+    }
   }
 
-  private boolean isStorageNodeSlow(String storageNode) {
-    return slowStorageNodeSet.contains(storageNode);
+  public void markStorageNodeAsFast(String fastStorageNode) {
+    if (!isRetryRequest()) {
+      /**
+       * Only make decision based on the original request.
+       */
+      slowStorageNodeSet.remove(fastStorageNode);
+    }
   }
 
   /**
    * This function is used to check whether Router could send retry request to the specified storage node.
    * It will return false if the requested storage node has been marked as slow.
-   *
-   * If the current request is not a retry request, this function will add the passed storage node to
-   * the slow storage node set.
    *
    * @param storageNode
    * @return
@@ -182,14 +199,9 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     if (!smartLongTailRetryEnabled) {
       return true;
     }
-    if (isRetryRequest()) {
-      if (isStorageNodeSlow(storageNode)) {
-        return false;
-      }
-    } else {
-      addSlowStorageNode(storageNode);
-    }
-    return true;
+    boolean isRetryRequest = isRetryRequest();
+    return !isRetryRequest || // original request
+        isRetryRequest && !slowStorageNodeSet.contains(storageNode); // retry request
   }
 
   public void recordOriginalRequestStartTimestamp() {
@@ -269,10 +281,6 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public boolean isStreamingRequest() {
     return getChunkedResponse().isPresent();
-  }
-
-  public void markStorageNodeAsFast(String fastStorageNode) {
-    slowStorageNodeSet.remove(fastStorageNode);
   }
 
   public boolean isLongTailRetryAllowedForNewRoute() {
