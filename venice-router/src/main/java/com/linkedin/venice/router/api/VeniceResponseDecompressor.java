@@ -248,10 +248,12 @@ public class VeniceResponseDecompressor {
          * client, and the ByteBuf will be released in the netty pipeline.
          */
         response.content().release();
-
-        // Content is already decompressed by service router above
-        responseCompression = CompressionStrategy.NO_OP;
       }
+    }
+
+    if (!canPassThroughResponse(responseCompression)) {
+      // Content is already decompressed by service router above
+      responseCompression = CompressionStrategy.NO_OP;
     }
 
     if (decompressedSize > 0) {
