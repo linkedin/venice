@@ -71,6 +71,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long backupVersionDefaultRetentionMs;
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean enforceSSLOnly;
+  private final long terminalStateTopicCheckerDelayMs;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -160,6 +161,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
      */
     this.backupVersionRetentionBasedCleanupEnabled = false;
     this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure routes
+    this.terminalStateTopicCheckerDelayMs = props.getLong(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
   }
 
   public int getAdminPort() {
@@ -330,6 +332,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isControllerEnforceSSLOnly() {
     return enforceSSLOnly;
+  }
+
+  public long getTerminalStateTopicCheckerDelayMs() {
+    return terminalStateTopicCheckerDelayMs;
   }
 
   /**

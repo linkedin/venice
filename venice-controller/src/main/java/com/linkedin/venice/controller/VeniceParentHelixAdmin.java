@@ -149,6 +149,8 @@ public class VeniceParentHelixAdmin implements Admin {
   // Only used for setup work which are intended to be short lived and is bounded by the number of venice clusters.
   // Based on JavaDoc "Threads that have not been used for sixty seconds are terminated and removed from the cache."
   private final ExecutorService asyncSetupExecutor = Executors.newCachedThreadPool();
+  private final ExecutorService topicCheckerExecutor = Executors.newSingleThreadExecutor();
+  private final TerminalStateTopicCheckerForParentController terminalStateTopicChecker;
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
 
@@ -210,6 +212,9 @@ public class VeniceParentHelixAdmin implements Admin {
     this.maxErroredTopicNumToKeep = multiClusterConfigs.getParentControllerMaxErroredTopicNumToKeep();
     this.offlinePushAccessor =
         new ParentHelixOfflinePushAccessor(veniceHelixAdmin.getZkClient(), veniceHelixAdmin.getAdapterSerializer());
+    terminalStateTopicChecker = new TerminalStateTopicCheckerForParentController(this,
+        veniceHelixAdmin.getStoreConfigRepo(), multiClusterConfigs.getTerminalStateTopicCheckerDelayMs());
+    topicCheckerExecutor.submit(terminalStateTopicChecker);
   }
 
   // For testing purpose
@@ -1971,8 +1976,11 @@ public class VeniceParentHelixAdmin implements Admin {
   public synchronized void close() {
     veniceWriterMap.keySet().forEach(this::stop);
     veniceHelixAdmin.close();
+    terminalStateTopicChecker.close();
+    topicCheckerExecutor.shutdownNow();
     asyncSetupExecutor.shutdownNow();
     try {
+      topicCheckerExecutor.awaitTermination(30, TimeUnit.SECONDS);
       asyncSetupExecutor.awaitTermination(30, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
