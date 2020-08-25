@@ -75,7 +75,7 @@ public class TestVeniceServer extends VeniceServer {
 
         return new StorageExecutionHandler(
             executor, computeExecutor, storageEngineRepository, schemaRepository, metadataRetriever, diskHealthService,
-            fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, false) {
+            fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             RequestHandler handler = requestHandler.get();
