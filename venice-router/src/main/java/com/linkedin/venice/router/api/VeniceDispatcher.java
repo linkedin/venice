@@ -263,6 +263,11 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     long requestId = uniqueRequestId.getAndIncrement();
     responseFutureMap.put(requestId, responseFuture);
     try {
+      /**
+       * Mark that the storage node will be used by current request and this piece of information will be used
+       * to decide whether a storage node is suitable for retry request.
+       */
+      path.requestStorageNode(storageNode.getNodeId());
       storageNodeClient.query(
           storageNode,
           path,

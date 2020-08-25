@@ -96,6 +96,8 @@ public class TestVenicePath {
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time);
     orgPath.setLongTailRetryThresholdMs(20);
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE1));
+    orgPath.requestStorageNode(STORAGE_NODE1);
+    assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE1), STORAGE_NODE1 + " should be a good node for the original request even it hasn't been marked as fast.");
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE2));
     orgPath.recordOriginalRequestStartTimestamp();
 
@@ -105,6 +107,7 @@ public class TestVenicePath {
     time.sleep(1);
     assertFalse(retryPath.isRetryRequestTooLate());
     assertFalse(retryPath.canRequestStorageNode(STORAGE_NODE1));
+    assertTrue(retryPath.canRequestStorageNode(STORAGE_NODE2));
   }
 
   @Test
