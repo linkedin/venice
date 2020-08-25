@@ -72,8 +72,9 @@ public class VeniceControllerService extends AbstractVeniceService {
       }
       logger.info("Stopped cluster: "+clusterName);
     }
+    // TODO merge or differentiate the difference between close() and stopVeniceController() explicitly.
     admin.stopVeniceController();
-
+    admin.close();
 
     logger.info("Stopped Venice controller.");
   }

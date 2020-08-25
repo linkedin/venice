@@ -193,4 +193,8 @@ public class VeniceControllerMultiClusterConfig {
   public boolean isControllerEnforceSSLOnly() {
     return getCommonConfig().isControllerEnforceSSLOnly();
   }
+
+  public long getTerminalStateTopicCheckerDelayMs() {
+    return getCommonConfig().getTerminalStateTopicCheckerDelayMs();
+  }
 }

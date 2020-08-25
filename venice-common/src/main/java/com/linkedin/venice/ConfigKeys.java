@@ -1203,4 +1203,10 @@ public class ConfigKeys {
    * Turns on  least loaded selection of server hosts.
    */
   public static final String ROUTER_LEAST_LOADED_HOST_ENABLED = "router.least.loaded.host.enabled";
+  /**
+   * Delay between each cycle where the checker will iterate over existing topics that are yet to be truncated and poll
+   * their job status until they reach terminal state to ensure version topics in parent fabric are truncated in a
+   * timely manner.
+   */
+  public static final String TERMINAL_STATE_TOPIC_CHECK_DELAY_MS = "controller.terminal.state.topic.check.delay.ms";
 }
