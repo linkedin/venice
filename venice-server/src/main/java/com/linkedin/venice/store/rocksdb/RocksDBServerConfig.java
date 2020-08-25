@@ -165,6 +165,8 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION = "rocksdb.level0.slowdown.writes.trigger.write.only.version";
   public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION = "rocksdb.level0.stops.writes.trigger.write.only.version";
 
+  public static final String ROCKSDB_COMPUTE_STORAGE_OPERATION = "rocksdb.compute.storage.operation";
+
   /**
    * Every time, when RocksDB tries to open a database, it will spin up multiple threads to load the file metadata
    * in parallel, and the application could hit the thread limit issue if there are many RocksDB open operations
@@ -231,6 +233,8 @@ public class RocksDBServerConfig {
   private final int level0FileNumCompactionTriggerWriteOnlyVersion;
   private final int level0SlowdownWritesTriggerWriteOnlyVersion;
   private final int level0StopWritesTriggerWriteOnlyVersion;
+
+  private final  RocksDBStorageOperationType serverStorageOperation;
 
 
   public RocksDBServerConfig(VeniceProperties props) {
@@ -313,6 +317,12 @@ public class RocksDBServerConfig {
     this.level0FileNumCompactionTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 100);
     this.level0SlowdownWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 120);
     this.level0StopWritesTriggerWriteOnlyVersion = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 160);
+
+    this.serverStorageOperation = RocksDBStorageOperationType.fromInt(props.getInt(ROCKSDB_COMPUTE_STORAGE_OPERATION, 0));
+  }
+
+  public RocksDBStorageOperationType getServerStorageOperation() {
+    return serverStorageOperation;
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {

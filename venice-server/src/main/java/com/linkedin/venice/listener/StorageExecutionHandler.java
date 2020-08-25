@@ -11,6 +11,7 @@ import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -28,21 +29,23 @@ import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
+import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
-import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
-import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
-import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.storage.chunking.BatchGetChunkingAdapter;
 import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.venice.store.rocksdb.RocksDBStorageOperationType;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -56,6 +59,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -102,7 +106,26 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final boolean parallelBatchGetEnabled;
   private final int parallelBatchGetChunkSize;
   private final boolean keyValueProfilingEnabled;
+  private final RocksDBStorageOperationType rocksDBStorageOperationType;
 
+  private static class ReusableObjects {
+    // reuse buffer for rocksDB value object
+    final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
+
+    // LRU cache for storing schema->record map for object reuse of value and result record
+    final LinkedHashMap<Schema, GenericRecord> reuseValueRecordMap = new LinkedHashMap<Schema, GenericRecord>(100, 0.75f, true){
+      protected boolean removeEldestEntry(Map.Entry <Schema, GenericRecord> eldest) {
+        return size() > 100;
+      }
+    };
+
+    final LinkedHashMap<Schema, GenericRecord> reuseResultRecordMap = new LinkedHashMap<Schema, GenericRecord>(100, 0.75f, true){
+      protected boolean removeEldestEntry(Map.Entry <Schema, GenericRecord> eldest) {
+        return size() > 100;
+      }
+    };
+  }
+  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
 
   private final Map<Integer, ReadComputeOperator> computeOperators = new HashMap<Integer, ReadComputeOperator>() {
     {
@@ -115,7 +138,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   public StorageExecutionHandler(ThreadPoolExecutor executor, ThreadPoolExecutor computeExecutor,
                                  StorageEngineRepository storageEngineRepository, ReadOnlySchemaRepository schemaRepository,
                                  MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
-                                 boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize, boolean keyValueProfilingEnabled) {
+                                 boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize, VeniceServerConfig serverConfig) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storageEngineRepository = storageEngineRepository;
@@ -126,7 +149,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     this.computeResultSchemaCache = new VeniceConcurrentHashMap<>();
     this.parallelBatchGetEnabled = parallelBatchGetEnabled;
     this.parallelBatchGetChunkSize = parallelBatchGetChunkSize;
-    this.keyValueProfilingEnabled = keyValueProfilingEnabled;
+    this.keyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
+    this.rocksDBStorageOperationType = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
   }
 
   @Override
@@ -434,9 +458,18 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     responseWrapper.setCompressionStrategy(CompressionStrategy.NO_OP);
 
+    ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+
+    GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(latestValueSchema, k -> new GenericData.Record(latestValueSchema));
+    Schema finalComputeResultSchema1 = computeResultSchema;
+    GenericRecord reuseResultRecord =  reusableObjects.reuseResultRecordMap.computeIfAbsent(computeResultSchema, k -> new GenericData.Record(finalComputeResultSchema1));
+
     // Reuse the same value record and result record instances for all values
-    GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
-    GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
+    ByteBuffer reusedRawValue = null;
+    if (rocksDBStorageOperationType == RocksDBStorageOperationType.SINGLE_GET_WITH_REUSE) {
+      reusedRawValue = reusableObjects.reusedByteBuffer;
+    }
+
     RecordSerializer<GenericRecord> resultSerializer;
     if (fastAvroEnabled) {
       resultSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(computeResultSchema);
@@ -447,7 +480,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     BinaryDecoder binaryDecoder = DecoderFactory.defaultFactory().createBinaryDecoder(BINARY_DECODER_PARAM, null);
     Map<String, Object> globalContext = new HashMap<>();
     for (ComputeRouterRequestKeyV1 key : keys) {
-      clearFieldsInReusedRecord(resultRecord, computeResultSchema);
+      clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
       ComputeResponseRecordV1 record = computeResult(store,
                                                      storeName,
                                                      key.keyBytes,
@@ -456,16 +489,17 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      computeRequestWrapper.getComputeRequestVersion(),
                                                      computeRequestWrapper.getOperations(),
                                                      compressionStrategy,
-                                                     latestValueSchema,
                                                      computeResultSchema,
                                                      resultSerializer,
-                                                     valueRecord,
-                                                     resultRecord,
+                                                     reuseValueRecord,
+                                                     reuseResultRecord,
                                                      binaryDecoder,
                                                      isChunked,
                                                      request.isStreamingRequest(),
                                                      responseWrapper,
-                                                     globalContext);
+                                                     globalContext,
+                                                     reusedRawValue
+                                                     );
       if (null != record) {
         // TODO: streaming support in storage node
         responseWrapper.addRecord(record);
@@ -512,20 +546,32 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       int computeRequestVersion,
       List<Object> operations,
       CompressionStrategy compressionStrategy,
-      Schema latestValueSchema,
       Schema computeResultSchema,
       RecordSerializer<GenericRecord> resultSerializer,
-      GenericRecord valueRecord,
-      GenericRecord resultRecord,
+      GenericRecord reuseValueRecord,
+      GenericRecord reuseResultRecord,
       BinaryDecoder binaryDecoder,
       boolean isChunked,
       boolean isStreaming,
       ComputeResponseWrapper response,
-      Map<String, Object> globalContext) {
+      Map<String, Object> globalContext,
+      ByteBuffer reuseRawValue) {
 
-    valueRecord = GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, valueRecord, binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName);
+    switch (rocksDBStorageOperationType) {
+      case SINGLE_GET:
+        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, reuseValueRecord,
+            binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName);
+        break;
+      case SINGLE_GET_WITH_REUSE:
+        reuseValueRecord =
+          GenericRecordChunkingAdapter.INSTANCE.get(storeName, store, partition, ByteUtils.extractByteArray(key),
+              reuseRawValue, reuseValueRecord, binaryDecoder, isChunked, compressionStrategy, fastAvroEnabled, this.schemaRepo, response);
+        break;
+      default:
+        throw new VeniceException("Unknown rocksDB compute storage operation");
+    }
 
-    if (null == valueRecord) {
+    if (null == reuseValueRecord) {
       if (isStreaming) {
         // For streaming, we need to send back non-existing keys
         ComputeResponseRecordV1 computeResponseRecord = new ComputeResponseRecordV1();
@@ -543,17 +589,17 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     // go through all operation
     for (Object operation : operations) {
       ComputeOperation op = (ComputeOperation) operation;
-      computeOperators.get(op.operationType).compute(computeRequestVersion, op, valueRecord, resultRecord, computationErrorMap, globalContext, response);
+      computeOperators.get(op.operationType).compute(computeRequestVersion, op, reuseValueRecord, reuseResultRecord, computationErrorMap, globalContext, response);
     }
 
     // fill the empty field in result schema
     for (Schema.Field field : computeResultSchema.getFields()) {
-      if (resultRecord.get(field.pos()) == null) {
+      if (reuseResultRecord.get(field.pos()) == null) {
         if (field.name().equals(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
-          resultRecord.put(field.pos(), computationErrorMap);
+          reuseResultRecord.put(field.pos(), computationErrorMap);
         } else {
           // project from value record
-          resultRecord.put(field.pos(), valueRecord.get(field.name()));
+          reuseResultRecord.put(field.pos(), reuseValueRecord.get(field.name()));
         }
       }
     }
@@ -565,7 +611,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     // serialize the compute result
     long serializeStartTimeInNS = System.nanoTime();
-    responseRecord.value = ByteBuffer.wrap(resultSerializer.serialize(resultRecord));
+    responseRecord.value = ByteBuffer.wrap(resultSerializer.serialize(reuseResultRecord));
     response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
 
     return responseRecord;

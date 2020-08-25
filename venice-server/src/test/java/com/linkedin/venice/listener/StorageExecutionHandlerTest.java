@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -10,6 +11,7 @@ import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -58,6 +60,10 @@ public class StorageExecutionHandlerTest {
     doReturn(Optional.of(expectedOffset)).when(mockMetadataRetriever).getOffset(Mockito.anyString(), Mockito.anyInt());
 
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
+    doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
+
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
@@ -71,7 +77,7 @@ public class StorageExecutionHandlerTest {
 
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
-        mockMetadataRetriever, null, false, false, 10, false);
+        mockMetadataRetriever, null, false, false, 10, serverConfig);
     testHandler.channelRead(mockCtx, testRequest);
 
     waitUntilStorageExecutionHandlerRespond(outputArray);
@@ -98,9 +104,12 @@ public class StorageExecutionHandlerTest {
     StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
+    doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
 
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
-        mockMetadataRetriever, healthCheckService, false, false, 10, false);
+        mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig);
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
