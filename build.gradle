@@ -28,8 +28,8 @@ def gobblinVersion = '0.15.0-dev-9467'
 ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.7.7',
                   avroMapred: 'org.apache.avro:avro-mapred:1.7.7',
-                  avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:0.2.6',
-                  avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.2.6',
+                  avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:0.2.8',
+                  avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.2.8',
                   azkaban: 'com.linkedin.azkaban:azkaban-common:3.84.18',
                   bdbJe: 'com.sleepycat:je:5.0.104',
                   brooklinCommon: 'com.linkedin.brooklin-li-common:brooklin-li-common:14.0.7',
