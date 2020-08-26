@@ -105,13 +105,19 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   @Override
   public synchronized void unregisterRouter(String instanceId) {
-    boolean result = zkClient.delete(getRouterPath(instanceId));
-    if (!result) {
-      throw new VeniceException(
-          "Could not delete router: " + instanceId + " from zk. Path:" + getRouterPath(instanceId));
+    try {
+      // if this returns false, it means the router instance doesn't exist zk path
+      boolean pathExistedPriorToDeletion = zkClient.delete(getRouterPath(instanceId));
+      if (!pathExistedPriorToDeletion) {
+        logger.info("Attempted to delete a non-existent zk path: " + getRouterPath(instanceId));
+      }
+    } catch(Exception e) {
+      // cannot delete this instance from zk path because of exceptions
+      throw new VeniceException("Error when deleting router " + instanceId +
+          " from zk path " + getRouterPath(instanceId), e);
     }
     changeLiveRouterCount(zkClient.getChildren(getRouterRootPath()).size());
-    logger.info("Remove router from live routers temporarily");
+    logger.info("Removed router " + instanceId + " from live routers temporarily");
   }
 
   /**
