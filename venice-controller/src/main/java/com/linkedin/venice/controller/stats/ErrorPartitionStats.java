@@ -21,14 +21,14 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
     super(metricsRepository, name);
 
     currentVersionErrorPartitionResetAttempt =
-        registerSensor("current_version_error_partition_reset_attempt", new Total());
+        registerSensorIfAbsent("current_version_error_partition_reset_attempt", new Total());
     currentVersionErrorPartitionResetAttemptErrored =
-        registerSensor("current_version_error_partition_reset_attempt_errored", new Count());
+        registerSensorIfAbsent("current_version_error_partition_reset_attempt_errored", new Count());
     currentVersionErrorPartitionRecoveredFromReset =
-        registerSensor("current_version_error_partition_recovered_from_reset", new Total());
+        registerSensorIfAbsent("current_version_error_partition_recovered_from_reset", new Total());
     currentVersionErrorPartitionUnrecoverableFromReset =
-        registerSensor("current_version_error_partition_unrecoverable_from_reset", new Total());
-    errorPartitionProcessingTime = registerSensor("error_partition_processing_time", new Avg(), new Max());
+        registerSensorIfAbsent("current_version_error_partition_unrecoverable_from_reset", new Total());
+    errorPartitionProcessingTime = registerSensorIfAbsent("error_partition_processing_time", new Avg(), new Max());
   }
 
   public void recordErrorPartitionResetAttempt(double value) {
