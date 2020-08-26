@@ -167,6 +167,7 @@ public class VeniceSystemProducer implements SystemProducer {
         .setZkHosts(veniceD2ZKHost)
         .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
         .setIsSSLEnabled(sslFactory.isPresent())
+        .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
         .build();
     D2ClientUtils.startClient(d2Client);
     // Discover cluster
