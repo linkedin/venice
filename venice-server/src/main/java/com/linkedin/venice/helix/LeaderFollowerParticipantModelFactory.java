@@ -17,7 +17,7 @@ import org.apache.helix.participant.statemachine.StateModel;
  */
 
 public class LeaderFollowerParticipantModelFactory extends AbstractParticipantModelFactory {
-  private LeaderFollowerStateModelNotifier notifier = new LeaderFollowerStateModelNotifier();
+  private LeaderFollowerStateModelNotifier leaderFollowerStateModelNotifier = new LeaderFollowerStateModelNotifier();
 
   public LeaderFollowerParticipantModelFactory(StoreIngestionService storeIngestionService,
       StorageService storageService, VeniceConfigLoader configService, ExecutorService executorService,
@@ -26,6 +26,10 @@ public class LeaderFollowerParticipantModelFactory extends AbstractParticipantMo
       String instanceName) {
     super(storeIngestionService, storageService, configService, executorService, metadataRepo,
         partitionPushStatusAccessorFuture, instanceName);
+
+    // Add a new notifier to let state model knows ingestion has caught up the lag so that it can complete the offline to
+    // standby state transition.
+    storeIngestionService.addLeaderFollowerModelNotifier(leaderFollowerStateModelNotifier);
     logger.info("LeaderFollowerParticipantModelFactory Created");
   }
 
@@ -34,7 +38,7 @@ public class LeaderFollowerParticipantModelFactory extends AbstractParticipantMo
     logger.info("Creating LeaderFollowerParticipantModel handler for partition: " + partitionName);
     return new LeaderFollowerParticipantModel(getStoreIngestionService(), getStorageService(),
         getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),
-        HelixUtils.getPartitionId(partitionName), notifier, getMetadataRepo(), partitionPushStatusAccessorFuture,
-        instanceName);
+        HelixUtils.getPartitionId(partitionName), leaderFollowerStateModelNotifier, getMetadataRepo(),
+        partitionPushStatusAccessorFuture, instanceName);
   }
 }

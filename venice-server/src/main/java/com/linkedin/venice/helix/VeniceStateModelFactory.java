@@ -15,7 +15,7 @@ import java.util.concurrent.ExecutorService;
  * For leader/Follower resources, please refer to {@link LeaderFollowerParticipantModelFactory}
  */
 public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
-  private final StateModelNotifier stateModelNotifier = new StateModelNotifier();
+  private final OnlineOfflineStateModelNotifier onlineOfflineStateModelNotifier = new OnlineOfflineStateModelNotifier();
 
   public VeniceStateModelFactory(StoreIngestionService storeIngestionService, StorageService storageService,
       VeniceConfigLoader configService, ExecutorService executorService,
@@ -26,7 +26,7 @@ public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
 
     // Add a new notifier to let state model knows the end of consumption so that it can complete the bootstrap to
     // online state transition.
-    storeIngestionService.addNotifier(stateModelNotifier);
+    storeIngestionService.addOnlineOfflineModelNotifier(onlineOfflineStateModelNotifier);
     logger.info("VenicePartitionStateTransitionHandlerFactory created");
   }
 
@@ -35,11 +35,11 @@ public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
     logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName);
     return new VenicePartitionStateModel(getStoreIngestionService(), getStorageService(),
         getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),
-        HelixUtils.getPartitionId(partitionName), stateModelNotifier, getMetadataRepo(),
+        HelixUtils.getPartitionId(partitionName), onlineOfflineStateModelNotifier, getMetadataRepo(),
         partitionPushStatusAccessorFuture, instanceName);
   }
 
-  StateModelNotifier getNotifier() {
-    return this.stateModelNotifier;
+  OnlineOfflineStateModelNotifier getNotifier() {
+    return this.onlineOfflineStateModelNotifier;
   }
 }

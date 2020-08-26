@@ -4,8 +4,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
-import com.linkedin.venice.stats.AggStoreIngestionStats;
-import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -20,7 +18,7 @@ import static com.linkedin.venice.helix.AbstractParticipantModelFactory.getState
  * The class also holds latches that can be used in SM in the cases when state transitions
  * need to coordinate with ingestion progress.
  */
-public class StateModelNotifier implements VeniceNotifier {
+public abstract class StateModelNotifier implements VeniceNotifier {
   private final Logger logger = Logger.getLogger(this.getClass().getSimpleName());
   private Map<String, CountDownLatch> stateModelToLatchMap = new VeniceConcurrentHashMap<>();
   private Map<String, Boolean> stateModelToSuccessMap = new VeniceConcurrentHashMap<>();

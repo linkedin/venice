@@ -7,6 +7,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
+import com.linkedin.venice.helix.LeaderFollowerStateModelNotifier;
+import com.linkedin.venice.helix.OnlineOfflineStateModelNotifier;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -135,7 +137,7 @@ public class StoreIngestionTaskTest {
   private InMemoryKafkaBroker inMemoryKafkaBroker;
   private VeniceWriter veniceWriter;
   private StorageEngineRepository mockStorageEngineRepository;
-  private VeniceNotifier mockNotifier, mockPartitionStatusNotifier;
+  private VeniceNotifier mockLogNotifier, mockPartitionStatusNotifier, mockLeaderFollowerStateModelNotifier, mockOnlineOfflineStateModelNotifier;
   private List<Object[]> mockNotifierProgress;
   private List<Object[]> mockNotifierEOPReveived;
   private List<Object[]> mockNotifierCompleted;
@@ -207,33 +209,35 @@ public class StoreIngestionTaskTest {
     veniceWriter = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
 
-    mockNotifier = mock(LogNotifier.class);
+    mockLogNotifier = mock(LogNotifier.class);
     mockNotifierProgress = new ArrayList<>();
     doAnswer(invocation -> {
       Object[] args = invocation.getArguments();
       mockNotifierProgress.add(args);
       return null;
-    }).when(mockNotifier).progress(anyString(), anyInt(), anyLong());
+    }).when(mockLogNotifier).progress(anyString(), anyInt(), anyLong());
     mockNotifierEOPReveived = new ArrayList<>();
     doAnswer(invocation -> {
       Object[] args = invocation.getArguments();
       mockNotifierEOPReveived.add(args);
       return null;
-    }).when(mockNotifier).endOfPushReceived(anyString(), anyInt(), anyLong());
+    }).when(mockLogNotifier).endOfPushReceived(anyString(), anyInt(), anyLong());
     mockNotifierCompleted = new ArrayList<>();
     doAnswer(invocation -> {
       Object[] args = invocation.getArguments();
       mockNotifierCompleted.add(args);
       return null;
-    }).when(mockNotifier).completed(anyString(), anyInt(), anyLong());
+    }).when(mockLogNotifier).completed(anyString(), anyInt(), anyLong());
     mockNotifierError = new ArrayList<>();
     doAnswer(invocation -> {
       Object[] args = invocation.getArguments();
       mockNotifierError.add(args);
       return null;
-    }).when(mockNotifier).error(anyString(), anyInt(), anyString(), any());
+    }).when(mockLogNotifier).error(anyString(), anyInt(), anyString(), any());
 
     mockPartitionStatusNotifier = mock(PartitionPushStatusNotifier.class);
+    mockLeaderFollowerStateModelNotifier = mock(LeaderFollowerStateModelNotifier.class);
+    mockOnlineOfflineStateModelNotifier = mock(OnlineOfflineStateModelNotifier.class);
 
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageMetadataService = mock(StorageMetadataService.class);
@@ -343,8 +347,10 @@ public class StoreIngestionTaskTest {
       }
     }
     offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
-    Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier,
-        new LogNotifier(), mockPartitionStatusNotifier));
+    Queue<VeniceNotifier> onlineOfflineNotifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockLogNotifier,
+        mockPartitionStatusNotifier, mockOnlineOfflineStateModelNotifier));
+    Queue<VeniceNotifier> leaderFollowerNotifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockLogNotifier,
+        mockPartitionStatusNotifier, mockLeaderFollowerStateModelNotifier));
     DiskUsage diskUsage;
     if (diskUsageForTest.isPresent()){
       diskUsage = diskUsageForTest.get();
@@ -377,7 +383,8 @@ public class StoreIngestionTaskTest {
         .setKafkaClientFactory(mockFactory)
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(offsetManager)
-        .setNotifiersQueue(notifiers)
+        .setOnlineOfflineNotifiersQueue(onlineOfflineNotifiers)
+        .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setBandwidthThrottler(mockBandwidthThrottler)
         .setRecordsThrottler(mockRecordsThrottler)
         .setUnorderedBandwidthThrottler(mockUnorderedBandwidthThrottler)
@@ -600,7 +607,7 @@ public class StoreIngestionTaskTest {
       doReturn(getOffsetRecord(STARTING_OFFSET)).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt());
     }, () -> {
       // Verify STARTED is NOT reported when offset is 0
-      verify(mockNotifier, never()).started(topic, PARTITION_BAR);
+      verify(mockLogNotifier, never()).started(topic, PARTITION_BAR);
     }, isLeaderFollowerModelEnabled);
   }
 
@@ -616,12 +623,29 @@ public class StoreIngestionTaskTest {
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
        * we need to add 1 to last data message offset.
        */
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
       verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO,
           fooLastOffset + 1);
       verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
           barLastOffset  + 1);
+      if (isLeaderFollowerModelEnabled) {
+        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).catchUpBaseTopicOffsetLag(topic, PARTITION_FOO);
+        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).catchUpBaseTopicOffsetLag(topic, PARTITION_BAR);
+        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO,
+            fooLastOffset + 1);
+        verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
+            barLastOffset  + 1);
+        verify(mockOnlineOfflineStateModelNotifier, never()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
+        verify(mockOnlineOfflineStateModelNotifier, never()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
+      } else {
+        verify(mockOnlineOfflineStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO,
+            fooLastOffset + 1);
+        verify(mockOnlineOfflineStateModelNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
+            barLastOffset  + 1);
+        verify(mockLeaderFollowerStateModelNotifier, never()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
+        verify(mockLeaderFollowerStateModelNotifier, never()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
+      }
 
       /**
        * It seems Mockito will mess up the verification if there are two functions with the same name:
@@ -638,10 +662,10 @@ public class StoreIngestionTaskTest {
           .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooLastOffset + 1, true)));
       verify(mockStorageMetadataService)
           .put(eq(topic), eq(PARTITION_BAR), eq(getOffsetRecord(barLastOffset + 1, true)));
-      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-      verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
-      verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset);
+      verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
+      verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset);
       verify(mockPartitionStatusNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockPartitionStatusNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
       verify(mockPartitionStatusNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
@@ -761,15 +785,15 @@ public class StoreIngestionTaskTest {
         getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), barOffsetToSkip)));
 
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
-      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(MissingDataException.class)));
 
       // After we verified that completed() and error() are called, the rest should be guaranteed to be finished, so no need for timeouts
 
-      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
+      verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
     }, isLeaderFollowerModelEnabled);
   }
 
@@ -788,14 +812,14 @@ public class StoreIngestionTaskTest {
         getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), barOffsetToDupe)));
 
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe);
-      verify(mockNotifier, after(TEST_TIMEOUT).never()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe + 1);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe);
+      verify(mockLogNotifier, after(TEST_TIMEOUT).never()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe + 1);
 
       // After we verified that completed() is called, the rest should be guaranteed to be finished, so no need for timeouts
 
-      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
+      verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
     }, isLeaderFollowerModelEnabled);
   }
 
@@ -871,11 +895,11 @@ public class StoreIngestionTaskTest {
     veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(VeniceException.class)));
 
-      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(VeniceException.class)));
     }, isLeaderFollowerModelEnabled);
@@ -967,10 +991,10 @@ public class StoreIngestionTaskTest {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT))
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT))
           .completed(eq(topic), eq(PARTITION_FOO), LongEqualOrGreaterThanMatcher.get(fooLastOffset));
 
-      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(CorruptDataException.class)));
 
@@ -983,7 +1007,7 @@ public class StoreIngestionTaskTest {
        * and avoids sending completion notifications for those. The high invocationCount on
        * this test is to detect this edge case.
        */
-      verify(mockNotifier, never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
+      verify(mockLogNotifier, never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
     }, isLeaderFollowerModelEnabled);
   }
 
@@ -994,7 +1018,7 @@ public class StoreIngestionTaskTest {
     runTest(getSet(PARTITION_FOO),
         () -> doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO),
         () -> {
-          verify(mockNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
         },
         isLeaderFollowerModelEnabled
     );
@@ -1006,7 +1030,7 @@ public class StoreIngestionTaskTest {
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
 
     runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
       //Start of push has already been consumed. Stop consumption
       storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
@@ -1033,16 +1057,16 @@ public class StoreIngestionTaskTest {
         veniceWriter.broadcastStartOfPush(new HashMap<>());
         writingThread.start();
       }, () -> {
-        verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
-        verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_BAR);
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_BAR);
 
         //Start of push has already been consumed. Stop consumption
         storeIngestionTaskUnderTest.kill();
         // task should report an error to notifier that it's killed.
-        verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
             eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
             argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
-        verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
             eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
             argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
 
@@ -1149,7 +1173,7 @@ public class StoreIngestionTaskTest {
             int partition = entry.getKey();
             long offset = entry.getValue();
             logger.info("Verifying completed was called for partition " + partition + " and offset " + offset + " or greater.");
-            verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
+            verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
           }
       );
 
@@ -1157,7 +1181,7 @@ public class StoreIngestionTaskTest {
 
       // Verify that no partitions reported errors.
       relevantPartitions.stream().forEach(partition ->
-          verify(mockNotifier, never()).error(eq(topic), eq(partition), anyString(), any()));
+          verify(mockLogNotifier, never()).error(eq(topic), eq(partition), anyString(), any()));
 
       // Verify that we really unsubscribed and re-subscribed.
       relevantPartitions.stream().forEach(partition -> {
@@ -1199,11 +1223,11 @@ public class StoreIngestionTaskTest {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockNotifier, after(TEST_TIMEOUT).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, after(TEST_TIMEOUT).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
 
       storeIngestionTaskUnderTest.kill();
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
     }, isLeaderFollowerModelEnabled);
   }
 
@@ -1213,12 +1237,12 @@ public class StoreIngestionTaskTest {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Read one message for each poll.
     runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
-      verify(mockNotifier, after(TEST_TIMEOUT).never()).progress(topic, PARTITION_FOO, 0);
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockLogNotifier, after(TEST_TIMEOUT).never()).progress(topic, PARTITION_FOO, 0);
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
       // The current behavior is only to sync offset/report progress after processing a pre-configured amount
       // of messages in bytes, since control message is being counted as 0 bytes (no data persisted in disk),
       // then no progress will be reported during start, but only for processed messages.
-      verify(mockNotifier, after(TEST_TIMEOUT).never()).progress(any(), anyInt(), anyInt());
+      verify(mockLogNotifier, after(TEST_TIMEOUT).never()).progress(any(), anyInt(), anyInt());
     }, isLeaderFollowerModelEnabled);
   }
 
@@ -1312,8 +1336,8 @@ public class StoreIngestionTaskTest {
           veniceWriter.broadcastEndOfPush(new HashMap<>());
 
         }, () -> {
-          verify(mockNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).started(eq(topic), anyInt());
-          verify(mockNotifier, never()).completed(anyString(), anyInt(), anyLong());
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).started(eq(topic), anyInt());
+          verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
 
           if (isLeaderFollowerModelEnabled) {
             veniceWriter.broadcastTopicSwitch(Arrays.asList(inMemoryKafkaBroker.getKafkaBootstrapServer()),
@@ -1336,7 +1360,7 @@ public class StoreIngestionTaskTest {
             }
           }
 
-          verify(mockNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).completed(anyString(), anyInt(), anyLong());
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).completed(anyString(), anyInt(), anyLong());
         },
         isLeaderFollowerModelEnabled
     );
@@ -1399,11 +1423,11 @@ public class StoreIngestionTaskTest {
         verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
             .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset + 1, true, version)));
 
-        verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+        verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
 
         //since notifier reporting happens before offset update, it actually reports previous offsets
-        verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-        verify(mockNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
+        verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+        verify(mockLogNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
     }, Optional.empty(), true, Optional.empty(), isLeaderFollowerModelEnabled);
   }
@@ -1415,7 +1439,7 @@ public class StoreIngestionTaskTest {
     doThrow(new VeniceException("fake exception")).when(mockVersionedStorageIngestionStats).resetIngestionTaskErroredGauge(anyString(), anyInt());
 
     runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
     }, isLeaderFollowerModelEnabled);
   }
 

@@ -101,6 +101,7 @@ public interface VeniceNotifier {
 
   /**
    * The Process is shutting down and clean up the resources associated with the Notifier.
+   * N.B. When implementing the method, make it idempotent.
    */
   default void close() {}
 
