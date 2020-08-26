@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -27,6 +28,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
  * 4. Whether producers have produced duplicate messages, which is fine and expected due to producer retries (DUPLICATE).
  */
 public class KafkaDataIntegrityValidator {
+  private static final Logger logger = Logger.getLogger(KafkaDataIntegrityValidator.class);
   private final String kafkaVersionTopic;
   private final long kafkaLogCompactionDelayInMs;
 
@@ -115,6 +117,10 @@ public class KafkaDataIntegrityValidator {
        * Missing an entire segment is not acceptable, even though Kafka log compaction kicks in and all the data
        * messages within a segment are compacted; START_OF_SEGMENT and END_OF_SEGMENT messages should still be there.
        */
+      logger.error("Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg:\n" + missingSegment.getMessage());
+      if (errorMetricCallback.isPresent()) {
+        errorMetricCallback.get().execute(missingSegment);
+      }
       throw missingSegment;
     }
 

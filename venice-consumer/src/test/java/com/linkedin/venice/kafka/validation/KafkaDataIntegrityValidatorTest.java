@@ -21,6 +21,8 @@ import org.apache.kafka.common.record.TimestampType;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static org.mockito.Mockito.*;
+
 
 public class KafkaDataIntegrityValidatorTest {
   @Test
@@ -66,6 +68,16 @@ public class KafkaDataIntegrityValidatorTest {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record4 = buildConsumerRecord(kafkaTopic, 0, 205,
         producerGUID, 0, 105, System.currentTimeMillis() - TimeUnit.HOURS.toMillis(10));
     Assert.assertThrows(MissingDataException.class, () -> stateLessDIVValidator.checkMissingMessage(record4, Optional.empty()));
+
+    ProducerTracker.DIVErrorMetricCallback errorMetricCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
+
+    /**
+     * Create a record with a gap in segment number. MISSING_MESSAGE exception should be thrown
+     */
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record5 = buildConsumerRecord(kafkaTopic, 0, 206,
+        producerGUID, 2, 1, System.currentTimeMillis() - TimeUnit.HOURS.toMillis(10));
+    Assert.assertThrows(MissingDataException.class, () -> stateLessDIVValidator.checkMissingMessage(record5, Optional.of(errorMetricCallback)));
+    verify(errorMetricCallback, times(1)).execute(any());
   }
 
   private static ConsumerRecord<KafkaKey, KafkaMessageEnvelope> buildConsumerRecord(String kafkaTopic, int partition,
