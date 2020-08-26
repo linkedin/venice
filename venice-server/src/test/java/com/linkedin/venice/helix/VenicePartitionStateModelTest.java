@@ -14,7 +14,7 @@ import static org.mockito.Mockito.*;
  * Unit tests to verify the State model takes the appropriate decisions on transitions.
  */
 public class VenicePartitionStateModelTest
-    extends AbstractVenicePartitionStateModelTest<VenicePartitionStateModel, StateModelNotifier> {
+    extends AbstractVenicePartitionStateModelTest<VenicePartitionStateModel, OnlineOfflineStateModelNotifier> {
 
   @Override
   protected VenicePartitionStateModel getParticipantStateModel() {
@@ -24,8 +24,8 @@ public class VenicePartitionStateModelTest
   }
 
   @Override
-  protected StateModelNotifier getNotifier() {
-    return mock(StateModelNotifier.class);
+  protected OnlineOfflineStateModelNotifier getNotifier() {
+    return mock(OnlineOfflineStateModelNotifier.class);
   }
 
   /**
@@ -62,7 +62,7 @@ public class VenicePartitionStateModelTest
    */
   @Test
   public void testOfflineToBootstrapToOnline() {
-    StateModelNotifier notifier = new StateModelNotifier();
+    OnlineOfflineStateModelNotifier notifier = new OnlineOfflineStateModelNotifier();
     testStateModel =
         new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig, testPartition,
             notifier, mockReadOnlyStoreRepository, Optional.empty(), null);

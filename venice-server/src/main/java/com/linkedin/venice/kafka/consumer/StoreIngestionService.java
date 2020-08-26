@@ -54,9 +54,26 @@ public interface StoreIngestionService {
    * Multiple Notifiers can be added for the same consumption tasks and all of them will
    * be notified in order.
    *
+   * The notifier added here is used in both Online/Offline and Leader/Follower
+   * consumption tasks.
+   *
    * @param notifier
    */
-  void addNotifier(VeniceNotifier notifier);
+  void addCommonNotifier(VeniceNotifier notifier);
+
+  /**
+   * The notifier added here is only used in Online/Offline consumption task.
+   *
+   * @param notifier
+   */
+  void addOnlineOfflineModelNotifier(VeniceNotifier notifier);
+
+  /**
+   * The notifier added here is only used in Leader/Follower consumption task.
+   *
+   * @param notifier
+   */
+  void addLeaderFollowerModelNotifier(VeniceNotifier notifier);
 
   /**
    * Check whether there is a running consumption task for given store.

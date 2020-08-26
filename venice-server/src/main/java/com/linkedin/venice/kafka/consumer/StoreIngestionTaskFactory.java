@@ -17,7 +17,6 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -54,7 +53,7 @@ public class StoreIngestionTaskFactory {
           kafkaConsumerProperties,
           builder.storageEngineRepository,
           builder.storageMetadataService,
-          builder.notifiers,
+          builder.leaderFollowerNotifiers,
           builder.bandwidthThrottler,
           builder.recordsThrottler,
           builder.unorderedBandwidthThrottler,
@@ -85,7 +84,7 @@ public class StoreIngestionTaskFactory {
           kafkaConsumerProperties,
           builder.storageEngineRepository,
           builder.storageMetadataService,
-          builder.notifiers,
+          builder.onlineOfflineNotifiers,
           builder.bandwidthThrottler,
           builder.recordsThrottler,
           builder.unorderedBandwidthThrottler,
@@ -128,7 +127,8 @@ public class StoreIngestionTaskFactory {
     private KafkaClientFactory kafkaClientFactory;
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
-    private Queue<VeniceNotifier> notifiers;
+    private Queue<VeniceNotifier> onlineOfflineNotifiers;
+    private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private EventThrottler bandwidthThrottler;
     private EventThrottler recordsThrottler;
     private EventThrottler unorderedBandwidthThrottler;
@@ -179,9 +179,16 @@ public class StoreIngestionTaskFactory {
       return this;
     }
 
-    public Builder setNotifiersQueue(Queue<VeniceNotifier> notifiers) {
+    public Builder setOnlineOfflineNotifiersQueue(Queue<VeniceNotifier> onlineOfflineNotifiers) {
       if (!built) {
-        this.notifiers = notifiers;
+        this.onlineOfflineNotifiers = onlineOfflineNotifiers;
+      }
+      return this;
+    }
+
+    public Builder setLeaderFollowerNotifiersQueue(Queue<VeniceNotifier> leaderFollowerNotifiers) {
+      if (!built) {
+        this.leaderFollowerNotifiers = leaderFollowerNotifiers;
       }
       return this;
     }

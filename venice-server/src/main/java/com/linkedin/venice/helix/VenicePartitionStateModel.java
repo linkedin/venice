@@ -36,13 +36,13 @@ import org.apache.helix.participant.statemachine.Transition;
 
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.ONLINE_STATE, HelixState.BOOTSTRAP_STATE})
 public class VenicePartitionStateModel extends AbstractParticipantModel {
-    private final StateModelNotifier notifier;
+    private final OnlineOfflineStateModelNotifier notifier;
 
     private final static AtomicInteger partitionNumberFromOfflineToBootstrap = new AtomicInteger(0);
     private final static AtomicInteger partitionNumberFromBootstrapToOnline = new AtomicInteger(0);
 
     public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
-        VeniceStoreConfig storeConfig, int partition, StateModelNotifier notifier,
+        VeniceStoreConfig storeConfig, int partition, OnlineOfflineStateModelNotifier notifier,
         ReadOnlyStoreRepository readOnlyStoreRepository,
         Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorCompletableFuture,
         String instanceName) {
@@ -51,7 +51,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     }
 
     public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
-        VeniceStoreConfig storeConfig, int partition, StateModelNotifier notifier, Time time,
+        VeniceStoreConfig storeConfig, int partition, OnlineOfflineStateModelNotifier notifier, Time time,
         ReadOnlyStoreRepository readOnlyStoreRepository,
         Optional<CompletableFuture<HelixPartitionPushStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
         super(storeIngestionService, readOnlyStoreRepository, storageService, storeConfig, partition, time,

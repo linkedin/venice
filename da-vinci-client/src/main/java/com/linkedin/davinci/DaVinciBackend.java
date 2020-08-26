@@ -108,7 +108,7 @@ public class DaVinciBackend implements Closeable {
         Optional.of(schemaReader),
         Optional.of(clientConfig));
     ingestionService.start();
-    ingestionService.addNotifier(ingestionListener);
+    ingestionService.addCommonNotifier(ingestionListener);
 
     bootstrap();
     storeRepository.registerStoreDataChangedListener(storeChangeListener);

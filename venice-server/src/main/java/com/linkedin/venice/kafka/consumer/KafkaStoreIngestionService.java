@@ -76,7 +76,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final VeniceConfigLoader veniceConfigLoader;
 
-  private final Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
+  private final Queue<VeniceNotifier> onlineOfflineNotifiers = new ConcurrentLinkedQueue<>();
+  private final Queue<VeniceNotifier> leaderFollowerNotifiers = new ConcurrentLinkedQueue<>();
+
   private final StorageMetadataService storageMetadataService;
 
   private final ReadOnlyStoreRepository metadataRepo;
@@ -171,7 +173,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     TopicManager topicManager = new TopicManager(veniceConsumerFactory);
 
     VeniceNotifier notifier = new LogNotifier();
-    this.notifiers.add(notifier);
+    this.onlineOfflineNotifiers.add(notifier);
+    this.leaderFollowerNotifiers.add(notifier);
 
     this.ingestionStats = new AggStoreIngestionStats(metricsRepository);
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
@@ -234,7 +237,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setKafkaClientFactory(veniceConsumerFactory)
         .setStorageEngineRepository(storageEngineRepository)
         .setStorageMetadataService(storageMetadataService)
-        .setNotifiersQueue(notifiers)
+        .setOnlineOfflineNotifiersQueue(onlineOfflineNotifiers)
+        .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setBandwidthThrottler(bandwidthThrottler)
         .setRecordsThrottler(recordsThrottler)
         .setUnorderedBandwidthThrottler(unorderedBandwidthThrottler)
@@ -353,8 +357,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       storeBufferService.stop();
     }
 
+    // N.B close() should be idempotent
+    for (VeniceNotifier notifier : onlineOfflineNotifiers) {
+      notifier.close();
+    }
 
-    for (VeniceNotifier notifier : notifiers) {
+    for (VeniceNotifier notifier : leaderFollowerNotifiers) {
       notifier.close();
     }
 
@@ -579,8 +587,19 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public void addNotifier(VeniceNotifier notifier) {
-    notifiers.add(notifier);
+  public void addCommonNotifier(VeniceNotifier notifier) {
+    onlineOfflineNotifiers.add(notifier);
+    leaderFollowerNotifiers.add(notifier);
+  }
+
+  @Override
+  public void addOnlineOfflineModelNotifier(VeniceNotifier notifier) {
+    onlineOfflineNotifiers.add(notifier);
+  }
+
+  @Override
+  public void addLeaderFollowerModelNotifier(VeniceNotifier notifier) {
+    leaderFollowerNotifiers.add(notifier);
   }
 
   @Override

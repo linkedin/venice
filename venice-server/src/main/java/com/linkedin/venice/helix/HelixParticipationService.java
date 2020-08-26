@@ -220,7 +220,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
         instance.getNodeId());
 
-    ingestionService.addNotifier(pushMonitorNotifier);
+    ingestionService.addCommonNotifier(pushMonitorNotifier);
 
     CompletableFuture.runAsync(() -> {
       try {
@@ -248,7 +248,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId());
         PartitionPushStatusNotifier partitionPushStatusNotifier =
             new PartitionPushStatusNotifier(partitionPushStatusAccessor);
-        ingestionService.addNotifier(partitionPushStatusNotifier);
+        ingestionService.addCommonNotifier(partitionPushStatusNotifier);
         /**
          * Complete the accessor future after the accessor is created && the notifier is added.
          * This is for blocking the {@link AbstractParticipantModel #setupNewStorePartition()} until
