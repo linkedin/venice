@@ -186,7 +186,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         Optional<Boolean> leaderFollowerModelEnabled,
         Optional<BackupStrategy> backupStategy,
         Optional<Boolean> autoSchmePushJob,
-        Optional<Boolean> autoSchmeAdmin,
         Optional<Boolean> hybridStoreDiskQuotaEnabled,
         Optional<Boolean> regularVersionETLEnabled,
         Optional<Boolean> futureVersionETLEnabled,
