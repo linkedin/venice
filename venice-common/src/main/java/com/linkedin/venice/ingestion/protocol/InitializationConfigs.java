@@ -7,7 +7,7 @@ package com.linkedin.venice.ingestion.protocol;
 
 @SuppressWarnings("all")
 public class InitializationConfigs extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"InitializationConfigs\",\"namespace\":\"com.linkedin.venice.ingestion.protocol\",\"fields\":[{\"name\":\"aggregatedConfigs\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"A map of string key and string map value. This map contains a set of config to initialize all components required for ingestion\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"InitializationConfigs\",\"namespace\":\"com.linkedin.venice.ingestion.protocol\",\"fields\":[{\"name\":\"aggregatedConfigs\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"A map of string key and string map value. This map contains a set of config to initialize all components required for ingestion\",\"default\":{}}]}");
   /** A map of string key and string map value. This map contains a set of config to initialize all components required for ingestion */
   public java.util.Map<java.lang.CharSequence,java.lang.CharSequence> aggregatedConfigs;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
