@@ -400,6 +400,24 @@ public class ConfigKeys {
    */
   public static final String SERVER_DELAY_REPORT_READY_TO_SERVE_MS = "server.delay.report.ready.to.serve.ms";
 
+  /**
+   * Ingestion isolation mode in target storage instance.
+   * This will be applied to Da Vinci and Storage Node.
+   */
+  public static final String SERVER_INGESTION_ISOLATION_MODE = "server.ingestion.isolation.mode";
+
+  /**
+   * Port number for ingestion listener. For Parent/Child mode, it will be used by child process. For SplitService mode,
+   * it will be used by IngestionService.
+   */
+  public static final String SERVER_INGESTION_ISOLATION_SERVICE_PORT = "server.ingestion.isolation.service.port";
+
+  /**
+   * Port number for ingestion listener. For Parent/Child mode, it will be used by parent process. For SplitService mode,
+   * it will be used by venice server that are using the ingestion service.
+   */
+  public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT = "server.ingestion.isolation.application.port";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

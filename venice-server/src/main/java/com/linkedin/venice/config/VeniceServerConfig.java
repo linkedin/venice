@@ -3,6 +3,7 @@ package com.linkedin.venice.config;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
+import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -201,6 +202,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int cacheWarmingThreadPoolSize;
   private final long delayReadyToServeMS;
 
+  private final IngestionIsolationMode ingestionIsolationMode;
+  private final int ingestionServicePort;
+  private final int ingestionApplicationPort;
+
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
@@ -297,6 +303,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     cacheWarmingStoreSet = new HashSet<>(cacheWarmingStoreList);
     cacheWarmingThreadPoolSize = serverProperties.getInt(SERVER_CACHE_WARMING_THREAD_POOL_SIZE, 4);
     delayReadyToServeMS = serverProperties.getLong(SERVER_DELAY_REPORT_READY_TO_SERVE_MS, 0); // by default no delay
+
+    ingestionIsolationMode = IngestionIsolationMode.valueOf(serverProperties.getString(SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.NO_OP.toString()));
+    ingestionServicePort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_SERVICE_PORT, 27015);
+    ingestionApplicationPort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, 27016);
   }
 
   public int getListenerPort() {
@@ -546,5 +556,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getDelayReadyToServeMS() {
     return delayReadyToServeMS;
+  }
+
+  public IngestionIsolationMode getIngestionIsolationMode() {
+    return ingestionIsolationMode;
+  }
+
+  public int getIngestionServicePort() {
+    return ingestionServicePort;
+  }
+
+  public int getIngestionApplicationPort() {
+    return ingestionApplicationPort;
   }
 }
