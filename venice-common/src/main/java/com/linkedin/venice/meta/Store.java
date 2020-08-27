@@ -32,6 +32,12 @@ import org.codehaus.jackson.annotate.JsonProperty;
 public class Store {
   public static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
   public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PREFIX + "%s";
+  public static int DEFAULT_REPLICATION_FACTOR = 3;
+
+  //Only for testing
+  public static void setDefaultReplicationFactor(int defaultReplicationFactor) {
+    DEFAULT_REPLICATION_FACTOR = defaultReplicationFactor;
+  }
 
   /**
    * Special version number indicates none of version is available to read.
@@ -264,6 +270,11 @@ public class Store {
    * Default retention time used when creating a new RealTime Topic.
    */
   private long defaultRTRetentionTime = TimeUnit.DAYS.toMillis(5);
+
+  /**
+   * the number of replica each store version will hold.
+   */
+  private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
 
 
   public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
@@ -709,6 +720,14 @@ public class Store {
     this.backupVersionRetentionMs = backupVersionRetentionMs;
   }
 
+  public int getReplicationFactor() {
+    return replicationFactor;
+  }
+
+  public void setReplicationFactor(int replicationFactor) {
+    this.replicationFactor = replicationFactor;
+  }
+
   /**
    * Add a version into store.
    *
@@ -762,6 +781,8 @@ public class Store {
       version.setNativeReplicationEnabled(nativeReplicationEnabled);
 
       version.setIncrementalPushPolicy(incrementalPushPolicy);
+
+      version.setReplicationFactor(replicationFactor);
     }
 
     versions.add(index, version);
@@ -964,6 +985,7 @@ public class Store {
     result = 31 * result + (storeMetadataSystemStoreEnabled ? 1 : 0);
     result = 31 * result + incrementalPushPolicy.hashCode();
     result = 31 * result + (int) (backupVersionRetentionMs ^ (backupVersionRetentionMs >>> 32));
+    result = 31 * result + replicationFactor;
 
     return result;
   }
@@ -1013,6 +1035,7 @@ public class Store {
     if (storeMetadataSystemStoreEnabled != store.storeMetadataSystemStoreEnabled) return false;
     if (incrementalPushPolicy != store.incrementalPushPolicy) return false;
     if (backupVersionRetentionMs != store.backupVersionRetentionMs) return false;
+    if (replicationFactor != store.replicationFactor) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
         && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
   }
@@ -1063,6 +1086,7 @@ public class Store {
     clonedStore.setStoreMetadataSystemStoreEnabled(storeMetadataSystemStoreEnabled);
     clonedStore.setIncrementalPushPolicy(incrementalPushPolicy);
     clonedStore.setBackupVersionRetentionMs(backupVersionRetentionMs);
+    clonedStore.setReplicationFactor(replicationFactor);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion(), true);
     }

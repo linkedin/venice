@@ -25,8 +25,6 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
 
   private static final Logger logger = Logger.getLogger(AggPartitionHealthStats.class);
 
-  private final int requiredReplicaFactor;
-
   private final ReadOnlyStoreRepository storeRepository;
 
   private final PushMonitor pushMonitor;
@@ -34,18 +32,15 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
   /**
    * Only for test usage.
    */
-  protected AggPartitionHealthStats(String clusterName, ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor,
-      PushMonitor pushMonitor) {
+  protected AggPartitionHealthStats(String clusterName, ReadOnlyStoreRepository storeRepository, PushMonitor pushMonitor) {
     super(clusterName, null, (metricRepo, resourceName) -> new PartitionHealthStats(resourceName));
-    this.requiredReplicaFactor = requiredReplicationFactor;
     this.storeRepository = storeRepository;
     this.pushMonitor = pushMonitor;
   }
 
   public AggPartitionHealthStats(String clusterName, MetricsRepository metricsRepository, RoutingDataRepository routingDataRepository,
-      ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor, PushMonitor pushMonitor) {
+      ReadOnlyStoreRepository storeRepository, PushMonitor pushMonitor) {
     super(clusterName, metricsRepository, (metricsRepo, resourceName) -> new PartitionHealthStats(metricsRepo, resourceName));
-    this.requiredReplicaFactor = requiredReplicationFactor;
     this.storeRepository = storeRepository;
     this.pushMonitor = pushMonitor;
 
@@ -68,7 +63,8 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
       return;
     }
     for (Partition partition : partitionAssignment.getAllPartitions()) {
-      if (pushMonitor.getReadyToServeInstances(partitionAssignment, partition.getId()).size() < requiredReplicaFactor) {
+      if (pushMonitor.getReadyToServeInstances(partitionAssignment, partition.getId()).size() <
+      store.getReplicationFactor()) {
         underReplicatedPartitions++;
       }
     }

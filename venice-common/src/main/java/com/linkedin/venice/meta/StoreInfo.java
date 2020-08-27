@@ -52,6 +52,7 @@ public class StoreInfo {
     storeInfo.setPushStreamSourceAddress(store.getPushStreamSourceAddress());
     storeInfo.setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     storeInfo.setIncrementalPushPolicy(store.getIncrementalPushPolicy());
+    storeInfo.setReplicationFactor(store.getReplicationFactor());
     return storeInfo;
   }
   /**
@@ -236,6 +237,8 @@ public class StoreInfo {
   private PartitionerConfig partitionerConfig;
 
   private long backupVersionRetentionMs;
+
+  private int replicationFactor;
 
   /**
    * Incremental Push Policy to reconcile with real time pushes.
@@ -578,5 +581,14 @@ public class StoreInfo {
 
   public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
     this.incrementalPushPolicy = incrementalPushPolicy;
+  }
+
+
+  public int getReplicationFactor() {
+    return replicationFactor;
+  }
+
+  public void setReplicationFactor(int replicationFactor) {
+    this.replicationFactor = replicationFactor;
   }
 }

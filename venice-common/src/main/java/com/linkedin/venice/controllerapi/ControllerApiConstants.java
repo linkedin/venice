@@ -105,6 +105,8 @@ public class ControllerApiConstants {
 
   public static final String BACKUP_VERSION_RETENTION_MS = "backup_version_retention_ms";
 
+  public static final String REPLICATION_FACTOR = "replication_factor";
+
   public static final String ACCESS_PERMISSION = "access_permission";
 
   public static final String IS_WRITE_COMPUTE_ENABLED = "is_write_compute_enabled";

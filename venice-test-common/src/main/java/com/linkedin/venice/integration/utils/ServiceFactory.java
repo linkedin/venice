@@ -141,7 +141,7 @@ public class ServiceFactory {
   }
 
   public static VeniceControllerWrapper getVeniceController(String[] clusterNames,
-      KafkaBrokerWrapper kafkaBrokerWrapper, int replicaFactor, int partitionSize, long delayToRebalanceMS,
+      KafkaBrokerWrapper kafkaBrokerWrapper, int replicationFactor, int partitionSize, long delayToRebalanceMS,
       int minActiveReplica, BrooklinWrapper brooklinWrapper, String clusterToD2, boolean sslToKafka, boolean d2Enabled,
       Properties properties) {
     if (null != brooklinWrapper) {
@@ -154,7 +154,7 @@ public class ServiceFactory {
     }
     VeniceProperties extraProperties = new VeniceProperties(properties);
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicaFactor, partitionSize,
+        VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicationFactor, partitionSize,
             delayToRebalanceMS, minActiveReplica, null, extraProperties, clusterToD2, sslToKafka, d2Enabled));
   }
 

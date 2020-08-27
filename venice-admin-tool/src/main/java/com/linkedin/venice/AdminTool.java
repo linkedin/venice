@@ -668,6 +668,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
     longParam(cmd, Arg.BACKUP_VERSION_RETENTION_MS, p -> params.setBackupVersionRetentionMs(p), argSet);
+    integerParam(cmd, Arg.REPLICATION_FACTOR, p -> params.setReplicationFactor(p), argSet);
 
     /**
      * By default when SRE updates storage quota using AdminTool, we will set the bypass as true,

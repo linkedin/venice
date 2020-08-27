@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -52,13 +53,15 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
+      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicationFactor, int partitionSize,
       long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper[] childControllers,
       VeniceProperties extraProps, String clusterToD2, boolean sslToKafka, boolean d2Enabled, Optional<AuthorizerService> authorizerService) {
     return (serviceName, port, dataDirectory) -> {
       List<VeniceProperties> propertiesList = new ArrayList<>();
       int adminPort = IntegrationTestUtils.getFreePort();
       int adminSecurePort = IntegrationTestUtils.getFreePort();
+
+      Store.setDefaultReplicationFactor(replicationFactor);
       for(String clusterName:clusterNames) {
         VeniceProperties clusterProps =
             IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, zkAddress, kafkaBrokerWrapper, sslToKafka);
@@ -70,7 +73,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
             .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
             .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
-            .put(DEFAULT_REPLICA_FACTOR, replicaFactor)
+            .put(DEFAULT_REPLICA_FACTOR, replicationFactor)
             .put(DEFAULT_NUMBER_OF_PARTITION, 1)
             .put(ADMIN_PORT, adminPort)
             .put(ADMIN_SECURE_PORT, adminSecurePort)
@@ -147,10 +150,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
+      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicationFactor, int partitionSize,
       long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper[] childControllers,
       VeniceProperties extraProps, String clusterToD2, boolean sslToKafka, boolean d2Enable) {
-    return generateService(clusterNames, zkAddress, kafkaBrokerWrapper, isParent, replicaFactor, partitionSize,
+    return generateService(clusterNames, zkAddress, kafkaBrokerWrapper, isParent, replicationFactor, partitionSize,
         delayToReblanceMS, minActiveReplica, childControllers, extraProps, clusterToD2, sslToKafka, d2Enable,
         Optional.empty());
   }

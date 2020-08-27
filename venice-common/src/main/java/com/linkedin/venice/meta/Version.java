@@ -125,6 +125,11 @@ public class Version implements Comparable<Version> {
   private IncrementalPushPolicy incrementalPushPolicy = IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC;
 
   /**
+   * the number of replica each store version will hold.
+   */
+  private int replicationFactor = Store.DEFAULT_REPLICATION_FACTOR;
+
+  /**
    * Use the constructor that specifies a pushJobId instead
    */
   @Deprecated
@@ -260,6 +265,14 @@ public class Version implements Comparable<Version> {
     this.incrementalPushPolicy = incrementalPushPolicy;
   }
 
+  public int getReplicationFactor() {
+    return replicationFactor;
+  }
+
+  public void setReplicationFactor(int replicationFactor) {
+    this.replicationFactor = replicationFactor;
+  }
+
   @Override
   public String toString() {
     return "Version{" +
@@ -276,6 +289,7 @@ public class Version implements Comparable<Version> {
         ", partitionerConfig=" + partitionerConfig +
         ", nativeReplicationEnabled=" + nativeReplicationEnabled +
         ", pushStreamSourceAddress=" + pushStreamSourceAddress +
+        ", replicationFactor=" + replicationFactor +
         '}';
   }
 
@@ -353,6 +367,10 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
+    if (replicationFactor != version.replicationFactor) {
+      return false;
+    }
+
     return pushJobId.equals(version.pushJobId);
   }
 
@@ -370,6 +388,7 @@ public class Version implements Comparable<Version> {
     result = 31 * result + pushStreamSourceAddress.hashCode();
     result = 31 * result + partitionCount;
     result = 31 * result + incrementalPushPolicy.hashCode();
+    result = 31 * result + replicationFactor;
     return result;
   }
 
@@ -392,6 +411,7 @@ public class Version implements Comparable<Version> {
     clonedVersion.setNativeReplicationEnabled(nativeReplicationEnabled);
     clonedVersion.setPushStreamSourceAddress(pushStreamSourceAddress);
     clonedVersion.setIncrementalPushPolicy(incrementalPushPolicy);
+    clonedVersion.setReplicationFactor(replicationFactor);
     return clonedVersion;
   }
 

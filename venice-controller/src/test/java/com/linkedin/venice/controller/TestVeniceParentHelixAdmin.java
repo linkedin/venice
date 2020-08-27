@@ -178,7 +178,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
       Optional<IncrementalPushPolicy> incrementalPushPolicy = params.getIncrementalPushPolicy();
       Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
-
+      Optional<Integer> replicationFactor = params.getReplicationFactor();
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
       }
@@ -1223,7 +1223,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .setCompressionStrategy(CompressionStrategy.GZIP)
         .setHybridRewindSeconds(135l)
         .setHybridOffsetLagThreshold(2000)
-        .setBootstrapToOnlineTimeoutInHours(48));
+        .setBootstrapToOnlineTimeoutInHours(48)
+        .setReplicationFactor(2));
 
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
@@ -1246,6 +1247,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(updateStore.partitionerConfig.amplificationFactor, 1);
     Assert.assertEquals(updateStore.partitionerConfig.partitionerParams.toString(), testPartitionerParams.toString());
     Assert.assertEquals(updateStore.partitionerConfig.partitionerClass.toString(), "com.linkedin.venice.partitioner.DaVinciPartitioner");
+    Assert.assertEquals(updateStore.replicationFactor, 2);
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));
