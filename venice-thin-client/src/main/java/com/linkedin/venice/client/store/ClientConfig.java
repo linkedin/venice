@@ -43,6 +43,8 @@ public class ClientConfig<T extends SpecificRecord> {
   private int alwaysOnDeserializerQueueCapacity = 10000;
   private boolean useFastAvro = true;
   private boolean retryOnRouterError = false;
+  private boolean useBlackHoleDeserializer = false;
+  private boolean reuseObjectsForSerialization = false;
 
   // Security settings
   private boolean isHttps = false;
@@ -91,6 +93,8 @@ public class ClientConfig<T extends SpecificRecord> {
         .setAlwaysOnDeserializerQueueCapacity(config.getAlwaysOnDeserializerQueueCapacity())
         .setUseFastAvro(config.isUseFastAvro())
         .setRetryOnRouterError(config.isRetryOnRouterErrorEnabled())
+        .setUseBlackHoleDeserializer(config.isUseBlackHoleDeserializer())
+        .setReuseObjectsForSerialization(config.isReuseObjectsForSerialization())
         // Security settings
         .setHttps(config.isHttps())
         .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
@@ -326,6 +330,24 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public boolean isRetryOnRouterErrorEnabled() {
     return retryOnRouterError;
+  }
+
+  public boolean isUseBlackHoleDeserializer() {
+    return useBlackHoleDeserializer;
+  }
+
+  public ClientConfig<T> setUseBlackHoleDeserializer(boolean useBlackHoleDeserializer) {
+    this.useBlackHoleDeserializer = useBlackHoleDeserializer;
+    return this;
+  }
+
+  public boolean isReuseObjectsForSerialization() {
+    return reuseObjectsForSerialization;
+  }
+
+  public ClientConfig<T> setReuseObjectsForSerialization(boolean reuseObjectsForSerialization) {
+    this.reuseObjectsForSerialization = reuseObjectsForSerialization;
+    return this;
   }
 
   public Time getTime() {

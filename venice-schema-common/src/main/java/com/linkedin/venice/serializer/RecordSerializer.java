@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import org.apache.avro.io.BinaryEncoder;
 
 
@@ -32,4 +31,6 @@ public interface RecordSerializer<T> {
    * @throws VeniceException
    */
   byte[] serializeObjects(Iterable<T> objects, ByteBuffer prefix) throws VeniceException;
+
+  byte[] serializeObjects(Iterable<T> objects, ByteBuffer prefix, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException;
 }
