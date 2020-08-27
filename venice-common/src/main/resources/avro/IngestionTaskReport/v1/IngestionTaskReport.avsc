@@ -1,0 +1,33 @@
+{
+  "name": "IngestionTaskReport",
+  "namespace": "com.linkedin.venice.ingestion.protocol",
+  "type": "record",
+  "fields": [
+    {
+      "name": "isEndOfPushReceived",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isComplete",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isError",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isPositive",
+      "doc": "A true/false flag to respond whether a partition is consuming",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "errorMessage",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}

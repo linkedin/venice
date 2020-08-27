@@ -1,0 +1,20 @@
+{
+  "name": "IngestionTaskCommand",
+  "namespace": "com.linkedin.venice.ingestion.protocol",
+  "type": "record",
+  "fields": [
+    {
+      "name": "topicName",
+      "type": "string"
+    },
+    {
+      "name": "partitionId",
+      "type": "int"
+    },
+    {
+      "name": "commandType",
+      "doc": "0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming",
+      "type": "int"
+    }
+  ]
+}

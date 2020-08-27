@@ -2,6 +2,9 @@ package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
+import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -80,7 +83,22 @@ public enum AvroProtocolDefinition {
    *
    * This protocol is actually un-evolvable.
    */
-  CHUNKED_KEY_SUFFIX(ChunkedKeySuffix.class);
+  CHUNKED_KEY_SUFFIX(ChunkedKeySuffix.class),
+
+  /**
+   * Used to encode configs needed to initialize child process of ingestion isolation.
+   */
+  INITIALIZATION_CONFIGS(27,1, InitializationConfigs.class),
+
+  /**
+   * Used to encode various kinds of ingestion task commands, which are used to control ingestion task in child process.
+   */
+  INGESTION_TASK_COMMAND(28,1, IngestionTaskCommand.class),
+
+  /**
+   * Used to encoded status of ingestion task, that are reported backed from child process to Storage Node / Da Vinci backend.
+   */
+  INGESTION_TASK_REPORT(29,1, IngestionTaskReport.class);
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 
