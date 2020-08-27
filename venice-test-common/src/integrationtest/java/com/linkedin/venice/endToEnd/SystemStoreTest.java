@@ -41,6 +41,7 @@ import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
@@ -133,7 +134,7 @@ public class SystemStoreTest {
     parentZk.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testParticipantStoreKill() {
     VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient, true);
     assertFalse(versionCreationResponse.isError());
@@ -163,7 +164,7 @@ public class SystemStoreTest {
     assertTrue(metrics.get(".venice-client." + requestMetricExample).value() > 0);
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testKillWhenVersionIsOnline() {
     String storeName = TestUtils.getUniqueString("testKillWhenVersionIsOnline");
     final VersionCreationResponse versionCreationResponseForOnlineVersion = getNewStoreVersion(parentControllerClient, storeName, true);
@@ -227,7 +228,7 @@ public class SystemStoreTest {
    * Alternatively, to break the test into smaller ones is to enforce execution order or dependency of tests since if
    * the Zk shared store tests fail then tests related to materializing the metadata store will definitely fail as well.
    */
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testMetadataStore() throws Exception {
     // Create a new Venice store and materialize the corresponding metadata system store
     String regularVeniceStoreName = TestUtils.getUniqueString("regular_store");
@@ -421,7 +422,7 @@ public class SystemStoreTest {
 
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testDeleteStoreDematerializesMetadataStoreVersion() {
     // Create a new Venice store and materialize the corresponding metadata system store
     String regularVeniceStoreName = TestUtils.getUniqueString("regular_store_to_delete");
@@ -446,7 +447,7 @@ public class SystemStoreTest {
     });
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testZkSharedStoreCanBeRecreated() {
     ControllerResponse controllerResponse = parentControllerClient.disableAndDeleteStore(zkSharedStoreName);
     assertFalse(controllerResponse.isError(), "Failed to delete the zk shared store: " + zkSharedStoreName);

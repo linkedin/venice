@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
@@ -47,7 +48,7 @@ public class TestStorageMetadataMigration {
     cluster.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableDuringPush() {
     String storeName = TestUtils.getUniqueString("testMasterControllerFailover");
     int partitionCount = 2;

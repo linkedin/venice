@@ -12,6 +12,7 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.FileInputStream;
@@ -53,7 +54,7 @@ public class ProduceWithSSL {
     cluster.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testVeniceWriterSupportSSL()
       throws ExecutionException, InterruptedException {
     String storeName = TestUtils.getUniqueString("testVeniceWriterSupportSSL");
@@ -97,7 +98,7 @@ public class ProduceWithSSL {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 60 * Time.MS_PER_SECOND)
   public void testKafkaPushJobSupportSSL(boolean isOpenSSLEnabled)
       throws Exception {
     VeniceClusterWrapper cluster = this.cluster;

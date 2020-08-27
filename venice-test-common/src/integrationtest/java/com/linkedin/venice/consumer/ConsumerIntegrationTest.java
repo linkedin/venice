@@ -60,7 +60,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 
-@Test
+@Test(timeOut = 60 * Time.MS_PER_SECOND)
 public class ConsumerIntegrationTest {
   private static final String TEST_KEY = "key1";
 

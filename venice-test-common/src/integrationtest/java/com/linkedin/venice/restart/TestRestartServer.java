@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +38,7 @@ public class TestRestartServer {
     cluster.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testRestartServerAfterPushCompleted() {
     String storeName = TestUtils.getUniqueString("testRestartServerAfterPushCompleted");
     int dataSize = 2000;

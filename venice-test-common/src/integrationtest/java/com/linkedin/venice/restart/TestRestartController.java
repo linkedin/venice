@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 
 import org.testng.Assert;
@@ -41,7 +42,7 @@ public class TestRestartController {
    * Scenario is 1. stop the original master; 2. create new version to test master failover. 3. restart the failed one.
    * 4. complete push to test master could
    */
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testMasterControllerFailover() {
     String storeName = TestUtils.getUniqueString("testMasterControllerFailover");
     int dataSize = 1000;

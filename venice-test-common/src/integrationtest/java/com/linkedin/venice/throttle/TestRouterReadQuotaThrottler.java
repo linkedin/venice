@@ -16,6 +16,7 @@ import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -80,7 +81,7 @@ public class TestRouterReadQuotaThrottler {
     cluster.close();
   }
 
-  @Test(groups = "flaky")
+  @Test(groups = "flaky", timeOut = 60 * Time.MS_PER_SECOND)
   public void testReadRequestBeThrottled() throws InterruptedException {
     long timeWindowInSec = TimeUnit.MILLISECONDS.toSeconds(ReadRequestThrottler.DEFAULT_STORE_QUOTA_TIME_WINDOW);
     // Setup read quota for the store.
@@ -142,7 +143,7 @@ public class TestRouterReadQuotaThrottler {
     }
   }
 
-  @Test(priority = 1, groups = "flaky")
+  @Test(priority = 1, groups = "flaky", timeOut = 60 * Time.MS_PER_SECOND)
   public void testNoopThrottlerCanReportPerRouterStoreQuota() {
     Properties props = new Properties();
     props.put(ROUTER_ENABLE_READ_THROTTLING, "false");

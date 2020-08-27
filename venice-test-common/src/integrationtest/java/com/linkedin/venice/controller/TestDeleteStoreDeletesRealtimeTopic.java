@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
@@ -44,7 +45,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     IOUtils.closeQuietly(controllerClient);
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void deletingHybridStoreDeletesRealtimeTopic() {
     venice = ServiceFactory.getVeniceCluster();
     controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());

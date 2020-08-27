@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Properties;
@@ -20,7 +21,7 @@ import org.testng.annotations.Test;
 public class TestD2ControllerClient {
   private static final String CLUSTER_NAME = TestUtils.getUniqueString("test-cluster");
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testD2ControllerClientEnd2End() {
     D2Client d2Client = null;
     try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();VeniceControllerWrapper controllerWrapper =
@@ -55,7 +56,7 @@ public class TestD2ControllerClient {
   /**
    * TODO: Remove the below unit test after controller ACL migration
    */
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testHelperFunctionToConvertUrl() throws MalformedURLException {
     URL testUrl = new URL("http://localhost:1576");
     Assert.assertEquals(D2ControllerClient.convertToSecureUrl(testUrl, 1578).toString(), "https://localhost:1578");

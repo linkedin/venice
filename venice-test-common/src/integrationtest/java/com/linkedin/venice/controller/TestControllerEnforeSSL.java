@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -21,7 +22,7 @@ public class TestControllerEnforeSSL {
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VALUE_SCHEMA = "\"string\"";
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testInsecureRouteFailWhenEnforcingSSL() {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     Properties extraProperties = new Properties();

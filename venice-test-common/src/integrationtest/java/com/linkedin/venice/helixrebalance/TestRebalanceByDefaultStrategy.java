@@ -8,6 +8,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
@@ -68,7 +69,7 @@ public class TestRebalanceByDefaultStrategy {
     cluster.close();
   }
 
-  @Test(invocationCount = TEST_TIMES, skipFailedInvocations = false)
+  @Test(invocationCount = TEST_TIMES, skipFailedInvocations = false, timeOut = 60 * Time.MS_PER_SECOND)
   public void testRollingUpgrade()
       throws InterruptedException {
     String clusterName = cluster.getClusterName();
