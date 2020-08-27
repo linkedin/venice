@@ -9,27 +9,31 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
+import org.apache.helix.zookeeper.zkclient.IZkStateListener;
 import org.apache.helix.zookeeper.zkclient.exception.ZkNoNodeException;
 import org.apache.helix.zookeeper.zkclient.exception.ZkNodeExistsException;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.zkclient.IZkDataListener;
 import org.apache.log4j.Logger;
+import org.apache.zookeeper.Watcher;
 
 
 /**
  * Manage live routers through Zookeeper. Help each router to create a ZNode which reflects whether that router is
  * connected to ZK cluster or not and monitor all routers' ZNodes to get how many routers live right now.
  */
-public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildListener, IZkDataListener, VeniceResource {
+public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildListener, IZkDataListener, VeniceResource, IZkStateListener {
   private static final Logger logger = Logger.getLogger(ZkRoutersClusterManager.class);
   private static final String PREFIX_PATH = "/routers";
   private final String clusterName;
   private final ZkClient zkClient;
   private volatile int liveRouterCount = 0;
+  private AtomicBoolean isConnected = new AtomicBoolean(true);
   private volatile RoutersClusterConfig routersClusterConfig;
 
   private final ZkBaseDataAccessor<RoutersClusterConfig> dataAccessor;
@@ -55,6 +59,8 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     zkStateListener = new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
     this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
     this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
+    isConnected.set(zkClient.getConnection().getZookeeperState().isAlive());
+    this.zkClient.subscribeStateChanges(this);
   }
 
   @Override
@@ -256,6 +262,9 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   }
 
   protected void changeLiveRouterCount(int newRouterCount) {
+    if(!isConnected.get()) {
+      return;
+    }
     if (this.liveRouterCount != newRouterCount) {
       this.liveRouterCount = newRouterCount;
       triggerRouterCountChangedEvent(liveRouterCount);
@@ -350,5 +359,29 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     // Synchronized keyword protect routersClusterConfig from conflict updating.
     routersClusterConfig = dataAccessor.get(getRouterRootPath(), null, AccessOption.PERSISTENT);
     triggerRouterClusterConfigChangedEvent(routersClusterConfig);
+  }
+
+  @Override
+  public void handleStateChanged(Watcher.Event.KeeperState keeperState) throws Exception {
+    if(keeperState.getIntValue() != 3 && keeperState.getIntValue() != 5 && keeperState.getIntValue() != 6) {
+      // Looks like we're disconnected.  Lets update our connection state and freeze our internal state
+      logger.warn("zkclient is disconnected and is in state: " + Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
+      this.isConnected.set(false);
+    } else {
+      // Now we are in a connected state.  Unfreeze things and refresh data
+      this.isConnected.set(true);
+      logger.info("zkclient is connected and is in state: " + Watcher.Event.KeeperState.fromInt(keeperState.getIntValue()));
+      this.refresh();
+    }
+  }
+
+  @Override
+  public void handleNewSession(String s) throws Exception {
+    // do nothing
+  }
+
+  @Override
+  public void handleSessionEstablishmentError(Throwable throwable) throws Exception {
+    // do nothing
   }
 }
