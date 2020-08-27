@@ -9,11 +9,13 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import java.io.ByteArrayOutputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -76,6 +78,10 @@ public class ComputeRequestWrapper {
 
   public byte[] serialize() {
     return SERIALIZER_MAP.get(version).serialize(computeRequest);
+  }
+
+  public byte[] serialize(BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
+    return SERIALIZER_MAP.get(version).serialize(computeRequest, reusedEncoder, reusedOutputStream);
   }
 
   public void deserialize(BinaryDecoder decoder, boolean useFastAvro) {

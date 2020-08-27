@@ -3,7 +3,6 @@ package com.linkedin.venice.serializer;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.MapAwareGenericDatumWriter;
@@ -113,7 +112,11 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   }
 
   private byte[] serializeObjects(Iterable<K> objects, ByteArrayOutputStream output) throws VeniceException {
-    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, buffered, null);
+    return serializeObjects(objects, output, null);
+  }
+
+  private byte[] serializeObjects(Iterable<K> objects, ByteArrayOutputStream output, BinaryEncoder reusedEncoder) throws VeniceException {
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, buffered, reusedEncoder);
     try {
       objects.forEach(object -> {
         try {
@@ -154,5 +157,12 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     output.write(prefix.array(), prefix.position(), prefix.remaining());
     return serializeObjects(objects, output);
+  }
+
+  @Override
+  public byte[] serializeObjects(Iterable<K> objects, ByteBuffer prefix, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException {
+    reusedOutputStream.reset();
+    reusedOutputStream.write(prefix.array(), prefix.position(), prefix.remaining());
+    return serializeObjects(objects, reusedOutputStream, reusedEncoder);
   }
 }

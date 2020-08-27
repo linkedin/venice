@@ -154,7 +154,7 @@ public class AvroComputeRequestBuilderTest {
     AbstractAvroStoreClient mockClient2 = getMockClient();
     doReturn("testStore").when(mockClient2).getStoreName();
     AvroComputeRequestBuilderV2<String> computeRequestBuilder2 = new AvroComputeRequestBuilderV2(VALID_RECORD_SCHEMA,
-        mockClient2, Optional.empty(), Optional.empty(), mockTime);
+        mockClient2, Optional.empty(), Optional.empty(), mockTime, false, null, null);
 
     computeRequestBuilder2
         .hadamardProduct("float_array_field1", hadamardProductParam, "float_array_field1_hadamard_product_result")

@@ -15,6 +15,7 @@ import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.utils.Time;
+import java.io.ByteArrayOutputStream;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryEncoder;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 
@@ -61,12 +63,23 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
   protected final String resultSchemaName;
   private final Optional<ClientStats> stats;
   private final Optional<ClientStats> streamingStats;
+
+  private final boolean reuseObjects;
+  private final BinaryEncoder reusedEncoder;
+  private final ByteArrayOutputStream reusedOutputStream;
+
   protected Set<String> projectFields = new HashSet<>();
   protected List<DotProduct> dotProducts = new LinkedList<>();
   protected List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
 
   public AbstractAvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
       Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time) {
+     this(latestValueSchema, storeClient, stats, streamingStats, time, false, null, null);
+  }
+
+  public AbstractAvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time, boolean reuseObjects,
+      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
 
     if (latestValueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceClientException("Only value schema with 'RECORD' type is supported");
@@ -81,6 +94,9 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
     this.stats = stats;
     this.streamingStats = streamingStats;
     this.resultSchemaName = ComputeUtils.removeAvroIllegalCharacter(storeClient.getStoreName()) + "_VeniceComputeResult";
+    this.reuseObjects = reuseObjects;
+    this.reusedEncoder = reusedEncoder;
+    this.reusedOutputStream = reusedOutputStream;
   }
 
   @Override
@@ -283,7 +299,12 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
     // Generate ComputeRequest object
     ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema.getSecond());
 
-    storeClient.compute(computeRequestWrapper, keys, resultSchema.getFirst(), callback, preRequestTimeInNS);
+    if (reuseObjects) {
+      storeClient.compute(computeRequestWrapper, keys, resultSchema.getFirst(), callback, preRequestTimeInNS,
+          reusedEncoder, reusedOutputStream);
+    } else {
+      storeClient.compute(computeRequestWrapper, keys, resultSchema.getFirst(), callback, preRequestTimeInNS);
+    }
   }
 
   protected void checkComputeFieldValidity(String computeFieldName, String resultFieldName, Set<String> resultFieldsSet, ComputeOperationType computeType) {

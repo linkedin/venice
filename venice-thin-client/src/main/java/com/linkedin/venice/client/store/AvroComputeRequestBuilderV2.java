@@ -8,6 +8,7 @@ import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.utils.Pair;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
+import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 
@@ -42,12 +44,19 @@ class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K
 
   public AvroComputeRequestBuilderV2(Schema latestValueSchema, InternalAvroStoreClient storeClient,
       Optional<ClientStats> stats, Optional<ClientStats> streamingStats) {
-    this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime());
+    this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), false, null, null);
   }
 
   public AvroComputeRequestBuilderV2(Schema latestValueSchema, InternalAvroStoreClient storeClient,
-      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time) {
-    super(latestValueSchema, storeClient, stats, streamingStats, time);
+      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, boolean reuseObjects,
+      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
+    this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), reuseObjects, reusedEncoder, reusedOutputStream);
+  }
+
+  public AvroComputeRequestBuilderV2(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time, boolean reuseObjects,
+      BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
+    super(latestValueSchema, storeClient, stats, streamingStats, time, reuseObjects, reusedEncoder, reusedOutputStream);
   }
 
   @Override

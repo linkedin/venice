@@ -25,7 +25,11 @@ public class ClientFactory {
     if (clientConfig.isVsonClient()) {
       internalClient = new VsonGenericStoreClientImpl<>(transportClient, clientConfig);
     } else {
-      internalClient = new AvroGenericStoreClientImpl<>(transportClient, clientConfig);
+      if (clientConfig.isUseBlackHoleDeserializer()) {
+        internalClient = new AvroBlackHoleResponseStoreClientImpl<>(transportClient, clientConfig);
+      } else {
+        internalClient = new AvroGenericStoreClientImpl<>(transportClient, clientConfig);
+      }
     }
 
     AvroGenericStoreClient<K, V> client;
