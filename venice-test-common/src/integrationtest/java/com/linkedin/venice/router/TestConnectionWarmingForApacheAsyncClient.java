@@ -8,6 +8,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
@@ -44,7 +45,7 @@ public class TestConnectionWarmingForApacheAsyncClient {
     IOUtils.closeQuietly(veniceCluster);
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testConnectionWarming() {
     List<VeniceRouterWrapper> routers = veniceCluster.getVeniceRouters();
     Assert.assertEquals(1, routers.size(), "There should be only one router in this cluster");

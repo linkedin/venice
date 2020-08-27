@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 
+import com.linkedin.venice.utils.Time;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -22,7 +23,7 @@ public class TestStartMultiControllers {
    * Test that we can start multiple controllers, especially when number of controllers exceeds required number for a
    * cluster. Make sure that the extra controller can be started and will join the cluster if one of the controllers fail.
    */
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testStartMoreThanRequiredControllersForOneCluster() throws Exception {
     final int minControllerCount = 3;
     final int controllerCount = minControllerCount + 1;

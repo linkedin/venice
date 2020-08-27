@@ -12,6 +12,7 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -90,7 +91,7 @@ public class SendStatusMessageIntegrationTest {
    *
    * @throws Exception
    */
-  @Test(groups = {"flaky"})
+  @Test(groups = {"flaky"}, timeOut = 60 * Time.MS_PER_SECOND)
   public void testReceiveMessageFromThreeParticipants()
       throws Exception {
     // Enlarge the delay to fix the flaky test.

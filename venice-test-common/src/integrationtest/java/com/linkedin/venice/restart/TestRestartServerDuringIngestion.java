@@ -21,6 +21,7 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Collections;
@@ -99,7 +100,7 @@ public abstract class TestRestartServerDuringIngestion {
     cluster.close();
   }
 
-  @Test(groups = {"flaky"})
+  @Test(groups = {"flaky"}, timeOut = 60 * Time.MS_PER_SECOND)
   public void ingestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";

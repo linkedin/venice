@@ -19,6 +19,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -93,7 +94,7 @@ public class PushJobDetailsTest {
     zkWrapper.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPushJobDetails() throws ExecutionException, InterruptedException, IOException {
     String testStoreName = "test-push-store";
     parentControllerClient.createNewStore(testStoreName, "test-user",
@@ -154,7 +155,7 @@ public class PushJobDetailsTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPushJobDetailsFailureTags() throws ExecutionException, InterruptedException {
     String testStoreName = "test-push-failure-store";
     parentControllerClient.createNewStore(testStoreName, "test-user",
@@ -195,7 +196,7 @@ public class PushJobDetailsTest {
    * push job details can be parsed properly. This test should fail and alert developers when adding new statuses in
    * {@link com.linkedin.venice.pushmonitor.ExecutionStatus} without modifying this test or {@link PushJobDetailsStatus}.
    */
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPushJobDetailsStatusEnums() {
     // A list of known ExecutionStatus that we don't report/expose to job status polling.
     ExecutionStatus[] unreportedStatusesArray = {NEW, PROGRESS, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED,

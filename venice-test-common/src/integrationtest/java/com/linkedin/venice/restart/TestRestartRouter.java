@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import java.util.concurrent.TimeUnit;
 import java.util.Optional;
 import org.testng.Assert;
@@ -36,7 +37,7 @@ public class TestRestartRouter {
     cluster.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testRestartRouter() {
     String storeName = TestUtils.getUniqueString("testRestartRouter");
     String storeOwner = TestUtils.getUniqueString("store-owner");

@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.utils.Time;
 import java.util.Properties;
 import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
@@ -31,7 +32,7 @@ public class RocksDBPlainTableTest {
     IOUtils.closeQuietly(veniceCluster);
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testInvalidPlainTableConfig() {
     Properties serverProperties = getRocksDBPlainTableEnabledProperties();
     serverProperties.put(ROCKSDB_OPTIONS_USE_DIRECT_READS, true);
@@ -40,7 +41,7 @@ public class RocksDBPlainTableTest {
     });
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPlainTableEndToEnd() throws Exception {
     veniceCluster.addVeniceServer(new Properties(), getRocksDBPlainTableEnabledProperties());
     final int keyCount = 100;

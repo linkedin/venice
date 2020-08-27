@@ -16,3 +16,4 @@ avro_tools
 *.project
 venice-test-common/src/jmh/generated/
 venice-test-common/dump.complete.hprof
+.shelf/

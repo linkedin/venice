@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.Optional;
@@ -45,7 +46,7 @@ public class TestTopicRequestOnHybridDelete {
     IOUtils.closeQuietly(venice);
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void serverRestartOnHybridStoreKeepsVersionOnline() {
     AvroGenericStoreClient client = null;
     ControllerClient controllerClient = null;
@@ -159,7 +160,7 @@ public class TestTopicRequestOnHybridDelete {
   }
 
   //TODO this test passes, but the same workflow should be tested in a multi-colo simulation
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void deleteStoreAfterStartedPushAllowsNewPush(){
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));

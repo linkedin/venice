@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
@@ -22,7 +23,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 public class TestRocksDBOffsetStore {
   private VeniceClusterWrapper veniceCluster;
-  
+
   @BeforeClass
   public void setup() {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 0, 1);
@@ -33,7 +34,7 @@ public class TestRocksDBOffsetStore {
     IOUtils.closeQuietly(veniceCluster);
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testStorageMetadataServiceOffsets() throws Exception {
     VeniceServerWrapper serverWrapper = veniceCluster.addVeniceServer(new Properties(), getRocksDBOffsetStoreEnabledProperties());
     final int keyCount = 100;

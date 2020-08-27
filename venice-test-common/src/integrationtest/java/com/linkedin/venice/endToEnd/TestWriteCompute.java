@@ -13,6 +13,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.util.Arrays;
@@ -61,7 +62,7 @@ public class TestWriteCompute {
     veniceClusterWrapper.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testWriteComputeWithHybridLeaderFollowerLargeRecord() throws Exception {
     SystemProducer veniceProducer = null;
 

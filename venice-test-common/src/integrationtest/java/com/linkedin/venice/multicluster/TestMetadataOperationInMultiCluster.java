@@ -12,6 +12,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
@@ -30,7 +31,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 public class TestMetadataOperationInMultiCluster {
   private static Logger logger = Logger.getLogger(TestMetadataOperationInMultiCluster.class);
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testCreateStoreAndVersionForMultiCluster() {
     int numberOfController = 3;
     int numberOfCluster = 2;

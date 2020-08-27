@@ -21,7 +21,7 @@ public class TestWritePathComputation {
   private static final Logger logger = Logger.getLogger(TestWritePathComputation.class);
   private static final long GET_MASTER_CONTROLLER_TIMEOUT = 20 * Time.MS_PER_SECOND;
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagSingleDC() {
     try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(1, 1, 1, 0)) {
       String clusterName = multiClusterWrapper.getClusterNames()[0];
@@ -46,7 +46,7 @@ public class TestWritePathComputation {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagMultipleDC() {
     try (VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         1, 1, 1, 1, 1, 0)) {

@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
@@ -38,7 +39,7 @@ public class TestRouterAsyncStart {
    *
    * If this runtime of this test is not acceptable, w e could tune the above behavior.
    */
-  @Test
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testConnectionWarmingFailureDuringSyncStart() {
     // Setup Venice server in a way that it will take a very long time to response
     List<VeniceServerWrapper> servers = veniceCluster.getVeniceServers();

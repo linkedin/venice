@@ -15,6 +15,7 @@ import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.InputStream;
@@ -110,7 +111,7 @@ public class TestHelixCustomizedView {
     admin.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testUpdatingCustomizedState() throws Exception {
     int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 

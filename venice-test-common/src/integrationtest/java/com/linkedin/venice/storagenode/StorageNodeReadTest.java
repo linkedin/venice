@@ -247,7 +247,7 @@ public class StorageNodeReadTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testDiskHealthCheckService() throws Exception  {
     VeniceServerWrapper serverWrapper = null;
     CloseableHttpAsyncClient client = null;

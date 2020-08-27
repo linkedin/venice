@@ -25,6 +25,7 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -398,7 +399,7 @@ public abstract class TestRead {
     return MetricsUtils.getSum(metricName, veniceCluster.getVeniceRouters());
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testD2ServiceDiscovery() {
     String routerUrl = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
@@ -430,7 +431,7 @@ public abstract class TestRead {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testRouterHealthCheck() {
     String routerUrl = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.createDefault()) {
@@ -449,7 +450,7 @@ public abstract class TestRead {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testResourceStateLookup() {
     String routerURL = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()

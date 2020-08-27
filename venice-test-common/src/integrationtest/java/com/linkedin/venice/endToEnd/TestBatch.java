@@ -335,7 +335,7 @@ public abstract class TestBatch {
     }, new UpdateStoreQueryParams().setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START));
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPush() throws Exception {
     String storeName = testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -359,7 +359,7 @@ public abstract class TestBatch {
     }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true), false);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
     String storeName = testBatchStore(inputDir -> {
         Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -481,7 +481,7 @@ public abstract class TestBatch {
     void validate(AvroGenericStoreClient avroClient, AvroGenericStoreClient vsonClient, MetricsRepository metricsRepository) throws Exception;
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testLargeValues() throws Exception {
     try {
       testStoreWithLargeValues(false);

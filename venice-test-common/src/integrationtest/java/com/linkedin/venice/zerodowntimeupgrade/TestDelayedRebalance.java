@@ -45,7 +45,7 @@ public class TestDelayedRebalance {
     cluster.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void  testFailOneServerWithDelayedRebalance()
       throws InterruptedException {
     // Test the case that fail one server with enable delayed rebalance. Helix will not move the partition to other server.
@@ -76,7 +76,7 @@ public class TestDelayedRebalance {
         HelixState.ONLINE_STATE);
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void tesFailOneServerWithDelayedRebalanceTimeout()
       throws InterruptedException {
     // Test the cases that fail one server with enabling delayed rebalance. But do not restart server before timeout. So
