@@ -42,7 +42,7 @@ import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
-import com.linkedin.venice.store.rocksdb.RocksDBStorageOperationType;
+import com.linkedin.venice.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.ByteUtils;
@@ -106,7 +106,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final boolean parallelBatchGetEnabled;
   private final int parallelBatchGetChunkSize;
   private final boolean keyValueProfilingEnabled;
-  private final RocksDBStorageOperationType rocksDBStorageOperationType;
+  private final RocksDBComputeAccessMode rocksDBComputeAccessMode;
 
   private static class ReusableObjects {
     // reuse buffer for rocksDB value object
@@ -150,7 +150,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     this.parallelBatchGetEnabled = parallelBatchGetEnabled;
     this.parallelBatchGetChunkSize = parallelBatchGetChunkSize;
     this.keyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
-    this.rocksDBStorageOperationType = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
+    this.rocksDBComputeAccessMode = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
   }
 
   @Override
@@ -465,7 +465,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     // Reuse the same value record and result record instances for all values
     ByteBuffer reusedRawValue = null;
-    if (rocksDBStorageOperationType == RocksDBStorageOperationType.SINGLE_GET_WITH_REUSE) {
+    if (rocksDBComputeAccessMode == RocksDBComputeAccessMode.SINGLE_GET_WITH_REUSE) {
       reusedRawValue = reusableObjects.reusedByteBuffer;
     }
 
@@ -556,7 +556,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       Map<String, Object> globalContext,
       ByteBuffer reuseRawValue) {
 
-    switch (rocksDBStorageOperationType) {
+    switch (rocksDBComputeAccessMode) {
       case SINGLE_GET:
         reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, reuseValueRecord,
             binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName);
