@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka;
 
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -23,11 +22,11 @@ public class StoreStatusDecider {
    * @return a map in which the key is store name and the value is store's status.
    */
   public static Map<String, String> getStoreStatues(List<Store> storeList, ResourceAssignment resourceAssignment,
-      PushMonitor pushMonitor, VeniceControllerClusterConfig config) {
+      PushMonitor pushMonitor) {
     Map<String, String> storeStatusMap = new HashMap<>();
     for (Store store : storeList) {
       String resourceName = Version.composeKafkaTopic(store.getName(), store.getCurrentVersion());
-      int replicationFactor = config.getReplicaFactor();
+      int replicationFactor = store.getReplicationFactor();
       if (!resourceAssignment.containsResource(resourceName)) {
         // TODO: Determine if it makes sense to mark stores with no versions in them as UNAVAILABLE...? That seems ambiguous.
         logger.warn("Store:" + store.getName() + " is unavailable because current version: " + store.getCurrentVersion()

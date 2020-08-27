@@ -121,8 +121,7 @@ public class VeniceHelixResources implements VeniceResource {
         new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),
             config.getRefreshIntervalForZkReconnectInMs());
     this.aggPartitionHealthStats =
-        new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository,
-            config.getReplicaFactor(), pushMonitor);
+        new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository, pushMonitor);
     this.aggStoreStats = new AggStoreStats(metricsRepository, metadataRepository);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
     String readLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-readLock";

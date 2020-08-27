@@ -2073,8 +2073,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 getVeniceHelixResource(clusterName).getRoutingDataRepository();
             ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
             return StoreStatusDecider.getStoreStatues(storeList, resourceAssignment,
-                getVeniceHelixResource(clusterName).getPushMonitor(),
-                getVeniceHelixResource(clusterName).getConfig());
+                getVeniceHelixResource(clusterName).getPushMonitor());
         } finally {
             repository.unLock();
         }
@@ -2276,6 +2275,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store.setIncrementalPushEnabled(incrementalPushEnabled);
 
             return  store;
+        });
+    }
+
+    public synchronized void setReplicaFactor(String clusterName, String storeName, int replicaFactor) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setReplicationFactor(replicaFactor);
+
+            return store;
         });
     }
 
@@ -2535,6 +2542,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
         Optional<IncrementalPushPolicy> incrementalPushPolicy = params.getIncrementalPushPolicy();
         Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
+        Optional<Integer> replicationFactor = params.getReplicationFactor();
 
         Optional<HybridStoreConfig> hybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
@@ -2660,6 +2668,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (incrementalPushEnabled.isPresent()) {
                 setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
+            }
+
+            if (replicationFactor.isPresent()) {
+                setReplicaFactor(clusterName, storeName, replicationFactor.get());
             }
 
             if (storeMigration.isPresent()) {
@@ -3396,8 +3408,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public int getReplicationFactor(String clusterName, String storeName) {
-        //TODO if there is special config for the given store, use that value.
-        return getVeniceHelixResource(clusterName).getConfig().getReplicaFactor();
+        return getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName).getReplicationFactor();
     }
 
     @Override
@@ -4081,6 +4092,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName), metadataStoreVersionNumber);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
+        int replicationFactor = resources.getMetadataRepository().getStore(storeName).getReplicationFactor();
         resources.lockForMetadataOperation();
         try {
             topicManager.createTopic(
@@ -4094,13 +4106,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             );
             try {
                 startMonitorOfflinePush(clusterName, metadataStoreTopicName, version.getPartitionCount(),
-                    clusterConfig.getReplicaFactor(), zkSharedStoreMetadata.getOffLinePushStrategy());
+                    replicationFactor, zkSharedStoreMetadata.getOffLinePushStrategy());
                 helixAdminClient.createVeniceStorageClusterResources(clusterName, metadataStoreTopicName,
-                    version.getPartitionCount(), clusterConfig.getReplicaFactor(),
+                    version.getPartitionCount(), replicationFactor,
                     version.isLeaderFollowerModelEnabled());
                 waitUntilNodesAreAssignedForResource(clusterName, metadataStoreTopicName,
                     zkSharedStoreMetadata.getOffLinePushStrategy(),
-                    clusterConfig.getOffLineJobWaitTimeInMilliseconds(), clusterConfig.getReplicaFactor());
+                    clusterConfig.getOffLineJobWaitTimeInMilliseconds(), replicationFactor);
             } catch (Throwable e) {
                 String errorMessage = "Failed to create Helix resources and start push monitor when trying to "
                     + "materialize metadata store version: " + metadataStoreTopicName;

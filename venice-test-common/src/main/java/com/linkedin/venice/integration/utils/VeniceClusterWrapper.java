@@ -132,7 +132,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       int numberOfControllers,
       int numberOfServers,
       int numberOfRouters,
-      int replicaFactor,
+      int replicationFactor,
       int partitionSize,
       boolean enableWhitelist,
       boolean enableAutoJoinWhitelist,
@@ -152,7 +152,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
       for (int i = 0; i < numberOfControllers; i++) {
         VeniceControllerWrapper veniceControllerWrapper =
-            ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
+            ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicationFactor, partitionSize,
                 delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, sslToKafka, true, extraProperties);
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
@@ -198,7 +198,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                      veniceControllerWrappers,
                      veniceServerWrappers,
                      veniceRouterWrappers,
-                     replicaFactor,
+                     replicationFactor,
                      partitionSize,
                      delayToReblanceMS,
                      minActiveReplica,
@@ -218,7 +218,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       int numberOfControllers,
       int numberOfServers,
       int numberOfRouters,
-      int replicaFactor,
+      int replicationFactor,
       int partitionSize,
       boolean enableWhitelist,
       boolean enableAutoJoinWhitelist,
@@ -251,7 +251,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           numberOfControllers,
           numberOfServers,
           numberOfRouters,
-          replicaFactor,
+          replicationFactor,
           partitionSize,
           enableWhitelist,
           enableAutoJoinWhitelist,

@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -38,7 +39,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   }
 
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(int numberOfClusters, int numberOfControllers,
-      int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
+      int numberOfServers, int numberOfRouters, int replicationFactor, int partitionSize, boolean enableWhitelist,
       boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
       Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup, Optional<VeniceProperties> veniceProperties,
       boolean multiD2) {
@@ -72,7 +73,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         controllerProperties.put(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
       }
       for (int i = 0; i < numberOfControllers; i++) {
-        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicaFactor, partitionSize,
+        VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicationFactor, partitionSize,
             delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false, controllerProperties);
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
@@ -80,7 +81,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         // Create a wrapper for cluster without controller.
         VeniceClusterWrapper clusterWrapper =
             ServiceFactory.getVeniceClusterWrapperForMultiCluster(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
-                clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist,
+                clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableWhitelist,
                 enableAutoJoinWhitelist, delayToReblanceMS, minActiveReplica, sslToStorageNodes, false, veniceProperties);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
       }

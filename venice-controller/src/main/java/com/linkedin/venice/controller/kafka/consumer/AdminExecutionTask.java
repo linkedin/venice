@@ -38,7 +38,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -403,7 +402,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setLeaderFollowerModel(message.leaderFollowerModelEnabled)
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
-        .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled);
+        .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
+        .setReplicationFactor(message.replicationFactor);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)

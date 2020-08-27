@@ -1192,6 +1192,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
       Optional<IncrementalPushPolicy> incrementalPushPolicy = params.getIncrementalPushPolicy();
       Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
+      Optional<Integer> replicationFactor = params.getReplicationFactor();
 
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
@@ -1333,7 +1334,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       setStore.incrementalPushPolicy = incrementalPushPolicy.map(IncrementalPushPolicy::getValue).orElseGet(() -> store.getIncrementalPushPolicy().getValue());
       setStore.backupVersionRetentionMs = backupVersionRetentionMs.isPresent() ? backupVersionRetentionMs.get() : store.getBackupVersionRetentionMs();
-
+      setStore.replicationFactor = replicationFactor.isPresent() ? replicationFactor.get() : store.getReplicationFactor();
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;

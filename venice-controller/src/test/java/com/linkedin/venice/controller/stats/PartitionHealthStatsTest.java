@@ -29,7 +29,7 @@ public class PartitionHealthStatsTest {
     Mockito.doReturn(VersionStatus.ONLINE).when(mockStore).getVersionStatus(Mockito.anyInt());
     Mockito.doReturn(mockStore).when(mockStoreRepo).getStore(Mockito.anyString());
 
-    MockPartitionHealthStats stats = new MockPartitionHealthStats(mockStoreRepo, replicationFactor);
+    MockPartitionHealthStats stats = new MockPartitionHealthStats(mockStoreRepo);
     PartitionAssignment assignment = new PartitionAssignment(topic, partitionCount);
 
     // Prepare both under replicated partition and full replicated partition.
@@ -43,9 +43,9 @@ public class PartitionHealthStatsTest {
     Assert.assertEquals(stats.underReplicatedPartitionNumber, partitionCount - 1,
         "We give stats two under replicated partitions, but it did not recorded it correctly.");
     // On-going push.
-    Mockito.doReturn(VersionStatus.STARTED).when(mockStore).getVersionStatus(Mockito.anyInt());stats = new MockPartitionHealthStats(mockStoreRepo, replicationFactor);
+    Mockito.doReturn(VersionStatus.STARTED).when(mockStore).getVersionStatus(Mockito.anyInt());stats = new MockPartitionHealthStats(mockStoreRepo);
     // Reset stats.
-    stats = new MockPartitionHealthStats(mockStoreRepo, replicationFactor);
+    stats = new MockPartitionHealthStats(mockStoreRepo);
     stats.onExternalViewChange(assignment);
     // Verify we have recorded the correct under replicated partition count
     Assert.assertEquals(stats.underReplicatedPartitionNumber, 0,
@@ -70,8 +70,8 @@ public class PartitionHealthStatsTest {
   private class MockPartitionHealthStats extends AggPartitionHealthStats {
     int underReplicatedPartitionNumber = 0;
 
-    public MockPartitionHealthStats(ReadOnlyStoreRepository storeRepository, int requriedReplicaFactor) {
-      super("testUnderReplicatedPartitionStats", storeRepository, requriedReplicaFactor, mockPushMonitor);
+    public MockPartitionHealthStats(ReadOnlyStoreRepository storeRepository) {
+      super("testUnderReplicatedPartitionStats", storeRepository, mockPushMonitor);
     }
 
     @Override

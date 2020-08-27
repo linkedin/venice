@@ -75,7 +75,7 @@ public class ProducerConsumerReaderIntegrationTest {
   }
 
   @Test
-  public void testEndToEndProductionAndReading() throws Exception {
+  public void TestHelixCustomizedViewRepositorytestEndToEndProductionAndReading() throws Exception {
     boolean sslEnabled = true;
     veniceCluster = ServiceFactory.getVeniceCluster(sslEnabled);
     // Create test store

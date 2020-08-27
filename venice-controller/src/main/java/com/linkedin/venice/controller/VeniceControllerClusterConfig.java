@@ -39,7 +39,7 @@ public class VeniceControllerClusterConfig {
   private ReadStrategy readStrategy;
   private OfflinePushStrategy offlinePushStrategy;
   private RoutingStrategy routingStrategy;
-  private int replicaFactor;
+  private int replicationFactor;
   private int numberOfPartition;
   private int maxNumberOfPartition;
   private long partitionSize;
@@ -73,7 +73,9 @@ public class VeniceControllerClusterConfig {
   private long delayToRebalanceMS;
   /**
    * If the replica count smaller than minActiveReplica, helix would trigger the re-balance immediately.
+   * This config is deprecated. Replication factor config is moved to store/version-level config
    */
+  @Deprecated
   private int minActiveReplica;
 
   /**
@@ -129,7 +131,7 @@ public class VeniceControllerClusterConfig {
     kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
     kafkaLogCompactionForIncrementalPushStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES, true);
     kafkaMinLogCompactionLagInMs = props.getLong(KAFKA_MIN_LOG_COMPACTION_LAG_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS);
-    replicaFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
+    replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     numberOfPartition = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
@@ -140,7 +142,7 @@ public class VeniceControllerClusterConfig {
     delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
     // By default, the min active replica is replica factor minus one, which means if more than one server failed,
     // helix would trigger re-balance immediately.
-    minActiveReplica = props.getInt(MIN_ACTIVE_REPLICA, replicaFactor - 1);
+    minActiveReplica = props.getInt(MIN_ACTIVE_REPLICA, replicationFactor - 1);
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
     } else {
@@ -163,7 +165,7 @@ public class VeniceControllerClusterConfig {
     }
     // TODO: This should throw an error if leader follower isn't also enabled by default.  Needs Leader/Follower cluster config to be added
     nativeReplicationEnabled = props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT, false);
-    
+
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
     // Enable ssl to kafka
@@ -236,8 +238,9 @@ public class VeniceControllerClusterConfig {
     return routingStrategy;
   }
 
-  public int getReplicaFactor() {
-    return replicaFactor;
+  @Deprecated
+  public int getReplicationFactor() {
+    return replicationFactor;
   }
 
   public int getNumberOfPartition() {
@@ -264,6 +267,7 @@ public class VeniceControllerClusterConfig {
     return delayToRebalanceMS;
   }
 
+  @Deprecated
   public int getMinActiveReplica() {
     return minActiveReplica;
   }
