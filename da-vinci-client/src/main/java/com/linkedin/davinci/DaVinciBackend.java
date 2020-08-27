@@ -5,11 +5,18 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
+import com.linkedin.venice.ingestion.IngestionReportListener;
+import com.linkedin.venice.ingestion.IngestionRequestClient;
+import com.linkedin.venice.ingestion.IngestionService;
+import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.IngestionAction;
+import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -26,24 +33,29 @@ import com.linkedin.venice.storage.StorageEngineMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
+import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
-
 import java.io.Closeable;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.io.Charsets;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.client.store.ClientFactory.*;
+import static com.linkedin.venice.ingestion.IngestionUtils.*;
 import static java.lang.Thread.*;
 
 
@@ -61,6 +73,10 @@ public class DaVinciBackend implements Closeable {
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
+
+  private IngestionRequestClient ingestionRequestClient;
+  private IngestionReportListener ingestionReportListener;
+  private Process isolatedIngestionService;
 
   public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, boolean useSystemStoreBasedRepository) {
     this.configLoader = configLoader;
@@ -80,7 +96,7 @@ public class DaVinciBackend implements Closeable {
       storeRepository = metadataStoreBasedStoreRepository;
       schemaRepository = metadataStoreBasedStoreRepository;
     } else {
-      storeRepository = new DaVinciStoreRepository(zkClient, adapter, clusterName);
+      storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
       storeRepository.refresh();
 
       schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
@@ -108,6 +124,40 @@ public class DaVinciBackend implements Closeable {
         Optional.of(clientConfig));
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
+
+    /**
+     * Start ingestion service in child process and ingestion listener service.
+     * TODO: This part is subject to change when forked ingestion service is integrating with Da Vinci client.
+     */
+    if (configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+      int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
+      int ingestionListenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
+      ingestionRequestClient = new IngestionRequestClient(ingestionServicePort);
+      try {
+        isolatedIngestionService = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(ingestionServicePort));
+        // Wait for server in forked child process to bind the listening port.
+        waitPortBinding(ingestionServicePort, 3000);
+
+        ingestionReportListener = new IngestionReportListener(ingestionListenerPort);
+        ingestionReportListener.startInner();
+
+        InitializationConfigs initializationConfigs = new InitializationConfigs();
+        initializationConfigs.aggregatedConfigs = new HashMap<>();
+        configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
+        logger.info("Sending initialization aggregatedConfigs to child process: " + initializationConfigs.aggregatedConfigs);
+        byte[] content = serializeInitializationConfigs(initializationConfigs);
+        HttpRequest httpRequest = ingestionRequestClient.buildHttpRequest(IngestionAction.INIT, content);
+        FullHttpResponse response = ingestionRequestClient.sendRequest(httpRequest);
+        if (response.status() != HttpResponseStatus.OK) {
+          ByteBuf message = response.content();
+          String stringMessage = message.readCharSequence(message.readableBytes(), Charsets.UTF_8).toString();
+          throw new VeniceException("Isolated ingestion service initialization failed: " + stringMessage);
+        }
+        logger.info("Isolated ingestion service initialization finished.");
+      } catch (Exception e) {
+        throw new VeniceException("Exception caught during initialization of ingestion service.", e);
+      }
+    }
 
     bootstrap();
     storeRepository.registerStoreDataChangedListener(storeChangeListener);
@@ -166,10 +216,21 @@ public class DaVinciBackend implements Closeable {
     }
 
     try {
+      if (ingestionReportListener != null) {
+        ingestionReportListener.stopInner();
+      }
+      if (ingestionRequestClient != null) {
+        ingestionRequestClient.close();
+      }
       ingestionService.stop();
       storageService.stop();
       zkClient.close();
       metricsRepository.close();
+
+      if (isolatedIngestionService != null) {
+        isolatedIngestionService.destroy();
+      }
+
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Da Vinci backend", e);
     }
@@ -211,6 +272,10 @@ public class DaVinciBackend implements Closeable {
     if (rocksDBMemoryStats != null) {
       rocksDBMemoryStats.registerStore(storeName, limit);
     }
+  }
+
+  public IngestionRequestClient getIngestionRequestClient() {
+    return ingestionRequestClient;
   }
 
   Optional<Version> getLatestVersion(String storeName) {

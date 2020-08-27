@@ -88,6 +88,10 @@ public class VeniceConfigLoader {
     return veniceServerConfig;
   }
 
+  public VeniceProperties getCombinedProperties() {
+    return combinedProperties;
+  }
+
   public VeniceStoreConfig getStoreConfig(String storeName) {
     VeniceProperties storeProperties = combinedProperties.getStoreProperties(storeName);
     return new VeniceStoreConfig(storeName, storeProperties);

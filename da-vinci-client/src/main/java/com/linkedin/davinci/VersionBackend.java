@@ -2,6 +2,12 @@ package com.linkedin.davinci;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.ingestion.IngestionRequestClient;
+import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
+import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
+import com.linkedin.venice.meta.IngestionAction;
+import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
@@ -10,10 +16,8 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.log4j.Logger;
-
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpRequest;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +27,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.ingestion.IngestionUtils.*;
 import static java.lang.Thread.*;
 
 public class VersionBackend {
@@ -167,6 +174,27 @@ public class VersionBackend {
   }
 
   private synchronized CompletableFuture subscribeSubPartition(int subPartition) {
+    // For now we only add a dummy call to isolated ingestion service. The logic will be changed in next stage.
+    if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+      IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+      ingestionTaskCommand.commandType = IngestionCommandType.START_CONSUMPTION.getValue();
+      ingestionTaskCommand.topicName = version.kafkaTopicName();
+      ingestionTaskCommand.partitionId = subPartition;
+      byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
+      try {
+        IngestionRequestClient client = backend.getIngestionRequestClient();
+        HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
+        FullHttpResponse response = client.sendRequest(httpRequest);
+        logger.info("Received ingestion task report response.");
+        byte[] responseContent = new byte[response.content().readableBytes()];
+        response.content().readBytes(responseContent);
+        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
+        logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      } catch (Exception e) {
+        logger.info("Received exception in start consumption: " + e);
+        throw new VeniceException(e.getMessage());
+      }
+    }
     storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
     backend.getIngestionService().startConsumption(config, subPartition, false);
     return subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture());

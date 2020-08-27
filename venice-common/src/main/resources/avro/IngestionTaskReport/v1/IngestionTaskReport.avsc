@@ -4,6 +4,19 @@
   "type": "record",
   "fields": [
     {
+      "name": "topicName",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "partitionId",
+      "type": "int"
+    },
+    {
+      "name": "offset",
+      "type": "long"
+    },
+    {
       "name": "isEndOfPushReceived",
       "type": "boolean",
       "default": false

@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -9,6 +10,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
@@ -79,6 +81,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
             .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD.toString())
             .build();
 
     D2Client d2Client = new D2ClientBuilder()
