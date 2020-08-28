@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 import org.rocksdb.MemoryUsageType;
 import org.rocksdb.MemoryUtil;
@@ -60,11 +61,16 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
       );
 
   // metrics emitted on a per instance basis need only be collected once, not aggregated
-  static final List<String> INSTANCE_METRIC_DOMAINS = Arrays.asList(
+  private static final Set<String> INSTANCE_METRIC_DOMAINS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
       "rocksdb.block-cache-capacity",
       "rocksdb.block-cache-pinned-usage",
       "rocksdb.block-cache-usage"
-  );
+  )));
+
+  // metrics related to block cache, which should not be collected when plain table format is enabled.
+  private static final Set<String> BLOCK_CACHE_METRICS = PARTITON_METRIC_DOMAINS.stream()
+      .filter(s -> s.contains("rocksdb.block-cache"))
+      .collect(Collectors.toSet());
 
   private static final String ROCKSDB_MEMORY_USAGE_SUFFIX = ".rocksdb.memory-usage";
 
@@ -78,9 +84,13 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
 
   private Map<String, MemoryInfo> storeMemoryInfos = new ConcurrentHashMap<>();
 
-  public RocksDBMemoryStats(MetricsRepository metricsRepository, String name) {
+  public RocksDBMemoryStats(MetricsRepository metricsRepository, String name, boolean plainTableEnabled) {
     super(metricsRepository, name);
     for(String metric : PARTITON_METRIC_DOMAINS) {
+      // Skip the block cache related metrics when using PlainTable format is enabled.
+      if (plainTableEnabled && BLOCK_CACHE_METRICS.contains(metric)) {
+        continue;
+      }
       registerSensor(metric, new Gauge(() -> {
         Long total = 0L;
         // Lock down the list of RocksDB interfaces while the collection is ongoing
@@ -92,7 +102,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
               logger.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
               continue;
             }
-            if(INSTANCE_METRIC_DOMAINS.contains(metric)) {
+            if (INSTANCE_METRIC_DOMAINS.contains(metric)) {
               // Collect this metric once from any available partition and move on
               break;
             }
