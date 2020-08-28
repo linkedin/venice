@@ -80,8 +80,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -227,6 +229,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private Optional<RocksDBMemorryEnforcement> rocksDBMemoryEnforcer;
 
+  private final ExecutorService cacheWarmingThreadPool;
+  /**
+   * This set is used to track the cache warming request for each partition.
+   */
+  private final Set<Integer> cacheWarmingPartitionIdSet = new HashSet<>();
+
+  /**
+   * Please refer to {@link com.linkedin.venice.ConfigKeys#SERVER_DELAY_REPORT_READY_TO_SERVE_MS} to
+   * find more details.
+   */
+  private final long startReportingReadyToServeTimestamp;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -254,7 +268,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService kafkaConsumerService,
       VeniceServerConfig serverConfig,
-      int errorPartitionId) {
+      int errorPartitionId,
+      ExecutorService cacheWarmingThreadPool,
+      long startReportingReadyToServeTimestamp) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -330,6 +346,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.aggKafkaConsumerService = kafkaConsumerService;
 
     this.errorPartitionId = errorPartitionId;
+    this.cacheWarmingThreadPool = cacheWarmingThreadPool;
+    this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
 
     buildRocksDBMemoryEnforcer();
   }
@@ -2119,10 +2137,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           (partitionConsumptionState.isEndOfPushReceived() && !partitionConsumptionState.isCompletionReported())) {
         if (isReadyToServe(partitionConsumptionState)) {
           int partition = partitionConsumptionState.getPartition();
-          Store store = storeRepository.getStore(storeName);
+          Store store = storeRepository.getStoreOrThrow(storeName);
 
-          if (store != null && store.isHybrid()) {
-            AbstractStorageEngine<?> engine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+          AbstractStorageEngine<?> engine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+          if (store.isHybrid()) {
             if (engine == null) {
               logger.warn("Storage engine " + kafkaVersionTopic + " was removed before reopening");
             } else {
@@ -2135,8 +2153,49 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             logger.info(consumerTaskId + " Partition " + partition + " synced offset: "
                 + partitionConsumptionState.getOffsetRecord().getOffset());
           } else {
-            notificationDispatcher.reportCompleted(partitionConsumptionState);
-            logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
+            /**
+             * Check whether we need to warm-up cache here.
+             */
+            if (engine != null
+                && serverConfig.isCacheWarmingBeforeReadyToServeEnabled()
+                && serverConfig.isCacheWarmingEnabledForStore(storeName) // Only warm up configured stores
+                && store.getCurrentVersion() <= versionNumber) { // Only warm up current version or future version
+              /**
+               * With cache warming, the completion report is asynchronous, so it is possible that multiple queued
+               * tasks are trying to warm up the cache and report completion for the same partition.
+               * When this scenario happens, this task will end directly.
+               */
+              synchronized (cacheWarmingPartitionIdSet) {
+                if (!cacheWarmingPartitionIdSet.contains(partition)) {
+                  cacheWarmingPartitionIdSet.add(partition);
+                  cacheWarmingThreadPool.submit(() -> {
+                    logger.info("Start warming up store: " + kafkaVersionTopic + ", partition: " + partition);
+                    try {
+                      engine.warmUpStoragePartition(partition);
+                      logger.info("Finished warming up store: " + kafkaVersionTopic + ", partition: " + partition);
+                    } catch (Exception e) {
+                      logger.error("Received exception while warming up cache for store: " + kafkaVersionTopic + ", partition: " + partition);
+                    }
+                    /**
+                     * Delay reporting ready-to-serve until the storage node is ready.
+                     */
+                    long extraSleepTime = startReportingReadyToServeTimestamp - System.currentTimeMillis();
+                    if (extraSleepTime > 0) {
+                      try {
+                        Thread.sleep(extraSleepTime);
+                      } catch (InterruptedException e) {
+                        throw new VeniceException("Sleep before reporting ready to serve got interrupted", e);
+                      }
+                    }
+                    notificationDispatcher.reportCompleted(partitionConsumptionState);
+                    logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
+                  });
+                }
+              }
+            } else {
+              notificationDispatcher.reportCompleted(partitionConsumptionState);
+              logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
+            }
           }
         } else {
           notificationDispatcher.reportProgress(partitionConsumptionState);

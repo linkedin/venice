@@ -376,6 +376,30 @@ public class ConfigKeys {
    */
   public static final String SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED = "server.leaked.resource.cleanup.enabled";
 
+  /**
+   * Whether Server will try to warm up cache before reporting ready-to-serve or not.
+   */
+  public static final String SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED = "server.cache.warming.before.ready.to.serve.enabled";
+
+  /**
+   * Store list to enable cache warming, and it is comma separated list.
+   * TODO: once this has bee proved to be useful, we will need to store it as a store-level config.
+   */
+  public static final String SERVER_CACHE_WARMING_STORE_LIST = "server.cache.warming.store.list";
+
+  /**
+   * Cache warming thread pool, and this is used to try to not overwhelm the storage node by cache warming.
+   */
+  public static final String SERVER_CACHE_WARMING_THREAD_POOL_SIZE = "server.cache.warming.thread.pool.size";
+
+  /**
+   * The delay serving of the newly started storage node.
+   * The reason to have this config is that we noticed a high GC pause for some time because of connection warming or initializing the
+   * internal components.
+   * We will need to do some experiment to find the right value.
+   */
+  public static final String SERVER_DELAY_REPORT_READY_TO_SERVE_MS = "server.delay.report.ready.to.serve.ms";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

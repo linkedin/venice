@@ -241,6 +241,15 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     adjustStoragePartition(partitionConfig);
   }
 
+  public void warmUpStoragePartition(int partitionId) {
+    if (!containsPartition(partitionId)) {
+      logger.warn("Partition " + storeName + "_" + partitionId + " doesn't exist.");
+      return;
+    }
+    AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
+    storagePartition.warmUp();
+  }
+
   /**
    * Adjust the opened storage partition according to the provided storagePartitionConfig.
    * It will throw exception if there is no opened storage partition for the given partition id.
