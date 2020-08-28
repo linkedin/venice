@@ -153,6 +153,12 @@ public abstract class AbstractParticipantModel extends StateModel {
   @Override
   public void reset() {
     try {
+      stopConsumption();
+    } catch (Exception e) {
+      logger.error("Error when trying to stop any ongoing consumption during reset for: "
+          + storePartitionDescription, e);
+    }
+    try {
       waitPartitionPushStatusAccessor();
     } catch (Exception e) {
       throw new VeniceException("Error when initializing partition push status accessor, "
