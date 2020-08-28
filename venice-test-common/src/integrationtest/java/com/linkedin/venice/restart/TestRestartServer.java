@@ -38,7 +38,7 @@ public class TestRestartServer {
     cluster.close();
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testRestartServerAfterPushCompleted() {
     String storeName = TestUtils.getUniqueString("testRestartServerAfterPushCompleted");
     int dataSize = 2000;
