@@ -68,20 +68,20 @@ public class TestMetadataOperationInMultiCluster {
 
         VersionCreationResponse versionCreationResponse =
             controllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
-                Version.guidBasedDummyPushId(), false, true, Optional.empty(), Optional.empty());
+                Version.guidBasedDummyPushId(), false, true, false, Optional.empty(), Optional.empty());
         Assert.assertFalse(versionCreationResponse.isError());
         Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
         versionCreationResponse =
             secondControllerClient.requestTopicForWrites(secondStoreName, 1000, Version.PushType.BATCH,
-                Version.guidBasedDummyPushId(), false, true, Optional.empty(), Optional.empty());
+                Version.guidBasedDummyPushId(), false, true, false, Optional.empty(), Optional.empty());
         Assert.assertFalse(versionCreationResponse.isError());
         Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
         // Create version in wrong cluster
         versionCreationResponse =
             controllerClient.requestTopicForWrites(secondStoreName, 1000, Version.PushType.BATCH,
-                Version.guidBasedDummyPushId(), false, true, Optional.empty(), Optional.empty());
+                Version.guidBasedDummyPushId(), false, true, false, Optional.empty(), Optional.empty());
         Assert.assertTrue(versionCreationResponse.isError());
       }
     }

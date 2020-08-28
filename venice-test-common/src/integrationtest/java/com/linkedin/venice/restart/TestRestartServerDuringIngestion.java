@@ -122,7 +122,7 @@ public abstract class TestRestartServerDuringIngestion {
         new ControllerClient(cluster.getClusterName(), veniceUrl);
     VersionCreationResponse versionCreationResponse =
         controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(), false, true, Optional.empty(), Optional.empty());
+            Version.guidBasedDummyPushId(), false, true, false, Optional.empty(), Optional.empty());
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     Properties veniceWriterProperties = new Properties();

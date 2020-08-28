@@ -142,6 +142,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   public static final String VENICE_DISCOVER_URL_PROP = "venice.discover.urls";
 
+  public static final String ENABLE_WRITE_COMPUTE = "venice.write.compute.enable";
   public static final String ENABLE_PUSH = "venice.push.enable";
   public static final String ENABLE_SSL = "venice.ssl.enable";
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
@@ -332,6 +333,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     long pollJobStatusIntervalMs;
     long jobStatusInUnknownStateTimeoutMs;
     boolean sendControlMessagesDirectly;
+    boolean enableWriteCompute;
   }
   private PushJobSetting pushJobSetting;
 
@@ -363,6 +365,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     double storageEngineOverheadRatio;
     boolean isSchemaAutoRegisteFromPushJobEnabled;
     CompressionStrategy compressionStrategy;
+    boolean isLeaderFollowerModelEnabled;
+    boolean isWriteComputeEnabled;
+    boolean isIncrementalPushEnabled;
   }
 
   protected StoreSetting storeSetting;
@@ -460,6 +465,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     pushJobSetting.pollJobStatusIntervalMs = props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
     pushJobSetting.jobStatusInUnknownStateTimeoutMs = props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
     pushJobSetting.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
+    pushJobSetting.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
 
     if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -1012,6 +1018,33 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
 
+    storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
+
+    storeSetting.isLeaderFollowerModelEnabled = storeResponse.getStore().isLeaderFollowerModelEnabled();
+
+    storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
+
+    if (setting.enableWriteCompute && !storeSetting.isWriteComputeEnabled) {
+      throw new VeniceException("Store does not have write compute enabled.");
+    }
+
+    if (setting.enableWriteCompute && (!storeSetting.isIncrementalPushEnabled || !setting.isIncrementalPush)) {
+      throw new VeniceException("Write compute is only available for incremental push jobs.");
+    }
+
+    if (setting.enableWriteCompute && storeSetting.isWriteComputeEnabled) {
+      /*
+        If write compute is enabled, we would perform a topic switch from the controller and have the
+        controller be in charge of broadcasting start and end messages. We will disable
+        sendControlMessagesDirectly to prevent races between the messages sent by the KafkaPushJob and
+        by the controller for topic switch.
+       */
+      setting.sendControlMessagesDirectly = false;
+      if (!storeSetting.isLeaderFollowerModelEnabled) {
+        throw new VeniceException("Leader follower mode needs to be enabled for write compute.");
+      }
+    }
+
     return storeSetting;
   }
 
@@ -1038,10 +1071,18 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       dictionary = Optional.empty();
     }
 
-    VersionCreationResponse versionCreationResponse =
-        controllerClient.retryableRequest(setting.controllerRetries, c ->
-            c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId, askControllerToSendControlMessage, sorted,
-                partitioners, dictionary));
+    boolean writeComputeEnabled = false;
+
+    if (storeSetting.isWriteComputeEnabled && setting.enableWriteCompute) {
+      writeComputeEnabled = true;
+    }
+
+    //If WriteCompute is enabled, request for intermediate topic
+    final boolean finalWriteComputeEnabled = writeComputeEnabled;
+    VersionCreationResponse versionCreationResponse = controllerClient.retryableRequest(setting.controllerRetries,
+          c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
+              askControllerToSendControlMessage, sorted, finalWriteComputeEnabled, partitioners, dictionary));
+
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());

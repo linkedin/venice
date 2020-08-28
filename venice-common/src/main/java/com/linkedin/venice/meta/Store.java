@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.TimeUnit;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 
@@ -258,6 +259,11 @@ public class Store {
    * Check {@link com.linkedin.venice.ConfigKeys#CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS}.
    */
   private long backupVersionRetentionMs = -1;
+
+  /**
+   * Default retention time used when creating a new RealTime Topic.
+   */
+  private long defaultRTRetentionTime = TimeUnit.DAYS.toMillis(5);
 
 
   public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
@@ -682,6 +688,22 @@ public class Store {
   public long getBackupVersionRetentionMs() {
     return backupVersionRetentionMs;
   }
+
+  /**
+   +   * Get the retention time for the RT Topic. If there exists a HybridStoreConfig, return the
+   +   * retention time from the config file. Otherwise, if write compute is enabled, then return the
+   +   * default retention time.
+   +   *
+   +   * @return the retention time for the RT topic, in milliseconds.
+   +   */
+  public long getRetentionTime() {
+    if (this.getHybridStoreConfig() != null) {
+      return this.getHybridStoreConfig().getRetentionTimeInMs();
+    } else {
+      return defaultRTRetentionTime;
+    }
+  }
+
 
   public void setBackupVersionRetentionMs(long backupVersionRetentionMs) {
     this.backupVersionRetentionMs = backupVersionRetentionMs;

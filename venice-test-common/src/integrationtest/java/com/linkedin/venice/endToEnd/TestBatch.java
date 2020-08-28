@@ -1,5 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.venice.Arg;
+import com.linkedin.venice.ControlMessageDumper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -16,6 +18,8 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -48,8 +52,10 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.apache.kafka.clients.consumer.ConsumerConfig.*;
 import static org.testng.Assert.*;
 
 //TODO: write a H2VWrapper that can handle the whole flow
@@ -358,6 +364,43 @@ public abstract class TestBatch {
       }
     }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true), false);
   }
+
+  /**
+   * Test IncrementalPush jobs with write compute enabled.
+   * @throws Exception
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testIncrementalPushWithWriteComputeEnabled() throws Exception {
+    String storeName = testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+    }, properties -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    }, new UpdateStoreQueryParams().setWriteComputationEnabled(true)
+        .setLeaderFollowerModel(true)
+        .setIncrementalPushEnabled(true)
+        .setPartitionCount(3));
+
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+    }, properties -> {
+      properties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+      properties.setProperty(ENABLE_WRITE_COMPUTE, "true");
+      properties.setProperty(INCREMENTAL_PUSH, "true");
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 51; i <= 150; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
+      }
+    }, storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true)
+        .setLeaderFollowerModel(true)
+        .setIncrementalPushEnabled(true)
+        .setPartitionCount(3), false);
+  }
+
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {

@@ -1,11 +1,13 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -357,5 +359,100 @@ public class TestKafkaPushJob {
     Schema newSchema = writeComplicatedAvroFileWithUserSchema(inputDir, true);
     String newValueSchemaString = newSchema.getField("value").schema().toString();
     controllerClient.addValueSchema(storeName, newValueSchemaString);
+  }
+
+  /**
+   * Testing write compute enabled job where the store does not write compute enabled
+   * @throws Exception
+   */
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Store does not have write compute enabled.*")
+  public void testWCJobWithStoreNotWCEnabled() throws Exception {
+    File inputDir = getTempDataDirectory();
+    String storeName = TestUtils.getUniqueString("store");
+    String routerUrl = veniceCluster.getRandomRouterURL();
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+
+    //disable WriteCompute in store
+    params.setWriteComputationEnabled(false);
+    params.setLeaderFollowerModel(true);
+    params.setIncrementalPushEnabled(true);
+
+    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params, "random_id",
+        10000);
+
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+
+    //enable write compute param
+    props.put(ENABLE_WRITE_COMPUTE, true);
+    props.put(INCREMENTAL_PUSH, true);
+
+    String jobName = "Test push job";
+    KafkaPushJob job = new KafkaPushJob(jobName, props);
+    job.run();
+  }
+
+  /**
+   * Testing write compute enabled job where the store does not have LeaderFollower enabled
+   * @throws Exception
+   */
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Write compute is only available for incremental push jobs.*")
+  public void testWCBatchJob() throws Exception {
+    File inputDir = getTempDataDirectory();
+    String storeName = TestUtils.getUniqueString("store");
+    String routerUrl = veniceCluster.getRandomRouterURL();
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setWriteComputationEnabled(true);
+    params.setLeaderFollowerModel(true);
+    params.setIncrementalPushEnabled(false);
+
+    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params, "random_id",
+        10000);
+
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+
+    //enable write compute param
+    props.put(ENABLE_WRITE_COMPUTE, true);
+    props.put(INCREMENTAL_PUSH, false);
+
+    String jobName = "Test push job";
+    KafkaPushJob job = new KafkaPushJob(jobName, props);
+    job.run();
+  }
+
+  /**
+   * Testing write compute enabled job where the store does not have LeaderFollower enabled
+   * @throws Exception
+   */
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Leader follower mode needs to be enabled for write compute.*")
+  public void testWCJobWithNoLF() throws Exception {
+    File inputDir = getTempDataDirectory();
+    String storeName = TestUtils.getUniqueString("store");
+    String routerUrl = veniceCluster.getRandomRouterURL();
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setWriteComputationEnabled(true);
+    params.setLeaderFollowerModel(false);     //disable LeaderFollower in store
+    params.setIncrementalPushEnabled(true);
+
+    controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params, "random_id",
+        10000);
+
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+
+    //enable write compute param
+    props.put(ENABLE_WRITE_COMPUTE, true);
+    props.put(INCREMENTAL_PUSH, true);
+
+    String jobName = "Test push job";
+    KafkaPushJob job = new KafkaPushJob(jobName, props);
+    job.run();
   }
 }
