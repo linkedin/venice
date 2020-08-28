@@ -20,6 +20,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 
 
@@ -76,7 +77,9 @@ public class StoreIngestionTaskFactory {
           builder.serverConfig,
           isNativeReplicationEnabled,
           nativeReplicationSourceAddress,
-          partitionId);
+          partitionId,
+          builder.cacheWarmingThreadPool,
+          builder.startReportingReadyToServeTimestamp);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -105,7 +108,9 @@ public class StoreIngestionTaskFactory {
           bufferReplayEnabledForHybrid,
           builder.aggKafkaConsumerService,
           builder.serverConfig,
-          partitionId);
+          partitionId,
+          builder.cacheWarmingThreadPool,
+          builder.startReportingReadyToServeTimestamp);
     }
   }
 
@@ -144,6 +149,8 @@ public class StoreIngestionTaskFactory {
     private DiskUsage diskUsage;
     private AggKafkaConsumerService aggKafkaConsumerService;
     private RocksDBMemoryStats rocksDBMemoryStats;
+    private ExecutorService cacheWarmingThreadPool;
+    private long startReportingReadyToServeTimestamp;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -294,6 +301,20 @@ public class StoreIngestionTaskFactory {
     public Builder setRocksDBMemoryStats(RocksDBMemoryStats rocksDBMemoryStats) {
       if (!built) {
         this.rocksDBMemoryStats = rocksDBMemoryStats;
+      }
+      return this;
+    }
+
+    public Builder setCacheWarmingThreadPool(ExecutorService cacheWarmingThreadPool) {
+      if (!built) {
+        this.cacheWarmingThreadPool = cacheWarmingThreadPool;
+      }
+      return this;
+    }
+
+    public Builder setStartReportingReadyToServeTimestamp(long timestamp) {
+      if (!built) {
+        this.startReportingReadyToServeTimestamp =  timestamp;
       }
       return this;
     }

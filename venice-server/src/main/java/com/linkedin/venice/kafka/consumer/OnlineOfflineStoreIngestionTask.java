@@ -29,6 +29,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -66,7 +67,9 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService aggKafkaConsumerService,
       VeniceServerConfig serverConfig,
-      int partitionId) {
+      int partitionId,
+      ExecutorService cacheWarmingThreadPool,
+      long startReportingReadyToServeTimestamp) {
     super(
         writerFactory,
         consumerFactory,
@@ -94,7 +97,9 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         bufferReplayEnabledForHybrid,
         aggKafkaConsumerService,
         serverConfig,
-        partitionId);
+        partitionId,
+        cacheWarmingThreadPool,
+        startReportingReadyToServeTimestamp);
   }
 
   @Override

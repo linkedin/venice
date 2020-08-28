@@ -11,7 +11,10 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -193,6 +196,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean sharedConsumerPoolEnabled;
   private final int consumerPoolSizePerKafkaCluster;
   private final boolean leakedResourceCleanupEnabled;
+  private final boolean cacheWarmingBeforeReadyToServeEnabled;
+  private final Set<String> cacheWarmingStoreSet;
+  private final int cacheWarmingThreadPoolSize;
+  private final long delayReadyToServeMS;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -285,6 +292,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
           MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER + ", but it is " + consumerPoolSizePerKafkaCluster);
     }
     leakedResourceCleanupEnabled = serverProperties.getBoolean(SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED, true);
+    cacheWarmingBeforeReadyToServeEnabled = serverProperties.getBoolean(SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED, false);
+    List<String> cacheWarmingStoreList = serverProperties.getList(SERVER_CACHE_WARMING_STORE_LIST, Collections.emptyList());
+    cacheWarmingStoreSet = new HashSet<>(cacheWarmingStoreList);
+    cacheWarmingThreadPoolSize = serverProperties.getInt(SERVER_CACHE_WARMING_THREAD_POOL_SIZE, 4);
+    delayReadyToServeMS = serverProperties.getLong(SERVER_DELAY_REPORT_READY_TO_SERVE_MS, 0); // by default no delay
   }
 
   public int getListenerPort() {
@@ -518,5 +530,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isLeakedResourceCleanupEnabled() {
     return leakedResourceCleanupEnabled;
+  }
+
+  public boolean isCacheWarmingBeforeReadyToServeEnabled() {
+    return cacheWarmingBeforeReadyToServeEnabled;
+  }
+
+  public boolean isCacheWarmingEnabledForStore(String storeName) {
+    return cacheWarmingStoreSet.contains(storeName);
+  }
+
+  public int getCacheWarmingThreadPoolSize() {
+    return cacheWarmingThreadPoolSize;
+  }
+
+  public long getDelayReadyToServeMS() {
+    return delayReadyToServeMS;
   }
 }

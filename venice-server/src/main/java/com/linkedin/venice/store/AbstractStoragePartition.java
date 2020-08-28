@@ -11,8 +11,7 @@ import org.apache.log4j.Logger;
  * on the storage-partition model.
  */
 public abstract class AbstractStoragePartition {
-
-  protected final Logger logger = Logger.getLogger(getClass());
+  protected final Logger LOGGER = Logger.getLogger(getClass());
 
   protected final Integer partitionId;
 
@@ -85,7 +84,15 @@ public abstract class AbstractStoragePartition {
    */
   public abstract long getPartitionSizeInBytes();
 
-  public  boolean validateBatchIngestion() {
+  public boolean validateBatchIngestion() {
     return true;
+  }
+
+  /**
+   * Warm-up the database.
+   */
+  public void warmUp() {
+    // Do nothing by default
+    LOGGER.info("Warming up is not implemented by default");
   }
 }

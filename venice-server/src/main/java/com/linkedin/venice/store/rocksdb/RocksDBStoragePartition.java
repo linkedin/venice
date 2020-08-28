@@ -16,6 +16,7 @@ import org.rocksdb.Options;
 import org.rocksdb.PlainTableConfig;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import org.rocksdb.RocksIterator;
 import org.rocksdb.SstFileWriter;
 import org.rocksdb.Statistics;
 import org.rocksdb.WriteOptions;
@@ -414,7 +415,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       if (size == RocksDB.NOT_FOUND) {
         return null;
       } else if (size > valueToBePopulated.capacity()) {
-        logger.warn("Will allocate a new ByteBuffer because a value of " + size
+        LOGGER.warn("Will allocate a new ByteBuffer because a value of " + size
             + " bytes was retrieved, which is larger than valueToBePopulated.capacity(): " + valueToBePopulated.capacity());
         valueToBePopulated = ByteBuffer.allocate(size);
         size = rocksDB.get(key, valueToBePopulated.array());
@@ -604,5 +605,31 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected Options getOptions() {
     return options;
+  }
+
+  @Override
+  public void warmUp() {
+    /**
+     * Since we don't care about the returned value in Java world, so partial result is fine.
+     */
+    byte[] value = new byte[1];
+    // Iterate the whole database
+    RocksIterator iterator = rocksDB.newIterator();
+    long entryCnt = 0;
+    try {
+      iterator.seekToFirst();
+      while (iterator.isValid()) {
+        rocksDB.get(iterator.key(), value);
+        iterator.next();
+        if (++entryCnt % 100000 == 0) {
+          LOGGER.info("Scanned " + entryCnt + " entries from database: " + storeName + ",  partition: " + partitionId);
+        }
+      }
+      LOGGER.info("Scanned " + entryCnt + " entries from database: " + storeName + ",  partition: " + partitionId + " during cache warmup");
+    } catch (RocksDBException e) {
+      throw new VeniceException("Encountered RocksDBException while warming up cache", e);
+    } finally {
+      iterator.close();
+    }
   }
 }

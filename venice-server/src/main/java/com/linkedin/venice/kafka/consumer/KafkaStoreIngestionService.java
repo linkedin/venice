@@ -31,6 +31,7 @@ import com.linkedin.venice.stats.StoreBufferServiceStats;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -114,6 +115,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final int retryStoreRefreshIntervalInMs = 5000;
   private final int retryStoreRefreshAttempt = 10;
+
+  private final ExecutorService cacheWarmingExecutorService;
 
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
@@ -224,6 +227,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       logger.info("Shared consumer pool for ingestion is disabled");
     }
 
+    if (serverConfig.isCacheWarmingBeforeReadyToServeEnabled()) {
+      cacheWarmingExecutorService = Executors.newFixedThreadPool(serverConfig.getCacheWarmingThreadPoolSize(), new DaemonThreadFactory("Cache_Warming"));
+      logger.info("Cache warming is enabled");
+    } else {
+      cacheWarmingExecutorService = null;
+      logger.info("Cache warming is disabled");
+    }
+
     /**
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
      * remaining disk space state to provide a more accurate alert.
@@ -254,6 +265,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setDiskUsage(diskUsage)
         .setAggKafkaConsumerService(aggKafkaConsumerService)
         .setRocksDBMemoryStats(rocksDBMemoryStats)
+        .setCacheWarmingThreadPool(cacheWarmingExecutorService)
+        .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .build();
   }
 
@@ -322,6 +335,22 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         nativeReplicationEnabled, nativeReplicationSourceAddress, partitionId);
   }
 
+  private void shutdownExecutorService(ExecutorService executorService, boolean force) {
+    if (null == executorService) {
+      return;
+    }
+    if (force) {
+      executorService.shutdownNow();
+    } else {
+      executorService.shutdown();
+    }
+    try {
+      executorService.awaitTermination(30, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
   /**
    * Stops all the Kafka consumption tasks.
    * Closes all the Kafka clients.
@@ -331,23 +360,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     logger.info("Shutting down Kafka consumer service");
     isRunning.set(false);
 
-    participantStoreConsumerExecutorService.shutdownNow();
-    try {
-      participantStoreConsumerExecutorService.awaitTermination(30, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
-
+    shutdownExecutorService(participantStoreConsumerExecutorService, true);
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
-
-    if (ingestionExecutorService != null) {
-      ingestionExecutorService.shutdown();
-      try {
-        ingestionExecutorService.awaitTermination(30, TimeUnit.SECONDS);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-    }
+    /**
+     * We would like to gracefully shutdown {@link #ingestionExecutorService}, so that it
+     * will have an opportunity to checkpoint the processed offset.
+     */
+    shutdownExecutorService(ingestionExecutorService, false);
+    shutdownExecutorService(cacheWarmingExecutorService, true);
 
     if (null != aggKafkaConsumerService) {
       aggKafkaConsumerService.stop();

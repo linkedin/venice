@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -141,7 +142,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       VeniceServerConfig serverConfig,
       boolean isNativeReplicationEnabled,
       String nativeReplicationSourceAddress,
-      int partitionId) {
+      int partitionId,
+      ExecutorService cacheWarmingThreadPool,
+      long startReportingReadyToServeTimestamp) {
     super(
         writerFactory,
         consumerFactory,
@@ -169,7 +172,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         bufferReplayEnabledForHybrid,
         aggKafkaConsumerService,
         serverConfig,
-        partitionId);
+        partitionId,
+        cacheWarmingThreadPool,
+        startReportingReadyToServeTimestamp);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
