@@ -383,7 +383,7 @@ public class ProducerTracker {
         if (tolerateMissingMessage) {
           /**
            * When log compaction is enabled, messages can be missing within a segment, so at the end when calculating
-           * checksum, the checksum will not match if any mesasge is missing.
+           * checksum, the checksum will not match if any message is missing.
            */
           segment.end(incomingEndOfSegment.finalSegment);
           logger.warn("Encountered corrupt checksum, which could happen if log compaction is enabled. Error msg:\n" + dataCorruptException.getMessage());

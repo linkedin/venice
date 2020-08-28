@@ -16,8 +16,9 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-import java.util.ArrayList;
-import java.util.List;
+import com.linkedin.venice.writer.VeniceWriter;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -156,6 +157,13 @@ public class CreateVersion extends AbstractRoute {
         if (sortedParam != null) {
           sorted = Utils.parseBooleanFromString(sortedParam, PUSH_IN_SORTED_ORDER);
         }
+
+        boolean isWriteComputeEnabled = false;
+        String wcEnabledParam = request.queryParams(IS_WRITE_COMPUTE_ENABLED);
+        if (wcEnabledParam != null) {
+          isWriteComputeEnabled = Utils.parseBooleanFromString(wcEnabledParam, IS_WRITE_COMPUTE_ENABLED);
+        }
+
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
@@ -205,6 +213,27 @@ public class CreateVersion extends AbstractRoute {
               if (childDataCenterKafkaBootstrapServer != null) {
                 responseObject.setKafkaBootstrapServers(childDataCenterKafkaBootstrapServer);
               }
+            }
+
+            /*
+              The conditions for topic switching to a real time topic are only
+              when write compute is enabled and the push type is incremental. If
+              the incremental push policy is INCREMENTAL_PUSH_SAME_AS_REAL_TIME, then
+              no topic switch is needed because the leader storage node is already
+              consuming from a real time topic.
+             */
+            if (isWriteComputeEnabled && pushType.isIncremental() &&
+               !version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+
+              String realTimeTopic = admin.getRealTimeTopic(clusterName, storeName);
+
+              VeniceWriter veniceWriter = admin.getVeniceWriterFactory()
+                  .createVeniceWriter(responseObject.getKafkaTopic(), responseObject.getKafkaBootstrapServers());
+              veniceWriter.broadcastTopicSwitch(Arrays.asList(responseObject.getKafkaBootstrapServers()),
+                  realTimeTopic, -1L, new HashMap<>());
+
+              veniceWriter.close();
+              responseObject.setKafkaTopic(realTimeTopic);
             }
             break;
           case STREAM:

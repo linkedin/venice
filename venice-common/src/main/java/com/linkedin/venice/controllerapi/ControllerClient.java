@@ -127,12 +127,13 @@ public class ControllerClient implements Closeable {
    * @param sendStartOfPush Whether controller should send START_OF_PUSH message to the newly created topic,
    *                        while adding a new version. This is currently used in Samza batch load, a.k.a. grandfather
    * @param sorted Whether the push is going to contain sorted data (in each partition) or not
+   * @param wcEnabled Whether write compute is enabled for this push job or not
    * @param partitioners partitioner class names in a string seperated by comma
    * @param compressionDictionary Base64 encoded dictionary to be used to perform dictionary compression
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, PushType pushType,
-      String pushJobId, boolean sendStartOfPush, boolean sorted, Optional<String> partitioners, Optional<String> compressionDictionary) {
+      String pushJobId, boolean sendStartOfPush, boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -140,6 +141,7 @@ public class ControllerClient implements Closeable {
         .add(PUSH_TYPE, pushType.toString())
         .add(SEND_START_OF_PUSH, sendStartOfPush)
         .add(PUSH_IN_SORTED_ORDER, sorted)
+        .add(IS_WRITE_COMPUTE_ENABLED, wcEnabled)
         .add(PARTITIONERS, partitioners)
         .add(COMPRESSION_DICTIONARY, compressionDictionary);
 

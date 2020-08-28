@@ -315,7 +315,7 @@ public class SystemStoreTest {
       assertTrue(currentVersionStates.currentVersionStates.isEmpty(), "Version list should be empty");
       // New push to the Venice store should be reflected in the corresponding metadata store
       VersionCreationResponse newVersionResponse = parentControllerClient.requestTopicForWrites(regularVeniceStoreName,
-          1024, Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, false,
+          1024, Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, false, false,
           Optional.empty(), Optional.empty());
       assertFalse(newVersionResponse.isError());
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -541,7 +541,7 @@ public class SystemStoreTest {
       controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
     }
     return parentControllerClient.requestTopicForWrites(storeName, 1024,
-        Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, Optional.empty(), Optional.empty());
+        Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, false, Optional.empty(), Optional.empty());
   }
 
 

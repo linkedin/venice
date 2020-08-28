@@ -460,7 +460,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMsg, e);
               throw new VeniceException(errorMsg, e);
             }
-
             // subscribe to the new upstream
             partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
             consumerSubscribe(newSourceTopicName, partitionConsumptionState, upstreamStartOffset);

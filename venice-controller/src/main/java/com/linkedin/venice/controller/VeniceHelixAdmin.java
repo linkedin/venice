@@ -1509,7 +1509,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (store == null) {
                     throwStoreDoesNotExist(clusterName, storeName);
                 }
-                if (!store.isHybrid()){
+                if (!store.isHybrid() && !store.isWriteComputationEnabled()){
                     logAndThrow("Store " + storeName + " is not hybrid, refusing to return a realtime topic");
                 }
                 Optional<Version> version = store.getVersion(store.getLargestUsedVersionNumber());
@@ -1535,10 +1535,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     realTimeTopic,
                     partitionCount,
                     clusterConfig.getKafkaReplicationFactor(),
-                    store.getHybridStoreConfig().getRetentionTimeInMs(),
-                    // Disable RT compaction. Because for hybrid stores in Online/Offline mode,
-                    // with RT compaction, lag will be mis-calculated.
-                    false,
+                    store.getRetentionTime(),
+                    !store.isWriteComputationEnabled(), // RT topics are compacted only if write compute isn't enabled
                     clusterConfig.getMinIsr(),
                     false
                 );
