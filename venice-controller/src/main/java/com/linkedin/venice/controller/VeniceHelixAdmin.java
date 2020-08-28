@@ -1706,9 +1706,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return;
         }
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        ReentrantLock storeLock = perStoreLockMap.computeIfAbsent(storeName, (s) -> new ReentrantLock());
+        /**
+         * TODO: Right now, this store-level lock is causing a deadlock issue, and we will need to find another way
+         * to make it work also in the future, we need to make the locking inside Controller less error-prone
+         * and easy to follow.
+         */
+        //ReentrantLock storeLock = perStoreLockMap.computeIfAbsent(storeName, (s) -> new ReentrantLock());
         resources.lockForMetadataOperation();
-        storeLock.lock();
+        //storeLock.lock();
         try {
             Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
             Store storeToCheckOngoingMigration =
@@ -1749,7 +1754,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             }
         } finally {
-            storeLock.unlock();
+            //storeLock.unlock();
             resources.unlockForMetadataOperation();
         }
     }
