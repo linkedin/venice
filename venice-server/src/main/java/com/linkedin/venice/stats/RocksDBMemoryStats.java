@@ -48,7 +48,6 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
       "rocksdb.num-live-versions",
       "rocksdb.estimate-live-data-size",
       "rocksdb.min-log-number-to-keep",
-      "rocksdb.min-obsolete-sst-number-to-keep",
       "rocksdb.total-sst-files-size",
       "rocksdb.live-sst-files-size",
       "rocksdb.estimate-pending-compaction-bytes",
@@ -97,7 +96,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
         synchronized (hostedRocksDBPartitions) {
           for(RocksDB dbPartition : hostedRocksDBPartitions.values()) {
             try {
-              total += Long.parseLong(dbPartition.getProperty(metric));
+              total += dbPartition.getLongProperty(metric);
             } catch (RocksDBException e) {
               logger.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
               continue;
