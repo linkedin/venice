@@ -420,15 +420,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           /**
-           * Otherwise, check whether it has been 5 minutes since the last update in the current topic
-           *
+           * Otherwise, execute the TopicSwitch message stored in metadata store if one of the below conditions is true:
+           * 1. it has been 5 minutes since the last update in the current topic
+           * 2. leader is consuming SR topic right now and TS wants leader to switch to another topic.
            */
           String newSourceTopicName = topicSwitch.sourceTopicName.toString();
           partition = partitionConsumptionState.getPartition();
           lastTimestamp = getLastConsumedMessageTimestamp(currentLeaderTopic, partition);
-          if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
+          if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime
+              || (Version.isStreamReprocessingTopic(currentLeaderTopic) && !Version.isStreamReprocessingTopic(newSourceTopicName))) {
             // leader switch topic
-            long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getLeaderOffset();
+            long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffset();
             if (upstreamStartOffset < 0) {
               if (topicSwitch.rewindStartTimestamp > 0) {
                 upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
@@ -687,7 +689,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        *
        * Besides, if there is re-balance, leader should finish consuming the everything in VT before switching topics;
        * there could be more than one TopicSwitch message in VT, we should honor the last one during re-balance; so
-       * don't update the consumption state like leader topic or leader offset yet until actually switching topic
+       * don't update the consumption state like leader topic until actually switching topic. The leaderTopic field
+       * should be used to track the topic that leader is actually consuming.
        */
       if (!bufferReplayEnabledForHybrid) {
         /**
@@ -699,7 +702,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
         return;
       }
-      // Do not update leader consumption state until actually switching topic
+      /**
+       * Update the latest upstream offset.
+       */
+      partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(upstreamStartOffset);
     } else {
       /**
        * For follower, just keep track of what leader is doing now.
@@ -739,7 +745,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         long newUpstreamOffset =
             kafkaValue.leaderMetadataFooter != null ? kafkaValue.leaderMetadataFooter.upstreamOffset : kafkaValue.producerMetadata.upstreamOffset;
 
-        long previousUpstreamOffset = offsetRecord.getLeaderOffset();
+        long previousUpstreamOffset = offsetRecord.getUpstreamOffset();
 
         /**
          * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
@@ -839,9 +845,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * to the true leader when the old leader doesn't stop producing.
          */
         if (kafkaValue.leaderMetadataFooter != null) {
-          offsetRecord.setLeaderTopicOffset(kafkaValue.leaderMetadataFooter.upstreamOffset);
+          offsetRecord.setLeaderUpstreamOffset(kafkaValue.leaderMetadataFooter.upstreamOffset);
         } else {
-          offsetRecord.setLeaderTopicOffset(kafkaValue.producerMetadata.upstreamOffset);
+          offsetRecord.setLeaderUpstreamOffset(kafkaValue.producerMetadata.upstreamOffset);
         }
       }
       // update leader producer GUID
@@ -1132,7 +1138,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState.getOffsetRecord().setOffset(recordMetadata.offset());
         // update the leader consumption offset
         if (consumedOffset >= 0) {
-          partitionConsumptionState.getOffsetRecord().setLeaderTopicOffset(consumedOffset);
+          partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(consumedOffset);
         }
         /**
          * Check whether it's ready to serve after successfully produce a message.

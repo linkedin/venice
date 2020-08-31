@@ -23,11 +23,11 @@ public class TestVersion {
   @Test
   public void identifiesValidTopicNames(){
     String goodTopic = "my_very_good_store_v4";
-    Assert.assertTrue(Version.topicIsValidStoreVersion(goodTopic),
+    Assert.assertTrue(Version.isVersionTopicOrStreamReprocessingTopic(goodTopic),
         goodTopic + " should parse as a valid store-version topic");
 
     String badTopic = "__consumer_offsets";
-    Assert.assertFalse(Version.topicIsValidStoreVersion(badTopic),
+    Assert.assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(badTopic),
         badTopic + " must not parse as a valid store-version topic");
   }
 

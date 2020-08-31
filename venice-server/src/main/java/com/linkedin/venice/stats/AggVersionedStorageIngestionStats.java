@@ -24,7 +24,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   }
 
   public void setIngestionTask(String storeVersionTopic, StoreIngestionTask ingestionTask) {
-    if (!Version.topicIsValidStoreVersion(storeVersionTopic)) {
+    if (!Version.isVersionTopicOrStreamReprocessingTopic(storeVersionTopic)) {
       LOGGER.warn("Invalid store version topic name: " + storeVersionTopic);
       return;
     }

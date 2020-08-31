@@ -412,6 +412,10 @@ public class Version implements Comparable<Version> {
     return kafkaTopic.substring(0, getLastIndexOfVersionSeparator(kafkaTopic));
   }
 
+  /**
+   * This API works for both version topic and stream-reprocessing topics; other topic names will fail
+   * with IllegalArgumentException.
+   */
   public static int parseVersionFromKafkaTopicName(String kafkaTopic) {
     int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
     if (kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX)) {
@@ -420,6 +424,14 @@ public class Version implements Comparable<Version> {
     } else {
       return Integer.parseInt(kafkaTopic.substring(versionStartIndex));
     }
+  }
+
+  /**
+   * This API only works for version topic; other topic names will fail with IllegalArgumentException.
+   */
+  public static int parseVersionFromVersionTopicName(String kafkaTopic) {
+    int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
+    return Integer.parseInt(kafkaTopic.substring(versionStartIndex));
   }
 
   private static int getLastIndexOfVersionSeparator(String kafkaTopic) {
@@ -476,10 +488,25 @@ public class Version implements Comparable<Version> {
     return kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX);
   }
 
-  public static boolean topicIsValidStoreVersion(String kafkaTopic){
+  /**
+   * Return true if the input topic name is a version topic or stream-reprocessing topic.
+   */
+  public static boolean isVersionTopicOrStreamReprocessingTopic(String kafkaTopic){
     try{
       parseVersionFromKafkaTopicName(kafkaTopic);
     } catch (IllegalArgumentException e){
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Only return true if the input topic name is a version topic.
+   */
+  public static boolean isVersionTopic(String kafkaTopic) {
+    try {
+      parseVersionFromVersionTopicName(kafkaTopic);
+    } catch (IllegalArgumentException e) {
       return false;
     }
     return true;

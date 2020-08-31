@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -15,6 +16,8 @@ import org.apache.avro.util.Utf8;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+
+import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
 public class OffsetRecord {
@@ -52,6 +55,7 @@ public class OffsetRecord {
     emptyPartitionState.lastUpdate = System.currentTimeMillis();
     emptyPartitionState.startOfBufferReplayDestinationOffset = null;
     emptyPartitionState.databaseInfo = new HashMap<>();
+    emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
     return emptyPartitionState;
   }
 
@@ -167,12 +171,20 @@ public class OffsetRecord {
     return this.partitionState.incrementalPushInfo;
   }
 
+  /**
+   * "leaderOffset" will be used to track the upstream offset only; the "offset" field
+   * in {@link PartitionState} will be used to track the consumption offset in version topic.
+   *
+   * TODO: rename "leaderOffset" field to "upstreamOffset" field.
+   */
   public void setLeaderConsumptionState(String topic, long startOffset) {
     this.partitionState.leaderTopic = topic;
-    this.partitionState.leaderOffset = startOffset;
+    if (!Version.isVersionTopic(topic)) {
+      this.partitionState.leaderOffset = startOffset;
+    }
   }
 
-  public void setLeaderTopicOffset(long leaderOffset) {
+  public void setLeaderUpstreamOffset(long leaderOffset) {
     this.partitionState.leaderOffset = leaderOffset;
   }
 
@@ -188,7 +200,34 @@ public class OffsetRecord {
     return (partitionState.leaderTopic != null) ? partitionState.leaderTopic.toString() : null;
   }
 
+  /**
+   * The caller of this API should be interested in which offset currently leader is actually on;
+   * if leader is consuming version topic right now, this API will return the latest record consumed
+   * offset for VT; if leader is consuming some upstream topics rather than version topic, this API
+   * will return the recorded upstream offset.
+   */
   public long getLeaderOffset() {
+    if (getLeaderTopic() == null || Version.isVersionTopic(getLeaderTopic())) {
+      return getOffset();
+    } else {
+      return this.partitionState.leaderOffset;
+    }
+  }
+
+  /**
+   * The caller of this API should be interested in the largest known upstream offset.
+   *
+   * For example, during re-balance, a new leader is elected to consume a partition from
+   * scratch; the partition in VT looks like this:
+   * SOP, data messages from batch..., EOP, TS, some data messages from RT...
+   *
+   * Leader shouldn't act on the TS message the moment it consumes TS, but instead, it should consume
+   * all the messages in the VT including all the existing real-time messages in VT, in order to resume
+   * consumption from RT at the largest known upstream offset to avoid duplicate work. In this case,
+   * leader is still consuming VT, so {@link #getLeaderOffset()} would return VT offset; users should
+   * call this API to get the latest upstream offset.
+   */
+  public long getUpstreamOffset() {
     return this.partitionState.leaderOffset;
   }
 

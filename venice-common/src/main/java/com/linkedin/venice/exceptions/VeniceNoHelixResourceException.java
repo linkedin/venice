@@ -37,7 +37,7 @@ public class VeniceNoHelixResourceException extends VeniceRouterException {
   }
 
   private static String getMessageFromResourceName(String resource){
-    if (Version.topicIsValidStoreVersion(resource) && (Version.parseVersionFromKafkaTopicName(resource)==0)) {
+    if (Version.isVersionTopicOrStreamReprocessingTopic(resource) && (Version.parseVersionFromKafkaTopicName(resource)==0)) {
       return "There is no version for store '" + Version.parseStoreFromKafkaTopicName(resource) + "'.  Please push data to that store";
     } else {
       return "Resource '" + resource + "' does not exist";
@@ -45,7 +45,7 @@ public class VeniceNoHelixResourceException extends VeniceRouterException {
   }
 
   private static int getVersionFromResourceName(String resource){
-    if (Version.topicIsValidStoreVersion(resource)){
+    if (Version.isVersionTopicOrStreamReprocessingTopic(resource)){
       return Version.parseVersionFromKafkaTopicName(resource);
     } else {
       return -1;
