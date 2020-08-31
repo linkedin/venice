@@ -746,9 +746,6 @@ public class TestHybrid {
           .setLeaderFollowerModel(true)
       );
 
-      // Keep a early rewind start time to cover all messages in any topic
-      long rewindStartTime = System.currentTimeMillis();
-
       // Create a new version, and do an empty push for that version
       VersionCreationResponse vcr = controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
       int versionNumber = vcr.getVersion();
@@ -808,8 +805,8 @@ public class TestHybrid {
           ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
           VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(Version.composeRealTimeTopic(storeName));) {
         // Build a producer to produce 2 TS messages into RT
-        realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic1, rewindStartTime, null);
-        realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic2, rewindStartTime, null);
+        realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic1, -1L, null);
+        realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic2, -1L, null);
 
         TestUtils.waitForNonDeterministicAssertion(30 * 1000, TimeUnit.MILLISECONDS, () -> {
           // All messages from tmpTopic2 should exist

@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
-import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
@@ -137,7 +136,7 @@ public class TopicCleanupService extends AbstractVeniceService {
       Optional<String> storeName = Optional.empty();
       if (Version.isRealTimeTopic(topic)) {
         storeName = Optional.of(Version.parseStoreFromRealTimeTopic(topic));
-      } else if (Version.topicIsValidStoreVersion(topic)) {
+      } else if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
         storeName = Optional.of(Version.parseStoreFromKafkaTopicName(topic));
       }
       if (!storeName.isPresent()) {

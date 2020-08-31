@@ -79,7 +79,7 @@ public class DataPublisherUtils {
 
       Path filePath = fileStatus.getPath();
       String storeVersion = filePath.getName();
-      if (!Version.topicIsValidStoreVersion(storeVersion)) {
+      if (!Version.isVersionTopicOrStreamReprocessingTopic(storeVersion)) {
         logger.info("Skipping file path " + storeVersion + " because the table name doesn't contain version suffix");
         continue;
       }

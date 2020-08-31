@@ -17,7 +17,7 @@ public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedSt
   }
 
   public void setStorageEngine(String topicName, AbstractStorageEngine storageEngine) {
-    if (!Version.topicIsValidStoreVersion(topicName)) {
+    if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
       LOGGER.warn("Invalid topic name: " + topicName);
       return;
     }

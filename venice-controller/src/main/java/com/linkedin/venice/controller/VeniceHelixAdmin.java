@@ -428,7 +428,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public boolean isResourceStillAlive(String resourceName) {
-        if (!Version.topicIsValidStoreVersion(resourceName)) {
+        if (!Version.isVersionTopicOrStreamReprocessingTopic(resourceName)) {
             throw new VeniceException("Resource name: " + resourceName + " is invalid");
         }
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
@@ -1320,7 +1320,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             veniceWriter.broadcastTopicSwitch(
                                 Arrays.asList(getKafkaBootstrapServers(isSslToKafka())),
                                 Version.composeStreamReprocessingTopic(finalVersion.getStoreName(), finalVersion.getNumber()),
-                                0L,
+                                -1L,  // -1 indicates rewinding from the beginning of the source topic
                                 new HashMap<>());
                         }
                     } finally {
@@ -1956,7 +1956,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Set<String> allTopics = topicManager.listTopics();
         List<String> allTopicsRelatedToThisStore = allTopics.stream()
             /** Exclude RT buffer topics, admin topics and all other special topics */
-            .filter(t -> Version.topicIsValidStoreVersion(t))
+            .filter(t -> Version.isVersionTopicOrStreamReprocessingTopic(t))
             /** Keep only those topics pertaining to the store in question */
             .filter(t -> Version.parseStoreFromKafkaTopicName(t).equals(store.getName()))
             .collect(Collectors.toList());
@@ -3535,7 +3535,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void checkPreConditionForKillOfflinePush(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
-        if (!Version.topicIsValidStoreVersion(kafkaTopic)) {
+        if (!Version.isVersionTopicOrStreamReprocessingTopic(kafkaTopic)) {
             throw new VeniceException("Topic: " + kafkaTopic + " is not a valid Venice version topic.");
         }
     }
