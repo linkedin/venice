@@ -198,6 +198,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                   VeniceRequestEarlyTerminationException earlyTerminationException = (VeniceRequestEarlyTerminationException)e;
                   context.writeAndFlush(new HttpShortcutResponse(earlyTerminationException.getMessage(), earlyTerminationException.getHttpResponseStatus()));
                 } else {
+                  logger.error("Exception thrown in parallel batch get for " + request.getResourceName(), e);
                   context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
                 }
               } else {
@@ -235,13 +236,11 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
             response.setStreamingResponse();
           }
           context.writeAndFlush(response);
+        } catch (VeniceRequestEarlyTerminationException e) {
+          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), e.getHttpResponseStatus()));
         } catch (Exception e) {
-          if (e instanceof VeniceRequestEarlyTerminationException) {
-            VeniceRequestEarlyTerminationException earlyTerminationException = (VeniceRequestEarlyTerminationException)e;
-            context.writeAndFlush(new HttpShortcutResponse(earlyTerminationException.getMessage(), earlyTerminationException.getHttpResponseStatus()));
-          } else {
-            context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
-          }
+          logger.error("Exception thrown for " + request.getResourceName(), e);
+          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
       }));
 
