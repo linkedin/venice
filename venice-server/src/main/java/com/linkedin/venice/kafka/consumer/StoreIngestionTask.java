@@ -1394,8 +1394,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected void processStartOfIncrementalPush(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
-    CharSequence startVersion = ((StartOfIncrementalPush) controlMessage.controlMessageUnion).version;
+  protected void processStartOfIncrementalPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage startOfIncrementalPush, int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
+    CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
     IncrementalPush newIncrementalPush = new IncrementalPush();
     newIncrementalPush.version = startVersion;
 
@@ -1403,9 +1404,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
   }
 
-  protected void processEndOfIncrementalPush(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
+  protected void processEndOfIncrementalPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage endOfIncrementalPush, int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
     // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
-    CharSequence endVersion = ((EndOfIncrementalPush) controlMessage.controlMessageUnion).version;
+    CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     // Reset incremental push version
     partitionConsumptionState.setIncrementalPush(null);
     notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, endVersion.toString());
@@ -1455,10 +1457,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processStartOfBufferReplay(controlMessage, offset, partitionConsumptionState);
        break;
       case START_OF_INCREMENTAL_PUSH:
-        processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
+        processStartOfIncrementalPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
+        processEndOfIncrementalPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
         processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);

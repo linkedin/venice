@@ -925,6 +925,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
+   * This API should be only used in Leader/Standby model for store ingestion.
+   *
+   * Producer DIV will be recalculated (not DIV pass-through mode); checksum for the input partition in this producer
+   * will also be updated.
+   */
+  public synchronized Future<RecordMetadata> asyncSendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo, Callback callback, long upstreamOffset) {
+    controlMessage.debugInfo = getDebugInfo(debugInfo);
+    boolean updateCheckSum = true;
+    return sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, partition, callback, updateCheckSum, upstreamOffset);
+  }
+
+  /**
    * For control messages, the Key part of the {@link KafkaKey} includes the producer GUID, segment and sequence number.
    *
    * N.B.: This could be optimized further by defining an Avro record to hold this data, since Avro would use

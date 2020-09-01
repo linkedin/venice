@@ -607,17 +607,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * gets these control message inside real time topic, or in other words, `shouldProduceToVersionTopic` would return true.
    */
   @Override
-  protected void processStartOfIncrementalPush(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
-    super.processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
+  protected void processStartOfIncrementalPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage startOfIncrementalPush, int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
+    super.processStartOfIncrementalPush(consumerRecord, startOfIncrementalPush, partition, upstreamOffset, partitionConsumptionState);
 
-    checkAndProduceToVersionTopic(controlMessage, partitionConsumptionState);
+    produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
+        getVeniceWriter().asyncSendControlMessage(startOfIncrementalPush, partition, new HashMap<>(), callback, sourceTopicOffset));
   }
 
   @Override
-  protected void processEndOfIncrementalPush(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
-    super.processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
+  protected void processEndOfIncrementalPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage endOfIncrementalPush, int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
+    super.processEndOfIncrementalPush(consumerRecord, endOfIncrementalPush, partition, upstreamOffset, partitionConsumptionState);
 
-    checkAndProduceToVersionTopic(controlMessage, partitionConsumptionState);
+    produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
+        getVeniceWriter().asyncSendControlMessage(endOfIncrementalPush, partition, new HashMap<>(), callback, sourceTopicOffset));
   }
 
   @Override
@@ -1027,20 +1031,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  private void checkAndProduceToVersionTopic(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
-    int partition = partitionConsumptionState.getPartition();
-    long offset = partitionConsumptionState.getOffsetRecord().getOffset();
-    checkAndProduceToVersionTopic(controlMessage, partitionConsumptionState, partition, offset);
-  }
-
-  private void checkAndProduceToVersionTopic(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState, int partition, long offset) {
-    if (shouldProduceToVersionTopic(partitionConsumptionState)) {
-      String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-      LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
-          kafkaVersionTopic, partition, offset, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
-      getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
-    }
-  }
 
   private class LeaderProducerMessageCallback implements ChunkAwareCallback {
     private final PartitionConsumptionState partitionConsumptionState;
