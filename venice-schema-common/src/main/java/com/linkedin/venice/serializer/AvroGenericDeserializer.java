@@ -1,6 +1,5 @@
 package com.linkedin.venice.serializer;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
@@ -35,7 +34,7 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
      * from the Iterable's {@link Iterator}.
      *
      * N.B.: Only supports one pass over the items. Does not support replaying. If this assumption is
-     *       violated, a {@link VeniceException} will be thrown.
+     *       violated, a {@link VeniceSerializationException} will be thrown.
      *
      * This is for use in the thin client, where only one pass is required, and we want to start operating
      * on the records as soon as they become available.
@@ -48,8 +47,8 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
      * as they are deserialized, in order to support efficient replaying.
      *
      * N.B.: Concurrent iteration is not supported. The first pass must be finished completely before a
-     *       second pass can be begun. If this assumption is violated, a {@link VeniceException} will be
-     *       thrown.
+     *       second pass can be begun. If this assumption is violated, a {@link VeniceSerializationException}
+     *       will be thrown.
      *
      * This can be used in the backend, where iterating multiple times is sometimes necessary.
      */
@@ -79,46 +78,46 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
   }
 
   @Override
-  public V deserialize(byte[] bytes) throws VeniceException {
+  public V deserialize(byte[] bytes) throws VeniceSerializationException {
     return deserialize(null, bytes);
   }
 
   @Override
-  public V deserialize(ByteBuffer byteBuffer) throws VeniceException {
+  public V deserialize(ByteBuffer byteBuffer) throws VeniceSerializationException {
     BinaryDecoder decoder = DecoderFactory.defaultFactory()
         .createBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), null);
     return deserialize(null, decoder);
   }
 
   @Override
-  public V deserialize(V reuseRecord, byte[] bytes) throws VeniceException {
+  public V deserialize(V reuseRecord, byte[] bytes) throws VeniceSerializationException {
     // This param is to re-use a decoder instance. TODO: explore GC tuning later.
     BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null);
     return deserialize(reuseRecord, decoder);
   }
 
   @Override
-  public V deserialize(BinaryDecoder decoder) throws VeniceException {
+  public V deserialize(BinaryDecoder decoder) throws VeniceSerializationException {
     return deserialize(null, decoder);
   }
 
   @Override
-  public V deserialize(V reuseRecord, BinaryDecoder decoder) throws VeniceException {
+  public V deserialize(V reuseRecord, BinaryDecoder decoder) throws VeniceSerializationException {
     try {
       return datumReader.read(reuseRecord, decoder);
     } catch (Exception e) {
-      throw new VeniceException("Could not deserialize bytes back into Avro object", e);
+      throw new VeniceSerializationException("Could not deserialize bytes back into Avro object", e);
     }
   }
 
   @Override
-  public Iterable<V> deserializeObjects(byte[] bytes) throws VeniceException {
+  public Iterable<V> deserializeObjects(byte[] bytes) throws VeniceSerializationException {
     // This param is to re-use a decoder instance. TODO: explore GC tuning later.
     return deserializeObjects(DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null));
   }
 
   @Override
-  public Iterable<V> deserializeObjects(BinaryDecoder decoder) throws VeniceException {
+  public Iterable<V> deserializeObjects(BinaryDecoder decoder) throws VeniceSerializationException {
     switch (iterableImpl) {
       case BLOCKING:
         List<V> objects = new ArrayList();
@@ -127,7 +126,7 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
             objects.add(datumReader.read(null, decoder));
           }
         } catch (Exception e) {
-          throw new VeniceException("Could not deserialize bytes back into Avro objects", e);
+          throw new VeniceSerializationException("Could not deserialize bytes back into Avro objects", e);
         }
 
         return objects;
@@ -163,7 +162,7 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
       // or not), and how to behave accordingly (depending on whether the iterator has already been used or not).
       if (null == lazyIterator) {
         // Replay not enabled, and iterator already requested once. Fail fast.
-        throw new VeniceException(this.getClass().getSimpleName() + " does not support iterating more than once.");
+        throw new VeniceSerializationException(this.getClass().getSimpleName() + " does not support iterating more than once.");
       } else if (null == lazyIterator.objects) {
         // Replay not enabled, and iterator not requested yet. Will return iterator for the last time.
         LazyCollectionDeserializerIterator lazyIteratorReference = this.lazyIterator;
@@ -177,7 +176,7 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
         return lazyIterator;
       } else {
         // Replay enabled, but the iterator is neither fresh nor drained
-        throw new VeniceException(this.getClass().getSimpleName() + " does not support concurrent iteration. "
+        throw new VeniceSerializationException(this.getClass().getSimpleName() + " does not support concurrent iteration. "
             + "If you need to iterate more than once, you must iterate until the end before iterating again.");
       }
     }
@@ -204,7 +203,7 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
       try {
         return !decoder.isEnd();
       } catch (IOException e) {
-        throw new VeniceException("Could not deserialize bytes back into Avro objects", e);
+        throw new VeniceSerializationException("Could not deserialize bytes back into Avro objects", e);
       }
     }
 
@@ -221,7 +220,7 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
           throw new NoSuchElementException();
         }
       } catch (IOException e) {
-        throw new VeniceException("Could not deserialize bytes back into Avro objects", e);
+        throw new VeniceSerializationException("Could not deserialize bytes back into Avro objects", e);
       }
     }
   }
