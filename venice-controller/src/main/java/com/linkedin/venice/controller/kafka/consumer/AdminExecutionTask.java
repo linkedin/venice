@@ -364,96 +364,68 @@ public class AdminExecutionTask implements Callable<Void> {
   private void handleSetStore(UpdateStore message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        .setOwner(message.owner.toString())
+        .setEnableReads(message.enableReads)
+        .setEnableWrites(message.enableWrites)
+        .setPartitionCount(message.partitionNum);
+    if (message.partitionerConfig != null) {
+      params.setPartitionerClass(message.partitionerConfig.partitionerClass.toString())
+          .setPartitionerParams(Utils.getStringMapFromCharSequenceMap(message.partitionerConfig.partitionerParams))
+          .setAmplificationFactor(message.partitionerConfig.amplificationFactor);
+    }
+    params.setStorageQuotaInByte(message.storageQuotaInByte)
+        .setHybridStoreOverheadBypass(message.hybridStoreOverheadBypass)
+        .setReadQuotaInCU(message.readQuotaInCU);
+
+    if (message.currentVersion != IGNORED_CURRENT_VERSION) {
+      params.setCurrentVersion(message.currentVersion);
+    }
+
+    if (message.hybridStoreConfig != null) {
+      params.setHybridRewindSeconds(message.hybridStoreConfig.rewindTimeInSeconds)
+          .setHybridOffsetLagThreshold(message.hybridStoreConfig.offsetLagThresholdToGoOnline);
+    }
+    params.setAccessControlled(message.accessControlled)
+        .setCompressionStrategy(CompressionStrategy.valueOf(message.compressionStrategy))
+        .setClientDecompressionEnabled(message.clientDecompressionEnabled)
+        .setChunkingEnabled(message.chunkingEnabled)
+        .setSingleGetRouterCacheEnabled(message.singleGetRouterCacheEnabled)
+        .setBatchGetRouterCacheEnabled(message.batchGetRouterCacheEnabled)
+        .setBatchGetLimit(message.batchGetLimit)
+        .setNumVersionsToPreserve(message.numVersionsToPreserve)
+        .setIncrementalPushEnabled(message.incrementalPushEnabled)
+        .setStoreMigration(message.isMigrating)
+        .setWriteComputationEnabled(message.writeComputationEnabled)
+        .setReadComputationEnabled(message.readComputationEnabled)
+        .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
+        .setLeaderFollowerModel(message.leaderFollowerModelEnabled)
+        .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
+        .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
+        .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled);
+
+    if (message.ETLStoreConfig != null) {
+      params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
+          .setFutureVersionETLEnabled(message.ETLStoreConfig.futureVersionETLEnabled)
+          .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString());
+    }
+
+    if (message.largestUsedVersionNumber != null) {
+      params.setLargestUsedVersionNumber(message.largestUsedVersionNumber);
+    }
+
+    params.setNativeReplicationEnabled(message.nativeReplicationEnabled)
+        .setPushStreamSourceAddress(message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString())
+        .setIncrementalPushPolicy(IncrementalPushPolicy.valueOf(message.incrementalPushPolicy))
+        .setBackupVersionRetentionMs(message.backupVersionRetentionMs);
+
     if (checkPreConditionForReplicateUpdateStore(clusterName, storeName,
         message.isMigrating, message.enableReads, message.enableWrites)) {
-      UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-          .setOwner(message.owner.toString())
-          .setEnableReads(message.enableReads)
-          .setEnableWrites(message.enableWrites)
-          .setPartitionCount(message.partitionNum);
-      if (message.partitionerConfig != null) {
-        params.setPartitionerClass(message.partitionerConfig.partitionerClass.toString())
-            .setPartitionerParams(Utils.getStringMapFromCharSequenceMap(message.partitionerConfig.partitionerParams))
-            .setAmplificationFactor(message.partitionerConfig.amplificationFactor);
-      }
-      params.setStorageQuotaInByte(message.storageQuotaInByte)
-          .setHybridStoreOverheadBypass(message.hybridStoreOverheadBypass)
-          .setReadQuotaInCU(message.readQuotaInCU)
-          .setCurrentVersion(message.currentVersion);
-      if (message.hybridStoreConfig != null) {
-        params.setHybridRewindSeconds(message.hybridStoreConfig.rewindTimeInSeconds)
-            .setHybridOffsetLagThreshold(message.hybridStoreConfig.offsetLagThresholdToGoOnline);
-      }
-      params.setAccessControlled(message.accessControlled)
-          .setCompressionStrategy(CompressionStrategy.valueOf(message.compressionStrategy))
-          .setClientDecompressionEnabled(message.clientDecompressionEnabled)
-          .setChunkingEnabled(message.chunkingEnabled)
-          .setSingleGetRouterCacheEnabled(message.singleGetRouterCacheEnabled)
-          .setBatchGetRouterCacheEnabled(message.batchGetRouterCacheEnabled)
-          .setBatchGetLimit(message.batchGetLimit)
-          .setNumVersionsToPreserve(message.numVersionsToPreserve)
-          .setIncrementalPushEnabled(message.incrementalPushEnabled)
-          .setStoreMigration(message.isMigrating)
-          .setWriteComputationEnabled(message.writeComputationEnabled)
-          .setReadComputationEnabled(message.readComputationEnabled)
-          .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
-          .setLeaderFollowerModel(message.leaderFollowerModelEnabled)
-          .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
-          .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
-          .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled);
-      if (message.ETLStoreConfig != null) {
-        params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
-            .setFutureVersionETLEnabled(message.ETLStoreConfig.futureVersionETLEnabled)
-            .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString());
-      }
-      params.setLargestUsedVersionNumber(message.largestUsedVersionNumber);
       admin.replicateUpdateStore(clusterName, storeName, params);
     }
-    admin.updateStore(clusterName, storeName,
-        Optional.of(message.owner.toString()),
-        Optional.of(message.enableReads),
-        Optional.of(message.enableWrites),
-        Optional.of(message.partitionNum),
-        Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.partitionerClass.toString()),
-        Optional.ofNullable(message.partitionerConfig).map(config -> Utils.getStringMapFromCharSequenceMap(config.partitionerParams)),
-        Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.amplificationFactor),
-        Optional.of(message.storageQuotaInByte),
-        Optional.of(message.hybridStoreOverheadBypass),
-        Optional.of(message.readQuotaInCU),
-        message.currentVersion == IGNORED_CURRENT_VERSION
-            ? Optional.empty()
-            : Optional.of(message.currentVersion),
-        Optional.ofNullable(message.largestUsedVersionNumber), // Store migration needs to reset largestUsedVersionNumber to trigger bootstrap
-        message.hybridStoreConfig == null
-            ? Optional.empty()
-            : Optional.of(message.hybridStoreConfig.rewindTimeInSeconds),
-        message.hybridStoreConfig == null
-            ? Optional.empty()
-            : Optional.of(message.hybridStoreConfig.offsetLagThresholdToGoOnline),
-        Optional.of(message.accessControlled),
-        CompressionStrategy.optionalValueOf(message.compressionStrategy),
-        Optional.of(message.clientDecompressionEnabled),
-        Optional.of(message.chunkingEnabled),
-        Optional.of(message.singleGetRouterCacheEnabled),
-        Optional.of(message.batchGetRouterCacheEnabled),
-        Optional.of(message.batchGetLimit),
-        Optional.of(message.numVersionsToPreserve),
-        Optional.of(message.incrementalPushEnabled),
-        Optional.of(message.isMigrating),
-        Optional.of(message.writeComputationEnabled),
-        Optional.of(message.readComputationEnabled),
-        Optional.of(message.bootstrapToOnlineTimeoutInHours),
-        Optional.of(message.leaderFollowerModelEnabled),
-        Optional.of(BackupStrategy.fromInt(message.backupStrategy)),
-        Optional.of(message.schemaAutoRegisterFromPushJobEnabled),
-        Optional.of(message.hybridStoreDiskQuotaEnabled),
-        Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.regularVersionETLEnabled),
-        Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.futureVersionETLEnabled),
-        Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.etledUserProxyAccount.toString()),
-        Optional.ofNullable(message.nativeReplicationEnabled),
-        Optional.ofNullable(message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString()),
-        IncrementalPushPolicy.optionalValueOf(message.incrementalPushPolicy),
-        Optional.ofNullable(message.backupVersionRetentionMs));
+
+    admin.updateStore(clusterName, storeName, params);
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
