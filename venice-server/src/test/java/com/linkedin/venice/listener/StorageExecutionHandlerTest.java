@@ -197,7 +197,7 @@ public class StorageExecutionHandlerTest {
     logger.addAppender(new AsyncAppender(){
       @Override
       public void append(final LoggingEvent event) {
-        if(event.getLevel().equals(Level.ERROR) && event.getRenderedMessage().contains(exceptionMessage)) {
+        if(event.getLevel().equals(Level.ERROR) && event.getThrowableInformation().getThrowable().getLocalizedMessage().contains(exceptionMessage)) {
           errorLogCount.addAndGet(1);
         }
       }
