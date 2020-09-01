@@ -777,11 +777,7 @@ public class TestAdminConsumptionTask {
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    verify(admin, timeout(TIMEOUT).atLeastOnce()).updateStore(eq(clusterName), eq(storeName), any(), any(), any(), any(), any(), any(),
-        any(), any(), any(), any(), any(), any(), eq(Optional.of(123L)), eq(Optional.of(1000L)),
-        eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any(), any(), eq(Optional.of(true)),
-        eq(Optional.of(storeMigration)), eq(Optional.of(writeComputationEnabled)), eq(Optional.of(computationEnabled)),
-        eq(Optional.of(bootstrapToOnlineTimeoutInHours)), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    verify(admin, timeout(TIMEOUT).atLeastOnce()).updateStore(eq(clusterName), eq(storeName), any());
   }
 
   @Test (timeOut = TIMEOUT)

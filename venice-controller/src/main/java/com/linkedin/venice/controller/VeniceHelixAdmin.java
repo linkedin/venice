@@ -2481,44 +2481,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized void updateStore(
         String clusterName,
         String storeName,
-        Optional<String> owner,
-        Optional<Boolean> readability,
-        Optional<Boolean> writeability,
-        Optional<Integer> partitionCount,
-        Optional<String> partitionerClass,
-        Optional<Map<String, String>> partitionerParams,
-        Optional<Integer> amplificationFactor,
-        Optional<Long> storageQuotaInByte,
-        Optional<Boolean> hybridStoreDbOverheadBypass,
-        Optional<Long> readQuotaInCU,
-        Optional<Integer> currentVersion,
-        Optional<Integer> largestUsedVersionNumber,
-        Optional<Long> hybridRewindSeconds,
-        Optional<Long> hybridOffsetLagThreshold,
-        Optional<Boolean> accessControlled,
-        Optional<CompressionStrategy> compressionStrategy,
-        Optional<Boolean> clientDecompressionEnabled,
-        Optional<Boolean> chunkingEnabled,
-        Optional<Boolean> singleGetRouterCacheEnabled,
-        Optional<Boolean> batchGetRouterCacheEnabled,
-        Optional<Integer> batchGetLimit,
-        Optional<Integer> numVersionsToPreserve,
-        Optional<Boolean> incrementalPushEnabled,
-        Optional<Boolean> storeMigration,
-        Optional<Boolean> writeComputationEnabled,
-        Optional<Boolean> readComputationEnabled,
-        Optional<Integer> bootstrapToOnlineTimeoutInHours,
-        Optional<Boolean> leaderFollowerModelEnabled,
-        Optional<BackupStrategy> backupStrategy,
-        Optional<Boolean> autoSchemaRegisterPushJobEnabled,
-        Optional<Boolean> hybridStoreDiskQuotaEnabled,
-        Optional<Boolean> regularVersionETLEnabled,
-        Optional<Boolean> futureVersionETLEnabled,
-        Optional<String> etledUserProxyAccount,
-        Optional<Boolean> nativeReplicationEnabled,
-        Optional<String> pushStreamSourceAddress,
-        Optional<IncrementalPushPolicy> incrementalPushPolicy,
-        Optional<Long> backupVersionRetentionMs) {
+        UpdateStoreQueryParams params) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -2533,6 +2496,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 logger.error(String.format("Could not find realtime topic for hybrid store %s", storeName));
             }
         }
+
+        Optional<String> owner = params.getOwner();
+        Optional<Boolean> readability = params.getEnableReads();
+        Optional<Boolean> writeability = params.getEnableWrites();
+        Optional<Integer> partitionCount = params.getPartitionCount();
+        Optional<String> partitionerClass = params.getPartitionerClass();
+        Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
+        Optional<Integer> amplificationFactor = params.getAmplificationFactor();
+        Optional<Long> storageQuotaInByte = params.getStorageQuotaInByte();
+        Optional<Boolean> hybridStoreDbOverheadBypass = params.getHybridStoreOverheadBypass();
+        Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
+        Optional<Integer> currentVersion = params.getCurrentVersion();
+        Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
+        Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
+        Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
+        Optional<Boolean> accessControlled = params.getAccessControlled();
+        Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
+        Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
+        Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
+        Optional<Boolean> singleGetRouterCacheEnabled = params.getSingleGetRouterCacheEnabled();
+        Optional<Boolean> batchGetRouterCacheEnabled = params.getBatchGetRouterCacheEnabled();
+        Optional<Integer> batchGetLimit = params.getBatchGetLimit();
+        Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
+        Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
+        Optional<Boolean> storeMigration = params.getStoreMigration();
+        Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
+        Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
+        Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
+        Optional<Boolean> leaderFollowerModelEnabled = params.getLeaderFollowerModelEnabled();
+        Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
+        Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
+        Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
+        Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
+        Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
+        Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
+        Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
+        Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
+        Optional<IncrementalPushPolicy> incrementalPushPolicy = params.getIncrementalPushPolicy();
+        Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
 
         Optional<HybridStoreConfig> hybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
