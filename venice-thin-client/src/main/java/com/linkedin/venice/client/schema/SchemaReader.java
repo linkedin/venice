@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
@@ -96,7 +97,17 @@ public class SchemaReader implements Closeable {
     return valueSchema;
   }
 
+  private static final Function<SchemaEntry, Schema> SCHEMA_EXTRACTOR = schemaEntry -> schemaEntry.getSchema();
   public Schema getLatestValueSchema() throws VeniceClientException {
+    return ensureLatestValueSchemaIsFetched(SCHEMA_EXTRACTOR);
+  }
+
+  private static final Function<SchemaEntry, Integer> SCHEMA_ID_EXTRACTOR = schemaEntry -> schemaEntry.getId();
+  public Integer getLatestValueSchemaId() throws VeniceClientException {
+    return ensureLatestValueSchemaIsFetched(SCHEMA_ID_EXTRACTOR);
+  }
+
+  private <T> T ensureLatestValueSchemaIsFetched(Function<SchemaEntry, T> schemaEntryConsumer) {
     if (null == latestValueSchemaEntry.get()) {
       synchronized (this) {
         // Check it again
@@ -105,10 +116,8 @@ public class SchemaReader implements Closeable {
         }
       }
     }
-    if (null == latestValueSchemaEntry.get()) {
-      return null;
-    }
-    return latestValueSchemaEntry.get().getSchema();
+    SchemaEntry latest = latestValueSchemaEntry.get();
+    return null == latest ? null : schemaEntryConsumer.apply(latest);
   }
 
   private SchemaEntry fetchSingleSchema(String requestPath, boolean isValueSchema) throws VeniceClientException {

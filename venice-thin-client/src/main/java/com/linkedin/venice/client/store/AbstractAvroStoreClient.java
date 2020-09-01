@@ -32,6 +32,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.serializer.VeniceSerializationException;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -58,8 +59,10 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
+import org.bouncycastle.crypto.digests.MD5Digest;
 
 import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.VeniceConstants.*;
@@ -310,7 +313,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
               ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(response.getBody()));
               stats.ifPresent((clientStats) -> clientStats.recordResponseDecompressionTime(LatencyUtils.getLatencyInMS(decompressionStartTime)));
               RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
-              valueFuture.complete(deserializer.deserialize(data.array()));
+              valueFuture.complete(tryToDeserialize(deserializer, data, response.getSchemaId(), key));
               responseCompleteReporter.report();
             }
           } catch (Exception e) {
@@ -407,7 +410,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                 long decompressionStartTime = System.nanoTime();
                 ByteBuffer data = decompressRecord(compressionStrategy, record.value);
                 decompressionTime.add(System.nanoTime() - decompressionStartTime);
-                resultMap.put(keyList.get(keyIndex), dataDeserializer.deserialize(data));
+                K key = keyList.get(keyIndex);
+                resultMap.put(key, tryToDeserialize(dataDeserializer, data, record.schemaId, key));
               }, responseDeserializationComplete, stats, preResponseEnvelopeDeserialization);
             }
           } catch (Exception e) {
@@ -427,6 +431,50 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     ));
 
     return valueFuture;
+  }
+
+  private <T> T tryToDeserialize(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId, K key) {
+    try {
+      return dataDeserializer.deserialize(data);
+    } catch (VeniceSerializationException e) {
+      // N.B.: The code below is fairly defensive because we do not want to fail in the process of trying to
+      // log debugging details. In practice, these try blocks should never catch anything.
+      String checksumHex, keyHex, latestSchemaId;
+      try {
+        // Hashing the value because 1) values tend to be too large for logs and 2) they might contain PII
+        MD5Digest digest = new MD5Digest();
+        byte[] valueChecksum = new byte[digest.getDigestSize()];
+        digest.update(data.array(), data.position(), data.limit() - data.position());
+        digest.doFinal(valueChecksum, 0);
+        checksumHex = Hex.encodeHexString(valueChecksum);
+      } catch (Exception e2) {
+        checksumHex = "failed to compute value checksum";
+        logger.error(checksumHex + " for logging purposes...", e2);
+      }
+
+      try {
+        keyHex = Hex.encodeHexString(getKeySerializer().serialize(key));
+      } catch (Exception e3) {
+        keyHex = "failed to serialize key and encode it as hex";
+        logger.error(keyHex + " for logging purposes...", e3);
+      }
+
+      try {
+        latestSchemaId = getSchemaReader().getLatestValueSchemaId().toString();
+      } catch (Exception e4) {
+        latestSchemaId = "failed to retrieve latest value schema ID";
+        logger.error(latestSchemaId + " for logging purposes...", e4);
+      }
+
+      logger.error("Caught a " + VeniceSerializationException.class.getSimpleName() + ", will bubble up.\n"
+          + "RecordDeserializer: " + dataDeserializer.getClass().getSimpleName() + "\n"
+          + "Writer schema ID: " + (writerSchemaId == -1 ? "N/A" : writerSchemaId) + "\n"
+          + "Latest schema ID: " + latestSchemaId + "\n"
+          + "Value (md5/hex): " + checksumHex + "\n"
+          + "Key (hex): " + keyHex);
+      throw e;
+    }
+
   }
 
   /**
@@ -561,12 +609,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                 if (keyIdx >= keyList.size() || keyIdx < 0) {
                   throw new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key");
                 }
-                GenericRecord value = dataDeserializer.deserialize(envelope.value);
+                K key = keyList.get(keyIdx);
+                GenericRecord value = tryToDeserialize(dataDeserializer, envelope.value, -1, key);
                 /**
                  * Wrap up the returned {@link GenericRecord} to throw exception when retrieving some failed
                  * computation.
                  */
-                resultMap.put(keyList.get(keyIdx), ComputeGenericRecord.wrap(value));
+                resultMap.put(key, ComputeGenericRecord.wrap(value));
               }, responseDeserializationComplete, stats, preResponseEnvelopeDeserialization);
             }
           } catch (Exception e) {
