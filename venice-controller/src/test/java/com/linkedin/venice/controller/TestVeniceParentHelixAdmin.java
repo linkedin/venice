@@ -1,5 +1,4 @@
 package com.linkedin.venice.controller;
-import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -30,10 +29,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -72,7 +68,6 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -218,34 +213,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test (timeOut = TIMEOUT_IN_MS)
-  public void testAsyncSetupForPushStatusStore() {
-    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-    doReturn(true).when(internalAdmin).isMasterController(clusterName);
+  public void testAsyncSetupForSystemStores() {
+    String arbitraryCluster = TestUtils.getUniqueString("test-cluster");
+    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(arbitraryCluster);
+    doReturn(true).when(internalAdmin).isMasterController(arbitraryCluster);
     doReturn(Version.composeRealTimeTopic(PUSH_JOB_DETAILS_STORE_NAME)).when(internalAdmin)
-        .getRealTimeTopic(clusterName, PUSH_JOB_DETAILS_STORE_NAME);
+        .getRealTimeTopic(arbitraryCluster, PUSH_JOB_DETAILS_STORE_NAME);
     doReturn(Version.composeRealTimeTopic(participantStoreName)).when(internalAdmin)
-        .getRealTimeTopic(clusterName, participantStoreName);
+        .getRealTimeTopic(arbitraryCluster, participantStoreName);
+    VeniceControllerConfig asyncEnabledConfig = mockConfig(arbitraryCluster);
+    doReturn(arbitraryCluster).when(asyncEnabledConfig).getPushJobStatusStoreClusterName();
+    doReturn(true).when(asyncEnabledConfig).isParticipantMessageStoreEnabled();
     AsyncSetupMockVeniceParentHelixAdmin mockVeniceParentHelixAdmin =
-        new AsyncSetupMockVeniceParentHelixAdmin(internalAdmin, config);
-    mockVeniceParentHelixAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+        new AsyncSetupMockVeniceParentHelixAdmin(internalAdmin, asyncEnabledConfig);
+    mockVeniceParentHelixAdmin.setVeniceWriterForCluster(arbitraryCluster, veniceWriter);
     mockVeniceParentHelixAdmin.setTimer(new MockTime());
     try {
-      mockVeniceParentHelixAdmin.start(clusterName);
+      mockVeniceParentHelixAdmin.start(arbitraryCluster);
       String[] systemStoreNames = {PUSH_JOB_DETAILS_STORE_NAME, participantStoreName};
       for (String systemStore : systemStoreNames) {
         TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> {
-          Store s = mockVeniceParentHelixAdmin.getStore(clusterName, systemStore);
+          Store s = mockVeniceParentHelixAdmin.getStore(arbitraryCluster, systemStore);
           return s != null && !s.getVersions().isEmpty();
         });
-        Store verifyStore = mockVeniceParentHelixAdmin.getStore(clusterName, systemStore);
+        Store verifyStore = mockVeniceParentHelixAdmin.getStore(arbitraryCluster, systemStore);
         Assert.assertEquals(verifyStore.getName(), systemStore, "Unexpected store name");
         Assert.assertTrue(verifyStore.isHybrid(), "Store should be configured to be hybrid");
         Assert.assertEquals(verifyStore.getVersions().size(), 1 , "Store should have one version");
       }
     } finally {
-      mockVeniceParentHelixAdmin.stop(clusterName);
+      mockVeniceParentHelixAdmin.stop(arbitraryCluster);
     }
-    Assert.assertFalse(mockVeniceParentHelixAdmin.isAsyncSetupRunning(clusterName), "Async setup should be stopped");
+    Assert.assertFalse(mockVeniceParentHelixAdmin.isAsyncSetupRunning(arbitraryCluster), "Async setup should be stopped");
   }
 
   @Test

@@ -12,6 +12,7 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -60,6 +61,9 @@ public class AbstractTestVeniceParentHelixAdmin {
   public void setupTestCase(Optional<AuthorizerService> authorizerService)  {
     topicManager = mock(TopicManager.class);
     doReturn(new HashSet<String>(Arrays.asList(topicName))).when(topicManager).listTopics();
+    Map<String, Long> topicRetentions = new HashMap<>();
+    topicRetentions.put(topicName, Long.MAX_VALUE);
+    doReturn(topicRetentions).when(topicManager).getAllTopicRetentions();
     doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(topicName);
 
     internalAdmin = mock(VeniceHelixAdmin.class);
@@ -89,7 +93,6 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(store).when(storeRepository).getStore(any());
 
     config = mockConfig(clusterName);
-    doReturn(1).when(config).getParentControllerWaitingTimeForConsumptionMs();
 
     controllerClients.put(coloName, new ControllerClient(clusterName, "localhost", Optional.empty()));
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
@@ -126,8 +129,10 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(KAFKA_REPLICA_FACTOR).when(config).getKafkaReplicationFactor();
     doReturn(10000).when(config).getParentControllerWaitingTimeForConsumptionMs();
     doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
-    doReturn(clusterName).when(config).getPushJobStatusStoreClusterName();
-    doReturn(true).when(config).isParticipantMessageStoreEnabled();
+    // PushJobStatusStore and participant message store are disabled in this unit test by default because many
+    // tests are using verify(veniceWriter).put(...) which could be unpredictable with async setup enabled.
+    doReturn("").when(config).getPushJobStatusStoreClusterName();
+    doReturn(false).when(config).isParticipantMessageStoreEnabled();
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put(coloName, "localhost");
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
