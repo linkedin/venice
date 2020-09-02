@@ -133,6 +133,8 @@ public class AbstractTestVeniceParentHelixAdmin {
     // tests are using verify(veniceWriter).put(...) which could be unpredictable with async setup enabled.
     doReturn("").when(config).getPushJobStatusStoreClusterName();
     doReturn(false).when(config).isParticipantMessageStoreEnabled();
+    // Disable background threads that may interfere when we try to re-mock internalAdmin later in the tests.
+    doReturn(Long.MAX_VALUE).when(config).getTerminalStateTopicCheckerDelayMs();
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put(coloName, "localhost");
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
