@@ -115,7 +115,7 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
     for (Map.Entry<String, Long> entry : topicRetentions.entrySet()) {
       String topic = entry.getKey();
       try {
-        if (!Version.isRealTimeTopic(topic) && Version.topicIsValidStoreVersion(topic)) {
+        if (!Version.isRealTimeTopic(topic) && Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
           String storeName = Version.parseStoreFromKafkaTopicName(topic);
           Optional<StoreConfig> storeConfig = storeConfigRepository.getStoreConfig(storeName);
           if (!storeConfig.isPresent()) {
