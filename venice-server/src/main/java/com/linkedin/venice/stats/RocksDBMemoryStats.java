@@ -30,7 +30,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
   private static final Logger logger = Logger.getLogger(RocksDBMemoryStats.class);
 
   // List of metric domains to emit
-  static final List<String> PARTITON_METRIC_DOMAINS = Arrays.asList(
+  static final List<String> PARTITION_METRIC_DOMAINS = Arrays.asList(
       "rocksdb.num-immutable-mem-table",
       "rocksdb.mem-table-flush-pending",
       "rocksdb.compaction-pending",
@@ -67,7 +67,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
   )));
 
   // metrics related to block cache, which should not be collected when plain table format is enabled.
-  private static final Set<String> BLOCK_CACHE_METRICS = PARTITON_METRIC_DOMAINS.stream()
+  private static final Set<String> BLOCK_CACHE_METRICS = PARTITION_METRIC_DOMAINS.stream()
       .filter(s -> s.contains("rocksdb.block-cache"))
       .collect(Collectors.toSet());
 
@@ -85,7 +85,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
 
   public RocksDBMemoryStats(MetricsRepository metricsRepository, String name, boolean plainTableEnabled) {
     super(metricsRepository, name);
-    for(String metric : PARTITON_METRIC_DOMAINS) {
+    for(String metric : PARTITION_METRIC_DOMAINS) {
       // Skip the block cache related metrics when using PlainTable format is enabled.
       if (plainTableEnabled && BLOCK_CACHE_METRICS.contains(metric)) {
         continue;
