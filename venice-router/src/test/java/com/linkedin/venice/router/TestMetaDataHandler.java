@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
@@ -16,7 +17,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
+import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
@@ -48,7 +51,7 @@ public class TestMetaDataHandler {
   private static final String KAFKA_ZK_ADDRESS = "localhost:1234";
   private static final String KAFKA_BOOTSTRAP_SERVERS = "localhost:1234";
   private static ObjectMapper mapper = new ObjectMapper();
-
+  private HelixHybridStoreQuotaRepository hybridStoreQuotaRepository = Mockito.mock(HelixHybridStoreQuotaRepository.class);
   public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo)
       throws IOException {
     return passRequestToMetadataHandler(requestUri, routing, schemaRepo,
@@ -80,7 +83,7 @@ public class TestMetaDataHandler {
 
     MetaDataHandler handler = new MetaDataHandler(routing, schemaRepoToUse,
         storeConfigRepository , clusterToD2ServiceMap, onlineInstanceFinder, helixReadOnlyStoreRepository,
-        "test-cluster", ZK_ADDRESS, KAFKA_ZK_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
+        Optional.of(hybridStoreQuotaRepository), "test-cluster", ZK_ADDRESS, KAFKA_ZK_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -389,6 +392,36 @@ public class TestMetaDataHandler {
   }
 
   @Test
+  public void testHybridQuotaInRouter() throws IOException {
+    String resourceName = "test-store_v1";
+    OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
+        .when(storeConfigRepository).getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
+    Mockito.doReturn(2).when(mockOnlineInstanceFinder).getNumberOfPartitions(resourceName);
+
+    // Router returns QUOTA_NOT_VIOLATED state
+    Mockito.doReturn(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED).when(hybridStoreQuotaRepository).getHybridStoreQuotaStatus(resourceName);
+    FullHttpResponse response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_HYBRID_STORE_QUOTA
+                + "/" + resourceName, null, null, storeConfigRepository, Collections.emptyMap(),
+            mockOnlineInstanceFinder);
+    Assert.assertEquals(response.status().code(), 200);
+    HybridStoreQuotaStatusResponse pushStatusResponse = mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
+    Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
+
+    // Router returns QUOTA_VIOLATED state
+    Mockito.doReturn(HybridStoreQuotaStatus.QUOTA_VIOLATED).when(hybridStoreQuotaRepository).getHybridStoreQuotaStatus(resourceName);
+    response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_HYBRID_STORE_QUOTA
+                + "/" + resourceName, null, null, storeConfigRepository, Collections.emptyMap(),
+            mockOnlineInstanceFinder);
+    Assert.assertEquals(response.status().code(), 200);
+    pushStatusResponse = mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
+    Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_VIOLATED);
+  }
+
+  @Test
   public void testStorageRequest() throws IOException {
     String storeName = "test_store";
     String clusterName = "test-cluster";
@@ -402,7 +435,8 @@ public class TestMetaDataHandler {
     HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
 
     MetaDataHandler handler = new MetaDataHandler(null, null, null, Collections.emptyMap(), null,
-        helixReadOnlyStoreRepository,  "test-cluster", ZK_ADDRESS, KAFKA_ZK_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
+        helixReadOnlyStoreRepository, Optional.of(hybridStoreQuotaRepository),  "test-cluster", ZK_ADDRESS,
+        KAFKA_ZK_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());
