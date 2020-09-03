@@ -418,6 +418,13 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT = "server.ingestion.isolation.application.port";
 
+  /**
+   * wheather to enable checksum verfification in the ingestion path from kafka to database persistency. If enabled it will
+   * keep a running checksum for all and only PUT kafka data message received in the ingestion task and periodically
+   * verify it against the key/values saved in the database persistency layer.
+   */
+  public static final String SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED = "server.database.checksum.verification.enabled";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

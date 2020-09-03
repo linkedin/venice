@@ -11,6 +11,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.SparseConcurrentList;
 
+import java.util.function.Supplier;
 import org.apache.log4j.Logger;
 
 import java.io.Closeable;
@@ -309,14 +310,15 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * number of writes (puts/deletes) against the data source. This method puts
    * the storage engine in this batch write mode
    */
-  public synchronized void beginBatchWrite(StoragePartitionConfig storagePartitionConfig, Map<String, String> checkpointedInfo) {
+  public synchronized void beginBatchWrite(StoragePartitionConfig storagePartitionConfig,
+      Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> checksumSupplier) {
     logger.info("Begin batch write for storage partition config: " + storagePartitionConfig + " with checkpointed info: " + checkpointedInfo);
     /**
      * We want to adjust the storage partition first since it will possibly re-open the underlying database in
      * different mode.
      */
     adjustStoragePartition(storagePartitionConfig);
-    getPartitionOrThrow(storagePartitionConfig.getPartitionId()).beginBatchWrite(checkpointedInfo);
+    getPartitionOrThrow(storagePartitionConfig.getPartitionId()).beginBatchWrite(checkpointedInfo, checksumSupplier);
   }
 
   /**

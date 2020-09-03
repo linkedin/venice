@@ -2,6 +2,8 @@ package com.linkedin.venice.store.rocksdb;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.validation.checksum.CheckSum;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -10,7 +12,10 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
+import java.util.function.Supplier;
+import org.apache.commons.lang.RandomStringUtils;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
 import org.rocksdb.Slice;
@@ -28,7 +33,7 @@ public class RocksDBStoragePartitionTest {
   private static final String valuePrefix = "value_";
   private static final RocksDBThrottler rocksDbThrottler = new RocksDBThrottler(3);
 
-  private Map<String, String> generateInput(int recordCnt, boolean sorted) {
+  private Map<String, String> generateInput(int recordCnt, boolean sorted, int padLength) {
     Map<String, String> records;
     if (sorted) {
       BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
@@ -41,7 +46,11 @@ public class RocksDBStoragePartitionTest {
       records = new HashMap<>();
     }
     for (int i = 0; i < recordCnt; ++i) {
-      records.put(keyPrefix + i, valuePrefix + i);
+      String value = valuePrefix + i;
+      if (padLength > 0) {
+        value += RandomStringUtils.random(padLength, true, true);
+      }
+      records.put(keyPrefix + i, value);
     }
     return records;
   }
@@ -65,17 +74,21 @@ public class RocksDBStoragePartitionTest {
   @DataProvider (name="testIngestionDataProvider")
   private Object[][] testIngestionDataProvider() {
     return new Object[][] {
-        {true, false, false}, // Sorted input without interruption
-        {true, true, true},   // Sorted input with interruption
-        {true, true, false},  // Sorted input with storage node re-boot
-        {false, false, false},// Unsorted input without interruption
-        {false, true, false}, // Unsorted input with interruption
-        {false, true, true}   // Unsorted input with storage node re-boot
+        {true, false, false, true}, // Sorted input without interruption, with verifyChecksum
+        {true, false, false, false}, // Sorted input without interruption, without verifyChecksum
+        {true, true, true, false},   // Sorted input with interruption, without verifyChecksum
+        {true, true, false, false},  // Sorted input with storage node re-boot, without verifyChecksum
+        {true, true, true, true},   // Sorted input with interruption, with verifyChecksum
+        {true, true, false, true},  // Sorted input with storage node re-boot, with verifyChecksum
+        {false, false, false, false},// Unsorted input without interruption, without verifyChecksum
+        {false, true, false, false}, // Unsorted input with interruption, without verifyChecksum
+        {false, true, true, false}   // Unsorted input with storage node re-boot, without verifyChecksum
     };
   }
 
   @Test (dataProvider = "testIngestionDataProvider")
-  public void testIngestion(boolean sorted, boolean interrupted, boolean reopenDatabaseDuringInterruption) {
+  public void testIngestion(boolean sorted, boolean interrupted, boolean reopenDatabaseDuringInterruption, boolean verifyChecksum) {
+    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = TestUtils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -83,7 +96,7 @@ public class RocksDBStoragePartitionTest {
     partitionConfig.setDeferredWrite(sorted);
     Options options = new Options();
     options.setCreateIfMissing(true);
-    Map<String, String> inputRecords = generateInput(1000, sorted);
+    Map<String, String> inputRecords = generateInput(1010, sorted, 0);
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
 
@@ -92,8 +105,17 @@ public class RocksDBStoragePartitionTest {
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
+
+    Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
+    if (verifyChecksum) {
+      checksumSupplier = Optional.of(() -> {
+        byte[] checksum = runningChecksum.get().getCheckSum();
+        runningChecksum.get().reset();
+        return checksum;
+      });
+    }
     if (sorted) {
-      storagePartition.beginBatchWrite(new HashMap<>());
+      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
     }
     int currentRecordNum = 0;
     int currentFileNo = 0;
@@ -101,6 +123,10 @@ public class RocksDBStoragePartitionTest {
 
     for (Map.Entry<String, String> entry : inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
+      if (verifyChecksum) {
+        runningChecksum.get().update(entry.getKey().getBytes());
+        runningChecksum.get().update(entry.getValue().getBytes());
+      }
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
         if (sorted) {
@@ -119,7 +145,7 @@ public class RocksDBStoragePartitionTest {
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
           if (sorted) {
-            storagePartition.beginBatchWrite(checkpointingInfo);
+            storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier);
           }
 
           // Pass last checkpointed info.
@@ -128,10 +154,15 @@ public class RocksDBStoragePartitionTest {
           int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
           int replayEnd = interruptedRecord;
           int replayCnt = 0;
+          runningChecksum.get().reset();
           for (Map.Entry<String, String> innerEntry : inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= replayEnd) {
               storagePartition.put(innerEntry.getKey().getBytes(), innerEntry.getValue().getBytes());
+              if (verifyChecksum) {
+                runningChecksum.get().update(innerEntry.getKey().getBytes());
+                runningChecksum.get().update(innerEntry.getValue().getBytes());
+              }
             }
             if (replayCnt > replayEnd) {
               break;
@@ -172,4 +203,37 @@ public class RocksDBStoragePartitionTest {
     options.close();
     removeDir(storeDir);
   }
+
+  @Test
+  public void testChecksumverificationFailure() {
+    String storeName = "test_store_c1";
+    String storeDir = getTempDatabaseDir(storeName);
+
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setDeferredWrite(true);
+    Options options = new Options();
+    options.setCreateIfMissing(true);
+    Map<String, String> inputRecords = generateInput(1024 , true, 230);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+
+    Optional<Supplier<byte[]>> checksumSupplier = Optional.of(() -> new byte[16]);
+    storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
+
+    for (Map.Entry<String, String> entry : inputRecords.entrySet()) {
+      storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
+    }
+    VeniceException ex = Assert.expectThrows(VeniceException.class, storagePartition::endBatchWrite);
+    Assert.assertTrue(ex.getMessage().contains("last sstFile checksum didn't match for store"));
+
+    storagePartition.drop();
+    options.close();
+    removeDir(storeDir);
+  }
+
 }

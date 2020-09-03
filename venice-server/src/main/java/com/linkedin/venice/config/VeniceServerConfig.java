@@ -203,7 +203,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final IngestionIsolationMode ingestionIsolationMode;
   private final int ingestionServicePort;
   private final int ingestionApplicationPort;
-
+  private final boolean databaseChecksumVerificationEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -304,6 +304,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionIsolationMode = IngestionIsolationMode.valueOf(serverProperties.getString(SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.NO_OP.toString()));
     ingestionServicePort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_SERVICE_PORT, 27015);
     ingestionApplicationPort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, 27016);
+    databaseChecksumVerificationEnabled = serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -562,4 +563,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public int getIngestionApplicationPort() {
     return ingestionApplicationPort;
   }
+
+  public boolean isDatabaseChecksumVerificationEnabled() { return databaseChecksumVerificationEnabled;}
+
 }

@@ -1,8 +1,13 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
+import com.linkedin.venice.kafka.validation.checksum.CheckSum;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import java.nio.ByteBuffer;
+import java.util.Optional;
 import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
@@ -58,6 +63,8 @@ class PartitionConsumptionState {
    */
   private boolean consumeRemotely;
 
+  private Optional<CheckSum> expectedSSTFileChecksum;
+
   public void setSourceTopicMaxOffset(long sourceTopicMaxOffset) {
     this.sourceTopicMaxOffset = sourceTopicMaxOffset;
   }
@@ -81,6 +88,7 @@ class PartitionConsumptionState {
     this.lastTimeOfSourceTopicOffsetLookup = -1;
     this.sourceTopicMaxOffset = -1;
     this.leaderState = LeaderFollowerStateType.STANDBY;
+    this.expectedSSTFileChecksum = Optional.empty();
   }
 
   public int getPartition() {
@@ -243,4 +251,34 @@ class PartitionConsumptionState {
   public boolean consumeRemotely() {
     return consumeRemotely;
   }
+
+  public void initializeExpectedChecksum() {
+    this.expectedSSTFileChecksum = CheckSum.getInstance(CheckSumType.MD5);
+  }
+
+  /**
+   * Keep updating the checksum for key/value pair received from kafka PUT message.
+   * If the checksum instance is not configured via {@link PartitionConsumptionState#initializeExpectedChecksum} then do nothing.
+   * This api will keep the caller's code clean.
+   * @param key
+   * @param put
+   */
+  public void maybeUpdateExpectedChecksum(byte[] key, Put put) {
+    if (!expectedSSTFileChecksum.isPresent()) {
+      return;
+    }
+    expectedSSTFileChecksum.get().update(key);
+    ByteBuffer putValue = put.putValue;
+    expectedSSTFileChecksum.get().update(put.schemaId);
+    expectedSSTFileChecksum.get().update(putValue.array(), putValue.position(), putValue.remaining());
+  }
+
+  public void resetExpectedChecksum() {
+    expectedSSTFileChecksum.get().reset();
+  }
+
+  public byte[] getExpectedChecksum() {
+    return expectedSSTFileChecksum.get().getCheckSum();
+  }
+
 }

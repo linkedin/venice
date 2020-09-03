@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -42,6 +43,7 @@ import org.testng.annotations.Test;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -61,7 +63,11 @@ public class PushJobDetailsTest {
 
   @BeforeClass
   public void setup() throws IOException {
-    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 1000000, false, false);
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
+    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 1000000, false, false, extraProperties);
     zkWrapper = ServiceFactory.getZkServer();
     controllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
@@ -101,7 +107,7 @@ public class PushJobDetailsTest {
         recordSchema.getField("id").schema().toString(), recordSchema.getField("name").schema().toString());
     // Set store quota to unlimited else local H2V jobs will fail due to quota enforcement NullPointerException because
     // hadoop job client cannot fetch counters properly.
-    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1));
+    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2));
     Properties pushJobProps = defaultH2VProps(venice, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     pushJobProps.setProperty(POLL_JOB_STATUS_INTERVAL_MS, String.valueOf(1000));
@@ -153,6 +159,24 @@ public class PushJobDetailsTest {
       assertNotNull(value.producerConfigs);
       assertTrue(value.producerConfigs.isEmpty());
     }
+
+    // Verify records (note, records 1-100 have been pushed)
+    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(testStoreName).setVeniceURL(venice.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        try {
+          for (int i = 1; i < 100; i++) {
+            String key = String.valueOf(i);
+            Object value = client.get(key).get();
+            assertNotNull(value, "Key " + i + " should not be missing!");
+            assertEquals(value.toString(), "test_name_" + key);
+          }
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
+
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
