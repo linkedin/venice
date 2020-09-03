@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
@@ -15,9 +16,11 @@ import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
+import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
@@ -70,6 +73,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
   private final OnlineInstanceFinderDelegator onlineInstanceFinder;
+  private final Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private final HelixReadOnlyStoreRepository storeRepository;
   private final String clusterName;
   private final String zkAddress;
@@ -81,6 +85,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,
       OnlineInstanceFinderDelegator onlineInstanceFinder, HelixReadOnlyStoreRepository storeRepository,
+      Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       String clusterName, String zkAddress, String kafkaZkAddress, String kafkaBootstrapServers) {
     super();
     this.routing = routing;
@@ -88,6 +93,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
     this.onlineInstanceFinder = onlineInstanceFinder;
+    this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.storeRepository = storeRepository;
     this.clusterName = clusterName;
     this.zkAddress = zkAddress;
@@ -120,6 +126,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } else if (TYPE_PUSH_STATUS.equals(resourceType)) {
       // URI: /push_status
       handlePushStatusLookUp(ctx, helper);
+    } else if (TYPE_HYBRID_STORE_QUOTA.equals(resourceType)){
+      handleHybridStoreQuotaLookup(ctx, helper);
     } else {
       // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
       // since we're passing it on to the next handler, we need to retain an extra reference.
@@ -312,6 +320,31 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     pushStatusResponse.setExecutionStatus(onlineInstanceFinder.getPushJobStatus(resourceName));
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(pushStatusResponse), true, ctx);
   }
+
+  /**
+   * Get hybrid store quota status from {@link HelixHybridStoreQuotaRepository} for stores..
+   */
+  private void handleHybridStoreQuotaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String resourceName = helper.getResourceName();
+    checkResourceName(resourceName, "/" + TYPE_HYBRID_STORE_QUOTA + "/${resourceName}");
+    if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
+      byte[] errBody =
+          ("Cannot fetch the hybrid store quota status for resource: " + resourceName + " because the store: "
+              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+
+    HybridStoreQuotaStatusResponse hybridStoreQuotaStatusResponse = new HybridStoreQuotaStatusResponse();
+    hybridStoreQuotaStatusResponse.setName(resourceName);
+    if (hybridStoreQuotaRepository.isPresent()) {
+      hybridStoreQuotaStatusResponse.setQuotaStatus(hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(resourceName));
+    } else {
+      hybridStoreQuotaStatusResponse.setQuotaStatus(HybridStoreQuotaStatus.UNKNOWN);
+    }
+    setupResponseAndFlush(OK, mapper.writeValueAsBytes(hybridStoreQuotaStatusResponse), true, ctx);
+  }
+
 
   private String getD2ServiceByClusterName(String clusterName) {
     return clusterToD2Map.get(clusterName);

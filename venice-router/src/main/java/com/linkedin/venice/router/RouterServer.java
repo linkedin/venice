@@ -416,7 +416,7 @@ public class RouterServer extends AbstractVeniceService {
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, storeConfigRepository,
             config.getClusterToD2Map(), onlineInstanceFinder, metadataRepository,
-            config.getClusterName(), config.getZkConnection(),
+            hybridStoreQuotaRepository, config.getClusterName(), config.getZkConnection(),
             config.getKafkaZkAddress(), config.getKafkaBootstrapServers());
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder,

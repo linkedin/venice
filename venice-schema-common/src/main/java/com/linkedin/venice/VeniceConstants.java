@@ -38,5 +38,7 @@ public class VeniceConstants {
   // URI: /push_status/storeName
   public static final String TYPE_PUSH_STATUS = "push_status";
 
+  // URI: /hybrid_store_quota/storeName
+  public static final String TYPE_HYBRID_STORE_QUOTA = "hybrid_store_quota";
   // End of router request path
 }

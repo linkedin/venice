@@ -1,7 +1,6 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import java.util.Arrays;
 import java.util.Collection;
@@ -60,8 +59,8 @@ public class HelixHybridStoreQuotaRepository implements RoutingTableChangeListen
       return resourceToStatusMap.get(resourceName);
     }
     String errorMessage = "Resource '" + resourceName + "' does not exist";
-    logger.trace(errorMessage);
-    throw new VeniceNoHelixResourceException(resourceName);
+    logger.warn(errorMessage);
+    return HybridStoreQuotaStatus.UNKNOWN;
   }
 
   public void refresh() {
