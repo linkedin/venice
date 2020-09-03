@@ -2,6 +2,8 @@ package com.linkedin.venice.store;
 
 import java.util.Map;
 import java.nio.ByteBuffer;
+import java.util.Optional;
+import java.util.function.Supplier;
 import org.apache.log4j.Logger;
 
 
@@ -74,7 +76,7 @@ public abstract class AbstractStoragePartition {
    */
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
 
-  public void beginBatchWrite(Map<String, String> checkpointedInfo) {}
+  public void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> checksumSupplier) {}
 
   public void endBatchWrite() {}
 

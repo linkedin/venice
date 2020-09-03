@@ -57,6 +57,7 @@ public abstract class TestRestartServerDuringIngestion {
   private final String valuePrefix = "value_";
 
   protected abstract PersistenceType getPersistenceType();
+  protected abstract Properties getExtraProperties();
 
   private Properties getVeniceServerProperties() {
     Properties properties = new Properties();
@@ -64,6 +65,7 @@ public abstract class TestRestartServerDuringIngestion {
     properties.put(ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 200);
     properties.put(ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 100);
 
+    properties.putAll(getExtraProperties());
     return properties;
   }
 
@@ -100,7 +102,7 @@ public abstract class TestRestartServerDuringIngestion {
     cluster.close();
   }
 
-  @Test(groups = {"flaky"}, timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void ingestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";

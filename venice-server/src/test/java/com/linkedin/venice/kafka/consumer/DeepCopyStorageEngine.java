@@ -7,7 +7,9 @@ import com.linkedin.venice.store.StoragePartitionConfig;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 
 /**
@@ -83,8 +85,9 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  public void beginBatchWrite(StoragePartitionConfig storagePartitionConfig, Map<String, String> checkpointedInfo){
-    this.delegate.beginBatchWrite(storagePartitionConfig, checkpointedInfo);
+  public void beginBatchWrite(StoragePartitionConfig storagePartitionConfig, Map<String, String> checkpointedInfo,
+      Optional<Supplier<byte[]>> checksumSupplier) {
+    this.delegate.beginBatchWrite(storagePartitionConfig, checkpointedInfo, checksumSupplier);
   }
 
   @Override

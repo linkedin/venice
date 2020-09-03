@@ -1,11 +1,15 @@
 package com.linkedin.venice.store.rocksdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.validation.checksum.CheckSum;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.utils.ByteUtils;
 
+import com.linkedin.venice.utils.LatencyUtils;
+import java.util.function.Supplier;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
@@ -14,8 +18,11 @@ import org.rocksdb.FlushOptions;
 import org.rocksdb.IngestExternalFileOptions;
 import org.rocksdb.Options;
 import org.rocksdb.PlainTableConfig;
+import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import org.rocksdb.SstFileReader;
+import org.rocksdb.SstFileReaderIterator;
 import org.rocksdb.RocksIterator;
 import org.rocksdb.SstFileWriter;
 import org.rocksdb.Statistics;
@@ -104,6 +111,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private final Optional<Statistics> aggStatistics;
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
+  private Optional<Supplier<byte[]>> expectedChecksumSupplier;
+
   public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
     super(storagePartitionConfig.getPartitionId());
@@ -137,6 +146,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     // Direct write is not efficient when there are a lot of ongoing pushes
     this.envOptions.setUseDirectWrites(false);
     this.rocksDBMemoryStats = rocksDBMemoryStats;
+    this.expectedChecksumSupplier = Optional.empty();
 
     try {
       if (this.readOnly) {
@@ -256,7 +266,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public synchronized void beginBatchWrite(Map<String, String> checkpointedInfo) {
+  public synchronized void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> expectedChecksumSupplier) {
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
@@ -288,9 +298,12 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     currentSSTFileWriter = new SstFileWriter(envOptions, options);
     try {
       currentSSTFileWriter.open(fullPathForCurrentSSTFile);
+      recordNumInCurrentSSTFile = 0;
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to open file: " + fullPathForCurrentSSTFile + " with SstFileWriter");
     }
+
+    this.expectedChecksumSupplier = expectedChecksumSupplier;
   }
 
   private String composeFullPathForSSTFile(int sstFileNo) {
@@ -374,6 +387,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
         }
         currentSSTFileWriter.put(key, value);
         ++recordNumInCurrentSSTFile;
+
       } else {
         rocksDB.put(writeOptions, key, value);
       }
@@ -486,7 +500,23 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
         LOGGER.info("Sync gets invoked for store: " + storeName + ", partition id: " + partitionId
             + ", last finished sst file: " + fullPathForLastFinishedSSTFile + ", current sst file: "
             + fullPathForCurrentSSTFile);
+        long recordNumInLastSSTFile = recordNumInCurrentSSTFile;
         recordNumInCurrentSSTFile = 0;
+
+        if (expectedChecksumSupplier.isPresent()) {
+          byte[] checksumToMatch = expectedChecksumSupplier.get().get();
+          long startMs = System.currentTimeMillis();
+          if (!verifyChecksum(fullPathForLastFinishedSSTFile, recordNumInLastSSTFile, checksumToMatch)) {
+            throw new VeniceException(
+                "verifyChecksum: last sstFile checksum didn't match for store: " + storeName + ", partition: " + partitionId
+                    + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: " + recordNumInLastSSTFile
+                    + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
+          } else {
+            LOGGER.info("verifyChecksum: last sstFile checksum did match for store: " + storeName + ", partition: " + partitionId
+                + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: " + recordNumInLastSSTFile
+                + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
+          }
+        }
       } else {
         LOGGER.warn("Sync get invoked for store: " + storeName + ", partition id: " + partitionId
             +", but the last sst file: " + composeFullPathForSSTFile(currentSSTFileNo) + " is empty");
@@ -502,6 +532,61 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       checkpointingInfo.put(ROCKSDB_LAST_FINISHED_SST_FILE_NO, Integer.toString(lastFinishedSSTFileNo));
     }
     return checkpointingInfo;
+  }
+
+  /**
+   * This function calculates checksum of all the key/value pair stored in the input sstFilePath. It then
+   * verifies if the checksum matches with the input checksumToMatch and return the result.
+   * A SstFileReader handle is used to perform bulk scan through the entire SST file. fillCache option is
+   * explicitely disabled to not pollute the rocksdb internal block caches. And also implicit checksum verification
+   * is disabled to reduce latency of the entire operation.
+   *
+   * @param sstFilePath the full absolute path of the SST file
+   * @param expectedRecordNumInSSTFile expected number of key/value pairs in the SST File
+   * @param checksumToMatch pre-calculated checksum to match against.
+   * @return true if the the sstFile checksum matches with the provided checksum.
+   */
+  private boolean verifyChecksum(String sstFilePath, long expectedRecordNumInSSTFile, byte[] checksumToMatch) {
+    SstFileReader sstFileReader = null;
+    SstFileReaderIterator sstFileReaderIterator = null;
+
+    if (!deferredWrite) {
+      return true;
+    }
+
+    try {
+      sstFileReader = new SstFileReader(options);
+      sstFileReader.open(sstFilePath);
+      final ReadOptions readOptions = new ReadOptions();
+      readOptions.setVerifyChecksums(false);
+      readOptions.setFillCache(false);
+
+      if (sstFileReader.getTableProperties().getNumEntries() != expectedRecordNumInSSTFile) {
+        LOGGER.error("verifyChecksum: SSTFile record does not match");
+        return false;
+      }
+
+      Optional<CheckSum> sstFileFinalCheckSum = CheckSum.getInstance(CheckSumType.MD5);
+      sstFileReaderIterator = sstFileReader.newIterator(readOptions);
+      sstFileReaderIterator.seekToFirst();
+      while (sstFileReaderIterator.isValid()) {
+        sstFileFinalCheckSum.get().update(sstFileReaderIterator.key());
+        sstFileFinalCheckSum.get().update(sstFileReaderIterator.value());
+        sstFileReaderIterator.next();
+      }
+      final byte[] finalChecksum = sstFileFinalCheckSum.get().getCheckSum();
+      boolean result = Arrays.equals(finalChecksum, checksumToMatch);
+      return result;
+    } catch (Exception e) {
+      throw new VeniceException("Failed to verify checksum", e);
+    } finally {
+      if (sstFileReader != null) {
+        sstFileReader.close();
+      }
+      if (sstFileReaderIterator != null) {
+        sstFileReaderIterator.close();
+      }
+    }
   }
 
   private void removeDirWithTwoLayers(String fullPath) {

@@ -87,6 +87,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -456,7 +457,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
-    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo);
+
+    Optional<Supplier<byte[]>> partitionChecksumSupplier = Optional.empty();
+    //For now checksum verification is only enabled in sorted batch push in O/O model.
+    if (serverConfig.isDatabaseChecksumVerificationEnabled() && partitionConsumptionState.isDeferredWrite()
+        && this instanceof OnlineOfflineStoreIngestionTask) {
+      partitionConsumptionState.initializeExpectedChecksum();
+      partitionChecksumSupplier = Optional.of(() -> {
+        byte[] checksum = partitionConsumptionState.getExpectedChecksum();
+        partitionConsumptionState.resetExpectedChecksum();
+        return checksum;
+      });
+    }
+    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)
+        .beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
     logger.info("Started batch write to store: " + kafkaVersionTopic + ", partition: " + partitionId +
         " with checkpointed database info: " + checkpointedDatabaseInfo + " and sorted: " + sorted);
   }
@@ -1644,6 +1658,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
+     * This value encoding scheme is used in {@link PartitionConsumptionState#maybeUpdateExpectedChecksum(byte[], Put)} to
+     * calculate checksum for all the kafka PUT messages seen so far. Any change here needs to be reflected in that function.
      */
     if (putValue.position() < SCHEMA_HEADER_LENGTH) {
       throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + SCHEMA_HEADER_LENGTH);
@@ -1788,6 +1804,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Put put = (Put) kafkaValue.payloadUnion;
         ByteBuffer putValue = put.putValue;
         int valueLen = putValue.remaining();
+
+        //update checksum for this PUT message if needed.
+        partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
 
         // Write to storage engine; potentially produce the PUT message to version topic
         produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,

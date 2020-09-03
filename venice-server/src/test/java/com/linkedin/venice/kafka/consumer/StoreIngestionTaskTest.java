@@ -17,6 +17,8 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.kafka.validation.checksum.CheckSum;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -93,13 +95,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -183,6 +185,8 @@ public class StoreIngestionTaskTest {
   private static final byte[] putValueToCorrupt = "Please corrupt me!".getBytes(StandardCharsets.UTF_8);
   private static final byte[] deleteKeyFoo = getRandomKey(PARTITION_FOO);
 
+  private boolean databaseChecksumVerificationEnabled = false;
+
   private static byte[] getRandomKey(Integer partition) {
     String randomString = getUniqueString("KeyForPartition" + partition);
     return ByteBuffer.allocate(randomString.length() + 1)
@@ -255,6 +259,7 @@ public class StoreIngestionTaskTest {
     mockVersionedStorageIngestionStats = mock(AggVersionedStorageIngestionStats.class);
     isCurrentVersion = () -> false;
     hybridStoreConfig = Optional.<HybridStoreConfig>empty();
+    databaseChecksumVerificationEnabled = false;
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
@@ -377,6 +382,7 @@ public class StoreIngestionTaskTest {
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();
+    doReturn(databaseChecksumVerificationEnabled).when(veniceServerConfig).isDatabaseChecksumVerificationEnabled();
 
     EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
     EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);
@@ -1198,7 +1204,7 @@ public class StoreIngestionTaskTest {
           deferredWritePartitionConfig.setDeferredWrite(true);
           // SOP control message and restart
           verify(mockAbstractStorageEngine, atLeast(1))
-              .beginBatchWrite(eq(deferredWritePartitionConfig), any());
+              .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
           StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, partition);
           // only happen after EOP control message
           verify(mockAbstractStorageEngine, times(1))
@@ -1309,7 +1315,56 @@ public class StoreIngestionTaskTest {
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);
       verify(mockAbstractStorageEngine, times(1))
-          .beginBatchWrite(eq(deferredWritePartitionConfig), any());
+          .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
+      StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      verify(mockAbstractStorageEngine, times(1))
+          .endBatchWrite(transactionalPartitionConfig);
+    }, isLeaderFollowerModelEnabled);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithSortedInputVerifyChecksum(boolean isLeaderFollowerModelEnabled) throws Exception {
+    databaseChecksumVerificationEnabled = true;
+    veniceWriter.broadcastStartOfPush(true, new HashMap<>());
+    RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    Optional<CheckSum> checksum = CheckSum.getInstance(CheckSumType.MD5);
+    checksum.get().update(putKeyFoo);
+    checksum.get().update(SCHEMA_ID);
+    checksum.get().update(putValue);
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      // Verify it retrieves the offset from the Offset Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+
+      // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
+
+      // Verify it commits the offset to Offset Manager after receiving EOP control message
+      OffsetRecord expectedOffsetRecordForPutMessage = getOffsetRecord(putMetadata.offset() + 1, true);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
+          .put(topic, PARTITION_FOO, expectedOffsetRecordForPutMessage);
+      // Deferred write is not going to commit offset for every message, but will commit offset for every control message
+      // The following verification is for START_OF_PUSH control message
+      verify(mockStorageMetadataService, times(1))
+          .put(topic, PARTITION_FOO, getOffsetRecord(putMetadata.offset() - 1));
+      // Check database mode switches from deferred-write to transactional after EOP control message
+      StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      deferredWritePartitionConfig.setDeferredWrite(true);
+      ArgumentCaptor<Optional<Supplier<byte[]>>> checksumCaptor = ArgumentCaptor.forClass(Optional.class);
+
+      if (!isLeaderFollowerModelEnabled) {
+        verify(mockAbstractStorageEngine, times(1)).beginBatchWrite(eq(deferredWritePartitionConfig), any(),
+            checksumCaptor.capture());
+        Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
+        Assert.assertTrue(checksumSupplier.isPresent());
+        Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.get().getCheckSum()));
+      } else {
+        verify(mockAbstractStorageEngine, times(1))
+            .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
+      }
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, times(1))
           .endBatchWrite(transactionalPartitionConfig);
