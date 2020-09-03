@@ -1,5 +1,6 @@
 package com.linkedin.venice.cleaner;
 
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -8,6 +9,7 @@ import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,10 +37,15 @@ public class LeakedResourceCleanerTest {
   private List<AbstractStorageEngine> constructStorageEngineForStore(ReadOnlyStoreRepository storeRepository, // mocked ReadOnlyStoreRepository
       StoreIngestionService ingestionService, // mocked StoreIngestionService
       String storeName,
+      boolean returnStore,
       StorageEngineMockConfig... configs) {
     List<AbstractStorageEngine> mockedEngines = new ArrayList<>();
     Store store = mock(Store.class);
-    doReturn(store).when(storeRepository).getStore(storeName);
+    if (returnStore) {
+      doReturn(store).when(storeRepository).getStoreOrThrow(storeName);
+    } else {
+      doThrow(new VeniceNoStoreException(storeName + " does not exist")).when(storeRepository).getStoreOrThrow(storeName);
+    }
     List<Version> versions = new ArrayList<>();
     for (StorageEngineMockConfig config : configs) {
       AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
@@ -63,6 +70,7 @@ public class LeakedResourceCleanerTest {
     String storeNameWithNoVersionInZK = TestUtils.getUniqueString("store_with_no_version_in_zk");
     String storeNameWithoutLeakedResource = TestUtils.getUniqueString("store_without_leaked_resource");
     String storeNameWithLeakedResource = TestUtils.getUniqueString("store_with_leaked_resource");
+    String nonExistingStoreName = TestUtils.getUniqueString("store_non_existent");
 
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     StorageService storageService = mock(StorageService.class);
@@ -72,27 +80,34 @@ public class LeakedResourceCleanerTest {
     /**
      * Store with no version in ZK contains one version on disk, and no running ingestion task.
      */
-    storageEngineList.addAll(constructStorageEngineForStore(storeRepository, ingestionService, storeNameWithNoVersionInZK,
+    storageEngineList.addAll(constructStorageEngineForStore(storeRepository, ingestionService, storeNameWithNoVersionInZK, true,
         new StorageEngineMockConfig(1, false, false)));
     /**
      * Store without leaked resources.
      */
-    storageEngineList.addAll(constructStorageEngineForStore(storeRepository, ingestionService, storeNameWithoutLeakedResource,
+    storageEngineList.addAll(constructStorageEngineForStore(storeRepository, ingestionService, storeNameWithoutLeakedResource, true,
         new StorageEngineMockConfig(1, true, true),
         new StorageEngineMockConfig(2, true, true)));
     /**
      * Store with leaked resources.
      */
-    storageEngineList.addAll(constructStorageEngineForStore(storeRepository, ingestionService, storeNameWithLeakedResource,
+    storageEngineList.addAll(constructStorageEngineForStore(storeRepository, ingestionService, storeNameWithLeakedResource, true,
         new StorageEngineMockConfig(1, false, true),
         new StorageEngineMockConfig(2, false, false),
         new StorageEngineMockConfig(3, true, true),
         new StorageEngineMockConfig(4, true, true),
         new StorageEngineMockConfig(5, false, false)));
+    /**
+     * Non-existing Store
+     */
+    storageEngineList.addAll(constructStorageEngineForStore(storeRepository, ingestionService, nonExistingStoreName, false,
+        new StorageEngineMockConfig(1, false, false)));
+
     doReturn(storageEngineList).when(storageEngineRepository).getAllLocalStorageEngines();
 
     LeakedResourceCleaner cleaner = new LeakedResourceCleaner(storageEngineRepository, 1000, storeRepository,
         ingestionService, storageService, new MetricsRepository());
+    cleaner.setNonExistentStoreCleanupInterval(1 * Time.MS_PER_SECOND);
     cleaner.start();
 
     verify(storageService, timeout(10 * 1000)).removeStorageEngine(Version.composeKafkaTopic(storeNameWithLeakedResource, 5));
@@ -105,6 +120,7 @@ public class LeakedResourceCleanerTest {
     verify(storageService, never()).removeStorageEngine(Version.composeKafkaTopic(storeNameWithoutLeakedResource, 2));
 
     verify(storageService, never()).removeStorageEngine(Version.composeKafkaTopic(storeNameWithNoVersionInZK, 1));
+    verify(storageService, timeout(10 * Time.MS_PER_SECOND)).removeStorageEngine(Version.composeKafkaTopic(nonExistingStoreName, 1));
 
     cleaner.stop();
   }
