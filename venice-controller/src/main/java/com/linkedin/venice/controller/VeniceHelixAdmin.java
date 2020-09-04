@@ -1536,7 +1536,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     partitionCount,
                     clusterConfig.getKafkaReplicationFactor(),
                     store.getHybridStoreConfig().getRetentionTimeInMs(),
-                    !store.isWriteComputationEnabled(), // RT topics are compacted only if write compute isn't enabled
+                    // Disable RT compaction. Because for hybrid stores in Online/Offline mode,
+                    // with RT compaction, lag will be mis-calculated.
+                    false,
                     clusterConfig.getMinIsr(),
                     false
                 );
@@ -2525,6 +2527,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         Store originalStore = originalStoreToBeCloned.cloneStore();
 
+        if (originalStore.isHybrid()) {
+            // If this is a hybrid store, always try to disable compaction if RT topic exists.
+            try {
+                topicManager.updateTopicCompactionPolicy(Version.composeRealTimeTopic(storeName), false);
+            } catch (TopicDoesNotExistException e) {
+                logger.error(String.format("Could not find realtime topic for hybrid store %s", storeName));
+            }
+        }
+
         Optional<HybridStoreConfig> hybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
             HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
@@ -2656,17 +2667,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (writeComputationEnabled.isPresent()) {
-                if(writeComputationEnabled.get()) {
-                    // If this is a hybrid store, we need to make sure compaction is disabled on the real time topic
-                    // so long as write compute is enabled
-                    try {
-                        topicManager.updateTopicCompactionPolicy(Version.composeRealTimeTopic(storeName), false);
-                    } catch(TopicDoesNotExistException e) {
-                        // This is odd, but we've put it here for completeness sake as the operation
-                        // should still succeed.  A store with write compute and no RT topic shouldn't exist
-                        logger.error(String.format("Could not find realtime topic for write compute enabled store %s", storeName));
-                    }
-                }
                 setWriteComputationEnabled(clusterName, storeName, writeComputationEnabled.get());
             }
 

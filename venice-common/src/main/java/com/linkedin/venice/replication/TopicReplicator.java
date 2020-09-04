@@ -136,7 +136,9 @@ public abstract class TopicReplicator {
                                     partitionCount,
                                     replicationFactor,
                                     store.getHybridStoreConfig().getRetentionTimeInMs(),
-                                    !store.isWriteComputationEnabled(), // RT topics are compacted unless write compute is enabled
+                                    // Disable RT compaction. Because for hybrid stores in Online/Offline mode,
+                                    // with RT compaction, lag will be mis-calculated.
+                                    false,
                                     Optional.empty(),
                                     false);
     } else {
@@ -147,9 +149,6 @@ public abstract class TopicReplicator {
       if (topicRetentionTimeInMs != store.getHybridStoreConfig().getRetentionTimeInMs()) {
         getTopicManager().updateTopicRetention(srcTopicName, store.getHybridStoreConfig().getRetentionTimeInMs());
       }
-      // Additionally, make sure compaction policy is correct (this funciton Noops if it is correct)
-      getTopicManager().updateTopicCompactionPolicy(srcTopicName, !store.isWriteComputationEnabled());
-
     }
   }
 
