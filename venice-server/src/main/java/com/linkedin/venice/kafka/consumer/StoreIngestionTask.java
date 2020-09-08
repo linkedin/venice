@@ -1896,30 +1896,37 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             update.updateValue, valueSchemaId, derivedSchemaId);
         storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
 
-        ByteBuffer updateValueWithSchemaId = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + updatedValueBytes.length)
-            .putInt(valueSchemaId).put(updatedValueBytes);
-        updateValueWithSchemaId.flip();
+        if (updatedValueBytes == null) {
+          valueLen = 0;
+          produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, key -> {
+            storageEngine.delete(partition, key);
+          }, (callback, sourceTopicOffset) -> getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset));
+        } else {
+          valueLen = updatedValueBytes.length;
+          ByteBuffer updateValueWithSchemaId = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + valueLen)
+              .putInt(valueSchemaId)
+              .put(updatedValueBytes);
+          updateValueWithSchemaId.flip();
 
-        valueLen = updatedValueBytes.length;
+          // Write to storage engine; potentially produce the PUT message to version topic
+          // TODO: tweak here. write compute doesn't need to do fancy offset manipulation here.
+          produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, key -> {
+            if (isChunkedTopic) {
+              // Samza VeniceWriter doesn't handle chunking config properly. It reads chuncking config
+              // from user's input instead of getting it from store's metadata repo. This causes SN
+              // to der-se of keys a couple of times.
+              // TODO: Remove chunking logic form SN side once Samze VeniceWriter gets fixed.
+              writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
+                  ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes),
+                  updateValueWithSchemaId);
+            } else {
+              writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
+                  keyBytes, updateValueWithSchemaId);
+            }
+          }, (callback, sourceTopicOffset) -> getVeniceWriter().put(keyBytes, updatedValueBytes, valueSchemaId,
+              callback, sourceTopicOffset));
+        }
 
-        // Write to storage engine; potentially produce the PUT message to version topic
-        // TODO: tweak here. write compute doesn't need to do fancy offset manipulation here.
-        produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
-            key -> {
-              if (isChunkedTopic) {
-                // Samza VeniceWriter doesn't handle chunking config properly. It reads chuncking config
-                // from user's input instead of getting it from store's metadata repo. This causes SN
-                // to der-se of keys a couple of times.
-                // TODO: Remove chunking logic form SN side once Samze VeniceWriter gets fixed.
-                writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
-                    ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes),
-                    updateValueWithSchemaId);
-              } else {
-                writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition, keyBytes, updateValueWithSchemaId);
-              }
-            },
-            (callback, sourceTopicOffset) ->
-                getVeniceWriter().put(keyBytes, updatedValueBytes, valueSchemaId, callback, sourceTopicOffset));
         return valueLen;
       case DELETE:
         // Write to storage engine; potentially produce the DELETE message to version topic

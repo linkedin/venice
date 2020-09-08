@@ -296,6 +296,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     }
 
+    if (callback instanceof ChunkAwareCallback) {
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
+    }
+
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
 
     int partition = getPartition(kafkaKey);

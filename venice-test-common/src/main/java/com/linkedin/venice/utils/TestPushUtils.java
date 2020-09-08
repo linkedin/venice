@@ -122,10 +122,51 @@ public class TestPushUtils {
       "  \"type\": \"record\",   " +
       "  \"name\": \"StringToRecord\",     " +
       "  \"fields\": [           " +
-      "       { \"name\": \"id\", \"type\": \"string\"},  " +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}, " +
       "       { \"name\": \"name\", \"type\": " + NESTED_SCHEMA_STRING + " }  " +
       "  ] " +
       " } ";
+
+  /**
+   * This is the derived schema of NESTED_SCHEMA_STRING
+   */
+  public static final String DERIVED_NESTED_SCHEMA_STRING = "[ {\n" +
+      "  \"namespace\" : \"example.avro\",\n" +
+      "  \"type\" : \"record\",\n" +
+      "  \"name\" : \"nameRecordWriteOpRecord\",\n" +
+      "  \"fields\" : [ {\n" +
+      "    \"name\" : \"firstName\",\n" +
+      "    \"type\" : [ {\n" +
+      "      \"type\" : \"record\",\n" +
+      "      \"name\" : \"NoOp\",\n" +
+      "      \"fields\" : [ ]\n" +
+      "    }, \"string\" ],\n" +
+      "    \"default\" : { }\n" +
+      "  }, {\n" +
+      "    \"name\" : \"lastName\",\n" +
+      "    \"type\" : [ \"NoOp\", \"string\" ],\n" +
+      "    \"default\" : { }\n" +
+      "  } ]\n" +
+      "}, {\n" +
+      "  \"type\" : \"record\",\n" +
+      "  \"name\" : \"DelOp\",\n" +
+      "  \"namespace\" : \"example.avro\",\n" +
+      "  \"fields\" : [ ]\n" +
+      "} ]";
+
+  /**
+   * This is a record schema with a nested derived schema of NESTED_SCHEMA_STRING
+   */
+  public static final String DERIVED_STRING_RECORD_SCHEMA_STRING = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"StringToRecord\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"},  " +
+      "       { \"name\": \"name\", \"type\": " + DERIVED_NESTED_SCHEMA_STRING + " }  " +
+      "  ] " +
+      " } ";
+
 
   public static final String STRING_SCHEMA = "\"string\"";
 
@@ -259,6 +300,32 @@ public class TestPushUtils {
       }
     });
   }
+
+  /**
+   * This file overrides half of the values in {@link #writeSimpleAvroFileWithStringToRecordSchema(File, boolean)}
+   * with the delete record schema. The delete record schema is from the writeComputeSchema.
+   * It's designed to test the delete write compute path for incremental push only.
+   */
+  public static Schema writeSimpleAvroFileWithDelRecord(File parentDir, boolean fileNameWithAvroSuffix)
+      throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_string2record.avro";
+    } else {
+      fileName = "simple_string2record";
+    }
+    return writeAvroFile(parentDir, fileName, DERIVED_STRING_RECORD_SCHEMA_STRING, (recordSchema, writer) -> {
+      Schema delSchema = Schema.parse(DERIVED_NESTED_SCHEMA_STRING).getTypes().get(1);
+      for (int i = 51; i <= 150; ++i) {
+        GenericRecord s2r = new GenericData.Record(recordSchema);
+        s2r.put("id", String.valueOf(i));
+        GenericRecord nameRecord = new GenericData.Record(delSchema);
+        s2r.put("name", nameRecord);
+        writer.append(s2r);
+      }
+    });
+  }
+
 
   /**
    * This file overrides half of the value in {@link #writeSimpleAvroFileWithUserSchema(File)}

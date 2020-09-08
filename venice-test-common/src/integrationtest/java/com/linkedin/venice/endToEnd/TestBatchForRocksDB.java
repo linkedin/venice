@@ -21,6 +21,7 @@ public class TestBatchForRocksDB extends TestBatch {
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     veniceClusterWrapper.addVeniceServer(serverProperties);
+    veniceClusterWrapper.addVeniceServer(serverProperties);
 
     Properties routerProperties = new Properties();
     routerProperties.put(ROUTER_CLIENT_DECOMPRESSION_ENABLED, "true");

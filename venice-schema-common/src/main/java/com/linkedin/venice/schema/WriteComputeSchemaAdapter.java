@@ -401,7 +401,7 @@ public class WriteComputeSchemaAdapter {
    */
   private Schema wrapDelOpUnion(Schema schema) {
     if (schema.getType() != RECORD) {
-      throw new VeniceException("Can only wrap delete around RECORD schema types. The current schema is not of type RECORD");
+      return schema;
     }
 
     LinkedList<Schema> list = new LinkedList<>();
