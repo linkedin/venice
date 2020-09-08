@@ -62,6 +62,11 @@ public class IngestionTaskWriteComputeAdapter {
     GenericRecord updatedValue = getWriteComputeAdapter(valueSchemaId, derivedSchemaId)
         .updateRecord(originalValue, writeComputeRecord);
 
+    //If write compute is enabled and the record is deleted, the updatedValue will be null.
+    if (updatedValue == null) {
+      return null;
+    }
+
     return getValueSerializer(originalValueSchema).serialize(updatedValue);
   }
 
