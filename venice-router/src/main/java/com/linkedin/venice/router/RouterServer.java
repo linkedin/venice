@@ -296,6 +296,7 @@ public class RouterServer extends AbstractVeniceService {
   public RouterServer(
       VeniceProperties properties,
       HelixExternalViewRepository routingDataRepository,
+      Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       HelixReadOnlyStoreRepository metadataRepository,
       HelixReadOnlySchemaRepository schemaRepository,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
@@ -304,6 +305,7 @@ public class RouterServer extends AbstractVeniceService {
       HelixLiveInstanceMonitor liveInstanceMonitor){
     this(properties, d2ServerList, Optional.empty(), sslFactory, new MetricsRepository(), false);
     this.routingDataRepository = routingDataRepository;
+    this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.metadataRepository = metadataRepository;
     this.schemaRepository = schemaRepository;
     this.storeConfigRepository = storeConfigRepository;
