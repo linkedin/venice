@@ -40,13 +40,13 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClient.class);
 
-  protected static final String USE_SYSTEM_STORE_REPOSITORY = "UseSystemStoreRepository";
   protected final DaVinciConfig daVinciConfig;
   protected final ClientConfig clientConfig;
   protected final VeniceProperties backendConfig;
@@ -294,7 +294,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
     logger.info("Starting Da Vinci client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader, backendConfig.getBoolean(USE_SYSTEM_STORE_REPOSITORY, false));
+    initBackend(clientConfig, configLoader, backendConfig.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false));
 
     try {
       storeBackend = daVinciBackend.get().getStoreOrThrow(getStoreName());

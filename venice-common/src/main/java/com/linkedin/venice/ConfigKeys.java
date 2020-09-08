@@ -1221,4 +1221,9 @@ public class ConfigKeys {
    * timely manner.
    */
   public static final String TERMINAL_STATE_TOPIC_CHECK_DELAY_MS = "controller.terminal.state.topic.check.delay.ms";
+
+  /**
+   * A config for Da-Vinci clients to use system store based repositories or Zk based repositories.
+   */
+  public static final String CLIENT_USE_SYSTEM_STORE_REPOSITORY = "client.use.system.store.repository";
 }

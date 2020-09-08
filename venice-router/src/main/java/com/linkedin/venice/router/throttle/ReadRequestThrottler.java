@@ -184,7 +184,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     List<Store> allStores = storeRepository.getAllStores();
     ConcurrentMap<String, StoreReadThrottler> newStoreThrottlers = new ConcurrentHashMap<>();
     for (Store store : allStores) {
-      newStoreThrottlers.put(store.getName(), buildStoreReadThrottler(store.getName(), store.getCurrentVersion(),
+      newStoreThrottlers.put(VeniceSystemStoreUtils.getZkStoreName(store.getName()), buildStoreReadThrottler(store.getName(), store.getCurrentVersion(),
           calculateStoreQuotaPerRouter(store.getReadQuotaInCU())));
     }
     return newStoreThrottlers;

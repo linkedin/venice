@@ -580,7 +580,8 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
   protected AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> getAvroClientForSystemStore(String storeName) {
     storeClientMap.computeIfAbsent(storeName,  k -> {
       ClientConfig<StoreMetadataValue> clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
-          .setStoreName(VeniceSystemStoreUtils.getMetadataStoreName(storeName));
+          .setStoreName(VeniceSystemStoreUtils.getMetadataStoreName(storeName))
+          .setSpecificValueClass(StoreMetadataValue.class);
       return ClientFactory.getAndStartSpecificAvroClient(clonedClientConfig);
     });
     return storeClientMap.get(storeName);
