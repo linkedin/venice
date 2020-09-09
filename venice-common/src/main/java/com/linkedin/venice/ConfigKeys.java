@@ -419,11 +419,24 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT = "server.ingestion.isolation.application.port";
 
   /**
-   * wheather to enable checksum verfification in the ingestion path from kafka to database persistency. If enabled it will
+   * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
    * keep a running checksum for all and only PUT kafka data message received in the ingestion task and periodically
    * verify it against the key/values saved in the database persistency layer.
    */
   public static final String SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED = "server.database.checksum.verification.enabled";
+
+  /**
+   * This config defines when a hybrid store is ready to serve; the difference between current time and latest producer timestamp
+   * needs to be within the threshold defined by this config before claiming ready-to-serve.
+   *
+   * A hybrid store partition is not ready to serve until both the offset lag threshold and timestamp lag threshold
+   * requirements are met; if timestamp lag threshold is set to -1, offset lag threshold will be the only criterion for
+   * going online.
+   *
+   * Noticed that this server config will be removed in near future and it will become a hybrid store config. Also,
+   * L/F stores don't need this config; the hybrid lag computation in L/F is accurate.
+   */
+  public static final String SERVER_INGESTION_PRODUCER_TIMESTAMP_LAG_THRESHOLD_TO_GO_ONLINE_IN_SECONDS = "server.ingestion.producer.timestamp.lag.threshold.to.go.online.in.seconds";
 
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent

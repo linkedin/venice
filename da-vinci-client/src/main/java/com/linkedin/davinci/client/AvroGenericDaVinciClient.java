@@ -271,6 +271,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
             .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
             .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
                 daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
+            .put(ConfigKeys.SERVER_INGESTION_PRODUCER_TIMESTAMP_LAG_THRESHOLD_TO_GO_ONLINE_IN_SECONDS,
+                Long.toString(daVinciConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds()))
             .build();
     logger.info("backendConfig=" + config.toString(true));
     return new VeniceConfigLoader(config, config);

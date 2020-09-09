@@ -65,6 +65,8 @@ class PartitionConsumptionState {
 
   private Optional<CheckSum> expectedSSTFileChecksum;
 
+  private long latestMessageProducerTimestampInMs;
+
   public void setSourceTopicMaxOffset(long sourceTopicMaxOffset) {
     this.sourceTopicMaxOffset = sourceTopicMaxOffset;
   }
@@ -281,4 +283,11 @@ class PartitionConsumptionState {
     return expectedSSTFileChecksum.get().getCheckSum();
   }
 
+  public long getLatestMessageProducerTimestampInMs() {
+    return latestMessageProducerTimestampInMs;
+  }
+
+  public void setLatestMessageProducerTimestampInMs(long producerTimestampInMs) {
+    this.latestMessageProducerTimestampInMs = producerTimestampInMs;
+  }
 }
