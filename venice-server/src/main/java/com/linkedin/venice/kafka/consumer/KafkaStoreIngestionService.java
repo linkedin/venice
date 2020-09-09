@@ -685,8 +685,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-        KafkaKeySerializer.class.getName());
+    //This is a temporary fix for the issue described here
+    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
+    //In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
+    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
+    //Trying to avoid class loading via Kafka's ConfigDef class
+    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+        KafkaKeySerializer.class);
     kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class.getName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG,
         String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
