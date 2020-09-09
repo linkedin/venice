@@ -653,6 +653,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
     if (topicSwitch.rewindStartTimestamp > 0) {
       upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
+      if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
+        upstreamStartOffset -= 1;
+      }
     }
 
     // Sync TopicSwitch message into metadata store

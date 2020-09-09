@@ -34,6 +34,7 @@ import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -41,8 +42,9 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import java.io.IOException;
+import java.util.AbstractMap;
+import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
@@ -64,6 +66,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
@@ -830,6 +833,54 @@ public class TestHybrid {
           } catch (Exception e) {
             e.printStackTrace();
             Assert.fail(e.getMessage());
+          }
+        });
+      }
+    }
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testHybridMultipleVersions() throws Exception {
+    final Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    final int partitionCount = 2;
+    final int keyCount = 10;
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 1, 1,
+        100, false, false, extraProperties);) {
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+          // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+          .setHybridRewindSeconds(2000000)
+          .setHybridOffsetLagThreshold(10)
+          .setPartitionCount(partitionCount)
+          .setLeaderFollowerModel(true);
+      String storeName = TestUtils.getUniqueString("store");
+      try (ControllerClient client = cluster.getControllerClient()) {
+        client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+        client.updateStore(storeName, params);
+      }
+      cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
+      try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+          for (Integer i = 0; i < keyCount; i++) {
+            assertEquals(client.get(i).get(), i);
+          }
+        });
+        SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        for (int i = 0; i < keyCount; i++) {
+          TestPushUtils.sendStreamingRecord(producer, storeName, i, i + 1);
+        }
+        producer.stop();
+
+        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+          for (Integer i = 0; i < keyCount; i++) {
+            assertEquals(client.get(i).get(), new Integer(i + 1));
+          }
+        });
+        cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i + 2)));
+        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+          for (Integer i = 0; i < keyCount; i++) {
+            assertEquals(client.get(i).get(), new Integer(i + 1));
           }
         });
       }
