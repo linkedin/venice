@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ResolveAllBootstrap;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -37,6 +38,7 @@ import io.netty.channel.MultithreadEventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.pool.ChannelHealthChecker;
+import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -82,6 +84,7 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
   private static final boolean loggerDebugEnabled = logger.isDebugEnabled();
   private static final AsciiString X_QUEUE_NAME = AsciiString.of("X-Queue-Name");
   private static final AsciiString X_QOS = AsciiString.of("X-QOS");
+  private ByteToMessageDecoder.Cumulator cumulator = ByteToMessageDecoder.MERGE_CUMULATOR;
 
   private final ChannelPoolManager manager;
   private final String scheme;
@@ -184,6 +187,8 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
           private HttpResponse _response;
           private ByteBuf _content = Unpooled.EMPTY_BUFFER;
           private CompositeByteBuf _composite = null;
+          ByteBufAllocator alloc = channelFuture.get().alloc();
+
           @Override
           public void accept(Object o) {
             if (o instanceof Throwable) {
@@ -196,18 +201,23 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
               responsePromise.setFailure((Throwable) o);
               return;
             }
+            if (responsePromise.isDone()) {
+              return;
+            }
             if (o instanceof HttpResponse) {
               stats.recordNettyClientFirstResponseLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
               HttpResponse response = (HttpResponse) o;
               _response = new BasicHttpResponse(request, response.status(), response.headers());
             }
             if (o instanceof HttpContent) {
-              if (_content == Unpooled.EMPTY_BUFFER) {
-                _content = ((HttpContent) o).content().retain();
-              } else {
-                _content = Optional.ofNullable(_composite)
-                    .orElseGet(() -> _composite = _content.alloc().compositeBuffer().addComponent(true, _content))
-                    .addComponent(true, ((HttpContent) o).content().retain());
+              ByteBuf newContent = ((HttpContent) o).content();
+              if (newContent.isReadable()) {
+                if (_content == Unpooled.EMPTY_BUFFER) {
+                  _content = newContent.retain();
+                } else {
+                  // use netty's recommended way of accumulating
+                  _content = cumulator.cumulate(alloc, _content, newContent);
+                }
               }
             }
             if (o instanceof LastHttpContent) {
