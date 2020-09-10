@@ -36,10 +36,12 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
@@ -439,7 +441,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffset();
             if (upstreamStartOffset < 0) {
               if (topicSwitch.rewindStartTimestamp > 0) {
-                upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
+                int newSourceTopicPartition = partition;
+                if (Version.isRealTimeTopic(newSourceTopicName)) {
+                  newSourceTopicPartition = partition / amplificationFactor;
+                }
+                upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
                 if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
                   // subscribe will seek to the next offset
                   upstreamStartOffset -= 1;
@@ -656,8 +662,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
     if (topicSwitch.rewindStartTimestamp > 0) {
-      upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
+      int newSourceTopicPartition = partition;
+      if (Version.isRealTimeTopic(newSourceTopicName)) {
+        newSourceTopicPartition = partition / amplificationFactor;
+      }
+      upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
       if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
+        // subscribe will seek to the next offset
         upstreamStartOffset -= 1;
       }
     }
@@ -726,7 +737,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * Real time topic for that partition is empty or the rewind start offset is very closed to the end, followers
        * calculate the lag of the leader and decides the lag is small enough.
        */
-      this.defaultReadyToServeChecker.apply(partitionConsumptionState);
+      defaultReadyToServeChecker.apply(partitionConsumptionState);
     }
   }
 
@@ -914,9 +925,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       // leaderTopic is the real-time topic now
-      long leaderOffset = offsetRecord.getLeaderOffset();
-      long lastOffsetInRealTimeTopic = cachedLatestOffsetGetter.getOffset(leaderTopic, partition);
-
+      long leaderOffset;
+      long lastOffsetInRealTimeTopic;
+      if (amplificationFactor != 1) {
+        /**
+         * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
+         * eg. if amplificationFactor == 10 and partitionCount == 2,
+         *     the RT topic will have 2 partitions and VT topics will have 20 partitions.
+         * No 1-to-1 mapping between the RT topic and VT topics partition, we can not calculate the offset difference.
+         * To measure the offset difference between 2 types of topics, we go through leaderOffset in corresponding
+         * sub-partitions and pick up the maximum value which means picking up the offset of the sub-partition seeing the most recent records in RT,
+         * then use this value to compare against the offset in the RT topic.
+         */
+        int userPartition = partition / amplificationFactor;
+        lastOffsetInRealTimeTopic = cachedLatestOffsetGetter.getOffset(leaderTopic, userPartition);
+        leaderOffset = -1;
+        for (int subPartition : PartitionUtils.getSubPartitions(Collections.singleton(userPartition), amplificationFactor)) {
+          if (partitionConsumptionStateMap.get(subPartition) != null
+              && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null
+              && partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getLeaderOffset() >= 0) {
+            leaderOffset = Math.max(leaderOffset, partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset());
+          }
+        }
+      } else {
+        leaderOffset = offsetRecord.getUpstreamOffset();
+        lastOffsetInRealTimeTopic = cachedLatestOffsetGetter.getOffset(leaderTopic, partition);
+      }
       long lag = lastOffsetInRealTimeTopic - leaderOffset;
       if (shouldLogLag) {
         logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]",
@@ -981,7 +1015,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    int partitionId = record.partition();
+    // if record is from a RT topic, we select partitionConsumptionState of leaderSubPartition
+    // to record the consuming status
+    int partitionId = Version.isRealTimeTopic(record.topic()) ?
+        record.partition() * amplificationFactor :  record.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
     if(null == partitionConsumptionState) {
       logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic + " Partition Id: " + partitionId);

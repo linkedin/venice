@@ -4,8 +4,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.PartitionUtils;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -33,9 +35,12 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
 
     private static final String ONLINE_OFFLINE_VENICE_STATE_FILLER = "N/A";
 
-    public HelixExternalViewRepository(SafeHelixManager manager) {
+    private ReadOnlyStoreRepository readOnlyStoreRepository;
+
+    public HelixExternalViewRepository(SafeHelixManager manager, ReadOnlyStoreRepository readOnlyStoreRepository) {
         super(manager);
         dataSource.put(PropertyType.EXTERNALVIEW, Collections.emptyList());
+        this.readOnlyStoreRepository = readOnlyStoreRepository;
     }
 
     /**
@@ -149,8 +154,9 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
                     + " so the resource has been deleted from ideal state or could not read from zk. Ignore its external view update.");
                 continue;
             }
+            int amplifcationFactor = PartitionUtils.getAmplificationFactor(readOnlyStoreRepository, resourceName);
             PartitionAssignment partitionAssignment =
-                new PartitionAssignment(resourceName, resourceToPartitionCountMapSnapshot.get(resourceName));
+                new PartitionAssignment(resourceName, resourceToPartitionCountMapSnapshot.get(resourceName) * amplifcationFactor);
             for (String partitionName : externalView.getPartitionSet()) {
                 //Get instance to state map for this partition from local memory.
                 Map<String, String> instanceStateMap = externalView.getStateMap(partitionName);
@@ -173,8 +179,14 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
                         logger.warn("Cannot find instance '" + instanceName + "' in /LIVEINSTANCES");
                     }
                 }
+                /**
+                 * When routing a key to a Venice server, it will check PartitionAssignment and PushStatus
+                 * to decide whether the queried partition is reachable. So we set it up beforehand.
+                 */
                 int partitionId = HelixUtils.getPartitionId(partitionName);
-                partitionAssignment.addPartition(new Partition(partitionId, stateToInstanceMap));
+                for (int subPartition : PartitionUtils.getSubPartitions(Collections.singleton(partitionId), amplifcationFactor)) {
+                    partitionAssignment.addPartition(new Partition(subPartition, stateToInstanceMap));
+                }
             }
             newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
         }

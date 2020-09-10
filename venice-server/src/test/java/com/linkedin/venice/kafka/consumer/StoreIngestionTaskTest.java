@@ -379,6 +379,8 @@ public class StoreIngestionTaskTest {
     doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(veniceServerConfig).getKafkaBootstrapServers();
     doReturn(false).when(veniceServerConfig).isHybridQuotaEnabled();
     Store mockStore = mock(Store.class);
+    Version version = new Version(storeNameWithoutVersionInfo, 1, "1", partitions.size());
+    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();

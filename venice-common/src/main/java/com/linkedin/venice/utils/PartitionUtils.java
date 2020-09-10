@@ -7,10 +7,12 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.stream.IntStream;
@@ -79,7 +81,9 @@ public class PartitionUtils {
 
   public static VenicePartitioner getVenicePartitioner(PartitionerConfig config) {
     Properties params = new Properties();
-    params.putAll(config.getPartitionerParams());
+    if (config.getPartitionerParams() != null) {
+      params.putAll(config.getPartitionerParams());
+    }
     return getVenicePartitioner(
         config.getPartitionerClass(),
         config.getAmplificationFactor(),
@@ -112,4 +116,21 @@ public class PartitionUtils {
       return new DefaultVenicePartitioner(props);
     }
   }
+
+  public static int getAmplificationFactor(ReadOnlyStoreRepository readOnlyStoreRepository, String kafkaTopic) {
+    int amplifcationFactor = 1;
+    if (readOnlyStoreRepository == null || kafkaTopic == null) {
+      return amplifcationFactor;
+    }
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    Optional<Version> version = readOnlyStoreRepository.getStore(storeName).getVersion(versionNumber);
+    if (version.isPresent()) {
+      amplifcationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
+    } else {
+      throw new VeniceException("Can not get amplificationFactor. Version " + versionNumber + " does not exist.");
+    }
+    return amplifcationFactor;
+  }
+
 }

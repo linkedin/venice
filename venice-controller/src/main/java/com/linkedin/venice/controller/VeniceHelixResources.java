@@ -108,7 +108,7 @@ public class VeniceHelixResources implements VeniceResource {
       // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
       spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
     }
-    this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
+    this.routingDataRepository = new HelixExternalViewRepository(spectatorManager, metadataRepository);
     this.messageChannel = new HelixStatusMessageChannel(helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,

@@ -13,6 +13,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
@@ -20,9 +21,11 @@ import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -151,12 +154,17 @@ public class VeniceSystemProducer implements SystemProducer {
   }
 
   protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
-    veniceWriterProperties.setProperty(PARTITIONER_CLASS, store.getPartitionerClass());
-    for (Map.Entry<String, String> entry : store.getPartitionerParams().entrySet()) {
-      veniceWriterProperties.setProperty(entry.getKey(), entry.getValue());
+    int amplificationFactor = 1;
+    /**
+     * STREAM job works on Real-time topic which does not apply amplificationFactor
+     */
+    if (!pushType.equals(Version.PushType.STREAM)) {
+      amplificationFactor = store.getAmplificationFactor();
     }
-    veniceWriterProperties.setProperty(AMPLIFICATION_FACTOR, String.valueOf(store.getAmplificationFactor()));
-    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time);
+    Properties partitionerProperties = new Properties();
+    partitionerProperties.putAll(store.getPartitionerParams());
+    VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(store.getPartitionerClass(), amplificationFactor, new VeniceProperties(partitionerProperties));
+    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time, venicePartitioner);
   }
 
   @Override

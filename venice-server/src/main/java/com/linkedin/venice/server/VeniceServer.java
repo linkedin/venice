@@ -189,7 +189,7 @@ public class VeniceServer {
     //that will be completed with a routing data repository once the manager connects.
     CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
     CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
-      RoutingDataRepository routingData = new HelixExternalViewRepository(manager);
+      RoutingDataRepository routingData = new HelixExternalViewRepository(manager, metadataRepo);
       routingData.refresh();
       return routingData;
     });
