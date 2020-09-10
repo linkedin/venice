@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -375,7 +376,7 @@ public abstract class TestBatch {
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWithWriteComputeEnabledNRT() throws Exception {
-    String storeName = testBatchStore(inputDir -> {
+    String storeName = testBatchStoreWithDerivedSchema(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
       return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
     }, properties -> {
@@ -412,7 +413,7 @@ public abstract class TestBatch {
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWithWriteComputeEnabledDelete() throws Exception {
-    String storeName = testBatchStore(inputDir -> {
+    String storeName = testBatchStoreWithDerivedSchema(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, false);
       return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
     }, properties -> {
@@ -513,16 +514,26 @@ public abstract class TestBatch {
 
   private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
-    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, false);
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, false, false);
   }
 
   private String testBatchStoreMultiVersionPush(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
-    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true);
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true, false);
+  }
+
+  private String testBatchStoreWithDerivedSchema(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
+      UpdateStoreQueryParams storeParms) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true, true);
   }
 
   private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
       String existingStore, UpdateStoreQueryParams storeParms, boolean multiPushJobs) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, existingStore, storeParms, multiPushJobs, false);
+  }
+
+  private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
+      String existingStore, UpdateStoreQueryParams storeParms, boolean multiPushJobs, boolean addDerivedSchema) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = Utils.isNullOrEmpty(existingStore) ? TestUtils.getUniqueString("store") : existingStore;
@@ -533,7 +544,7 @@ public abstract class TestBatch {
 
     if (Utils.isNullOrEmpty(existingStore)) {
       createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props,
-          storeParms);
+          storeParms, addDerivedSchema);
     }
 
     KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);

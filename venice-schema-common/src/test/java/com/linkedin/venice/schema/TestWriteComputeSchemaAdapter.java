@@ -147,7 +147,7 @@ public class TestWriteComputeSchemaAdapter {
   @Test
   public void testAdapterCanParseRecordSchema() {
     //test parsing record
-    Schema recordWriteSchema = WriteComputeSchemaAdapter.parse(recordSchemaStr);
+    Schema recordWriteSchema = WriteComputeSchemaAdapter.parse(recordSchemaStr).getTypes().get(0);
     Assert.assertEquals(recordWriteSchema.getType(), RECORD);
     Assert.assertEquals(recordWriteSchema.getFields().size(), 3);
     Assert.assertEquals(recordWriteSchema.getField("age").schema().getType(), UNION);
@@ -155,7 +155,7 @@ public class TestWriteComputeSchemaAdapter {
     Assert.assertEquals(recordWriteSchema.getField("id").schema().getTypes().get(1), Schema.create(STRING));
 
     //test parsing record of arrays
-    Schema recordOfArraysWriteSchema = WriteComputeSchemaAdapter.parse(Schema.parse(recordOfArraySchemaStr));
+    Schema recordOfArraysWriteSchema = WriteComputeSchemaAdapter.parse(Schema.parse(recordOfArraySchemaStr)).getTypes().get(0);
     Schema intArrayFieldWriteSchema = recordOfArraysWriteSchema.getField("intArray").schema();
     Assert.assertEquals(intArrayFieldWriteSchema.getTypes().get(1).getNamespace(), "avro.example");
 
@@ -166,7 +166,7 @@ public class TestWriteComputeSchemaAdapter {
   @Test
   public void testAdapterCanParseRecordSchemaWithUnion() {
     //test parsing a schema with a union type that contains 1 collection
-    Schema recordWriteSchema = WriteComputeSchemaAdapter.parse(recordOfUnionWithCollectionStr);
+    Schema recordWriteSchema = WriteComputeSchemaAdapter.parse(recordOfUnionWithCollectionStr).getTypes().get(0);
     Assert.assertEquals(recordWriteSchema.getType(), RECORD);
     Assert.assertEquals(recordWriteSchema.getFields().size(), 2);
     Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getType(), UNION);
