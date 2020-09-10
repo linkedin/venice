@@ -51,7 +51,7 @@ public class TestPushJobWithNativeReplication {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     /**
-     * Reduce leader promotion delay to 3 seconds;
+     * Reduce leader promotion delay to 1 seconds;
      * Create a testing environment with 1 parent fabric and 1 child fabrics;
      * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
      * Override the KMM whitelist config so that only messages in admin topic will be replicaed by KMM.

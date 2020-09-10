@@ -100,6 +100,9 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         partitionId,
         cacheWarmingThreadPool,
         startReportingReadyToServeTimestamp);
+    if (amplificationFactor != 1) {
+      throw new VeniceException("amplificationFactor is not supported in Online/Offline state model");
+    }
   }
 
   @Override

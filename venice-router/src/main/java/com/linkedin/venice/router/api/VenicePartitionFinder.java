@@ -86,8 +86,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
     Properties params = new Properties();
     params.putAll(partitionerConfig.getPartitionerParams());
     VeniceProperties partitionerProperties = new VeniceProperties(params);
-    return PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(),
-        partitionerConfig.getAmplificationFactor(), partitionerProperties);
+    return PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(), partitionerConfig.getAmplificationFactor(), partitionerProperties);
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {

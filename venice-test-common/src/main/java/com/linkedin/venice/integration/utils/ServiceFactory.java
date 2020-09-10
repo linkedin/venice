@@ -38,7 +38,7 @@ public class ServiceFactory {
 
   // Test config
   private static final int MAX_ATTEMPT = 5;
-  private static final int DEFAULT_REPLICATION_FACTOR =1;
+  private static final int DEFAULT_REPLICATION_FACTOR = 1;
   private static final int DEFAULT_PARTITION_SIZE_BYTES = 100;
   private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for testing.
   private static final boolean DEFAULT_SSL_TO_STORAGE_NODES = false;
@@ -585,9 +585,9 @@ public class ServiceFactory {
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, String dataBasePath) {
     VeniceProperties backendConfig = new PropertyBuilder()
-                                         .put(ConfigKeys.DATA_BASE_PATH, dataBasePath)
-                                         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-                                         .build();
+        .put(ConfigKeys.DATA_BASE_PATH, dataBasePath)
+        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .build();
     return getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig);
   }
 

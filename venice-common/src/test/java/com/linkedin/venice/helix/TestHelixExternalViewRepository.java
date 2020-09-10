@@ -83,7 +83,7 @@ public class TestHelixExternalViewRepository {
 
     readManager = new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
     readManager.connect();
-    repository = new HelixExternalViewRepository(readManager);
+    repository = new HelixExternalViewRepository(readManager, null);
     repository.refresh();
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,
         () -> repository.containsKafkaTopic(resourceName));
@@ -320,7 +320,7 @@ public class TestHelixExternalViewRepository {
     Thread.sleep(3000);
     System.out.println(httpPort);
     for(int i=0;i<6;i++) {
-      System.out.println(repository.getReadyToServeInstances(resourceName,i).get(0).getNodeId());
+      System.out.println(repository.getReadyToServeInstances(resourceName, i).get(0).getNodeId());
     }
 
     admin.dropResource(clusterName, resourceName);

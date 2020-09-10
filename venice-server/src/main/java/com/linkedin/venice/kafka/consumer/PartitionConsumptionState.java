@@ -17,6 +17,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  */
 class PartitionConsumptionState {
   private final int partition;
+  private final int amplificationFactor;
   private final boolean hybrid;
   private final boolean isIncrementalPushEnabled;
   private OffsetRecord offsetRecord;
@@ -76,8 +77,10 @@ class PartitionConsumptionState {
     return sourceTopicMaxOffset;
   }
 
-  public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid, boolean isIncrementalPushEnabled) {
+  public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid,
+      boolean isIncrementalPushEnabled) {
     this.partition = partition;
+    this.amplificationFactor = amplificationFactor;
     this.hybrid = hybrid;
     this.isIncrementalPushEnabled = isIncrementalPushEnabled;
     this.offsetRecord = offsetRecord;
@@ -100,6 +103,12 @@ class PartitionConsumptionState {
 
   public int getPartition() {
     return this.partition;
+  }
+  public int getUserPartition() {
+    return this.partition / this.amplificationFactor;
+  }
+  public int getAmplificationFactor() {
+    return this.amplificationFactor;
   }
   public void setOffsetRecord(OffsetRecord offsetRecord) {
     this.offsetRecord = offsetRecord;
