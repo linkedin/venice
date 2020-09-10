@@ -702,12 +702,18 @@ public class TestPushUtils {
         .setChunkingEnabled(chunkingEnabled)
         .setIncrementalPushEnabled(incrementalPushEnabled);
 
-    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams);
+    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams, false);
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName,
       String keySchemaStr, String valueSchemaStr, Properties props,
       UpdateStoreQueryParams storeParams) {
+    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams, false);
+  }
+
+  public static ControllerClient createStoreForJob(String veniceClusterName,
+      String keySchemaStr, String valueSchemaStr, Properties props,
+      UpdateStoreQueryParams storeParams, boolean addDerivedSchemaToStore) {
 
     String veniceUrl = props.containsKey(VENICE_DISCOVER_URL_PROP) ? props.getProperty(VENICE_DISCOVER_URL_PROP) : props.getProperty(VENICE_URL_PROP);
 
@@ -718,13 +724,16 @@ public class TestPushUtils {
 
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    // Generate write compute schema
-    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(valueSchemaStr);
-    SchemaResponse derivedValueSchemaResponse = controllerClient.retryableRequest(5,
-        c -> c.addDerivedSchema(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), +1,
-            writeComputeSchema.toString()));
+    if (addDerivedSchemaToStore) {
+      // Generate write compute schema
+      Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(valueSchemaStr);
+      SchemaResponse derivedValueSchemaResponse = controllerClient.retryableRequest(5,
+          c -> c.addDerivedSchema(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), +1,
+              writeComputeSchema.toString()));
 
-    Assert.assertFalse(derivedValueSchemaResponse.isError(), "The DerivedValueSchemaResponse returned an error: " + derivedValueSchemaResponse.getError());
+      Assert.assertFalse(derivedValueSchemaResponse.isError(),
+          "The DerivedValueSchemaResponse returned an error: " + derivedValueSchemaResponse.getError());
+    }
 
     ControllerResponse controllerResponse = controllerClient.retryableRequest(5, c -> c.updateStore(
         props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));

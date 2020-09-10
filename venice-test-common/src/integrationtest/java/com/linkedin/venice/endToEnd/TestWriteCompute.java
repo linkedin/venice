@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -135,7 +136,7 @@ public class TestWriteCompute {
         });
 
         // Add derived schema
-        Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(NESTED_SCHEMA_STRING);
+        Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(NESTED_SCHEMA_STRING).getTypes().get(0);
         controllerClient.addDerivedSchema(storeName, 1, writeComputeSchema.toString());
 
         Schema noOpSchema = writeComputeSchema.getField("lastName").schema().getTypes().get(0);
@@ -147,6 +148,7 @@ public class TestWriteCompute {
         String updatedFirstName = new String(chars);
         partialUpdateRecord.put("firstName", updatedFirstName);
         partialUpdateRecord.put("lastName", noOpRecord);
+
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
 
         // Verify the update

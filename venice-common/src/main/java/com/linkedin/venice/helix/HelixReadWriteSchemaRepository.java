@@ -352,7 +352,7 @@ import java.util.Collection;
         new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, schemaStr);
     return addDerivedSchema(storeName, schemaStr, valueSchemaId,
         getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId), newDerivedSchemaEntry,
-            DirectionalSchemaCompatibilityType.BACKWARD));
+            DirectionalSchemaCompatibilityType.NONE));
   }
 
   @Override

@@ -250,8 +250,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
     prepushStorageQuotaCheck(job, props.getLong(STORAGE_QUOTA_PROP), props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO));
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
-    this.derivedValueSchemaId = props.getInt(DERIVED_SCHEMA_ID_PROP);
-    this.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE);
+    this.derivedValueSchemaId = (props.containsKey(DERIVED_SCHEMA_ID_PROP)) ? props.getInt(DERIVED_SCHEMA_ID_PROP) : -1;
+    this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) ? props.getBoolean(ENABLE_WRITE_COMPUTE) : false;
     this.minimumLoggingIntervalInMS = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
 
     if (checkDupKey) {
