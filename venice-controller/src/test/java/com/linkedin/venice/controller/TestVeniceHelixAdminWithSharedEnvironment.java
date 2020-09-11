@@ -375,14 +375,14 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     //set incrementalPushEnabled to be false as hybrid and incremental are mutex
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
-    HybridStoreConfig hybridConfig = new HybridStoreConfig(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000);
+    HybridStoreConfig hybridConfig = new HybridStoreConfig(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
             .setHybridRewindSeconds(hybridConfig.getRewindTimeInSeconds())
             .setHybridOffsetLagThreshold(hybridConfig.getOffsetLagThresholdToGoOnline()));
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
 
     // test reverting hybrid store back to batch-only store; negative config value will undo hybrid setting
-    HybridStoreConfig revertHybridConfig = new HybridStoreConfig(-1, -1);
+    HybridStoreConfig revertHybridConfig = new HybridStoreConfig(-1, -1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
         .setHybridRewindSeconds(revertHybridConfig.getRewindTimeInSeconds())
         .setHybridOffsetLagThreshold(revertHybridConfig.getOffsetLagThresholdToGoOnline()));

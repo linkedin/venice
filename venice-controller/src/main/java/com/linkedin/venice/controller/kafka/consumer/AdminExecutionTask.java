@@ -384,7 +384,8 @@ public class AdminExecutionTask implements Callable<Void> {
 
     if (message.hybridStoreConfig != null) {
       params.setHybridRewindSeconds(message.hybridStoreConfig.rewindTimeInSeconds)
-          .setHybridOffsetLagThreshold(message.hybridStoreConfig.offsetLagThresholdToGoOnline);
+          .setHybridOffsetLagThreshold(message.hybridStoreConfig.offsetLagThresholdToGoOnline)
+          .setHybridTimeLagThreshold(message.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds);
     }
     params.setAccessControlled(message.accessControlled)
         .setCompressionStrategy(CompressionStrategy.valueOf(message.compressionStrategy))

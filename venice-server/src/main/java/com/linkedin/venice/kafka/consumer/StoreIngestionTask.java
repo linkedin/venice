@@ -242,13 +242,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final long startReportingReadyToServeTimestamp;
 
-  /**
-   * Hybrid store config: the difference between current time and latest producer timestamp must be within a threshold
-   * before reporting ready-to-serve. More details are in
-   * {@link com.linkedin.venice.ConfigKeys#SERVER_INGESTION_PRODUCER_TIMESTAMP_LAG_THRESHOLD_TO_GO_ONLINE_IN_SECONDS}
-   */
-  private final long producerTimestampLagThresholdToGoOnlineInMs;
-
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -357,7 +350,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.cacheWarmingThreadPool = cacheWarmingThreadPool;
     this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
 
-    this.producerTimestampLagThresholdToGoOnlineInMs = serverConfig.getProducerTimestampLagThresholdToGoOnlineInMs();
     buildRocksDBMemoryEnforcer();
   }
 
@@ -532,7 +524,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return true;
     }
 
-    boolean lagIsAcceptable;
+    boolean lagIsAcceptable = false;
 
     if (!hybridStoreConfig.isPresent()) {
     /**
@@ -544,29 +536,49 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionState.getOffsetRecord().getOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
-      long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+      long offsetThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+      long producerTimeLagThreshold = hybridStoreConfig.get().getProducerTimestampLagThresholdToGoOnlineInSeconds();
       String msg = kafkaVersionTopic + partitionConsumptionState.getPartition();
 
       // Log only once a minute per partition.
       boolean shouldLogLag = !filter.isRedundantException(msg);
-      long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
-      boolean lagging = lag > threshold;
 
-      lagIsAcceptable = !lagging;
+      /**
+       * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
+       */
+      if (offsetThreshold > 0) {
+        long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
+        boolean lagging = lag > offsetThreshold;
 
-      long producerTimestampLag = 0L;
-      if (lagIsAcceptable && producerTimestampLagThresholdToGoOnlineInMs > 0) {
-        producerTimestampLag = LatencyUtils.getElapsedTimeInMs(partitionConsumptionState.getLatestMessageProducerTimestampInMs());
-        lagIsAcceptable &= (producerTimestampLag < producerTimestampLagThresholdToGoOnlineInMs);
+        lagIsAcceptable = !lagging;
+
+        if (shouldLogLag) {
+          logger.info(String.format("%s partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
+              partitionConsumptionState.getPartition(), (lagging ? "" : "not "), lag, (lagging ? ">" : "<"), offsetThreshold));
+        }
       }
 
-      if (shouldLogLag) {
-        logger.info(String.format("%s partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
-            partitionConsumptionState.getPartition(), (lagging ? "" : "not "), lag, (lagging ? ">" : "<"), threshold));
-        if (producerTimestampLagThresholdToGoOnlineInMs > 0L) {
-          logger.info(String.format("The latest producer timestamp is %d. Lag: [%d] %s Threshold [%d]",
+      /**
+       * If the hybrid producer time lag threshold is positive, check the difference between current time and latest
+       * producer timestamp; ready-to-serve will not be reported until the diff is smaller than the defined time lag threshold.
+       *
+       * If timestamp lag threshold is set to -1, offset lag threshold will be the only criterion for going online.
+       */
+      if (producerTimeLagThreshold > 0) {
+        long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(partitionConsumptionState.getLatestMessageProducerTimestampInMs());
+        if (offsetThreshold > 0) {
+          /**
+           * If both threshold configs are on, both both offset lag and time lag must be within thresholds before online.
+           */
+          lagIsAcceptable &= (producerTimestampLag < producerTimeLagThreshold);
+        } else {
+          lagIsAcceptable = (producerTimestampLag < producerTimeLagThreshold);
+        }
+
+        if (shouldLogLag) {
+          logger.info(String.format("The latest producer timestamp is %d. Timestamp Lag: [%d] %s Threshold [%d]",
               partitionConsumptionState.getLatestMessageProducerTimestampInMs(), producerTimestampLag,
-              (producerTimestampLag < producerTimestampLagThresholdToGoOnlineInMs ? "<" : ">"), producerTimestampLagThresholdToGoOnlineInMs));
+              (producerTimestampLag < producerTimeLagThreshold ? "<" : ">"), producerTimeLagThreshold));
         }
       }
     }
@@ -1570,7 +1582,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       offsetRecord.setProcessingTimeEpochMs(System.currentTimeMillis());
-      partitionConsumptionState.setLatestMessageProducerTimestampInMs(kafkaValue.producerMetadata.messageTimestamp);
+      /**
+       * Only update the latest message timestamp when seeing data messages after EOP; the data messages after EOP
+       * should come from real-time topics.
+       */
+      if (partitionConsumptionState.isEndOfPushReceived() && !kafkaKey.isControlMessage()) {
+        partitionConsumptionState.setLatestMessageProducerTimestampInMs(kafkaValue.producerMetadata.messageTimestamp);
+      }
 
       if (offsetRecordTransformer.isPresent()) {
         /**

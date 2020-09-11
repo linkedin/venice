@@ -20,7 +20,7 @@ public class TestStoreJsonSerializer {
         throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
         store.increaseVersion();
-        HybridStoreConfig hybridStoreConfig = new HybridStoreConfig(1000, 1000);
+        HybridStoreConfig hybridStoreConfig = new HybridStoreConfig(1000, 1000, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
         store.setHybridStoreConfig(hybridStoreConfig);
         store.setReadQuotaInCU(100);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
@@ -32,10 +32,10 @@ public class TestStoreJsonSerializer {
         Assert.assertEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
 
         // Verify consistency between the two equals()...
-        newStore.setHybridStoreConfig(new HybridStoreConfig(1000, 1));
+        newStore.setHybridStoreConfig(new HybridStoreConfig(1000, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
         Assert.assertNotEquals(store, newStore);
         Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
-        newStore.setHybridStoreConfig(new HybridStoreConfig(1, 1000));
+        newStore.setHybridStoreConfig(new HybridStoreConfig(1, 1000, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
         Assert.assertNotEquals(store, newStore);
         Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
     }

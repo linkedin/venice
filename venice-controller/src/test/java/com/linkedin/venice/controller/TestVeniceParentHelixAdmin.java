@@ -68,6 +68,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static com.linkedin.venice.meta.HybridStoreConfig.*;
 import static org.mockito.Mockito.*;
 
 
@@ -154,6 +155,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
       Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
+      Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
       Optional<Boolean> accessControlled = params.getAccessControlled();
       Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
@@ -183,8 +185,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
       }
       if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
+        final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.isPresent() ? hybridTimeLagThreshold.get()
+            : DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
         systemStores.get(storeName)
-            .setHybridStoreConfig(new HybridStoreConfig(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get()));
+            .setHybridStoreConfig(new HybridStoreConfig(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get(), finalHybridTimeLagThreshold));
       }
     }
 

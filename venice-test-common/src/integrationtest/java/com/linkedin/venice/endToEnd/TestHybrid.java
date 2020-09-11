@@ -106,7 +106,7 @@ public class TestHybrid {
           .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
       );
 
-      HybridStoreConfig hybridStoreConfig = new HybridStoreConfig(streamingRewindSeconds, streamingMessageLag);
+      HybridStoreConfig hybridStoreConfig = new HybridStoreConfig(streamingRewindSeconds, streamingMessageLag, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
       // There should be no version on the store yet
       assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
           0, "The newly created store must have a current version of 0");

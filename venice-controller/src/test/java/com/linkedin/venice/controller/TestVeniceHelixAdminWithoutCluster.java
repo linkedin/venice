@@ -54,13 +54,21 @@ public class TestVeniceHelixAdminWithoutCluster {
 
     Optional<Long> rewind = Optional.of(123L);
     Optional<Long> lagOffset = Optional.of(1500L);
-    HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, Optional.empty(), Optional.empty());
+    Optional<Long> timeLag = Optional.of(300L);
+    HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, Optional.empty(), Optional.empty(), Optional.empty());
     Assert.assertNull(hybridStoreConfig, "passing empty optionals and a non-hybrid store should generate a null hybrid config");
 
-    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, rewind, lagOffset);
+    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, rewind, lagOffset, timeLag);
     Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
     Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
+    Assert.assertEquals(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(), 300L);
 
+    // It's okay that time lag threshold is not specified
+    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, rewind, lagOffset, Optional.empty());
+    Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
+    Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
+    Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
+    Assert.assertEquals(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(), HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
   }
 }

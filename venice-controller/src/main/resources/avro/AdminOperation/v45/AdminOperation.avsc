@@ -266,6 +266,11 @@
                     {
                       "name": "offsetLagThresholdToGoOnline",
                       "type": "long"
+                    },
+                    {
+                      "name": "producerTimestampLagThresholdToGoOnlineInSeconds",
+                      "type": "long",
+                      "default": -1
                     }
                   ]
                 }

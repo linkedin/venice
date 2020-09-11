@@ -91,10 +91,6 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
-    /**
-     * Must see a message with producer timestamp within 1 minutes ago before reporting ready-to-serve
-     */
-    daVinciConfig.setProducerTimestampLagThresholdToGoOnlineInSeconds(TimeUnit.MINUTES.toSeconds(1));
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {

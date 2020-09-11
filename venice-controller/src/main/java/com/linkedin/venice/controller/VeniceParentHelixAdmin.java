@@ -1168,6 +1168,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
       Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
+      Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
       Optional<Boolean> accessControlled = params.getAccessControlled();
       Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
@@ -1254,7 +1255,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean oldStoreHybrid = store.isHybrid();
 
       HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
-          store, hybridRewindSeconds, hybridOffsetLagThreshold);
+          store, hybridRewindSeconds, hybridOffsetLagThreshold, hybridTimeLagThreshold);
       if (null == hybridStoreConfig) {
         setStore.hybridStoreConfig = null;
       } else {

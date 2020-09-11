@@ -1,9 +1,11 @@
 package com.linkedin.venice.controller.kafka.protocol.admin;
 
+import com.linkedin.avro.fastserde.FastSerdeCache;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.Executors;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaValidationException;
 import org.apache.avro.SchemaValidator;
@@ -22,6 +24,11 @@ public class AdminOperationProtocolCompatibilityTest {
 
     SchemaValidatorBuilder schemaValidatorBuilder = new SchemaValidatorBuilder();
     SchemaValidator schemaValidator = schemaValidatorBuilder.canReadStrategy().validateAll();
+
+    /**
+     * Also checked the the schema evolution is acceptable for fast avro.
+     */
+    FastSerdeCache fastSerdeCache = new FastSerdeCache(Executors.newSingleThreadExecutor());
 
     Schema latestSchema = schemaMap.get(latestSchemaId);
     schemaMap.forEach( (schemaId, schema) -> {
@@ -49,6 +56,16 @@ public class AdminOperationProtocolCompatibilityTest {
         Assert.fail(failMessage);
       } catch (Exception e) {
         Assert.fail("Received schema validation exception, and please check the content of schema with ids: " + latestSchemaId + " or " + schemaId, e);
+      }
+
+      /**
+       * Validate that fast avro can build a deserializer with an old protocol schema as writer schema and the latest
+       * protocol schema as reader schema.
+       */
+      try {
+        fastSerdeCache.buildFastGenericDeserializer(schema, latestSchema);
+      } catch (Exception e) {
+        Assert.fail("Failed fast avro", e);
       }
     });
   }
