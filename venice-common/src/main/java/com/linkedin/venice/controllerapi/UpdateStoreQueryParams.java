@@ -69,6 +69,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     if (hybridStoreConfig != null) {
       updateStoreQueryParams.setHybridOffsetLagThreshold(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
       updateStoreQueryParams.setHybridRewindSeconds(hybridStoreConfig.getRewindTimeInSeconds());
+      updateStoreQueryParams.setHybridTimeLagThreshold(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
     }
 
     ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();
@@ -189,6 +190,14 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<Long> getHybridOffsetLagThreshold() {
     return getLong(OFFSET_LAG_TO_GO_ONLINE);
+  }
+
+  public UpdateStoreQueryParams setHybridTimeLagThreshold(long hybridTimeLagThreshold) {
+    return putLong(TIME_LAG_TO_GO_ONLINE, hybridTimeLagThreshold);
+  }
+
+  public Optional<Long> getHybridTimeLagThreshold() {
+    return getLong(TIME_LAG_TO_GO_ONLINE);
   }
 
   public UpdateStoreQueryParams setAccessControlled(boolean accessControlled) {

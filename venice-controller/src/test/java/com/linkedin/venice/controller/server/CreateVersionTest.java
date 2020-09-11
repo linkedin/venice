@@ -155,7 +155,7 @@ public class CreateVersionTest {
     Store store = new Store(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     store.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
-    store.setHybridStoreConfig(new HybridStoreConfig(0, 1));
+    store.setHybridStoreConfig(new HybridStoreConfig(0, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
 
     doReturn(store).when(admin).getStore(clusterName, storeName);
 

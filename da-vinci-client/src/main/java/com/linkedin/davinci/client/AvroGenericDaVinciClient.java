@@ -260,7 +260,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     if (kafkaBootstrapServers == null) {
       kafkaBootstrapServers = backendConfig.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
     }
-    PropertyBuilder builder = new PropertyBuilder()
+    VeniceProperties config = new PropertyBuilder()
             /** Allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
             .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
             .put(ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL, false)
@@ -270,15 +270,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
             .put(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress)
             .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
             .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
-                daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY);
-    /**
-     * If users specify a time lag threshold in store level, it should override the backend config.
-     */
-    if (daVinciConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() > 0) {
-      builder.put(ConfigKeys.SERVER_INGESTION_PRODUCER_TIMESTAMP_LAG_THRESHOLD_TO_GO_ONLINE_IN_SECONDS,
-          Long.toString(daVinciConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds()));
-    }
-    VeniceProperties config = builder.build();
+                daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
+            .build();
     logger.info("backendConfig=" + config.toString(true));
     return new VeniceConfigLoader(config, config);
   }

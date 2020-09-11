@@ -300,7 +300,7 @@ public class StoreIngestionTaskTest {
 
   private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
     runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
-        Optional.of(new HybridStoreConfig(100,100)),
+        Optional.of(new HybridStoreConfig(100, 100, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)),
         Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
@@ -1382,7 +1382,7 @@ public class StoreIngestionTaskTest {
     when(mockTopicManager.getLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
 
     mockStorageMetadataService = new InMemoryStorageMetadataService();
-    hybridStoreConfig = Optional.of(new HybridStoreConfig(10, 20));
+    hybridStoreConfig = Optional.of(new HybridStoreConfig(10, 20, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     runTest(ALL_PARTITIONS, () -> {
           veniceWriter.broadcastStartOfPush(new HashMap<>());
           for (int i = 0; i < MESSAGES_BEFORE_EOP; i++) {

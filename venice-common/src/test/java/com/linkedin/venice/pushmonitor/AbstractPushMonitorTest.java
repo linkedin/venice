@@ -316,7 +316,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = "hybridTestStore_v1";
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfig(100, 100));
+    store.setHybridStoreConfig(new HybridStoreConfig(100, 100, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     AbstractPushMonitor testMonitor = getPushMonitor(true, mockReplicator);
@@ -366,7 +366,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = getTopic();
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfig(100, 100));
+    store.setHybridStoreConfig(new HybridStoreConfig(100, 100, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));
@@ -416,7 +416,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = getTopic();
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfig(100, 100));
+    store.setHybridStoreConfig(new HybridStoreConfig(100, 100, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));

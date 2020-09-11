@@ -14,15 +14,21 @@ import org.codehaus.jackson.annotate.JsonProperty;
 @org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
 public class HybridStoreConfig {
   private static final long BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN = 2 * Time.MS_PER_DAY;
+
+  public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
+
   private long rewindTimeInSeconds;
   private long offsetLagThresholdToGoOnline;
+  private long producerTimestampLagThresholdToGoOnlineInSeconds;
 
   public HybridStoreConfig(
       @JsonProperty("rewindTimeInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("rewindTimeInSeconds") long rewindTimeInSeconds,
-      @JsonProperty("offsetLagThresholdToGoOnline") @com.fasterxml.jackson.annotation.JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline
+      @JsonProperty("offsetLagThresholdToGoOnline") @com.fasterxml.jackson.annotation.JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline,
+      @JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") long producerTimestampLagThresholdToGoOnlineInSeconds
   ) {
     this.rewindTimeInSeconds = rewindTimeInSeconds;
     this.offsetLagThresholdToGoOnline = offsetLagThresholdToGoOnline;
+    this.producerTimestampLagThresholdToGoOnlineInSeconds = producerTimestampLagThresholdToGoOnlineInSeconds;
   }
 
   public long getRewindTimeInSeconds() {
@@ -63,6 +69,10 @@ public class HybridStoreConfig {
     this.offsetLagThresholdToGoOnline = offsetLagThresholdToGoOnline;
   }
 
+  public long getProducerTimestampLagThresholdToGoOnlineInSeconds() {
+    return producerTimestampLagThresholdToGoOnlineInSeconds;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -71,19 +81,21 @@ public class HybridStoreConfig {
     HybridStoreConfig that = (HybridStoreConfig) o;
 
     if (rewindTimeInSeconds != that.rewindTimeInSeconds) return false;
-    return offsetLagThresholdToGoOnline == that.offsetLagThresholdToGoOnline;
+    if (offsetLagThresholdToGoOnline != that.offsetLagThresholdToGoOnline) return false;
+    return producerTimestampLagThresholdToGoOnlineInSeconds == that.producerTimestampLagThresholdToGoOnlineInSeconds;
   }
 
   @Override
   public int hashCode() {
     int result = (int) (rewindTimeInSeconds ^ (rewindTimeInSeconds >>> 32));
     result = 31 * result + (int) (offsetLagThresholdToGoOnline ^ (offsetLagThresholdToGoOnline >>> 32));
+    result = 31 * result + (int) (producerTimestampLagThresholdToGoOnlineInSeconds ^ (producerTimestampLagThresholdToGoOnlineInSeconds >>> 32));
     return result;
   }
 
   @com.fasterxml.jackson.annotation.JsonIgnore
   @org.codehaus.jackson.annotate.JsonIgnore
   public HybridStoreConfig clone(){
-    return new HybridStoreConfig(rewindTimeInSeconds, offsetLagThresholdToGoOnline);
+    return new HybridStoreConfig(rewindTimeInSeconds, offsetLagThresholdToGoOnline, producerTimestampLagThresholdToGoOnlineInSeconds);
   }
 }

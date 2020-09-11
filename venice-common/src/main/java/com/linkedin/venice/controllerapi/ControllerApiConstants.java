@@ -41,6 +41,7 @@ public class ControllerApiConstants {
   public static final String READ_QUOTA_IN_CU = "read_quota_in_cu";
   public static final String REWIND_TIME_IN_SECONDS = "rewind_time_seconds";
   public static final String OFFSET_LAG_TO_GO_ONLINE = "offset_lag_to_go_online";
+  public static final String TIME_LAG_TO_GO_ONLINE = "time_lag_to_go_online";
   public static final String COMPRESSION_STRATEGY = "compression_strategy";
   public static final String CLIENT_DECOMPRESSION_ENABLED = "client_decompression_enabled";
   public static final String CHUNKING_ENABLED = "chunking_enabled";

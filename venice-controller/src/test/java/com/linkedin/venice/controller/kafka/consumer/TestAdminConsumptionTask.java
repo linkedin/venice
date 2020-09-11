@@ -750,6 +750,7 @@ public class TestAdminConsumptionTask {
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
     hybridConfig.offsetLagThresholdToGoOnline = 1000L;
+    hybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds = 300L;
     setStore.hybridStoreConfig = hybridConfig;
 
     ETLStoreConfigRecord etlStoreConfig = new ETLStoreConfigRecord();

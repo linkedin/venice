@@ -190,6 +190,7 @@ public class MetadataStoreWriter {
       HybridStoreConfig hybridStoreConfig = new HybridStoreConfig();
       hybridStoreConfig.offsetLagThresholdToGoOnline = store.getHybridStoreConfig().getOffsetLagThresholdToGoOnline();
       hybridStoreConfig.rewindTimeInSeconds = store.getHybridStoreConfig().getRewindTimeInSeconds();
+      hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds = store.getHybridStoreConfig().getProducerTimestampLagThresholdToGoOnlineInSeconds();
       storeProperties.hybridStoreConfig = hybridStoreConfig;
     } else {
       storeProperties.hybridStoreConfig = null;

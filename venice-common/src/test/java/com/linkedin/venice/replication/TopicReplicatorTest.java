@@ -31,7 +31,7 @@ public class TopicReplicatorTest {
     startingOffsets.forEach((integer, aLong) -> startingOffsetsList.add(integer, aLong));
     final Store store = TestUtils.createTestStore(TestUtils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME = 5;
-    store.setHybridStoreConfig(new HybridStoreConfig(REWIND_TIME, 1));
+    store.setHybridStoreConfig(new HybridStoreConfig(REWIND_TIME, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     final String sourceTopicName = "source topic name";
     final String destinationTopicName = "destination topic name";
 

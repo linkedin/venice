@@ -448,7 +448,9 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
 
     HybridStoreConfig hybridStoreConfig = null;
     if (storeProperties.hybrid) {
-      hybridStoreConfig = new HybridStoreConfig(storeProperties.hybridStoreConfig.rewindTimeInSeconds, storeProperties.hybridStoreConfig.offsetLagThresholdToGoOnline);
+      hybridStoreConfig = new HybridStoreConfig(storeProperties.hybridStoreConfig.rewindTimeInSeconds,
+                                                storeProperties.hybridStoreConfig.offsetLagThresholdToGoOnline,
+                                                storeProperties.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds);
     }
 
     PartitionerConfig partitionerConfig = null;

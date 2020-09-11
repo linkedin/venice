@@ -205,8 +205,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int ingestionApplicationPort;
   private final boolean databaseChecksumVerificationEnabled;
 
-  private final long producerTimestampLagThresholdToGoOnlineInMs;
-
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
@@ -307,13 +305,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionServicePort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_SERVICE_PORT, 27015);
     ingestionApplicationPort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, 27016);
     databaseChecksumVerificationEnabled = serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
-
-    long producerTimestampLagThresholdToGoOnlineInSeconds = serverProperties.getLong(SERVER_INGESTION_PRODUCER_TIMESTAMP_LAG_THRESHOLD_TO_GO_ONLINE_IN_SECONDS, -1L);
-    if (producerTimestampLagThresholdToGoOnlineInSeconds > 0) {
-      producerTimestampLagThresholdToGoOnlineInMs = TimeUnit.SECONDS.toMillis(producerTimestampLagThresholdToGoOnlineInSeconds);
-    } else {
-      producerTimestampLagThresholdToGoOnlineInMs = -1L;
-    }
   }
 
   public int getListenerPort() {
@@ -574,8 +565,4 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   public boolean isDatabaseChecksumVerificationEnabled() { return databaseChecksumVerificationEnabled;}
-
-  public long getProducerTimestampLagThresholdToGoOnlineInMs() {
-    return producerTimestampLagThresholdToGoOnlineInMs;
-  }
 }
