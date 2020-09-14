@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.admin;
 import java.io.Closeable;
 import java.util.Map;
 import java.util.Properties;
+import org.apache.kafka.common.KafkaFuture;
 
 
 /**
@@ -13,7 +14,7 @@ public interface KafkaAdminWrapper extends Closeable {
 
   void createTopic(String topicName, int numPartitions, int replication, Properties topicProperties);
 
-  void deleteTopic(String topicName);
+  KafkaFuture<Void> deleteTopic(String topicName);
 
   void setTopicConfig(String topicName, Properties topicProperties);
 

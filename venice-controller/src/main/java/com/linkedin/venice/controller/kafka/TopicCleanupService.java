@@ -13,6 +13,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
@@ -56,7 +58,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   protected final long sleepIntervalBetweenTopicListFetchMs;
   protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
-  private boolean stop = false;
+  private AtomicBoolean stop = new AtomicBoolean(false);
   private boolean isMasterControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
 
@@ -76,7 +78,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    stop = true;
+    stop.set(true);
     cleanupThread.interrupt();
   }
 
@@ -88,14 +90,14 @@ public class TopicCleanupService extends AbstractVeniceService {
 
     @Override
     public void run() {
-      while (!stop) {
+      while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);
         } catch (InterruptedException e) {
           LOGGER.error("Received InterruptedException during sleep in TopicCleanup thread");
           break;
         }
-        if (stop) {
+        if (stop.get()) {
           break;
         }
         try {
@@ -176,7 +178,12 @@ public class TopicCleanupService extends AbstractVeniceService {
        *     for the time being, we choose to delete the real-time topic.
        */
 
-      getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+      try {
+        getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+      } catch (ExecutionException e) {
+        LOGGER.warn("ExecutionException caught when trying to delete topic: " + topic, e);
+        // No op, will try again in the next cleanup cycle.
+      }
 
       if (!Version.isRealTimeTopic(topic)) {
        // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to delete

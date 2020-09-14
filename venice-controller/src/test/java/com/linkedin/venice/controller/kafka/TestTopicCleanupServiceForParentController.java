@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
@@ -28,7 +29,7 @@ public class TestTopicCleanupServiceForParentController {
   }
 
   @Test
-  public void testCleanupVeniceTopics() {
+  public void testCleanupVeniceTopics() throws ExecutionException {
     Map<String, Long> storeTopics = new HashMap<>();
     storeTopics.put("store1_v1", 1000l);
     storeTopics.put("store1_v2", 1000l);

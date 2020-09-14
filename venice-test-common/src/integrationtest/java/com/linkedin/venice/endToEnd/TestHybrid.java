@@ -768,10 +768,9 @@ public class TestHybrid {
        */
       String tmpTopic1 = storeName + "_tmp1";
       String tmpTopic2 = storeName + "_tmp2";
-      try (TopicManager topicManager = venice.getMasterVeniceController().getVeniceAdmin().getTopicManager()) {
-        topicManager.createTopic(tmpTopic1, partitionCnt, 1, true);
-        topicManager.createTopic(tmpTopic2, partitionCnt, 1, true);
-      }
+      TopicManager topicManager = venice.getMasterVeniceController().getVeniceAdmin().getTopicManager();
+      topicManager.createTopic(tmpTopic1, partitionCnt, 1, true);
+      topicManager.createTopic(tmpTopic2, partitionCnt, 1, true);
 
       /**
        *  Build a producer that writes to {@link tmpTopic1}

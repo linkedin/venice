@@ -15,12 +15,18 @@ import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
+import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.log4j.Logger;
 
 import scala.collection.JavaConversions;
 
 
+/**
+ * TODO This scala admin implementation should be deleted and not used in Venice due to deprecated methods and lack of
+ * proper support. We will delete this class once we ensure the Java KafkaAdminClient is working and audit the configs
+ * to make sure no one is using ScalaAdminUtils.class for kafka.admin.class.
+ */
 public class ScalaAdminUtils implements KafkaAdminWrapper {
   private static final Logger logger = Logger.getLogger(ScalaAdminUtils.class);
   public static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
@@ -51,12 +57,13 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   }
 
   @Override
-  public void deleteTopic(String topicName) {
+  public KafkaFuture<Void> deleteTopic(String topicName) {
     try {
       AdminUtils.deleteTopic(getZkUtils(), topicName);
     } catch (TopicAlreadyMarkedForDeletionException e) {
       logger.warn("Topic delete requested, but topic already marked for deletion");
     }
+    return null;
   }
 
   @Override

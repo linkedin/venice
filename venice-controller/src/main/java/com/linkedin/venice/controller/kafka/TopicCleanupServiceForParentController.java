@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
@@ -34,8 +35,11 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
           } else {
             LOGGER.info("Retention policy for topic: " + topic + " is: " + retention + " ms, and it is deprecated, will delete it now.");
             storeToCountdownForDeletion.remove(topic);
-            getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
-            LOGGER.info("Topic: " + topic + " was deleted");
+            try {
+              getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+            } catch (ExecutionException e) {
+              // No op, will try again in the next cleanup cycle
+            }
           }
         }
       });
