@@ -191,6 +191,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
   private boolean helixOfflinePushEnabled;
+  private boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
   private final boolean sharedConsumerPoolEnabled;
   private final int consumerPoolSizePerKafkaCluster;
@@ -264,6 +265,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     enableRocksDBOffsetMetadata = serverProperties.getBoolean(SERVER_ENABLE_ROCKSDB_METADATA, false);
     kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
     helixOfflinePushEnabled = serverProperties.getBoolean(HELIX_OFFLINE_PUSH_ENABLED, false);
+    helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
 
     /**
@@ -518,6 +520,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isHelixOfflinePushEnabled() {
     return helixOfflinePushEnabled;
+  }
+  public boolean isHelixHybridStoreQuotaEnabled() {
+    return helixHybridStoreQuotaEnabled;
   }
 
   public long getSsdHealthCheckShutdownTimeMs() {

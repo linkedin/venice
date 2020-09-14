@@ -14,6 +14,8 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
+import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -97,6 +99,7 @@ public class VeniceSystemProducer implements SystemProducer {
 
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
+  private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
       Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory,
@@ -231,6 +234,10 @@ public class VeniceSystemProducer implements SystemProducer {
         throw new VeniceException("Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
       }
     }
+    if (pushType.equals(Version.PushType.STREAM)) {
+      hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(veniceD2ZKHost, storeName));
+      hybridStoreQuotaMonitor.get().start();
+    }
   }
 
   @Override
@@ -268,6 +275,9 @@ public class VeniceSystemProducer implements SystemProducer {
       controllerClient.close();
     }
     D2ClientUtils.shutdownClient(d2Client);
+    if (hybridStoreQuotaMonitor.isPresent()) {
+      hybridStoreQuotaMonitor.get().close();
+    }
   }
 
   @Override
@@ -296,6 +306,20 @@ public class VeniceSystemProducer implements SystemProducer {
         case COMPLETED:
           LOGGER.info("Stream reprocessing for resource " + topicName + " has finished. No message will be sent.");
           return;
+        default:
+          // no-op
+      }
+    }
+    if (hybridStoreQuotaMonitor.isPresent() && Version.PushType.STREAM.equals(pushType)) {
+      HybridStoreQuotaStatus currentStatus = hybridStoreQuotaMonitor.get().getCurrentStatus();
+      switch (currentStatus) {
+        case QUOTA_VIOLATED:
+          /**
+           * If there are multiple stream SystemProducer in one Samza job, one failed push will
+           * also affect other push jobs.
+           */
+          throw new VeniceException("Push job for resource " + topicName + " is in hybrid quota violated mode; please reach out to Venice team.");
+        case QUOTA_NOT_VIOLATED:
         default:
           // no-op
       }

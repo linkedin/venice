@@ -2,10 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import org.apache.helix.HelixManager;
-
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.helix.HelixManager;
 
 
 /**
@@ -15,9 +14,11 @@ import java.util.Map;
 
 public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   static final String PARTITION_DELIMITER = "_";
+  private boolean helixHybridStoreQuotaEnabled;
 
-  public HelixPartitionStatusAccessor(HelixManager helixManager, String instanceId) {
+  public HelixPartitionStatusAccessor(HelixManager helixManager, String instanceId, boolean isHelixHybridStoreQuotaEnabled) {
     super(helixManager, instanceId);
+    this.helixHybridStoreQuotaEnabled = isHelixHybridStoreQuotaEnabled;
   }
 
   public void updateReplicaStatus(String topic, int partitionId, ExecutionStatus status) {
@@ -26,8 +27,10 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   }
 
   public void updateHybridQuotaReplicaStatus(String topic, int partitionId, HybridStoreQuotaStatus status) {
-    super.updateReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
-        getPartitionNameFromId(topic, partitionId), status.name());
+    if (helixHybridStoreQuotaEnabled) {
+      super.updateReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
+          getPartitionNameFromId(topic, partitionId), status.name());
+    }
   }
 
   /**
@@ -38,8 +41,10 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   public void deleteReplicaStatus(String topic, int partitionId) {
     super.deleteReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
         getPartitionNameFromId(topic, partitionId));
-    super.deleteReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
-        getPartitionNameFromId(topic, partitionId));
+    if (helixHybridStoreQuotaEnabled) {
+      super.deleteReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
+          getPartitionNameFromId(topic, partitionId));
+    }
   }
 
   public ExecutionStatus getReplicaStatus(String topic, int partitionId) {
@@ -48,8 +53,11 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   }
 
   public HybridStoreQuotaStatus getHybridQuotaReplicaStatus(String topic, int partitionId) {
-    return HybridStoreQuotaStatus.valueOf(super.getReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
-        getPartitionNameFromId(topic, partitionId)));
+    if (helixHybridStoreQuotaEnabled) {
+      return HybridStoreQuotaStatus.valueOf(super.getReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
+          getPartitionNameFromId(topic, partitionId)));
+    }
+    return HybridStoreQuotaStatus.UNKNOWN;
   }
 
   public Map<Integer, ExecutionStatus> getAllReplicaStatus(String topic) {

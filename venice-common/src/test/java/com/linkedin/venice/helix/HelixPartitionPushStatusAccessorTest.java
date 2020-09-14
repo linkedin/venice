@@ -67,7 +67,7 @@ public class HelixPartitionPushStatusAccessorTest {
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
     accessor1 = new HelixPartitionStatusAccessor(manager1.getOriginalManager(),
-        manager1.getInstanceName());
+        manager1.getInstanceName(), false);
 
     httpPort2 = 50000 + (int) (System.currentTimeMillis() % 10000) + 1;
     manager2 = TestUtils
@@ -77,7 +77,7 @@ public class HelixPartitionPushStatusAccessorTest {
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
     accessor2 = new HelixPartitionStatusAccessor(manager2.getOriginalManager(),
-        manager2.getInstanceName());
+        manager2.getInstanceName(), true);
   }
 
   @AfterMethod(alwaysRun = true)
@@ -155,7 +155,11 @@ public class HelixPartitionPushStatusAccessorTest {
   @Test
   public void testUpdateQuotaViolated() {
     int partitionId = 0;
+    // But accessor0 can not report hybrid quota status, since helix hybrid store quota is not enabled.
     accessor1.updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_VIOLATED);
-    Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_VIOLATED, accessor1.getHybridQuotaReplicaStatus(topic, partitionId));
+    Assert.assertEquals(HybridStoreQuotaStatus.UNKNOWN, accessor1.getHybridQuotaReplicaStatus(topic, partitionId));
+
+    accessor2.updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_VIOLATED);
+    Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_VIOLATED, accessor2.getHybridQuotaReplicaStatus(topic, partitionId));
   }
 }

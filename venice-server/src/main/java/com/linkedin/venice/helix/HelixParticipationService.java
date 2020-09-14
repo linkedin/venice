@@ -245,7 +245,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
          * The accessor can only get created successfully after helix manager is created.
          */
         partitionPushStatusAccessor =
-            new HelixPartitionStatusAccessor(manager.getOriginalManager(), instance.getNodeId());
+            new HelixPartitionStatusAccessor(manager.getOriginalManager(), instance.getNodeId(),
+                veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
         PartitionPushStatusNotifier partitionPushStatusNotifier =
             new PartitionPushStatusNotifier(partitionPushStatusAccessor);
         ingestionService.addCommonNotifier(partitionPushStatusNotifier);
