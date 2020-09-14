@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -101,7 +102,7 @@ public class TestTopicCleanupService {
   }
 
   @Test
-  public void testCleanupVeniceTopics() {
+  public void testCleanupVeniceTopics() throws ExecutionException {
     String storeName1 = TestUtils.getUniqueString("store1");
     Map<String, Long> storeTopics = new HashMap<>();
     storeTopics.put(storeName1 + "_v1", 1000l);

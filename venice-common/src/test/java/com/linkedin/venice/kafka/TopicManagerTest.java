@@ -105,21 +105,21 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testDeleteTopic() {
+  public void testDeleteTopic() throws ExecutionException {
     String topicName = getTopic();
     manager.ensureTopicIsDeletedAndBlock(topicName);
     Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test
-  public void testDeleteTopicWithRetry() {
+  public void testDeleteTopicWithRetry() throws ExecutionException {
     String topicName = getTopic();
     manager.ensureTopicIsDeletedAndBlockWithRetry(topicName);
     Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test
-  public void testDeleteTopicWithTimeout() throws IOException {
+  public void testDeleteTopicWithTimeout() throws IOException, ExecutionException {
 
     // Since we're dealing with a mock in this test case, we'll just use a fake topic name
     String topicName = "mockTopicName";
@@ -134,7 +134,7 @@ public class TopicManagerTest {
 
 
   @Test
-  public void testSyncDeleteTopic() {
+  public void testSyncDeleteTopic() throws ExecutionException {
     String topicName = getTopic();
     // Delete that topic
     manager.ensureTopicIsDeletedAndBlock(topicName);

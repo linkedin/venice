@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -269,7 +270,7 @@ public class TestUtils {
 
       @Override
       protected String getKafkaAdminClass() {
-        return ScalaAdminUtils.class.getName();
+        return KafkaAdminClient.class.getName();
       }
 
       @Override

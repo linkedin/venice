@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
@@ -18,10 +19,13 @@ import org.apache.kafka.clients.admin.ConfigEntry;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
+import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.InvalidTopicException;
+import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.log4j.Logger;
 
 
@@ -52,18 +56,26 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     newTopics.add(new NewTopic(topicName, numPartitions, (short) replication).configs(topicPropertiesMap));
     try {
       getKafkaAdminClient().createTopics(newTopics).all().get();
-    } catch (InvalidReplicationFactorException e) {
-      throw e;
+    } catch (ExecutionException e) {
+      if (e.getCause() instanceof InvalidReplicationFactorException) {
+        throw (InvalidReplicationFactorException) e.getCause();
+      } else if (e.getCause() instanceof TopicExistsException) {
+        throw (TopicExistsException) e.getCause();
+      } else {
+        throw new VeniceException("Failed to create topic: " + topicName + " due to ExecutionException", e);
+      }
     } catch (Exception e) {
-      throw new VeniceException("Failed to create a topic!", e);
+      throw new VeniceException("Failed to create topic: " + topicName + "due to Exception", e);
     }
   }
 
+  // TODO: If we decide that topic deletion is always going to be blocking then we might want to get the future here and
+  // catch/extract any expected exceptions such as UnknownTopicOrPartitionException.
   @Override
-  public void deleteTopic(String topicName) {
+  public KafkaFuture<Void> deleteTopic(String topicName) {
     Collection<String> topics = new ArrayList<>();
     topics.add(topicName);
-    getKafkaAdminClient().deleteTopics(topics).all();
+    return getKafkaAdminClient().deleteTopics(topics).values().get(topicName);
   }
 
   @Override
@@ -111,7 +123,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
       Collection<String> topicNames = new ArrayList<>(1);
       topicNames.add(topic);
-      TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).all().get().get(topic);
+      TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).values().get(topic).get();
 
       if (null == topicDescription) {
         logger.warn("Unexpected: kafkaAdminClient.describeTopics returned null "
@@ -120,9 +132,13 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       }
 
       return true;
-    } catch (InvalidTopicException e) {
-      // Topic doesn't exist...
-      return false;
+    } catch (ExecutionException e) {
+      if (e.getCause() instanceof  UnknownTopicOrPartitionException || e.getCause() instanceof InvalidTopicException) {
+        // Topic doesn't exist...
+        return false;
+      } else {
+        throw new VeniceException("Failed to list topics in order to find out if '" + topic + " exists!", e);
+      }
     } catch (Exception e) {
       throw new VeniceException("Failed to list topics in order to find out if '" + topic + " exists!", e);
     }
@@ -138,11 +154,13 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     });
   }
 
+  // TODO: This method should be removed from the interface once we migrate to use Java kafka admin since we no longer
+  // need to know if a topic deletion is underway or not. Duplicate calls in the Java kafka admin will not result errors.
   @Override
   public boolean isTopicDeletionUnderway() {
-    // TODO: fix this so that we can get rid the Scala Admin in the backend as well...
-    // We could achieve the this by passing another kind of ZK client, or perhaps some other way.
-    throw new VeniceException("isTopicDeletionUnderway is not supported in " + this.getClass().getSimpleName());
+    // Always return false to bypass the checks since concurrent topic delete request for Java kafka admin client is
+    // harmless.
+    return false;
   }
 
   @Override

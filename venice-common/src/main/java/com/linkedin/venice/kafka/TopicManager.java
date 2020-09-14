@@ -1,7 +1,9 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -13,7 +15,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -25,6 +30,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 
@@ -250,18 +256,14 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * If the topic exists, this method sends a delete command to Kafka and immediately returns.  Deletion will
-   * occur asynchronously.
+   * This method sends a delete command to Kafka and immediately returns with a future. The future could be null if the
+   * underlying Kafka admin client doesn't support it. In both cases, deletion will occur asynchronously.
    * @param topicName
    */
-  private void ensureTopicIsDeletedAsync(String topicName) {
-    if (!isTopicFullyDeleted(topicName, false)) {
-      // TODO: Stop using Kafka APIs which depend on ZK.
-      logger.info("Deleting topic: " + topicName);
-      getKafkaAdmin().deleteTopic(topicName);
-    } else {
-      logger.info("Topic: " +  topicName + " to be deleted doesn't exist");
-    }
+  private Future<Void> ensureTopicIsDeletedAsync(String topicName) {
+    // TODO: Stop using Kafka APIs which depend on ZK.
+    logger.info("Deleting topic: " + topicName);
+    return getKafkaAdmin().deleteTopic(topicName);
   }
 
   public int getReplicationFactor(String topicName) {
@@ -406,12 +408,14 @@ public class TopicManager implements Closeable {
    *
    * @param topicName
    */
-  public void ensureTopicIsDeletedAndBlock(String topicName) {
+  public void ensureTopicIsDeletedAndBlock(String topicName) throws ExecutionException {
     if (!containsTopicAndAllPartitionsAreOnline(topicName)) {
       // Topic doesn't exist
       return;
     }
 
+    // TODO: Remove the isConcurrentTopicDeleteRequestsEnabled flag and make topic deletion to be always blocking or
+    // refactor this method to actually support concurrent topic deletion if that's something we want.
     // This is trying to guard concurrent topic deletion in Kafka.
     if (!isConcurrentTopicDeleteRequestsEnabled &&
         /**
@@ -422,7 +426,27 @@ public class TopicManager implements Closeable {
       throw new VeniceException("Delete operation already in progress! Try again later.");
     }
 
-    ensureTopicIsDeletedAsync(topicName);
+    Future<Void> future = ensureTopicIsDeletedAsync(topicName);
+    if (future != null) {
+      // Skip additional checks for Java kafka client since the result of the future can guarantee that the topic is deleted.
+      try {
+        future.get(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException e) {
+        throw new VeniceException("Thread interrupted while waiting to delete topic: " + topicName);
+      } catch (ExecutionException e) {
+        if (e.getCause() instanceof UnknownTopicOrPartitionException) {
+          // No-op. Topic is deleted already, consider this as a successful deletion.
+        } else {
+          throw e;
+        }
+      } catch (TimeoutException e) {
+        throw new VeniceOperationAgainstKafkaTimedOut("Failed to delete kafka topic: " + topicName + " after "
+            + kafkaOperationTimeoutMs);
+      }
+      logger.info("Topic: " + topicName + " has been deleted");
+      // TODO: Remove the checks below once we have fully migrated to use the Kafka admin client.
+      return;
+    }
     // Since topic deletion is async, we would like to poll until topic doesn't exist any more
     int MAX_TIMES = kafkaOperationTimeoutMs / topicDeletionStatusPollIntervalMs;
     /**
@@ -457,7 +481,7 @@ public class TopicManager implements Closeable {
     throw new VeniceOperationAgainstKafkaTimedOut("Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current + " attempts).");
   }
 
-  public void ensureTopicIsDeletedAndBlockWithRetry(String topicName) {
+  public void ensureTopicIsDeletedAndBlockWithRetry(String topicName) throws ExecutionException {
     // Topic deletion may time out, so go ahead and retry the operation up the max number of attempts, if we
     // simply cannot succeed, bubble the exception up.
     Integer attempts  = 0;
@@ -470,6 +494,13 @@ public class TopicManager implements Closeable {
         logger.warn(String.format("Topic deletion for topic %s timed out!  Retry attempt %d / %d", topicName, attempts, MAX_TOPIC_DELETE_RETRIES));
         if(attempts == MAX_TOPIC_DELETE_RETRIES) {
           logger.error(String.format("Topic deletion for topic %s timed out! Giving up!!", topicName));
+          throw e;
+        }
+      } catch (ExecutionException e) {
+        attempts++;
+        logger.warn(String.format("Topic deletion for topic %s errored out!  Retry attempt %d / %d", topicName, attempts, MAX_TOPIC_DELETE_RETRIES));
+        if(attempts == MAX_TOPIC_DELETE_RETRIES) {
+          logger.error(String.format("Topic deletion for topic %s errored out! Giving up!!", topicName));
           throw e;
         }
       }
@@ -868,10 +899,17 @@ public class TopicManager implements Closeable {
   }
 
   private synchronized KafkaAdminWrapper getKafkaAdmin() {
-    if (null == this.kafkaAdmin) {
-      this.kafkaAdmin = kafkaClientFactory.getKafkaAdminClient();
+    if (null == kafkaAdmin) {
+      String kafkaAdminName = "Unknown";
+      kafkaAdmin = kafkaClientFactory.getKafkaAdminClient();
+      if (kafkaAdmin instanceof KafkaAdminClient) {
+        kafkaAdminName = KafkaAdminClient.class.getName();
+      } else if (kafkaAdmin instanceof ScalaAdminUtils) {
+        kafkaAdminName = ScalaAdminUtils.class.getName();
+      }
+      logger.info(this.getClass().getSimpleName() + " is using kafka admin client: " + kafkaAdminName);
     }
-    return this.kafkaAdmin;
+    return kafkaAdmin;
   }
 
   @Override

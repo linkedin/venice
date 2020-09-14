@@ -67,6 +67,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -876,6 +877,8 @@ public class AdminTool {
       printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
     } catch (VeniceOperationAgainstKafkaTimedOut e) {
       printErrAndThrow(e, "Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.", null);
+    } catch (ExecutionException e) {
+      printErrAndThrow(e, "Topic deletion failed due to ExecutionException", null);
     }
   }
 
