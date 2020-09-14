@@ -99,14 +99,16 @@ public class TestHelixCustomizedViewRepository {
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager0.connect();
     Thread.sleep(WAIT_TIME);
-    accessor0 = new HelixPartitionStatusAccessor(manager0.getOriginalManager(), manager0.getInstanceName());
+    accessor0 = new HelixPartitionStatusAccessor(manager0.getOriginalManager(),
+        manager0.getInstanceName(), false);
 
     manager1 = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort1), zkAddress, httpPort1,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager1.connect();
 
     Thread.sleep(WAIT_TIME);
-    accessor1 = new HelixPartitionStatusAccessor(manager1.getOriginalManager(), manager1.getInstanceName());
+    accessor1 = new HelixPartitionStatusAccessor(manager1.getOriginalManager(),
+        manager1.getInstanceName(), true);
 
     readManager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
@@ -153,10 +155,17 @@ public class TestHelixCustomizedViewRepository {
     Assert.assertEquals(resourceName, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().get(0));
     Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_VIOLATED, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
 
-    // Change resource from quota not violated to quota violated.
+    // Change resource from quota violated to quota not violated.
     accessor1.updateHybridQuotaReplicaStatus(resourceName, partitionId2, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     Thread.sleep(WAIT_TIME);
     Assert.assertEquals(0, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().size());
+    Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
+
+    // Change resource from quota not violated to quota violated.
+    accessor0.updateHybridQuotaReplicaStatus(resourceName, partitionId1, HybridStoreQuotaStatus.QUOTA_VIOLATED);
+    Thread.sleep(WAIT_TIME);
+    Assert.assertEquals(0, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().size());
+    // But accessor0 can not report hybrid quota status, since helix hybrid store quota is not enabled.
     Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
   }
 
@@ -207,7 +216,8 @@ public class TestHelixCustomizedViewRepository {
             MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newManager.connect();
     HelixPartitionStatusAccessor newAccessor =
-        new HelixPartitionStatusAccessor(newManager.getOriginalManager(), newManager.getInstanceName());
+        new HelixPartitionStatusAccessor(newManager.getOriginalManager(), newManager.getInstanceName(),
+            true);
     newAccessor.updateReplicaStatus(resourceName, partitionId0, ExecutionStatus.COMPLETED);
     newAccessor.updateReplicaStatus(resourceName, partitionId1, ExecutionStatus.COMPLETED);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {

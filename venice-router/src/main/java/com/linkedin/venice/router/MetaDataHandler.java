@@ -325,20 +325,20 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
    * Get hybrid store quota status from {@link HelixHybridStoreQuotaRepository} for stores..
    */
   private void handleHybridStoreQuotaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
-    String resourceName = helper.getResourceName();
-    checkResourceName(resourceName, "/" + TYPE_HYBRID_STORE_QUOTA + "/${resourceName}");
-    if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
+    String storeName = helper.getResourceName();
+    checkResourceName(storeName, "/" + TYPE_HYBRID_STORE_QUOTA + "/${storeName}");
+    if (!storeConfigRepo.getStoreConfig(storeName).isPresent()) {
       byte[] errBody =
-          ("Cannot fetch the hybrid store quota status for resource: " + resourceName + " because the store: "
-              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+          ("Cannot fetch the hybrid store quota status for resource: " + storeName + " because the store: "
+              + Version.parseStoreFromKafkaTopicName(storeName) + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
-
+    String topicName = Version.composeKafkaTopic(storeName, storeRepository.getStore(storeName).getCurrentVersion());
     HybridStoreQuotaStatusResponse hybridStoreQuotaStatusResponse = new HybridStoreQuotaStatusResponse();
-    hybridStoreQuotaStatusResponse.setName(resourceName);
+    hybridStoreQuotaStatusResponse.setName(topicName);
     if (hybridStoreQuotaRepository.isPresent()) {
-      hybridStoreQuotaStatusResponse.setQuotaStatus(hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(resourceName));
+      hybridStoreQuotaStatusResponse.setQuotaStatus(hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(topicName));
     } else {
       hybridStoreQuotaStatusResponse.setQuotaStatus(HybridStoreQuotaStatus.UNKNOWN);
     }

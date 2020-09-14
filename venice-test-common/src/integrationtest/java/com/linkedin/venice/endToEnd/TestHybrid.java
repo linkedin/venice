@@ -15,6 +15,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -40,20 +41,10 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
-import java.io.IOException;
-import java.util.AbstractMap;
-import java.util.stream.IntStream;
-import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
-import org.apache.samza.config.MapConfig;
-import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
-
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -64,6 +55,17 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import org.apache.avro.Schema;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.model.CustomizedStateConfig;
+import org.apache.log4j.Logger;
+import org.apache.samza.config.MapConfig;
+import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
@@ -561,7 +563,120 @@ public class TestHybrid {
     }
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  /**
+   * N.B.: Non-L/F does not support chunking, so this permutation is skipped.
+   */
+  @DataProvider(name = "testHybridQuotaPermutations")
+  public static Object[][] testHybridQuotaPermutations() {
+    return new Object[][]{
+        {false, false},
+        {true, false},
+        {true, true}
+    };
+  }
+
+  @Test(dataProvider = "testHybridQuotaPermutations")
+  public void testHybridStoreQuota(boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled) throws Exception {
+    logger.info("About to create VeniceClusterWrapper");
+    Properties extraProperties = new Properties();
+    SystemProducer veniceProducer = null;
+    extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    // N.B.: RF 2 with 3 servers is important, in order to test both the leader and follower code paths
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,0,0,
+        2, 1000000, false, false, extraProperties)) {
+
+      Properties routerProperties = new Properties();
+      routerProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
+      venice.addVeniceRouter(routerProperties);
+      // Added a server with shared consumer enabled.
+      Properties serverPropertiesWithSharedConsumer = new Properties();
+      serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
+      extraProperties.put(HELIX_OFFLINE_PUSH_ENABLED, true);
+      extraProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
+      extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
+      extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+      venice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+      venice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+      venice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+      logger.info("Finished creating VeniceClusterWrapper");
+
+      long streamingRewindSeconds = 10L;
+      long streamingMessageLag = 2L;
+
+      String storeName = "test-store";
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+
+      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+          TopicManager topicManager = new TopicManager(
+              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+              100,
+              0l,
+              TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+
+        // Setting the hybrid store quota here will cause the H2V push failed.
+        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2)
+            .setHybridRewindSeconds(streamingRewindSeconds)
+            .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+            .setChunkingEnabled(chunkingEnabled)
+            .setHybridStoreDiskQuotaEnabled(true)
+        );
+
+        HelixAdmin helixAdmin = new ZKHelixAdmin(venice.getZk().getAddress());
+        helixAdmin.addCluster(venice.getClusterName());
+        CustomizedStateConfig.Builder customizedStateConfigBuilder = new CustomizedStateConfig.Builder();
+        List<String> aggregationEnabledTypes = new ArrayList<String>();
+        aggregationEnabledTypes.add(HelixPartitionState.HYBRID_STORE_QUOTA.name());
+        customizedStateConfigBuilder.setAggregationEnabledTypes(aggregationEnabledTypes);
+        CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
+        helixAdmin.addCustomizedStateConfig(venice.getClusterName(), customizedStateConfig);
+        Assert.assertFalse(response.isError());
+
+        //Do an H2V push
+        runH2V(h2vProperties, 1, controllerClient);
+        String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
+
+        long storageQuotaInByte = 60000; // A small quota, easily violated.
+
+        //  Need to update store with quota here.
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setPartitionCount(2)
+            .setHybridRewindSeconds(streamingRewindSeconds)
+            .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+            .setChunkingEnabled(chunkingEnabled)
+            .setHybridStoreDiskQuotaEnabled(true)
+            .setStorageQuotaInByte(storageQuotaInByte)
+        );
+        Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
+            "topic: " + topicForStoreVersion1 + " should have compaction enabled");
+
+        veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM); // new producer, new DIV segment.
+        for (int i=1; i<=20; i++) {
+          sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+        }
+        long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(15);
+        logger.info("normalTimeForConsuming:" + normalTimeForConsuming );
+        Utils.sleep(normalTimeForConsuming);
+        sendStreamingRecord(veniceProducer, storeName, 21);
+        Assert.fail("Exception should be thrown because quota violation happens.");
+      } catch (VeniceException e) {
+        // Expected
+      } finally {
+        if (null != veniceProducer) {
+          veniceProducer.stop();
+        }
+      }
+    }
+  }
+
+  @Test
   public void testMultiStreamReprocessingSystemProducers() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
