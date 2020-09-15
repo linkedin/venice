@@ -6,7 +6,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.AggStoreStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
+import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -112,7 +112,7 @@ public class VeniceHelixResources implements VeniceResource {
     this.messageChannel = new HelixStatusMessageChannel(helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
-        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
+        new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,
         metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid(),
         onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metricsRepository, metadataStoreWriter);

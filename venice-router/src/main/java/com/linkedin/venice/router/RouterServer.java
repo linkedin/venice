@@ -8,7 +8,7 @@ import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
-import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
+import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -402,10 +402,12 @@ public class RouterServer extends AbstractVeniceService {
      * so there is no way to distinguish compute request from multi-get; all read compute metrics in host finder will
      * be recorded as multi-get metrics; affected metric is "find_unhealthy_host_request"
      */
-    partitionStatusOnlineInstanceFinder = new PartitionStatusOnlineInstanceFinder(
-        metadataRepository,
-        new HelixOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter),
-        routingDataRepository);
+    if (!config.isHelixOfflinePushEnabled()) {
+      partitionStatusOnlineInstanceFinder = new PartitionStatusOnlineInstanceFinder(
+              metadataRepository,
+              new VeniceOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter),
+              routingDataRepository);
+    }
 
     OnlineInstanceFinderDelegator onlineInstanceFinder =
         new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository,

@@ -16,8 +16,6 @@ import java.util.List;
 
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -27,7 +25,7 @@ import org.apache.log4j.Logger;
 
 
 /**
- * Helix implementation of {@link OfflinePushAccessor}. All the statuses would be stored on Zookeeper and this
+ * Venice implementation of {@link OfflinePushAccessor}. All the statuses would be stored on Zookeeper and this
  * class provides the ways to read/write/create/remove status from ZK.
  * <p>
  * As this class is only an accessor but not a repository so it will not cache anything in local memory. In other words
@@ -40,12 +38,12 @@ import org.apache.log4j.Logger;
  * $partitionId.</li>
  * </ul>
  */
-public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
+public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public static final String OFFLINE_PUSH_SUB_PATH = "OfflinePushes";
   private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
   private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);
 
-  private static final Logger logger = Logger.getLogger(HelixOfflinePushMonitorAccessor.class);
+  private static final Logger logger = Logger.getLogger(VeniceOfflinePushMonitorAccessor.class);
   private final String clusterName;
   /**
    * Zk accessor for offline push status ZNodes.
@@ -66,12 +64,12 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   private final long refreshIntervalForZkReconnectInMs;
 
-  public HelixOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter) {
+  public VeniceOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter) {
     this(clusterName, zkClient, adapter, DEFAULT_ZK_REFRESH_ATTEMPTS, DEFAULT_ZK_REFRESH_INTERVAL);
   }
 
-  public HelixOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter,
-      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
+  public VeniceOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter,
+                                          int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
     this.clusterName = clusterName;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
     this.zkClient = zkClient;

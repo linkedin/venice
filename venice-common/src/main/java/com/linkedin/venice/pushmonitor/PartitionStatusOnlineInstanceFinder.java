@@ -29,8 +29,8 @@ import org.apache.log4j.Logger;
  * Find out online instances based on partition status. This is intended to be used to help router
  * find out available instances for L/F model resources.
  *
- * TODO: Since it listens to all partition status changes, ZK loads will increase dramatically.
- * We should be cautious about it and ramp up resources gradually in case it impacts router's performance.
+ * Since it listens to all partition status changes, ZK loads will increase dramatically.
+ * We can use {@link com.linkedin.venice.helix.HelixOfflinePushRepository} instead to improve.
  */
 public class PartitionStatusOnlineInstanceFinder
     implements OfflinePushAccessor.PartitionStatusListener, OnlineInstanceFinder, VeniceResource, IZkChildListener {
