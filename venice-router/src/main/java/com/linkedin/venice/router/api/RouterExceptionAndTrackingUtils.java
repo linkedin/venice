@@ -51,7 +51,7 @@ public class RouterExceptionAndTrackingUtils {
       if (responseStatus == BAD_REQUEST) {
         logger.debug(BAD_REQUEST.toString() + " for store: " + name, e);
       } else {
-        logger.error("Got an exception for store: " + name, e);
+        logger.warn("Got an exception for store: " + name, e);
       }
     }
     return e;
@@ -74,7 +74,7 @@ public class RouterExceptionAndTrackingUtils {
       e.setStackTrace(emptyStackTrace);
     }
     if (!filter.isRedundantException(name, e)) {
-      logger.error("Got an exception for store:" + name, e);
+      logger.warn("Got an exception for store:" + name, e);
     }
     return e;
   }
