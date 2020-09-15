@@ -148,13 +148,7 @@ public class TestHelixCustomizedViewRepository {
   @Test
   public void testGetQuotaExceedStores() throws Exception {
     String fakeResourceName = "FakeUnitTest";
-    try {
-      // Should not find the resource.
-      hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(fakeResourceName);
-      Assert.fail("Exception should be thrown because resource does not exist now.");
-    } catch (VeniceException e) {
-      // Expected
-    }
+    Assert.assertEquals(HybridStoreQuotaStatus.UNKNOWN, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(fakeResourceName));
     Assert.assertEquals(1, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().size());
     Assert.assertEquals(resourceName, hybridStoreQuotaOnlyRepository.getHybridQuotaViolatedStores().get(0));
     Assert.assertEquals(HybridStoreQuotaStatus.QUOTA_VIOLATED, hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(resourceName));
