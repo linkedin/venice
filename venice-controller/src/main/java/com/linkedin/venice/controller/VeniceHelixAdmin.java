@@ -1536,7 +1536,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     partitionCount,
                     clusterConfig.getKafkaReplicationFactor(),
                     store.getRetentionTime(),
-                    !store.isWriteComputationEnabled(), // RT topics are compacted only if write compute isn't enabled
+                    false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
                     clusterConfig.getMinIsr(),
                     false
                 );

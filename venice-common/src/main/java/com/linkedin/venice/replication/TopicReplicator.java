@@ -136,9 +136,7 @@ public abstract class TopicReplicator {
                                     partitionCount,
                                     replicationFactor,
                                     store.getHybridStoreConfig().getRetentionTimeInMs(),
-                                    // Disable RT compaction. Because for hybrid stores in Online/Offline mode,
-                                    // with RT compaction, lag will be mis-calculated.
-                                    false,
+                                    false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
                                     Optional.empty(),
                                     false);
     } else {
