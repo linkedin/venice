@@ -1241,10 +1241,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         for (String datacenter : datacenterSpecificInfo.keySet()) {
           ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(datacenterSpecificInfo.get(datacenter));
           if (datacenterStatus.isTerminal()) {
-            if (datacenterStatus.equals(ExecutionStatus.ERROR)) {
-              throw new RuntimeException("Push job triggered error in data center: " + datacenter);
+            if (!datacenterStatus.equals(ExecutionStatus.ERROR)) {
+              completedDatacenters.add(datacenter);
             }
-            completedDatacenters.add(datacenter);
           }
         }
         if (overallStatus.isTerminal()) {
