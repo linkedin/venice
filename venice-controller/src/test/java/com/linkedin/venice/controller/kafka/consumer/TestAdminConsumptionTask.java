@@ -777,7 +777,18 @@ public class TestAdminConsumptionTask {
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    verify(admin, timeout(TIMEOUT).atLeastOnce()).updateStore(eq(clusterName), eq(storeName), any());
+    // Not checking if contents of Optional are present or not since if they're not present, exception will be raised
+    // and it would fail the test.
+    verify(admin, timeout(TIMEOUT).atLeastOnce()).updateStore(eq(clusterName), eq(storeName), argThat(updateStoreQueryParams ->
+        updateStoreQueryParams.getHybridRewindSeconds().get() == 123L &&
+        updateStoreQueryParams.getHybridOffsetLagThreshold().get() == 1000L &&
+        updateStoreQueryParams.getAccessControlled().get() == accessControlled &&
+        updateStoreQueryParams.getStoreMigration().get() == storeMigration &&
+        updateStoreQueryParams.getWriteComputationEnabled().get() == writeComputationEnabled &&
+        updateStoreQueryParams.getReadComputationEnabled().get() == computationEnabled &&
+        updateStoreQueryParams.getBootstrapToOnlineTimeoutInHours().get() == bootstrapToOnlineTimeoutInHours &&
+        updateStoreQueryParams.getIncrementalPushEnabled().get() // Incremental push must be enabled.
+    ));
   }
 
   @Test (timeOut = TIMEOUT)
