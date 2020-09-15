@@ -22,13 +22,13 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor.*;
+import static com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor.*;
 
 
 public class HelixOfflinePushMonitorAccessorTest {
   private String clusterName = TestUtils.getUniqueString("HelixOfflinePushMonitorAccessorTest");
   private ZkServerWrapper zk;
-  private HelixOfflinePushMonitorAccessor accessor;
+  private VeniceOfflinePushMonitorAccessor accessor;
   private String topic = "testTopic";
   private OfflinePushStatus offlinePushStatus =
       new OfflinePushStatus(topic, 3, 3, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -39,7 +39,7 @@ public class HelixOfflinePushMonitorAccessorTest {
     zk = ServiceFactory.getZkServer();
     String zkAddress = zk.getAddress();
     zkClient = ZkClientFactory.newZkClient(zkAddress);
-    accessor = new HelixOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), 1, 0);
+    accessor = new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), 1, 0);
   }
 
   @AfterMethod
