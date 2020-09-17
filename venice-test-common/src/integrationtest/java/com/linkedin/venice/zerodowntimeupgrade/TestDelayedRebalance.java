@@ -83,15 +83,27 @@ public class TestDelayedRebalance {
     // helix would move the partition to other server.
     String topicName = createVersionAndPushData();
     int failServerPort = stopAServer(topicName);
-
-    PartitionAssignment partitionAssignment =
-        cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-    Assert.assertEquals(partitionAssignment.getPartition(0).getReadyToServeInstances().size(), 1,
-        "Right after taking down a server, the number of live instances should have dropped to 1.");
-
+    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+      cluster.refreshAllRouterMetaData();
+      PartitionAssignment partitionAssignment =
+          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
+      int readyToServeInstances = partitionAssignment.getPartition(0).getReadyToServeInstances().size();
+      Assert.assertTrue(readyToServeInstances > 0,
+          "Right after taking down a server, the number of live instances should not have dropped to 0");
+      if (readyToServeInstances == 1) {
+        return true;
+      } else {
+        boolean serverStillAlive = partitionAssignment.getPartition(0).getReadyToServeInstances().stream()
+            .anyMatch(i -> i.getPort() == failServerPort);
+        Assert.assertFalse(serverStillAlive,
+            "Right after taking down a server, the number of live instances should have dropped to 1.");
+        // The server is not completely stopped yet since it's still a part of the ready to server instances.
+        return false;
+      }
+    });
     Thread.sleep(delayRebalanceMS / 2);
 
-    partitionAssignment = cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
+    PartitionAssignment partitionAssignment = cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     Assert.assertEquals(partitionAssignment.getPartition(0).getReadyToServeInstances().size(), 1,
         "With delayed reblance, helix should not move the partition to other machine during the delayed reblance time.");
 

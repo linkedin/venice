@@ -164,12 +164,13 @@ public class VeniceParentHelixAdminTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT)
   public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) {
+    String clusterName = TestUtils.getUniqueString("testStoreMetadataUpdate");
     try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
         VeniceControllerWrapper childControllerWrapper =
-            ServiceFactory.getVeniceController(venice.getClusterName(), kafkaBrokerWrapper, isControllerSslEnabled);
+            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper =
-            ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), kafkaBrokerWrapper,
+            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
                 new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled)) {
       String childControllerUrl =
           isControllerSslEnabled ? childControllerWrapper.getSecureControllerUrl() : childControllerWrapper.getControllerUrl();
@@ -177,8 +178,8 @@ public class VeniceParentHelixAdminTest {
           isControllerSslEnabled ? parentControllerWrapper.getSecureControllerUrl() : parentControllerWrapper.getControllerUrl();
       Optional<SSLFactory> sslFactory =
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
-      try (ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentControllerUrl, sslFactory);
-          ControllerClient childControllerClient = new ControllerClient(venice.getClusterName(), childControllerUrl, sslFactory)) {
+      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
+          ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
 
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
 
