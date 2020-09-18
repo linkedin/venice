@@ -2989,6 +2989,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId,
         DirectionalSchemaCompatibilityType compatibilityType) {
         checkControllerMastership(clusterName);
+        AvroSchemaUtils.validateAvroSchemaStr(valueSchemaStr);
         HelixReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
         int newValueSchemaId = schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr,
             compatibilityType);

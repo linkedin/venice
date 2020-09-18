@@ -1,5 +1,7 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
+import com.linkedin.schemaregistry.KafkaSchemaVerifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import org.apache.avro.Schema;
@@ -183,6 +185,57 @@ public class TestAvroSchemaUtils {
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s1, s2);
     Assert.assertNotNull(s3.getField("company"));
     Assert.assertNotNull(s3.getField("organization"));
+  }
+
+  @Test
+  public void testSchemaUnionDefaultValidation() {
+    String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"experience\",\"type\":[\"int\", \"float\", \"null\"], \"default\" : 32},{\"name\":\"company\",\"type\":\"string\"}]}";
+
+    AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
+
+    schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"experience\",\"type\":[\"int\", \"float\", \"null\"], \"default\" : null},{\"name\":\"company\",\"type\":\"string\"}]}";
+
+    try {
+      AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
+      Assert.fail("Default null should fail with int first union field");
+    } catch (AvroIncompatibleSchemaException e) {
+    }
+
+    schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\", \"default\": \"default_name\"},{\"name\":\"experience\",\"type\":[\"null\", \"int\", \"float\"], \"default\" : null},{\"name\":\"company\",\"type\":\"string\"}]}";
+    AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
+
+    schemaStr = "{\n" +
+        "  \"type\" : \"record\",\n" +
+        "  \"name\" : \"testRecord\",\n" +
+        "  \"namespace\" : \"com.linkedin.avro\",\n" +
+        "  \"fields\" : [ {\n" +
+        "    \"name\" : \"hits\",\n" +
+        "    \"type\" : {\n" +
+        "      \"type\" : \"array\",\n" +
+        "      \"items\" : [ {\n" +
+        "        \"type\" : \"record\",\n" +
+        "        \"name\" : \"JobAlertHit\",\n" +
+        "        \"fields\" : [ {\n" +
+        "          \"name\" : \"memberId\",\n" +
+        "          \"type\" : \"long\"\n" +
+        "        }, {\n" +
+        "          \"name\" : \"searchId\",\n" +
+        "          \"type\" : \"long\"\n" +
+        "        } ]\n"
+        + "      }]\n" +
+        "    },\n" +
+        "    \"default\" :  [ ] \n" +
+        "  }, {\n" +
+        "    \"name\" : \"hasNext\",\n" +
+        "    \"type\" : \"boolean\",\n" +
+        "    \"default\" : false\n" +
+        "  } ]\n" +
+        "}";
+
+    KafkaSchemaVerifier.get().verifyCompatibility(Schema.parse(schemaStr), Schema.parse(schemaStr));
+
+    AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
+
   }
 
   @Test
