@@ -1,22 +1,22 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
-import com.linkedin.venice.exceptions.SchemaDuplicateException;
-import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.VeniceConstants;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.utils.AvroSchemaUtils;
-import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
+import com.linkedin.venice.exceptions.SchemaDuplicateException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -25,8 +25,6 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
-
-import java.util.Collection;
 
 /**
  * This class is used to add schema entries for stores.
@@ -256,7 +254,7 @@ import java.util.Collection;
   @Override
   public SchemaEntry initKeySchema(String storeName, String schemaStr) {
     preCheckStoreCondition(storeName);
-
+    AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
     SchemaEntry keySchemaEntry = new SchemaEntry(Integer.parseInt(HelixSchemaAccessor.KEY_SCHEMA_ID), schemaStr);
     SchemaEntry existingKeySchema = getKeySchema(storeName);
 

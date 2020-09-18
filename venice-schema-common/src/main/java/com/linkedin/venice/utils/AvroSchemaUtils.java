@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Lists;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.IOException;
@@ -41,6 +42,19 @@ public class AvroSchemaUtils {
         results.add(entry);
     }
     return results;
+  }
+
+  /**
+   * It verifies that the schema's union field default value must be same type as the first field.
+   * From https://avro.apache.org/docs/current/spec.html#Unions
+   * (Note that when a default value is specified for a record field whose type is a union, the type of the
+   * default value must match the first element of the union. Thus, for unions containing "null", the "null" is usually
+   * listed first, since the default value of such unions is typically null.)
+   * @param str
+   */
+  public static void validateAvroSchemaStr(String str) {
+    Schema schema = Schema.parse(str);
+    AvroSchemaVerifier.get().verifyCompatibility(schema, schema);
   }
 
   /**
