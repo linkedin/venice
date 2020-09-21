@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,6 +42,9 @@ public class PartitionStatusOnlineInstanceFinder
   private final ReadOnlyStoreRepository metadataRepo;
 
   private final Map<String, OfflinePushStatus> topicToResourceStatus;
+
+  private final int retryStoreRefreshIntervalInMs = 5000;
+  private final int retryStoreRefreshAttempt = 10;
 
   public PartitionStatusOnlineInstanceFinder(ReadOnlyStoreRepository metadataRepo,
       OfflinePushAccessor offlinePushAccessor, RoutingDataRepository routingDataRepository) {
@@ -164,7 +168,7 @@ public class PartitionStatusOnlineInstanceFinder
       /*copy to a new list since the former is unmodifiable*/
       String topic = pushStatus.getKafkaTopic();
       topicToResourceStatus.put(topic, pushStatus);
-      if (isLFModelEnabledForStoreVersion(topic)) {
+      if (isLFModelEnabledForStoreVersion(topic, false)) {
         offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
       }
     });
@@ -172,13 +176,38 @@ public class PartitionStatusOnlineInstanceFinder
     offlinePushAccessor.subscribePushStatusCreationChange(this);
   }
 
-  private boolean isLFModelEnabledForStoreVersion(String kafkaTopic) {
-    Store store = metadataRepo.getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic));
+  private boolean isLFModelEnabledForStoreVersion(String kafkaTopic, boolean isNewOfflinePushStatus) {
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    Store store = metadataRepo.getStore(storeName);
     if (store == null) {
       return false;
     }
 
-    Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
+    int storeVersion = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    Optional<Version> version = store.getVersion(storeVersion);
+
+    if (!version.isPresent() && isNewOfflinePushStatus) {
+      // In theory, the version should exist since the corresponding offline push status ZNode is newly created.
+      // But there's a race condition that in-memory metadata hasn't been refreshed yet, so here refresh the store.
+      logger.warn(String.format("Version %d does not exist in store %s. Refresh the store.", storeVersion, storeName));
+      int attempt = 0;
+      while (attempt < retryStoreRefreshAttempt) {
+        store = metadataRepo.refreshOneStore(storeName);
+        version = store.getVersion(storeVersion);
+        if (version.isPresent()) {
+          break;
+        }
+        attempt++;
+        Utils.sleep(retryStoreRefreshIntervalInMs);
+      }
+      if (!version.isPresent()) {
+        logger.warn(String.format("Version %d still does not exist in store %s after refreshing. Skip subscription.",
+                storeVersion, storeName));
+        return false;
+      }
+      return version.get().isLeaderFollowerModelEnabled();
+    }
+
     return version
         .map(Version::isLeaderFollowerModelEnabled)
         .orElse(false);
@@ -207,7 +236,7 @@ public class PartitionStatusOnlineInstanceFinder
       OfflinePushStatus status = getPushStatusFromZk(pushStatusName);
       if (status != null) {
         topicToResourceStatus.put(pushStatusName, status);
-        if (isLFModelEnabledForStoreVersion(pushStatusName)) {
+        if (isLFModelEnabledForStoreVersion(pushStatusName, true)) {
           offlinePushAccessor.subscribePartitionStatusChange(status, this);
         }
       }
@@ -216,7 +245,7 @@ public class PartitionStatusOnlineInstanceFinder
     deletedPushStatusList.forEach(pushStatusName -> {
       int partitionCount = topicToResourceStatus.get(pushStatusName).getNumberOfPartition();
       topicToResourceStatus.remove(pushStatusName);
-      if (isLFModelEnabledForStoreVersion(pushStatusName)) {
+      if (isLFModelEnabledForStoreVersion(pushStatusName, false)) {
         offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatusName, partitionCount, this);
       }
     });
