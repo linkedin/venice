@@ -914,8 +914,13 @@ public class AdminTool {
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
 
     consumerProps.setProperty(BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
-    consumerProps.setProperty(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
-    consumerProps.setProperty(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
+    //This is a temporary fix for the issue described here
+    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
+    //In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
+    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
+    //Trying to avoid class loading via Kafka's ConfigDef class
+    consumerProps.put(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    consumerProps.put(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
 
     String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
@@ -930,8 +935,8 @@ public class AdminTool {
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
 
     consumerProps.setProperty(BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
-    consumerProps.setProperty(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
-    consumerProps.setProperty(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
+    consumerProps.put(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    consumerProps.put(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
 
     String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     // optional arguments

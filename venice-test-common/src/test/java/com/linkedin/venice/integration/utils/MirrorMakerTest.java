@@ -150,10 +150,8 @@ public class MirrorMakerTest {
      * TODO: Kafka is throttling based on client_id, need to investigate whether we should use Kafka throttling or not.
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, groupId);
-    kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-        KafkaKeySerializer.class.getName());
-    kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-        KafkaValueSerializer.class.getName());
+    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
     return kafkaConsumerProperties;
   }
 

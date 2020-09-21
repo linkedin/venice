@@ -855,8 +855,13 @@ public class TopicManager implements Closeable {
 
   private Properties getKafkaConsumerProps() {
     Properties props = new Properties();
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+    //This is a temporary fix for the issue described here
+    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
+    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
+    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
+    //Trying to avoid class loading via Kafka's ConfigDef class
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
     props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     return props;
