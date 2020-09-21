@@ -927,9 +927,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!Store.isValidStoreName(storeName)) {
             throw new VeniceException("Invalid store name " + storeName + ". Only letters, numbers, underscore or dash");
         }
+        AvroSchemaUtils.validateAvroSchemaStr(keySchema);
+        AvroSchemaUtils.validateAvroSchemaStr(valueSchema);
         checkControllerMastership(clusterName);
         checkStoreNameConflict(storeName, allowSystemStore);
-
         // Before creating store, check the global stores configs at first.
         // TODO As some store had already been created before we introduced global store config
         // TODO so we need a way to sync up the data. For example, while we loading all stores from ZK for a cluster,
@@ -2989,7 +2990,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId,
         DirectionalSchemaCompatibilityType compatibilityType) {
         checkControllerMastership(clusterName);
-        AvroSchemaUtils.validateAvroSchemaStr(valueSchemaStr);
         HelixReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
         int newValueSchemaId = schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr,
             compatibilityType);
@@ -3070,6 +3070,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName,
         String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+        AvroSchemaUtils.validateAvroSchemaStr(valueSchemaStr);
         checkControllerMastership(clusterName);
         return getVeniceHelixResource(clusterName).getSchemaRepository()
             .preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, expectedCompatibilityType);
