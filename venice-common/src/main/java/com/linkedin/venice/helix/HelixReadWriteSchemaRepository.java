@@ -254,7 +254,6 @@ import org.apache.log4j.Logger;
   @Override
   public SchemaEntry initKeySchema(String storeName, String schemaStr) {
     preCheckStoreCondition(storeName);
-    AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
     SchemaEntry keySchemaEntry = new SchemaEntry(Integer.parseInt(HelixSchemaAccessor.KEY_SCHEMA_ID), schemaStr);
     SchemaEntry existingKeySchema = getKeySchema(storeName);
 

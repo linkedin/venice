@@ -199,6 +199,7 @@ public class TestAvroSchemaUtils {
       AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
       Assert.fail("Default null should fail with int first union field");
     } catch (AvroIncompatibleSchemaException e) {
+      Assert.assertTrue(e.getMessage().equals("Field KeyRecord:experience has invalid default value. Expecting int, instead got null"));
     }
 
     schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\", \"default\": \"default_name\"},{\"name\":\"experience\",\"type\":[\"null\", \"int\", \"float\"], \"default\" : null},{\"name\":\"company\",\"type\":\"string\"}]}";
