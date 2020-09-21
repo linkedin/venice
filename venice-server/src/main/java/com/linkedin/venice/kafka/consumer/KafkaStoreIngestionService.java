@@ -687,12 +687,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     //This is a temporary fix for the issue described here
     //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
+    //In our case "com.linkedin.venice.serialization.KafkaKeySerializer" and
+    //"com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer" classes can not be found
     //because class loader has no venice-common in class path. This can be only reproduced on JDK11
     //Trying to avoid class loading via Kafka's ConfigDef class
-    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-        KafkaKeySerializer.class);
-    kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class.getName());
+    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
     kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG,
         String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
     kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MAX_BYTES_CONFIG,
