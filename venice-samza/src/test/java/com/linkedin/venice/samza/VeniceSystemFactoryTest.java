@@ -65,7 +65,7 @@ public class VeniceSystemFactoryTest {
         "    \"default\" : 100\n" + "  }, {\n" +
         "    \"name\" : \"string\",\n" +
         "    \"type\" : [ \"string\", \"null\" ],\n" +
-        "    \"default\" : 100\n" + "  }, {\n" +
+        "    \"default\" : \"100\"\n" + "  }, {\n" +
         "    \"name\" : \"intArray\",\n" +
         "    \"type\" : {\n" +
         "      \"type\" : \"array\",\n" +

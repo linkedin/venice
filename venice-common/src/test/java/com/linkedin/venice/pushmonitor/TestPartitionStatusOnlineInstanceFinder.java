@@ -5,8 +5,13 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.ReplicaState;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -77,6 +82,31 @@ public class TestPartitionStatusOnlineInstanceFinder {
     host1.updateStatus(ExecutionStatus.COMPLETED);
     onlineInstanceList = finder.getReadyToServeInstances(testTopic, testPartition);
     Assert.assertEquals(onlineInstanceList.size(), 2);
+  }
+
+  @Test
+  public void testSubscribePartitionStatusChange() {
+    PartitionStatusOnlineInstanceFinder finder = initFinder();
+
+    String storeName = "testStore";
+    String topic = "testStore_v1";
+    OfflinePushStatus offlinePushStatus = new OfflinePushStatus(topic, partitionCount, 2,
+            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
+            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    store.setLeaderFollowerModelEnabled(true);
+    Version version = new Version(storeName, 1, "pushJobId");
+    version.setLeaderFollowerModelEnabled(true);
+    Store refreshedStore = store.cloneStore();
+    refreshedStore.addVersion(version);
+
+    Mockito.doReturn(offlinePushStatus).when(offlinePushAccessor).getOfflinePushStatusAndItsPartitionStatuses(topic);
+    Mockito.doReturn(store).when(metaDataRepo).getStore(storeName);
+    Mockito.doReturn(refreshedStore).when(metaDataRepo).refreshOneStore(storeName);
+
+    finder.handleChildChange("/cluster/OfflinePushes", Arrays.asList(topic));
+    Mockito.verify(offlinePushAccessor).subscribePartitionStatusChange(offlinePushStatus, finder);
   }
 
   private PartitionStatusOnlineInstanceFinder initFinder() {
