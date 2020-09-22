@@ -12,7 +12,6 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -35,7 +34,6 @@ import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.TopicAuthorizationException;
@@ -378,13 +376,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     LeaderMetadata leaderMetadata = new LeaderMetadata();
     leaderMetadata.upstreamOffset = upstreamOffset;
     leaderMetadata.hostName = writerId;
-    kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
+
+    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
+      kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
+      return kafkaMessageEnvelope;
+    };
 
     if (callback instanceof ChunkAwareCallback) {
       ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
     }
 
-    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelope, upstreamPartition, callback, false);
+    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
   }
 
   @Override
@@ -474,6 +476,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
+   * This function might need synchronized locking. It might be possible that segments are ended while another thread is
+   * broadcasting EOP. However, we could not trigger this scenario using tests.
+   * This issue could surface when we support fully auto stream reprocessing in future. Users would call
+   * broadcastEndOfPush inside their Samza processors which can have multiple threads.
+   *
+   *
+   * Here is an example without synchronization:
+   * - Thread A: broadcastControlMessage execution completes.
+   * - Thread B: is in the middle of executing broadcastControlMessage
+   * - Thread A: begins endAllSegments
+   * - Segments that Thread B was writing to have now been ended. Thus causing the consumer to see messages not inside segments.
+   *
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
   public void broadcastEndOfPush(Map<String, String> debugInfo) {
@@ -549,17 +563,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload,
       int partition, Callback callback, boolean updateDIV, long upstreamOffset) {
-    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(messageType, partition, updateDIV, upstreamOffset);
-    kafkaValue.payloadUnion = payload;
-    return sendMessage(keyProvider, kafkaValue, partition, callback, updateDIV);
-  }
-
-  /**
-   * An interface which enables the key to contain parts of the {@param producerMetadata} within it, which is
-   * useful for control messages and chunked values.
-   */
-  private interface KeyProvider {
-    KafkaKey getKey(ProducerMetadata producerMetadata);
+    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
+      KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(messageType, partition, updateDIV, upstreamOffset);
+      kafkaValue.payloadUnion = payload;
+      return kafkaValue;
+    };
+    return sendMessage(keyProvider, kafkaMessageEnvelopeProvider, partition, callback, updateDIV);
   }
 
   /**
@@ -588,10 +597,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   private synchronized Future<RecordMetadata> sendMessage(
       KeyProvider keyProvider,
-      KafkaMessageEnvelope kafkaValue,
+      KafkaMessageEnvelopeProvider valueProvider,
       int partition,
       Callback callback,
       boolean updateDIV) {
+    KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
     KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
     if (updateDIV) {
       segmentsMap.get(partition).addToCheckSum(key, kafkaValue);
@@ -615,6 +625,22 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         throw e;
       }
     }
+  }
+
+  /**
+   * An interface which enables the key to contain parts of the {@param producerMetadata} within it, which is
+   * useful for control messages and chunked values.
+   */
+  private interface KeyProvider {
+    KafkaKey getKey(ProducerMetadata producerMetadata);
+  }
+
+  /**
+   * An interface which enables the value to have ordered segment numbers and sequence numbers, which is mandatory for
+   * DIV checks.
+   */
+  private interface KafkaMessageEnvelopeProvider {
+    KafkaMessageEnvelope getKafkaMessageEnvelope();
   }
 
   /**
