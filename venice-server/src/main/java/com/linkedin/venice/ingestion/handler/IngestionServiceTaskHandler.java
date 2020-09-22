@@ -55,7 +55,6 @@ import static com.linkedin.venice.ingestion.IngestionUtils.*;
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionServiceTaskHandler.class);
   private final IngestionService ingestionService;
-  private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new HashMap<>();
 
   public IngestionServiceTaskHandler(IngestionService ingestionService) {
     super();
@@ -200,23 +199,19 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
       switch (IngestionCommandType.valueOf(ingestionTaskCommand.commandType)) {
         case START_CONSUMPTION:
-          /**
-           * TODO: The ingestion logic is only being tested when ingestion isolation is not turned on in Da Vinci.
-           * During this stage, if ingestion isolation is turned on, we simply return 200(SUCCESS).
-           */
-          if (ingestionService.getConfigLoader().getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.NO_OP)) {
-            // Subscribe to the store in store repository.
-            String storeName = Version.parseStoreFromKafkaTopicName(topicName);
-            ingestionService.getStoreRepository().subscribe(storeName);
-            Set<Integer> activePartitions = topicNameToPartitionSetMap.getOrDefault(topicName, new HashSet<>());
-            activePartitions.add(partitionId);
-            topicNameToPartitionSetMap.put(topicName, activePartitions);
-            storageService.openStoreForNewPartition(storeConfig, partitionId);
-            storeIngestionService.startConsumption(storeConfig, partitionId, false);
-          } else {
-            // At this stage, we don't consume the task, but instead report back directly.
-            ingestionListener.completed(topicName, partitionId, 0);
+          // TODO: Decide whether to move this check to initialization phase.
+          IngestionIsolationMode isolationMode = ingestionService.getConfigLoader().getVeniceServerConfig().getIngestionIsolationMode();
+          if (isolationMode.equals(IngestionIsolationMode.NO_OP)) {
+            throw new VeniceException("Ingestion Isolation Mode is set as NO_OP(not enabled).");
           }
+
+          // Subscribe to the store in store repository.
+          String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+          // Ingestion Service needs store repository to subscribe to the store.
+          ingestionService.getStoreRepository().subscribe(storeName);
+          ingestionService.addIngestionPartition(topicName, partitionId);
+          storageService.openStoreForNewPartition(storeConfig, partitionId);
+          storeIngestionService.startConsumption(storeConfig, partitionId, false);
           break;
         case STOP_CONSUMPTION:
           storeIngestionService.stopConsumption(storeConfig, partitionId);
@@ -268,36 +263,9 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset) {
       logger.info("Ingestion finished for topic: " + kafkaTopic + " partition id: " + partitionId + " offset: " + offset);
-      // TODO: This part is subject to change when integrating with Da Vinci.
-      if (ingestionService.getConfigLoader().getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.NO_OP)) {
-        VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(kafkaTopic);
-        ingestionService.getStoreIngestionService().stopConsumption(storeConfig, partitionId);
-        ingestionService.getStorageService().getStorageEngineRepository().getLocalStorageEngine(kafkaTopic).closePartition(partitionId);
-        Set<Integer> activePartitions = topicNameToPartitionSetMap.getOrDefault(kafkaTopic, new HashSet<>());
-        activePartitions.remove(partitionId);
-        topicNameToPartitionSetMap.put(kafkaTopic, activePartitions);
-        if (activePartitions.isEmpty()) {
-          ingestionService.getStorageService().getStorageEngineRepository().getLocalStorageEngine(kafkaTopic).close();
-          logger.info("All partitions have done consumption for topic " + kafkaTopic + ", closing storage engine now.");
-        }
-      }
-      // Send ingestion status change report to report listener.
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.isComplete = true;
-      report.isEndOfPushReceived = true;
-      report.isError = false;
-      report.errorMessage = "";
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
-      byte[] serializedReport = serializeIngestionTaskReport(report);
-      IngestionRequestClient reportClient = ingestionService.getReportClient();
-      try {
-        logger.info("Sending report: " + report.toString());
-        reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));
-      } catch (Exception e) {
-        logger.warn("Failed to send report to application with exception: " + e.getMessage());
-      }
+      VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(kafkaTopic);
+      ingestionService.getStoreIngestionService().stopConsumption(storeConfig, partitionId);
+      ingestionService.removeIngestionPartition(kafkaTopic, partitionId, offset);
     }
   };
 }

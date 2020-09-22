@@ -1,6 +1,5 @@
 package com.linkedin.venice.ingestion;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.channel.IngestionReportChannelInitializer;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -11,7 +10,6 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import java.util.Arrays;
 import org.apache.log4j.Logger;
 
 /**
@@ -24,7 +22,7 @@ public class IngestionReportListener extends AbstractVeniceService {
   private final EventLoopGroup workerGroup;
   private ChannelFuture serverFuture;
   private final int applicationPort;
-  private VeniceNotifier ingestionListener = null;
+  private VeniceNotifier ingestionNotifier = null;
 
   //TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
@@ -45,6 +43,11 @@ public class IngestionReportListener extends AbstractVeniceService {
             .childOption(ChannelOption.TCP_NODELAY, true);
   }
 
+  public IngestionReportListener(int applicationPort, VeniceNotifier ingestionNotifier) {
+    this(applicationPort);
+    setIngestionNotifier(ingestionNotifier);
+  }
+
   @Override
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(applicationPort).sync();
@@ -61,11 +64,11 @@ public class IngestionReportListener extends AbstractVeniceService {
     shutdown.sync();
   }
 
-  public void setIngestionListener(VeniceNotifier ingestionListener) {
-    this.ingestionListener = ingestionListener;
+  public void setIngestionNotifier(VeniceNotifier ingestionListener) {
+    this.ingestionNotifier = ingestionListener;
   }
 
-  public VeniceNotifier getIngestionListener() {
-    return ingestionListener;
+  public VeniceNotifier getIngestionNotifier() {
+    return ingestionNotifier;
   }
 }
