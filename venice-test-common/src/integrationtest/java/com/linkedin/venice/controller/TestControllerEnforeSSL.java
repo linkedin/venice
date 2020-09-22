@@ -11,6 +11,8 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
+
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -22,51 +24,51 @@ public class TestControllerEnforeSSL {
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VALUE_SCHEMA = "\"string\"";
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 60 * Time.MS_PER_SECOND, invocationCount = 100)
   public void testInsecureRouteFailWhenEnforcingSSL() {
-    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-    Properties extraProperties = new Properties();
     /**
      * Once controller enforce SSL, all routes except cluster/master controller discovery in insecure port will fail.
      */
+    Properties extraProperties = new Properties();
     extraProperties.setProperty(CONTROLLER_ENFORCE_SSL, "true");
-    VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(new String[]{CLUSTER_NAME}, kafkaBrokerWrapper,
-        1, 10, 0, 1, null, null, false, false, extraProperties);
 
-    /**
-     * Add a test store through backend API directly without going though Controller listener service ({@link com.linkedin.venice.controller.server.AdminSparkServer}).
-     */
-    Admin admin = controllerWrapper.getVeniceAdmin();
-    String storeName = TestUtils.getUniqueString("test");
-    admin.addStore(CLUSTER_NAME, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
+    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
+             new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1,
+             null, null, false, false, extraProperties);
+         ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl())) {
+      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> controllerWrapper.isMasterController(CLUSTER_NAME));
 
-    /**
-     * Build a ControllerClient with the insecure controller url.
-     */
-    ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl());
+      /**
+       * Add a test store through backend API directly without going though Controller listener service ({@link com.linkedin.venice.controller.server.AdminSparkServer}).
+       */
+      Admin admin = controllerWrapper.getVeniceAdmin();
+      String storeName = TestUtils.getUniqueString("test");
+      admin.addStore(CLUSTER_NAME, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
 
-    /**
-     * Master controller discovery should still work.
-     */
-    try {
-      controllerClient.getMasterControllerUrl();
-    } catch (Exception e) {
-      Assert.fail("Master controller discover should still work after enforcing SSL.");
+      /**
+       * Master controller discovery should still work.
+       */
+      try {
+        controllerClient.getMasterControllerUrl();
+      } catch (Exception e) {
+        Assert.fail("Master controller discover should still work after enforcing SSL.");
+      }
+
+      /**
+       * All other routes like getStore, updateStore, etc. should fail.
+       */
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertEquals(storeResponse.isError(), true);
+      ControllerResponse updateResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(100));
+      Assert.assertEquals(updateResponse.isError(), true);
+
+      /**
+       * Cluster discovery should still work; explicitly put the test after getStore and updateStore to confirm that
+       * Controller listener service doesn't crash if it "halts" some requests.
+       */
+      D2ServiceDiscoveryResponse clusterDiscovery = controllerClient.discoverCluster(storeName);
+      Assert.assertEquals(clusterDiscovery.getCluster(), CLUSTER_NAME);
     }
-
-    /**
-     * All other routes like getStore, updateStore, etc. should fail.
-     */
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.isError(), true);
-    ControllerResponse updateResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(100));
-    Assert.assertEquals(updateResponse.isError(), true);
-
-    /**
-     * Cluster discovery should still work; explicitly put the test after getStore and updateStore to confirm that
-     * Controller listener service doesn't crash if it "halts" some requests.
-     */
-    D2ServiceDiscoveryResponse clusterDiscovery = controllerClient.discoverCluster(storeName);
-    Assert.assertEquals(clusterDiscovery.getCluster(), CLUSTER_NAME);
   }
 }
