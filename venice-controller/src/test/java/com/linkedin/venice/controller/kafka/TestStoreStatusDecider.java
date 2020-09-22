@@ -1,11 +1,9 @@
 package com.linkedin.venice.controller.kafka;
 
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
@@ -16,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -25,6 +24,11 @@ public class TestStoreStatusDecider {
   private ResourceAssignment resourceAssignment;
   private PushMonitor mockPushMonitor = Mockito.mock(PushMonitor.class);
   private int replicationFactor = 3;
+
+  @BeforeClass
+  public void resetReplicationFactor() {
+    Store.setDefaultReplicationFactor(replicationFactor);
+  }
 
   @BeforeMethod
   public void setup() {
