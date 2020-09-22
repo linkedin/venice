@@ -27,6 +27,7 @@ public class PartitionHealthStatsTest {
     ReadOnlyStoreRepository mockStoreRepo = Mockito.mock(ReadOnlyStoreRepository.class);
     Store mockStore = Mockito.mock(Store.class);
     Mockito.doReturn(VersionStatus.ONLINE).when(mockStore).getVersionStatus(Mockito.anyInt());
+    Mockito.doReturn(replicationFactor).when(mockStore).getReplicationFactor();
     Mockito.doReturn(mockStore).when(mockStoreRepo).getStore(Mockito.anyString());
 
     MockPartitionHealthStats stats = new MockPartitionHealthStats(mockStoreRepo);
