@@ -31,10 +31,10 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
     IngestionTaskReport report = deserializeIngestionTaskReport(readHttpRequestContent(msg));
     logger.info("Received ingestion task report " + report + " from ingestion service.");
 
-    // Notify the parent ingestion service's listener.
-    if (ingestionReportListener.getIngestionListener() != null) {
+    // Relay the notification to parent service's listener.
+    if (ingestionReportListener.getIngestionNotifier() != null) {
       if (report.isComplete) {
-        ingestionReportListener.getIngestionListener().completed(report.topicName.toString(), report.partitionId, report.offset);
+        ingestionReportListener.getIngestionNotifier().completed(report.topicName.toString(), report.partitionId, report.offset);
       }
     }
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, "OK!"));
@@ -46,6 +46,5 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage()));
     ctx.close();
   }
-
 }
 

@@ -174,8 +174,13 @@ public class VersionBackend {
   }
 
   private synchronized CompletableFuture subscribeSubPartition(int subPartition) {
-    // For now we only add a dummy call to isolated ingestion service. The logic will be changed in next stage.
-    if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+    /**
+     * When storage engine is null, it means it is the first time for ingestion and it should be proceed on child process.
+     * When child process has done ingestion, storage engine here will be set, and for future subscribe request, it will
+     * always be proceed in parent process due to the limitation of metadata partition.
+     */
+    if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD) && (storageEngine.get() == null)) {
+      // Send ingestion request to ingestion service.
       IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
       ingestionTaskCommand.commandType = IngestionCommandType.START_CONSUMPTION.getValue();
       ingestionTaskCommand.topicName = version.kafkaTopicName();
@@ -194,9 +199,11 @@ public class VersionBackend {
         logger.info("Received exception in start consumption: " + e);
         throw new VeniceException(e.getMessage());
       }
+    } else {
+      // Create partition in storage engine for ingestion.
+      storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
+      backend.getIngestionService().startConsumption(config, subPartition, false);
     }
-    storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
-    backend.getIngestionService().startConsumption(config, subPartition, false);
     return subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture());
   }
 
@@ -210,6 +217,16 @@ public class VersionBackend {
 
   synchronized void completeSubPartition(int subPartition) {
     subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).complete(null);
+  }
+
+  synchronized void completeSubPartitionByIsolatedIngestionService(int subPartition) {
+    logger.warn("Topic" + version.kafkaTopicName() + "Partition " + subPartition + " completed by ingestion isolation service.");
+    // Re-open the storage engine partition in backend.
+    storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
+    // For hybrid store, the consumption task should be re-started on Da Vinci side to receive future nearline update.
+    backend.getIngestionService().startConsumption(config, subPartition, false);
+    // Complete the corresponding partition future.
+    completeSubPartition(subPartition);
   }
 
   private void makeSureSubPartitionIsNotConsuming(int subPartition) throws InterruptedException {

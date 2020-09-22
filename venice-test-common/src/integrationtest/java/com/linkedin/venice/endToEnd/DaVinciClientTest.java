@@ -1,6 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
-import com.linkedin.davinci.client.StorageClass;
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.RemoteReadPolicy;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -21,23 +26,7 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.RemoteReadPolicy;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.apache.samza.system.SystemProducer;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
-
 import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
@@ -47,6 +36,12 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.samza.system.SystemProducer;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 import org.testng.internal.thread.ThreadTimeoutException;
 
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
@@ -81,7 +76,6 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
             .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-            .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD.toString())
             .build();
 
     D2Client d2Client = new D2ClientBuilder()
@@ -159,6 +153,67 @@ public class DaVinciClientTest {
       client2.unsubscribeAll();
       client3.unsubscribeAll();
       assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDaVinciWithIngestionIsolation() throws Exception {
+    final int partition = 1;
+    final int partitionCount = 2;
+    String storeName = TestUtils.getUniqueString("store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+            params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
+                    .setPartitionCount(partitionCount)
+                    .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+                    .setPartitionerParams(
+                            Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
+                    );
+    setupHybridStore(storeName, paramsConsumer);
+
+    D2Client d2Client = new D2ClientBuilder()
+            .setZkHosts(cluster.getZk().getAddress())
+            .setZkSessionTimeout(3, TimeUnit.SECONDS)
+            .setZkStartupTimeout(3, TimeUnit.SECONDS)
+            .build();
+    D2ClientUtils.startClient(d2Client);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+
+    VeniceProperties backendConfig = new PropertyBuilder()
+            .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
+            .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD)
+            .build();
+
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+         DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
+
+      // subscribe to a partition without data
+      int emptyPartition = (partition + 1) % partitionCount;
+      client.subscribe(Collections.singleton(emptyPartition)).get();
+      Utils.sleep(1000);
+      for (int i = 0; i < KEY_COUNT; i++) {
+        final int key = i;
+        assertThrows(VeniceException.class, () -> client.get(key).get());
+      }
+      client.unsubscribe(Collections.singleton(emptyPartition));
+
+      // subscribe to a partition with data
+      client.subscribe(Collections.singleton(partition)).get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Set<Integer> keySet = new HashSet<>();
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          assertEquals(client.get(i).get(), i);
+          keySet.add(i);
+        }
+
+        Map<Integer, Integer> valueMap = client.batchGet(keySet).get();
+        assertNotNull(valueMap);
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          assertEquals(valueMap.get(i), i);
+        }
+      });
     }
   }
 

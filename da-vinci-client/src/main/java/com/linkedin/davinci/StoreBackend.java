@@ -155,6 +155,7 @@ public class StoreBackend {
   // May be called several times even after version was swapped
   private synchronized void trySwapCurrentVersion() {
     if (futureVersion != null && futureVersion.isReadyToServe(subscription)) {
+      logger.info(futureVersion.getVersion().kafkaTopicName() + " is ready to use with partitions: " + subscription.toString());
       setCurrentVersion(futureVersion);
       futureVersion = null;
       trySubscribeFutureVersion();

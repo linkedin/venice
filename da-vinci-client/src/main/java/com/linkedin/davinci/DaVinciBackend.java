@@ -76,6 +76,7 @@ public class DaVinciBackend implements Closeable {
 
   private IngestionRequestClient ingestionRequestClient;
   private IngestionReportListener ingestionReportListener;
+  private VeniceNotifier isolatedIngestionListener;
   private Process isolatedIngestionService;
 
   public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, boolean useSystemStoreBasedRepository) {
@@ -138,7 +139,18 @@ public class DaVinciBackend implements Closeable {
         // Wait for server in forked child process to bind the listening port.
         waitPortBinding(ingestionServicePort, 3000);
 
-        ingestionReportListener = new IngestionReportListener(ingestionListenerPort);
+        // Isolated ingestion listener handles status report from isolated ingestion service.
+        isolatedIngestionListener = new VeniceNotifier() {
+          @Override
+          public void completed(String kafkaTopic, int partitionId, long offset) {
+            VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+            if (versionBackend != null) {
+              versionBackend.completeSubPartitionByIsolatedIngestionService(partitionId);
+            }
+          }
+        };
+
+        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, isolatedIngestionListener);
         ingestionReportListener.startInner();
 
         InitializationConfigs initializationConfigs = new InitializationConfigs();
@@ -153,6 +165,7 @@ public class DaVinciBackend implements Closeable {
           String stringMessage = message.readCharSequence(message.readableBytes(), Charsets.UTF_8).toString();
           throw new VeniceException("Isolated ingestion service initialization failed: " + stringMessage);
         }
+
         logger.info("Isolated ingestion service initialization finished.");
       } catch (Exception e) {
         throw new VeniceException("Exception caught during initialization of ingestion service.", e);
@@ -181,7 +194,7 @@ public class DaVinciBackend implements Closeable {
         Thread.currentThread().interrupt();
       }
       Version version = getLatestVersion(storeName).orElse(null);
-      if (version == null || version.kafkaTopicName().equals(kafkaTopicName) == false) {
+      if (version == null || !version.kafkaTopicName().equals(kafkaTopicName)) {
         logger.info("Deleting obsolete local version " + kafkaTopicName);
         // If the version is not the latest, it should be removed.
         storageService.removeStorageEngine(kafkaTopicName);
@@ -318,4 +331,6 @@ public class DaVinciBackend implements Closeable {
       }
     }
   };
+
+
 }

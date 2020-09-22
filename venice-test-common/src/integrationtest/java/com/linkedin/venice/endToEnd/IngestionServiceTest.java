@@ -110,17 +110,12 @@ public class IngestionServiceTest {
   @Test
   public void testTopicIngestion() throws Exception {
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
-    InitializationConfigs initializationConfigs = createInitializationConfigs(baseDataPath);
-    sendInitializationMessage(serializeInitializationConfigs(initializationConfigs));
-    sendStartConsumptionMessage(testStoreName, 1, 0);
-    // Wait till ingestion finished.
-    Thread.sleep(2000);
 
     // Use Da Vinci bootstrap to test.
-    long memoryLimit = 1024 * 1024 * 1024; // 1GB
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD)
         .build();
 
     D2Client d2Client = new D2ClientBuilder()
@@ -135,6 +130,7 @@ public class IngestionServiceTest {
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(testStoreName, daVinciConfig);
+      client1.subscribeAll().get();
       assertEquals(client1.get(0).get(), 1);
       Utils.sleep(1000);
     }
