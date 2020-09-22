@@ -1197,9 +1197,15 @@ public class VeniceParentHelixAdmin implements Admin {
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
-      setStore.owner = owner.isPresent() ? owner.get() : store.getOwner();
-      if (partitionCount.isPresent() && store.isHybrid()){
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores");
+      setStore.owner = owner.orElseGet(store::getOwner);
+      // Invalid config update on hybrid will not be populated to admin channel so subsequent updates on the store won't be blocked by retry mechanism.
+      if (store.isHybrid()) {
+        if (partitionCount.isPresent()){
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores");
+        }
+        if (amplificationFactor.isPresent() || partitionerClass.isPresent() || partitionerParams.isPresent()) {
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partitioner config for hybrid stores");
+        }
       }
 
       if (partitionCount.isPresent()) {
@@ -1228,27 +1234,29 @@ public class VeniceParentHelixAdmin implements Admin {
       if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !isLeaderFollowerModelEnabled)  {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for a store which is not leader follower enabled");
       }
-      setStore.nativeReplicationEnabled = nativeReplicationEnabled.isPresent() ? nativeReplicationEnabled.get() : store.isNativeReplicationEnabled();
-      setStore.pushStreamSourceAddress = pushStreamSourceAddress.isPresent() ? pushStreamSourceAddress.get() : store.getPushStreamSourceAddress();
-      /**
-       * Prepare the PartitionerConfigRecord object for admin message queue. Only update fields that are set, other fields
-       * will be read from the original store.
-       */
-      PartitionerConfigRecord partitionerConfigRecord = new PartitionerConfigRecord();
-      partitionerConfigRecord.partitionerClass = partitionerClass.isPresent() ?  partitionerClass.get() : store.getPartitionerConfig().getPartitionerClass();
-      Map<String, String> ssPartitionerParamsMap = partitionerParams.isPresent() ? partitionerParams.get() : store.getPartitionerConfig().getPartitionerParams();
-      partitionerConfigRecord.partitionerParams = Utils.getCharSequenceMapFromStringMap(ssPartitionerParamsMap);
-      partitionerConfigRecord.amplificationFactor = amplificationFactor.isPresent() ? amplificationFactor.get() : store.getPartitionerConfig().getAmplificationFactor();
-      setStore.partitionerConfig = partitionerConfigRecord;
+      setStore.nativeReplicationEnabled = nativeReplicationEnabled.orElseGet(store::isNativeReplicationEnabled);
+      setStore.pushStreamSourceAddress = pushStreamSourceAddress.orElseGet(store::getPushStreamSourceAddress);
+      if (!(partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent())) {
+        setStore.partitionerConfig = null;
+      } else {
+        // Only update fields that are set, other fields will be read from the original store.
+        PartitionerConfigRecord partitionerConfigRecord = new PartitionerConfigRecord();
+        partitionerConfigRecord.partitionerClass = partitionerClass.orElseGet(() -> store.getPartitionerConfig().getPartitionerClass());
+        Map<String, String> ssPartitionerParamsMap = partitionerParams.orElseGet(() -> store.getPartitionerConfig().getPartitionerParams());
+        partitionerConfigRecord.partitionerParams = Utils.getCharSequenceMapFromStringMap(ssPartitionerParamsMap);
+        partitionerConfigRecord.amplificationFactor = amplificationFactor.orElseGet(() -> store.getPartitionerConfig().getAmplificationFactor());
+        setStore.partitionerConfig = partitionerConfigRecord;
+      }
 
-      setStore.enableReads = readability.isPresent() ? readability.get() : store.isEnableReads();
-      setStore.enableWrites = writeability.isPresent() ? writeability.get() : store.isEnableWrites();
 
-      setStore.readQuotaInCU = readQuotaInCU.isPresent() ? readQuotaInCU.get() : store.getReadQuotaInCU();
+      setStore.enableReads = readability.orElseGet(store::isEnableReads);
+      setStore.enableWrites = writeability.orElseGet(store::isEnableWrites);
+
+      setStore.readQuotaInCU = readQuotaInCU.orElseGet(store::getReadQuotaInCU);
       //We need to to be careful when handling currentVersion.
       //Since it is not synced between parent and local controller,
       //It is very likely to override local values unintentionally.
-      setStore.currentVersion = currentVersion.isPresent()?currentVersion.get(): AdminConsumptionTask.IGNORED_CURRENT_VERSION;
+      setStore.currentVersion = currentVersion.orElseGet(() -> AdminConsumptionTask.IGNORED_CURRENT_VERSION);
 
       boolean oldStoreHybrid = store.isHybrid();
 
@@ -1296,22 +1304,18 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
 
-      setStore.accessControlled = accessControlled.isPresent() ? accessControlled.get() : store.isAccessControlled();
-      setStore.compressionStrategy = compressionStrategy.isPresent()
-          ? compressionStrategy.get().getValue() : store.getCompressionStrategy().getValue();
-      setStore.clientDecompressionEnabled =  clientDecompressionEnabled.orElseGet(() -> store.getClientDecompressionEnabled());
-      setStore.chunkingEnabled = chunkingEnabled.isPresent() ? chunkingEnabled.get() : store.isChunkingEnabled();
-      setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
-      setStore.numVersionsToPreserve =
-          numVersionsToPreserve.isPresent() ? numVersionsToPreserve.get() : store.getNumVersionsToPreserve();
-      setStore.incrementalPushEnabled =
-          incrementalPushEnabled.isPresent() ? incrementalPushEnabled.get() : store.isIncrementalPushEnabled();
-      setStore.isMigrating = storeMigration.isPresent() ? storeMigration.get() : store.isMigrating();
-      setStore.writeComputationEnabled = writeComputationEnabled.isPresent() ? writeComputationEnabled.get() : store.isWriteComputationEnabled();
-      setStore.readComputationEnabled = readComputationEnabled.isPresent() ? readComputationEnabled.get() : store.isReadComputationEnabled();
-      setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours.isPresent() ?
-          bootstrapToOnlineTimeoutInHours.get() : store.getBootstrapToOnlineTimeoutInHours();
-      setStore.leaderFollowerModelEnabled = leaderFollowerModelEnabled.isPresent() ? leaderFollowerModelEnabled.get() : store.isLeaderFollowerModelEnabled();
+      setStore.accessControlled = accessControlled.orElseGet(store::isAccessControlled);
+      setStore.compressionStrategy = compressionStrategy.map(CompressionStrategy::getValue).orElseGet(() -> store.getCompressionStrategy().getValue());
+      setStore.clientDecompressionEnabled =  clientDecompressionEnabled.orElseGet(store::getClientDecompressionEnabled);
+      setStore.chunkingEnabled = chunkingEnabled.orElseGet(store::isChunkingEnabled);
+      setStore.batchGetLimit = batchGetLimit.orElseGet(store::getBatchGetLimit);
+      setStore.numVersionsToPreserve = numVersionsToPreserve.orElseGet(store::getNumVersionsToPreserve);
+      setStore.incrementalPushEnabled = incrementalPushEnabled.orElseGet(store::isIncrementalPushEnabled);
+      setStore.isMigrating = storeMigration.orElseGet(store::isMigrating);
+      setStore.writeComputationEnabled = writeComputationEnabled.orElseGet(store::isWriteComputationEnabled);
+      setStore.readComputationEnabled = readComputationEnabled.orElseGet(store::isReadComputationEnabled);
+      setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours.orElseGet(store::getBootstrapToOnlineTimeoutInHours);
+      setStore.leaderFollowerModelEnabled = leaderFollowerModelEnabled.orElseGet(store::isLeaderFollowerModelEnabled);
       setStore.backupStrategy = (backupStrategy.orElse(store.getBackupStrategy())).ordinal();
 
       setStore.schemaAutoRegisterFromPushJobEnabled = autoSchemaRegisterPushJobEnabled.orElse(store.isSchemaAutoRegisterFromPushJobEnabled());
@@ -1320,11 +1324,11 @@ public class VeniceParentHelixAdmin implements Admin {
 
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(store, regularVersionETLEnabled, futureVersionETLEnabled, etledUserProxyAccount);
 
-      setStore.largestUsedVersionNumber = largestUsedVersionNumber.isPresent() ? largestUsedVersionNumber.get() : store.getLargestUsedVersionNumber();
+      setStore.largestUsedVersionNumber = largestUsedVersionNumber.orElseGet(store::getLargestUsedVersionNumber);
 
       setStore.incrementalPushPolicy = incrementalPushPolicy.map(IncrementalPushPolicy::getValue).orElseGet(() -> store.getIncrementalPushPolicy().getValue());
-      setStore.backupVersionRetentionMs = backupVersionRetentionMs.isPresent() ? backupVersionRetentionMs.get() : store.getBackupVersionRetentionMs();
-      setStore.replicationFactor = replicationFactor.isPresent() ? replicationFactor.get() : store.getReplicationFactor();
+      setStore.backupVersionRetentionMs = backupVersionRetentionMs.orElseGet(store::getBackupVersionRetentionMs);
+      setStore.replicationFactor = replicationFactor.orElseGet(store::getReplicationFactor);
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
