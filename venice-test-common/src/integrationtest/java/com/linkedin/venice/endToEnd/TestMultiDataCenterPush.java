@@ -15,6 +15,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -25,6 +26,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
@@ -248,6 +250,36 @@ public class TestMultiDataCenterPush {
     } else {
       Assert.assertTrue(response.isError(), "Empty push to child colo should be blocked");
     }
+  }
+
+  @Test
+  public void testHybridConfigPartitionerConfigConflict() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = TestUtils.getUniqueString("store");
+    String parentControllerUrl = parentControllers.get(0).getControllerUrl();
+
+    // Create store first
+    ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl);
+    controllerClient.createNewStore(storeName, "test_owner", "\"int\"", "\"int\"");
+
+    // Make store from batch -> hybrid
+    ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(259200).setHybridOffsetLagThreshold(1000));
+    Assert.assertFalse(response.isError(), "There is error in setting hybrid config");
+
+    // Try to update partitioner config on hybrid store, expect to fail.
+    response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionerClass("testClassName"));
+    Assert.assertTrue(response.isError(), "There should be error in setting partitioner config in hybrid store");
+
+    // Try to make store back to non-hybrid store.
+    response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1));
+    Assert.assertFalse(response.isError(), "There is error in setting hybrid config");
+
+    // Make sure store is not hybrid.
+    Assert.assertNull(controllerClient.getStore(storeName).getStore().getHybridStoreConfig());
+
+    // Try to upate partitioner config on batch store, it should succeed now.
+    response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionerClass("testClassName"));
+    Assert.assertFalse(response.isError(), "There is error in setting partitioner config in non-hybrid store");
   }
 
   @Test(timeOut = TEST_TIMEOUT)
