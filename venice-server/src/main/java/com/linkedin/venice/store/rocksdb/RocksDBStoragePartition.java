@@ -70,7 +70,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   private final WriteOptions writeOptions;
 
-
   private int lastFinishedSSTFileNo = -1;
   private int currentSSTFileNo = 0;
   private SstFileWriter currentSSTFileWriter;
@@ -112,6 +111,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
+
 
   public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
@@ -402,6 +402,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       throw new VeniceException("Cannot make writes while partition is opened in read-only mode" +
                                     ", partition=" + storeName + "_" + partitionId);
     }
+
     /**
      * The reason to create a new byte array to contain the value is that the overhead to create/release
      * {@link Slice} and {@link org.rocksdb.DirectSlice} is high since the creation/release are JNI operation.
@@ -444,14 +445,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public byte[] get(ByteBuffer keyBuffer) {
-    /**
-     * The reason to create a new byte array to contain the key is that the overhead to create/release
-     * {@link Slice} and {@link org.rocksdb.DirectSlice} is high since the creation/release are JNI operation.
-     *
-     * In the future, if {@link RocksDB#get} supports byte array with offset/length, then we don't need
-     * to create a byte array copy here.
-     */
-    return get(ByteUtils.extractByteArray(keyBuffer));
+    try {
+      return rocksDB.get(keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+    }
   }
 
   @Override
@@ -640,6 +638,9 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       currentSSTFileWriter.close();
     }
     options.close();
+    if (null != writeOptions) {
+      writeOptions.close();
+    }
     LOGGER.info("RocksDB for store: " + storeName + ", partition: " + partitionId + " was closed");
   }
 
