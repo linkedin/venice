@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.routerapi.ReplicaState;
@@ -131,8 +132,17 @@ public abstract class HelixBaseRoutingRepository
 
   public abstract List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 
+  /**
+   * This function is mainly used in VeniceVersionFinder#anyOfflinePartitions() when there is no online replica for
+   * a specific partition and it calls this function to get the partition assignment info for error msg. It's valid
+   * case that there is no partition assignment for a specific partition and we return EMPTY_MAP.
+   *
+   * If the expectation for this function is more than just logging error message, we should invoke
+   * {@link RoutingDataRepository#refreshRoutingDataForResource(String)} to get a fresh partition assignment.
+   */
   public Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
-    return getPartitionAssignments(kafkaTopic).getPartition(partitionId).getAllInstances();
+    Partition partition = getPartitionAssignments(kafkaTopic).getPartition(partitionId);
+    return partition != null ? partition.getAllInstances() : Collections.EMPTY_MAP;
   }
 
   @Override
