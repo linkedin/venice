@@ -903,7 +903,7 @@ public class VeniceParentHelixAdmin implements Admin {
             "Could not query store from colo: " + colo + " for cluster: " + clusterName + ". " + response.getError());
         result.put(colo, String.valueOf(AdminConsumptionTask.IGNORED_CURRENT_VERSION));
       } else {
-        result.put(colo,response.getStoreStatusMap().get(clusterName));
+        result.put(colo,response.getStoreStatusMap().get(storeName));
       }
     }
     return result;
