@@ -8,12 +8,10 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
@@ -34,7 +32,6 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
-import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
@@ -45,7 +42,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
@@ -67,12 +63,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.avro.io.DatumWriter;
-import org.apache.avro.io.EncoderFactory;
-import org.apache.avro.io.JsonEncoder;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
-import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -556,7 +548,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         this.pushStartTime = System.currentTimeMillis();
         this.pushId = pushStartTime + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
         // Create new store version, topic and fetch Kafka url from backend
-        versionTopicInfo = createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props, dict);
+        createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props, dict);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
         // Update and send push job details with new info
         pushJobDetails.pushId = pushId;
@@ -1066,8 +1058,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   /**
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
-  private VersionTopicInfo createNewStoreVersion(PushJobSetting setting, long inputFileDataSize, ControllerClient controllerClient, String pushId, VeniceProperties props, ByteBuffer compressionDictionary) {
-    VersionTopicInfo versionTopicInfo = new VersionTopicInfo();
+  private void createNewStoreVersion(PushJobSetting setting, long inputFileDataSize, ControllerClient controllerClient, String pushId, VeniceProperties props, ByteBuffer compressionDictionary) {
     Version.PushType pushType = setting.isIncrementalPush ?
         Version.PushType.INCREMENTAL : Version.PushType.BATCH;
     boolean askControllerToSendControlMessage = !pushJobSetting.sendControlMessagesDirectly;
@@ -1094,6 +1085,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     //If WriteCompute is enabled, request for intermediate topic
     final boolean finalWriteComputeEnabled = writeComputeEnabled;
+    versionTopicInfo = new VersionTopicInfo();
     VersionCreationResponse versionCreationResponse = controllerClient.retryableRequest(setting.controllerRetries,
           c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
               askControllerToSendControlMessage, sorted, finalWriteComputeEnabled, partitioners, dictionary));
@@ -1116,7 +1108,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     versionTopicInfo.partitionerClass = versionCreationResponse.getPartitionerClass();
     versionTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
     versionTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
-    return versionTopicInfo;
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
@@ -1523,7 +1514,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   @Override
   public void cancel() {
     stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
-    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
+    if (versionTopicInfo != null && Utils.isNullOrEmpty(versionTopicInfo.topic)) {
+      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
+    } else {
+      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
+    }
     pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
     updatePushJobDetailsWithConfigs();
     sendPushJobDetails();
@@ -1539,9 +1534,21 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
       logger.info("Received exception while killing map-reduce job", ex);
     }
-    if (! Utils.isNullOrEmpty(versionTopicInfo.topic) && !pushJobSetting.isIncrementalPush) {
-      controllerClient.retryableRequest(pushJobSetting.controllerRetries, c -> c.killOfflinePushJob(versionTopicInfo.topic));
-      logger.info("Offline push job has been killed, topic: " + versionTopicInfo.topic);
+    if (!pushJobSetting.isIncrementalPush && versionTopicInfo != null) {
+      int current = 0, retryLimit = 10;
+      while (current < retryLimit) {
+        if (!Utils.isNullOrEmpty(versionTopicInfo.topic)) {
+          break;
+        }
+        Utils.sleep(10 * Time.MS_PER_SECOND);
+        current++;
+      }
+      if (Utils.isNullOrEmpty(versionTopicInfo.topic)) {
+        logger.error("Could not find a store version to delete for store: " + pushJobSetting.storeName);
+      } else {
+        controllerClient.retryableRequest(pushJobSetting.controllerRetries, c -> c.killOfflinePushJob(versionTopicInfo.topic));
+        logger.info("Offline push job has been killed, topic: " + versionTopicInfo.topic);
+      }
     }
     close();
   }
