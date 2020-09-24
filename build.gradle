@@ -95,9 +95,6 @@ ext.libraries = [ // Groovy map literal
                   // Samza dependencies
                   samzaApi: 'com.linkedin.samza-li:samza-api:207.13.2.31', //equivalent to org.apache.samza 0.13
 
-                  // off-heap cache
-                  ohcCoreJ8: 'org.caffinitas.ohc:ohc-core-j8:0.6.1',
-
                   // Added during dds-storage-core v2 => v3
                   // Transitive dependency, to replace implicit version 11.0.17 which caused 4 test cases to fail:
                   // 1. TestAdminSparkServer.controllerClientCanDeleteStore

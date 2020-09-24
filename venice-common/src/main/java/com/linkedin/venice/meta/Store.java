@@ -156,16 +156,6 @@ public class Store {
   private boolean chunkingEnabled = false;
 
   /**
-   * Whether cache in Router is enabled for current store.
-   */
-  private boolean singleGetRouterCacheEnabled = false;
-
-  /**
-   * Whether cache in Router is enabled for batch get in the current store.
-   */
-  private boolean batchGetRouterCacheEnabled = false;
-
-  /**
    * Batch get key number limit, and Venice will use cluster-level config if it is not positive.
    */
   private int batchGetLimit = -1;
@@ -507,20 +497,6 @@ public class Store {
 
   public void setChunkingEnabled(boolean chunkingEnabled) {
     this.chunkingEnabled = chunkingEnabled;
-  }
-
-  public boolean isSingleGetRouterCacheEnabled() {
-    return singleGetRouterCacheEnabled;
-  }
-
-  public void setSingleGetRouterCacheEnabled(boolean singleGetRouterCacheEnabled) {
-    this.singleGetRouterCacheEnabled = singleGetRouterCacheEnabled;
-  }
-
-  public boolean isBatchGetRouterCacheEnabled() { return batchGetRouterCacheEnabled; }
-
-  public void setBatchGetRouterCacheEnabled(boolean batchGetRouterCacheEnabled) {
-    this.batchGetRouterCacheEnabled = batchGetRouterCacheEnabled;
   }
 
   public int getBatchGetLimit() {
@@ -965,8 +941,6 @@ public class Store {
     result = 31 * result + (compressionStrategy.hashCode());
     result = 31 * result + (clientDecompressionEnabled ? 1 : 0);
     result = 31 * result + (chunkingEnabled ? 1 : 0);
-    result = 31 * result + (singleGetRouterCacheEnabled ? 1 : 0);
-    result = 31 * result + (batchGetRouterCacheEnabled ? 1 : 0);
     result = 31 * result + batchGetLimit;
     result = 31 * result + numVersionsToPreserve;
     result = 31 * result + (incrementalPushEnabled ? 1 : 0);
@@ -1016,8 +990,6 @@ public class Store {
     if (compressionStrategy != store.compressionStrategy) return false;
     if (clientDecompressionEnabled != store.clientDecompressionEnabled) return false;
     if (chunkingEnabled != store.chunkingEnabled) return false;
-    if (singleGetRouterCacheEnabled != store.singleGetRouterCacheEnabled) return false;
-    if (batchGetRouterCacheEnabled != store.batchGetRouterCacheEnabled) return false;
     if (batchGetLimit != store.batchGetLimit) return false;
     if (numVersionsToPreserve != store.numVersionsToPreserve) return false;
     if (incrementalPushEnabled != store.incrementalPushEnabled) return false;
@@ -1066,8 +1038,6 @@ public class Store {
     clonedStore.setCompressionStrategy(compressionStrategy);
     clonedStore.setClientDecompressionEnabled(clientDecompressionEnabled);
     clonedStore.setChunkingEnabled(chunkingEnabled);
-    clonedStore.setSingleGetRouterCacheEnabled(singleGetRouterCacheEnabled);
-    clonedStore.setBatchGetRouterCacheEnabled(batchGetRouterCacheEnabled);
     clonedStore.setBatchGetLimit(batchGetLimit);
     clonedStore.setNumVersionsToPreserve(numVersionsToPreserve);
     clonedStore.setIncrementalPushEnabled(incrementalPushEnabled);

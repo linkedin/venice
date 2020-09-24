@@ -62,8 +62,6 @@ import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
-
-//TODO: merge TestRead and TestRouterCache.
 @Test(singleThreaded = true)
 public abstract class TestRead {
   private static final int MAX_KEY_LIMIT = 20;
@@ -150,7 +148,6 @@ public abstract class TestRead {
   private void updateStore(long readQuota, int maxKeyLimit) {
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
             .setReadQuotaInCU(readQuota)
-            .setSingleGetRouterCacheEnabled(true)
             .setReadComputationEnabled(true)
             .setBatchGetLimit(maxKeyLimit));
   }

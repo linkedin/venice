@@ -2289,23 +2289,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public synchronized  void setSingleGetRouterCacheEnabled(String clusterName, String storeName,
-        boolean singleGetRouterCacheEnabled) {
-        storeMetadataUpdate(clusterName, storeName, store -> {
-            store.setSingleGetRouterCacheEnabled(singleGetRouterCacheEnabled);
-
-            return store;
-        });
-    }
-
-    public synchronized void setBatchGetRouterCacheEnabled(String clusterName, String storeName,
-        boolean batchGetRouterCacheEnabled) {
-        storeMetadataUpdate(clusterName, storeName, store -> {
-            store.setBatchGetRouterCacheEnabled(batchGetRouterCacheEnabled);
-            return store;
-        });
-    }
-
     public synchronized  void setBatchGetLimit(String clusterName, String storeName,
         int batchGetLimit) {
         storeMetadataUpdate(clusterName, storeName, store -> {
@@ -2419,41 +2402,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
-     * or a compressed store will have router-cache enabled.
-     *
-     * For now, router cache shouldn't be enabled for a hybrid store.
-     * TODO: need to remove this check when the proper fix (cross-colo race condition) is implemented.
-     *
-     * Right now, this function doesn't check whether the hybrid/incremental push config and router-cache flag will be updated at the same time:
-     * 1. Current store originally is a hybrid/incremental push store;
-     * 2. The update operation will turn this store to be a batch-only store, and enable router-cache at the same time;
-     * The reason not to check the above scenario is that the hybrid config/router-cache update is not atomic, so admin should
-     * update the store to be batch-only store first and turn on the router-cache feature after.
-     *
-     * BTW, it seems no way to update a hybrid store to be a batch-only store.
-     *
-     * @param store
-     * @param newIncrementalPushConfig
-     * @param newHybridStoreConfig
-     * @param newSingleGetRouterCacheEnabled
-     * @param newBatchGetRouterCacheEnabled
-     */
-    protected void checkWhetherStoreWillHaveConflictConfigForCaching(Store store,
-        Optional<Boolean> newIncrementalPushConfig,
-        Optional<HybridStoreConfig> newHybridStoreConfig,
-        Optional<Boolean> newSingleGetRouterCacheEnabled,
-        Optional<Boolean> newBatchGetRouterCacheEnabled) {
-        String storeName = store.getName();
-        if ((store.isHybrid() || store.isIncrementalPushEnabled()) && (newSingleGetRouterCacheEnabled.orElse(false) || newBatchGetRouterCacheEnabled.orElse(false))) {
-            throw new VeniceException("Router cache couldn't be enabled for store: " + storeName + " since it is a hybrid/incremental push store");
-        }
-        if ((store.isSingleGetRouterCacheEnabled() || store.isBatchGetRouterCacheEnabled()) && (newHybridStoreConfig.isPresent() || newIncrementalPushConfig.orElse(false))) {
-            throw new VeniceException("Hybrid/incremental push couldn't be enabled for store: " + storeName + " since it enables router-cache");
-        }
-    }
-
-    /**
      * This function will check whether the store update will cause the case that a store can not have the specified
      * hybrid store and incremental push configs.
      *
@@ -2526,8 +2474,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
         Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
         Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
-        Optional<Boolean> singleGetRouterCacheEnabled = params.getSingleGetRouterCacheEnabled();
-        Optional<Boolean> batchGetRouterCacheEnabled = params.getBatchGetRouterCacheEnabled();
         Optional<Integer> batchGetLimit = params.getBatchGetLimit();
         Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
         Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -2556,8 +2502,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             hybridStoreConfig = Optional.empty();
         }
-
-        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, incrementalPushEnabled, hybridStoreConfig, singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
 
         checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(originalStore, incrementalPushEnabled, incrementalPushPolicy, hybridStoreConfig);
 
@@ -2634,15 +2578,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     return store;
                 });
             }
-
-            if (singleGetRouterCacheEnabled.isPresent()) {
-                setSingleGetRouterCacheEnabled(clusterName, storeName, singleGetRouterCacheEnabled.get());
-            }
-
-            if (batchGetRouterCacheEnabled.isPresent()) {
-              setBatchGetRouterCacheEnabled(clusterName, storeName, batchGetRouterCacheEnabled.get());
-            }
-
             if (accessControlled.isPresent()) {
                 setAccessControl(clusterName, storeName, accessControlled.get());
             }

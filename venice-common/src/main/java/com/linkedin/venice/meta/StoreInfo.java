@@ -31,8 +31,6 @@ public class StoreInfo {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
-    storeInfo.setSingleGetRouterCacheEnabled(store.isSingleGetRouterCacheEnabled());
-    storeInfo.setBatchGetRouterCacheEnabled(store.isBatchGetRouterCacheEnabled());
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     storeInfo.setCompressionStrategy(store.getCompressionStrategy());

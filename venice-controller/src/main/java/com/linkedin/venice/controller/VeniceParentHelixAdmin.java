@@ -1173,8 +1173,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
       Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
-      Optional<Boolean> singleGetRouterCacheEnabled = params.getSingleGetRouterCacheEnabled();
-      Optional<Boolean> batchGetRouterCacheEnabled = params.getBatchGetRouterCacheEnabled();
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -1303,16 +1301,6 @@ public class VeniceParentHelixAdmin implements Admin {
           ? compressionStrategy.get().getValue() : store.getCompressionStrategy().getValue();
       setStore.clientDecompressionEnabled =  clientDecompressionEnabled.orElseGet(() -> store.getClientDecompressionEnabled());
       setStore.chunkingEnabled = chunkingEnabled.isPresent() ? chunkingEnabled.get() : store.isChunkingEnabled();
-      setStore.singleGetRouterCacheEnabled = singleGetRouterCacheEnabled.isPresent() ? singleGetRouterCacheEnabled.get() : store.isSingleGetRouterCacheEnabled();
-      setStore.batchGetRouterCacheEnabled =
-          batchGetRouterCacheEnabled.isPresent() ? batchGetRouterCacheEnabled.get() : store.isBatchGetRouterCacheEnabled();
-
-      veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForCaching(store, incrementalPushEnabled,
-          null == hybridStoreConfig ? Optional.empty() : Optional.of(hybridStoreConfig),
-          singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
-      veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(store, incrementalPushEnabled,
-          incrementalPushPolicy, Optional.ofNullable(hybridStoreConfig));
-
       setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
       setStore.numVersionsToPreserve =
           numVersionsToPreserve.isPresent() ? numVersionsToPreserve.get() : store.getNumVersionsToPreserve();

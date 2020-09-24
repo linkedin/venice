@@ -166,7 +166,8 @@ public class MetadataStoreWriter {
     storeProperties.accessControlled = store.isAccessControlled();
     storeProperties.backupStrategy = store.getBackupStrategy().toString();
     storeProperties.batchGetLimit = store.getBatchGetLimit();
-    storeProperties.batchGetRouterCacheEnabled = store.isBatchGetRouterCacheEnabled();
+    // TODO: Evolve the system store schema and remove this config
+    storeProperties.batchGetRouterCacheEnabled = false;
     storeProperties.bootstrapToOnlineTimeoutInHours = store.getBootstrapToOnlineTimeoutInHours();
     storeProperties.chunkingEnabled = store.isChunkingEnabled();
     storeProperties.clientDecompressionEnabled = store.getClientDecompressionEnabled();
@@ -212,7 +213,8 @@ public class MetadataStoreWriter {
     storeProperties.readStrategy = store.getReadStrategy().toString();
     storeProperties.routingStrategy = store.getRoutingStrategy().toString();
     storeProperties.schemaAutoRegisterFromPushJobEnabled = store.isSchemaAutoRegisterFromPushJobEnabled();
-    storeProperties.singleGetRouterCacheEnabled = store.isSingleGetRouterCacheEnabled();
+    //TODO: Evolve the system store schema to remove this
+    storeProperties.singleGetRouterCacheEnabled = false;
     storeProperties.storageQuotaInByte = store.getStorageQuotaInByte();
     storeProperties.systemStore = store.isSystemStore();
     storeProperties.nativeReplicationEnabled = store.isNativeReplicationEnabled();
