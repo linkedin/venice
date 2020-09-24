@@ -159,7 +159,7 @@ public class TestVeniceDispatcher {
     } else {
       storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo, mockLiveInstanceMonitor);
     }
-    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo, Optional.empty(),
+    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo,
         mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats, mock(AggHostHealthStats.class));
     dispatcher.initReadRequestThrottler(mock(ReadRequestThrottler.class));
     return dispatcher;

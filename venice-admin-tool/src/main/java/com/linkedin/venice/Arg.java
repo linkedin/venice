@@ -51,8 +51,6 @@ public enum Arg {
   CHUNKING_ENABLED("chunking-enabled", "ce", true, "Enable/Disable value chunking, mostly for large value store support"),
   INCREMENTAL_PUSH_ENABLED("incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"),
   INCREMENTAL_PUSH_POLICY("incremental-push-policy", "ipp", true, "policy used to determine the semantics of incremental pushes"),
-  SINGLE_GET_ROUTER_CACHE_ENABLED("single-get-router-cache-enabled", "srce", true, "Enable/Disable single get cache in Router"),
-  BATCH_GET_ROUTER_CACHE_ENABLED("batch-get-router-cache-enabled", "brce", true, "Enable/Disable batch get cache in Router"),
   BATCH_GET_LIMIT("batch-get-limit", "bgl", true, "Key number limit inside one batch-get request"),
   NUM_VERSIONS_TO_PRESERVE("num-versions-to-preserve", "nvp", true, "Number of version that store should preserve."),
   KAFKA_BOOTSTRAP_SERVERS("kafka-bootstrap-servers", "kbs", true, "Kafka bootstrap server URL(s)"),

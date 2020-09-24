@@ -195,16 +195,6 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
     return getStoreOrThrow(storeName).isReadComputationEnabled();
   }
 
-  @Override
-  public boolean isSingleGetRouterCacheEnabled(String storeName) {
-    return getStoreOrThrow(storeName).isSingleGetRouterCacheEnabled();
-  }
-
-  @Override
-  public boolean isBatchGetRouterCacheEnabled(String storeName) {
-    return getStoreOrThrow(storeName).isBatchGetRouterCacheEnabled();
-  }
-
   /**
    * This function is used to retrieve key schema for the given store.
    * If key schema for the given store doesn't exist, will return null;
@@ -478,7 +468,6 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
     store.setVersions(getVersionsFromCurrentVersionStates(storeProperties.name.toString(), currentVersionStates));
     store.setBackupStrategy(BackupStrategy.valueOf(storeProperties.backupStrategy.toString()));
     store.setBatchGetLimit(storeProperties.batchGetLimit);
-    store.setBatchGetRouterCacheEnabled(storeProperties.batchGetRouterCacheEnabled);
     store.setBootstrapToOnlineTimeoutInHours(storeProperties.bootstrapToOnlineTimeoutInHours);
     store.setChunkingEnabled(storeProperties.chunkingEnabled);
     store.setClientDecompressionEnabled(storeProperties.clientDecompressionEnabled);
@@ -506,7 +495,6 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
     store.setReadComputationEnabled(storeProperties.readComputationEnabled);
     store.setReadQuotaInCU(storeProperties.readQuotaInCU);
     store.setSchemaAutoRegisterFromPushJobEnabled(storeProperties.schemaAutoRegisterFromPushJobEnabled);
-    store.setSingleGetRouterCacheEnabled(storeProperties.singleGetRouterCacheEnabled);
     store.setStoreMetadataSystemStoreEnabled(true);
     store.setStorageQuotaInByte(storeProperties.storageQuotaInByte);
     store.setWriteComputationEnabled(storeProperties.writeComputationEnabled);

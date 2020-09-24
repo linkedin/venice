@@ -68,8 +68,6 @@ public class RouterRequestThrottlingTest {
 
     storeRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(false).when(storeRepository).isReadComputationEnabled(storeName);
-    doReturn(false).when(storeRepository).isSingleGetRouterCacheEnabled(storeName);
-    doReturn(false).when(storeRepository).isBatchGetRouterCacheEnabled(storeName);
     doReturn(store).when(storeRepository).getStore(storeName);
     doReturn(Arrays.asList(new Store[]{store})).when(storeRepository).getAllStores();
     doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
@@ -87,7 +85,6 @@ public class RouterRequestThrottlingTest {
   @Test (timeOut = 30000, groups = {"flaky"})
   public void testSingleGetThrottling() throws Exception {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
-    doReturn(1.0d).when(routerConfig).getCacheHitRequestThrottleWeight();
     doReturn(Long.MAX_VALUE).when(routerConfig).getMaxPendingRequest();
 
     VeniceHostHealth healthMonitor = mock(VeniceHostHealth.class);
@@ -95,7 +92,7 @@ public class RouterRequestThrottlingTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     StorageNodeClient storageNodeClient = mock(StorageNodeClient.class);
     RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository);
-    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, healthMonitor, storeRepository, Optional.empty(),
+    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, healthMonitor, storeRepository,
         mock(RouterStats.class), metricsRepository, storageNodeClient, routeHttpRequestStats, mock(AggHostHealthStats.class));
     // set the ReadRequestThrottler
     dispatcher.initReadRequestThrottler(throttler);

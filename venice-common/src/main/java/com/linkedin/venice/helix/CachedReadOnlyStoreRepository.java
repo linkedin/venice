@@ -101,16 +101,6 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   @Override
-  public boolean isSingleGetRouterCacheEnabled(String storeName) {
-    return getStoreOrThrow(storeName).isSingleGetRouterCacheEnabled();
-  }
-
-  @Override
-  public boolean isBatchGetRouterCacheEnabled(String storeName) {
-    return getStoreOrThrow(storeName).isBatchGetRouterCacheEnabled();
-  }
-
-  @Override
   public void refresh() {
     logger.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     updateLock.lock();

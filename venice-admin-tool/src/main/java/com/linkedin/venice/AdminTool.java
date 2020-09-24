@@ -651,8 +651,6 @@ public class AdminTool {
     genericParam(cmd, Arg.COMPRESSION_STRATEGY, s -> CompressionStrategy.valueOf(s), p -> params.setCompressionStrategy(p), argSet);
     booleanParam(cmd, Arg.CLIENT_DECOMPRESSION_ENABLED, p -> params.setClientDecompressionEnabled(p), argSet);
     booleanParam(cmd, Arg.CHUNKING_ENABLED, p -> params.setChunkingEnabled(p), argSet);
-    booleanParam(cmd, Arg.SINGLE_GET_ROUTER_CACHE_ENABLED, p -> params.setSingleGetRouterCacheEnabled(p), argSet);
-    booleanParam(cmd, Arg.BATCH_GET_ROUTER_CACHE_ENABLED, p -> params.setBatchGetRouterCacheEnabled(p), argSet);
     integerParam(cmd, Arg.BATCH_GET_LIMIT, p -> params.setBatchGetLimit(p), argSet);
     integerParam(cmd, Arg.NUM_VERSIONS_TO_PRESERVE, p -> params.setNumVersionsToPreserve(p), argSet);
     booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p), argSet);

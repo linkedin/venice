@@ -40,8 +40,6 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setReadQuotaInCU(srcStore.getReadQuotaInCU())
             .setAccessControlled(srcStore.isAccessControlled())
             .setChunkingEnabled(srcStore.isChunkingEnabled())
-            .setSingleGetRouterCacheEnabled(srcStore.isSingleGetRouterCacheEnabled())
-            .setBatchGetRouterCacheEnabled(srcStore.isBatchGetRouterCacheEnabled())
             .setBatchGetLimit(srcStore.getBatchGetLimit())
             .setOwner(srcStore.getOwner())
             .setCompressionStrategy(srcStore.getCompressionStrategy())
@@ -236,20 +234,6 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<Boolean> getIncrementalPushEnabled() {
     return getBoolean(INCREMENTAL_PUSH_ENABLED);
-  }
-
-  public UpdateStoreQueryParams setSingleGetRouterCacheEnabled(boolean singleGetRouterCacheEnabled) {
-    return putBoolean(SINGLE_GET_ROUTER_CACHE_ENABLED, singleGetRouterCacheEnabled);
-  }
-  public Optional<Boolean> getSingleGetRouterCacheEnabled() {
-    return getBoolean(SINGLE_GET_ROUTER_CACHE_ENABLED);
-  }
-
-  public UpdateStoreQueryParams setBatchGetRouterCacheEnabled(boolean batchGetRouterCacheEnabled) {
-    return putBoolean(BATCH_GET_ROUTER_CACHE_ENABLED, batchGetRouterCacheEnabled);
-  }
-  public Optional<Boolean> getBatchGetRouterCacheEnabled() {
-    return getBoolean(BATCH_GET_ROUTER_CACHE_ENABLED);
   }
 
   public UpdateStoreQueryParams setBatchGetLimit(int batchGetLimit) {

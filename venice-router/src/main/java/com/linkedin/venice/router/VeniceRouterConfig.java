@@ -51,14 +51,6 @@ public class VeniceRouterConfig {
   private double perStorageNodeReadQuotaBuffer;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
-  private boolean cacheEnabled;
-  private long cacheSizeBytes;
-  private int cacheConcurrency;
-  private CacheType cacheType;
-  private CacheEviction cacheEviction;
-  private int cacheHashTableSize;
-  private double cacheHitRequestThrottleWeight;
-  private long cacheTTLmillis;
   private int routerNettyGracefulShutdownPeriodSeconds;
   private boolean enforceSecureOnly;
   private boolean dnsCacheEnabled;
@@ -157,24 +149,6 @@ public class VeniceRouterConfig {
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
-    cacheEnabled = props.getBoolean(ROUTER_CACHE_ENABLED, false);
-    cacheSizeBytes = props.getSizeInBytes(ROUTER_CACHE_SIZE_IN_BYTES, 500 * 1024 * 1024l); // 500MB
-    cacheConcurrency = props.getInt(ROUTER_CACHE_CONCURRENCY, 16);
-    cacheType = CacheType.valueOf(props.getString(ROUTER_CACHE_TYPE, CacheType.OFF_HEAP_CACHE.name()));
-    cacheEviction = CacheEviction.valueOf(props.getString(ROUTER_CACHE_EVICTION, CacheEviction.W_TINY_LFU.name()));
-    cacheHashTableSize = props.getInt(ROUTER_CACHE_HASH_TABLE_SIZE, 1024 * 1024); // 1M
-    cacheTTLmillis = props.getLong(ROUTER_CACHE_TTL_MILLIS, 0); // Any non-positive number will disable the cache TTL
-    /**
-     * Make the default value for the throttle weight of cache hit request to be 1, which is same as the regular request.
-     * The reason behind this:
-     * 1. Easy to reason w/o cache on both customer and Venice side;
-     * 2. Hot key problem is still being alleviated since cache hit request is only being counted when calculating
-     * store-level quota, not storage-node level quota, which means the hot keys routing to the same router at most
-     * could use (total_quota / total_router_number);
-     *
-     * If it is not working well, we could adjust this config later on.
-     */
-    cacheHitRequestThrottleWeight = props.getDouble(ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT, 1);
     routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30s
     enforceSecureOnly = props.getBoolean(ENFORCE_SECURE_ROUTER, false);
 
@@ -354,22 +328,6 @@ public class VeniceRouterConfig {
     return refreshAttemptsForZkReconnect;
   }
 
-  public boolean isCacheEnabled() {
-    return cacheEnabled;
-  }
-
-  public long getCacheSizeBytes() {
-    return cacheSizeBytes;
-  }
-
-  public int getCacheConcurrency() {
-    return cacheConcurrency;
-  }
-
-  public double getCacheHitRequestThrottleWeight() {
-    return cacheHitRequestThrottleWeight;
-  }
-
   public int getRouterNettyGracefulShutdownPeriodSeconds() {
     return routerNettyGracefulShutdownPeriodSeconds;
   }
@@ -378,24 +336,8 @@ public class VeniceRouterConfig {
     return enforceSecureOnly;
   }
 
-  public CacheType getCacheType() {
-    return cacheType;
-  }
-
-  public CacheEviction getCacheEviction() {
-    return cacheEviction;
-  }
-
-  public int getCacheHashTableSize() {
-    return cacheHashTableSize;
-  }
-
   public TreeMap<Integer, Integer> getLongTailRetryForBatchGetThresholdMs() {
     return longTailRetryForBatchGetThresholdMs;
-  }
-
-  public long getCacheTTLmillis() {
-    return cacheTTLmillis;
   }
 
   public boolean isDnsCacheEnabled() {

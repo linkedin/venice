@@ -90,7 +90,6 @@ public class TestEarlyTermination {
   private void updateStore(long readQuota, int maxKeyLimit) {
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setReadQuotaInCU(readQuota)
-        .setSingleGetRouterCacheEnabled(true)
         .setReadComputationEnabled(true)
         .setBatchGetLimit(maxKeyLimit));
   }
