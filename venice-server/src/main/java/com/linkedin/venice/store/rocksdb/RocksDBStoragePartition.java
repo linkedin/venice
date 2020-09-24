@@ -375,9 +375,14 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void put(byte[] key, byte[] value) {
+    put(key, ByteBuffer.wrap(value));
+  }
+
+  @Override
+  public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
     if (readOnly) {
       throw new VeniceException("Cannot make writes while partition is opened in read-only mode" +
-                                    ", partition=" + storeName + "_" + partitionId);
+          ", partition=" + storeName + "_" + partitionId);
     }
     try {
       if (deferredWrite) {
@@ -385,33 +390,14 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
           throw new VeniceException("currentSSTFileWriter is null for store: " + storeName + ", partition id: "
               + partitionId + ", 'beginBatchWrite' should be invoked before any write");
         }
-        currentSSTFileWriter.put(key, value);
+        currentSSTFileWriter.put(key, ByteUtils.extractByteArray(valueBuffer));
         ++recordNumInCurrentSSTFile;
-
       } else {
-        rocksDB.put(writeOptions, key, value);
+        rocksDB.put(writeOptions, key, 0, key.length, valueBuffer.array(), valueBuffer.position(), valueBuffer.remaining());
       }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId, e);
     }
-  }
-
-  @Override
-  public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
-    if (readOnly) {
-      throw new VeniceException("Cannot make writes while partition is opened in read-only mode" +
-                                    ", partition=" + storeName + "_" + partitionId);
-    }
-
-    /**
-     * The reason to create a new byte array to contain the value is that the overhead to create/release
-     * {@link Slice} and {@link org.rocksdb.DirectSlice} is high since the creation/release are JNI operation.
-     *
-     * In the future, if {@link SstFileWriter#put} supports byte array with offset/length, then we don't need
-     * to create a byte array copy here.
-     * Same for {@link RocksDB#put}.
-     */
-    put(key, ByteUtils.extractByteArray(valueBuffer));
   }
 
   @Override
