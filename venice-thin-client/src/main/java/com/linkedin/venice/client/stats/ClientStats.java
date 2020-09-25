@@ -45,6 +45,7 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor streamingResponseTimeToReceive99PctRecord;
   private final Sensor appTimedOutRequestSensor;
   private final Sensor appTimedOutRequestResultRatioSensor;
+  private final Sensor clientFutureTimeoutSensor;
 
   public static ClientStats getClientStats(MetricsRepository metricsRepository, String storeName,
       RequestType requestType, ClientConfig clientConfig) {
@@ -140,6 +141,7 @@ public class ClientStats extends AbstractVeniceHttpStats {
     appTimedOutRequestSensor = registerSensor("app_timed_out_request", new OccurrenceRate());
     appTimedOutRequestResultRatioSensor = registerSensorWithDetailedPercentiles("app_timed_out_request_result_ratio",
         new Avg(), new Min(), new Max());
+    clientFutureTimeoutSensor = registerSensor("client_future_timeout", new Avg(), new Min(), new Max());
   }
 
   public void recordRequest() {
@@ -240,5 +242,9 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   public void recordAppTimedOutRequestResultRatio(double ratio) {
     appTimedOutRequestResultRatioSensor.record(ratio);
+  }
+
+  public void recordClientFutureTimeout(long clientFutureTimeout){
+    clientFutureTimeoutSensor.record(clientFutureTimeout);
   }
 }

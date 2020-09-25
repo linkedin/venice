@@ -27,10 +27,23 @@ public class AppTimeOutTrackingCompletableFutureTest {
     } catch (TimeoutException e) {
       // expected
       verify(mockStats).recordAppTimedOutRequest();
+      verify(mockStats).recordClientFutureTimeout(1);
       return;
     } catch (Exception e) {
       fail("Only TimeoutException is expected");
     }
+  }
+
+  @Test
+  public void testRecordTimeout() throws InterruptedException, TimeoutException, ExecutionException {
+    String testResult = "test";
+    CompletableFuture innerFuture = new CompletableFuture();
+    ClientStats mockStats = mock(ClientStats.class);
+    innerFuture.complete(testResult);
+    CompletableFuture trackingFuture = AppTimeOutTrackingCompletableFuture.track(innerFuture, mockStats);
+
+    trackingFuture.get(15, TimeUnit.MILLISECONDS);
+    verify(mockStats).recordClientFutureTimeout(15);
   }
 
   @Test
