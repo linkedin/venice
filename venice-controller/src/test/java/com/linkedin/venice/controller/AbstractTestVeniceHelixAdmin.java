@@ -37,6 +37,7 @@ class AbstractTestVeniceHelixAdmin {
   static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
   static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
   static final long TOTAL_TIMEOUT_FOR_SHORT_TEST = 10 * Time.MS_PER_SECOND;
+  static final int DEFAULT_REPLICA_COUNT = 1;
 
   static final String KEY_SCHEMA = "\"string\"";
   static final String VALUE_SCHEMA = "\"string\"";
@@ -207,7 +208,7 @@ class AbstractTestVeniceHelixAdmin {
     queryParams.setHybridRewindSeconds(TimeUnit.DAYS.toMillis(7));
     veniceAdmin.updateStore(clusterName, participantStoreName, queryParams);
     veniceAdmin.incrementVersionIdempotent(clusterName, participantStoreName, Version.guidBasedDummyPushId(),
-        participantStorePartitionCount, veniceAdmin.getReplicationFactor(clusterName, participantStoreName));
+        participantStorePartitionCount, DEFAULT_REPLICA_COUNT);
     TestUtils.waitForNonDeterministicAssertion(5000, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(veniceAdmin.getStore(clusterName, participantStoreName).getVersions().size(), 1));
     TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS,

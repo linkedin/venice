@@ -518,9 +518,9 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     MultiStoreStatusResponse storeResponse =
         parentControllerClient.getFutureVersions(cluster.getClusterName(), storeNames.get(0));
 
-    // Theres no version for this store and no future version coming, so we expect an entry with null
+    // Theres no version for this store and no future version coming, so we expect an entry with Store.NON_EXISTING_VERSION
     Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey("dc-0"));
-    Assert.assertNull(storeResponse.getStoreStatusMap().get("dc-0"));
+    Assert.assertEquals(storeResponse.getStoreStatusMap().get("dc-0"), String.valueOf(Store.NON_EXISTING_VERSION));
   }
 
   @Test(timeOut = TEST_TIMEOUT)
