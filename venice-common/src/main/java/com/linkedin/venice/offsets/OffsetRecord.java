@@ -101,11 +101,11 @@ public class OffsetRecord {
         .orElse(-1L);
   }
 
-  public long getProcessingTimeEpochMs() {
+  public long getLatestProducerProcessingTimeInMs() {
     return this.partitionState.lastUpdate;
   }
 
-  public void setProcessingTimeEpochMs(long updateTimeInMs) {
+  public void setLatestProducerProcessingTimeInMs(long updateTimeInMs) {
     this.partitionState.lastUpdate = updateTimeInMs;
   }
 
@@ -254,7 +254,7 @@ public class OffsetRecord {
     return "OffsetRecord{" +
         "offset=" + getOffset() +
         ", eventTimeEpochMs=" + getEventTimeEpochMs() +
-        ", processingTimeEpochMs=" + getProcessingTimeEpochMs() +
+        ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
         ", isEndOfPushReceived=" + isEndOfPushReceived() +
         ", databaseInfo=" + getDatabaseInfo() +
         '}';
