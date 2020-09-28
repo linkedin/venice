@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Test case for HelixCustomizedViewRepository and HelixHybridQuotaRepository.
+ * Test case for {@link HelixOfflinePushRepository} and {@link HelixHybridStoreQuotaRepository}
  */
 public class TestHelixCustomizedViewRepository {
   // Test behavior configuration
@@ -124,6 +124,7 @@ public class TestHelixCustomizedViewRepository {
     accessor1.updateReplicaStatus(resourceName, partitionId1, ExecutionStatus.COMPLETED);
 
     accessor0.updateHybridQuotaReplicaStatus(resourceName, partitionId0, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
+    accessor0.updateHybridQuotaReplicaStatus(resourceName, partitionId1, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     accessor1.updateHybridQuotaReplicaStatus(resourceName, partitionId1, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
     accessor1.updateHybridQuotaReplicaStatus(resourceName, partitionId2, HybridStoreQuotaStatus.QUOTA_VIOLATED);
 
