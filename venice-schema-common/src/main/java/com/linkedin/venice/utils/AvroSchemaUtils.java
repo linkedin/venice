@@ -54,6 +54,10 @@ public class AvroSchemaUtils {
    */
   public static void validateAvroSchemaStr(String str) {
     Schema schema = Schema.parse(str);
+    validateAvroSchemaStr(schema);
+  }
+
+  public static void validateAvroSchemaStr(Schema schema) {
     AvroSchemaVerifier.get().verifyCompatibility(schema, schema);
   }
 

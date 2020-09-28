@@ -156,11 +156,6 @@ public class SchemaReader implements Closeable {
     return fetchSingleSchema(requestPath, false);
   }
 
-  private SchemaEntry fetchValueSchema(int id) throws VeniceClientException {
-    String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName + "/" + id;
-    return fetchSingleSchema(requestPath, true);
-  }
-
   @Override
   public void close() {
     IOUtils.closeQuietly(storeClient);
@@ -239,8 +234,10 @@ public class SchemaReader implements Closeable {
       return writerSchema;
     }
     Schema alternativeWriterSchema = writerSchema;
+    Schema readerSchemaCopy = readerSchema.get();
+
+    AvroSchemaUtils.validateAvroSchemaStr(readerSchemaCopy);
     try {
-      Schema readerSchemaCopy = readerSchema.get();
       if (AvroSchemaUtils.schemaResolveHasErrors(writerSchema, readerSchemaCopy)) {
         logger.info("Schema error detected during preemptive schema check for store " + storeName + " with writer schema id "
             + schemaId + " Reader schema: " + readerSchemaCopy.toString() + " Writer schema: " + writerSchemaStr);
