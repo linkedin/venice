@@ -326,6 +326,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             return;
           }
 
+          /**
+           * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long
+           * time even though there are new messages in it, so it's possible that the old leader is still producing
+           * after waiting for 5 minutes; if it does happen, followers will detect upstream offset rewind by
+           * a different producer GUID.
+           */
           long lastTimestamp = getLastConsumedMessageTimestamp(kafkaVersionTopic, partition);
           if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
             /**
@@ -511,18 +517,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * is from the last message.
    */
   private long getLastConsumedMessageTimestamp(String topic, int partition) throws InterruptedException {
-    /**
-     * Drain all the messages from the leaderTopic/partition in order to update
-     * the latest consumed message timestamp.
-     */
-    storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
 
     /**
-     * {@link com.linkedin.venice.kafka.consumer.StoreBufferService.StoreBufferDrainer} would update
-     * the last consumed message timestamp for the corresponding partition.
+     * Ingestion thread would update the last consumed message timestamp for the corresponding partition.
      */
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
-    long lastConsumedMessageTimestamp = partitionConsumptionState.getOffsetRecord().getProcessingTimeEpochMs();
+    long lastConsumedMessageTimestamp = partitionConsumptionState.getLatestMessageConsumptionTimestampInMs();
 
     return lastConsumedMessageTimestamp;
   }

@@ -565,7 +565,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * If timestamp lag threshold is set to -1, offset lag threshold will be the only criterion for going online.
        */
       if (producerTimeLagThreshold > 0) {
-        long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(partitionConsumptionState.getLatestMessageProducerTimestampInMs());
+        long latestProducerTimestamp = partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
+        long producerTimestampLag = LatencyUtils.getElapsedTimeInMs(latestProducerTimestamp);
         if (offsetThreshold > 0) {
           /**
            * If both threshold configs are on, both both offset lag and time lag must be within thresholds before online.
@@ -577,8 +578,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         if (shouldLogLag) {
           logger.info(String.format("The latest producer timestamp is %d. Timestamp Lag: [%d] %s Threshold [%d]",
-              partitionConsumptionState.getLatestMessageProducerTimestampInMs(), producerTimestampLag,
-              (producerTimestampLag < producerTimeLagThreshold ? "<" : ">"), producerTimeLagThreshold));
+              latestProducerTimestamp, producerTimestampLag, (producerTimestampLag < producerTimeLagThreshold ? "<" : ">"),
+              producerTimeLagThreshold));
         }
       }
     }
@@ -621,6 +622,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       storeBufferService.putConsumerRecord(record, this); // blocking call
       elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
       totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
+      // Update the latest message consumption time
+      partitionConsumptionStateMap.get(record.partition()).setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
     }
 
     long quotaEnforcementStartTimeInNS = System.nanoTime();
@@ -1578,18 +1581,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (null == partitionConsumptionState) {
       logger.info("Topic " + kafkaVersionTopic + " Partition " + consumerRecord.partition() + " has been unsubscribed, will skip offset update");
     } else {
-      /**
-       * Record the time when server consumes the message;
-       * the message can come from version topic, real-time topic or grandfathering topic.
-       */
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-      offsetRecord.setProcessingTimeEpochMs(System.currentTimeMillis());
       /**
        * Only update the latest message timestamp when seeing data messages after EOP; the data messages after EOP
        * should come from real-time topics.
        */
       if (partitionConsumptionState.isEndOfPushReceived() && !kafkaKey.isControlMessage()) {
-        partitionConsumptionState.setLatestMessageProducerTimestampInMs(kafkaValue.producerMetadata.messageTimestamp);
+        offsetRecord.setLatestProducerProcessingTimeInMs(kafkaValue.producerMetadata.messageTimestamp);
       }
 
       if (offsetRecordTransformer.isPresent()) {

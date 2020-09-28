@@ -65,7 +65,7 @@ class PartitionConsumptionState {
 
   private Optional<CheckSum> expectedSSTFileChecksum;
 
-  private long latestMessageProducerTimestampInMs;
+  private long latestMessageConsumptionTimestampInMs;
 
   public void setSourceTopicMaxOffset(long sourceTopicMaxOffset) {
     this.sourceTopicMaxOffset = sourceTopicMaxOffset;
@@ -91,6 +91,11 @@ class PartitionConsumptionState {
     this.sourceTopicMaxOffset = -1;
     this.leaderState = LeaderFollowerStateType.STANDBY;
     this.expectedSSTFileChecksum = Optional.empty();
+    /**
+     * Initialize the latest consumption time with current time; otherwise, it's 0 by default
+     * and leader will be promoted immediately.
+     */
+    latestMessageConsumptionTimestampInMs = System.currentTimeMillis();
   }
 
   public int getPartition() {
@@ -283,11 +288,11 @@ class PartitionConsumptionState {
     return expectedSSTFileChecksum.get().getCheckSum();
   }
 
-  public long getLatestMessageProducerTimestampInMs() {
-    return latestMessageProducerTimestampInMs;
+  public long getLatestMessageConsumptionTimestampInMs() {
+    return latestMessageConsumptionTimestampInMs;
   }
 
-  public void setLatestMessageProducerTimestampInMs(long producerTimestampInMs) {
-    this.latestMessageProducerTimestampInMs = producerTimestampInMs;
+  public void setLatestMessageConsumptionTimestampInMs(long consumptionTimestampInMs) {
+    this.latestMessageConsumptionTimestampInMs = consumptionTimestampInMs;
   }
 }
