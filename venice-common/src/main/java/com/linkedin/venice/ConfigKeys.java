@@ -437,6 +437,13 @@ public class ConfigKeys {
    */
   public static final String SERVER_REMOTE_CONSUMER_CONFIG_PREFIX = "server.remote.consumer.config.prefix.";
 
+  /**
+   * Whether to enable to check the RocksDB storage type used to open the RocksDB storage engine and how it was built.
+   * Having different storage types (BlockBasedTable and PlainTable) in read ops and write ops may lead to corruption of
+   * RocksDB storage and crash of servers.
+   */
+  public static final String SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED = "server.rocksdb.storage.config.check.enabled";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

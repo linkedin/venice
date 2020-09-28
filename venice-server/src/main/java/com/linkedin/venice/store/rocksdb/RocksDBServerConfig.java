@@ -1,6 +1,7 @@
 package com.linkedin.venice.store.rocksdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import org.rocksdb.CompactionStyle;
@@ -236,7 +237,6 @@ public class RocksDBServerConfig {
 
   private final RocksDBComputeAccessMode serverStorageOperation;
 
-
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
     this.rocksDBUseDirectReads = props.getBoolean(ROCKSDB_OPTIONS_USE_DIRECT_READS,false);
@@ -325,6 +325,7 @@ public class RocksDBServerConfig {
       throw new VeniceException("Invalid operation type: " + rocksDBOperationType + ", available types: " + Arrays.toString(
           RocksDBComputeAccessMode.values()));
     }
+
   }
 
   public RocksDBComputeAccessMode getServerStorageOperation() {
