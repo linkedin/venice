@@ -5,6 +5,7 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.helix.HelixManager;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -15,6 +16,7 @@ import org.apache.helix.HelixManager;
 public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   static final String PARTITION_DELIMITER = "_";
   private boolean helixHybridStoreQuotaEnabled;
+  private static final Logger logger = Logger.getLogger(HelixPartitionStatusAccessor.class);
 
   public HelixPartitionStatusAccessor(HelixManager helixManager, String instanceId, boolean isHelixHybridStoreQuotaEnabled) {
     super(helixManager, instanceId);
@@ -37,13 +39,28 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
    * When a replica is gone from an instance due to partition movement or resource drop, we need to call this delete
    * function to explicitly delete the customized state for that replica. Otherwise, customized state will still stay there.
    * Usually this should happen during state transition.
+   *
+   * If the partition state is the last partition state in the resource znode, the znode will also be deleted.
    */
   public void deleteReplicaStatus(String topic, int partitionId) {
-    super.deleteReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic,
-        getPartitionNameFromId(topic, partitionId));
+    /**
+     * We don't want to do the two delete operations atomically; Even if one delete fails,
+     * the other delete operation should still continue.
+     */
+    try {
+      super.deleteReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic, getPartitionNameFromId(topic, partitionId));
+    } catch (NullPointerException e) {
+      logger.warn("The partition " + partitionId + " doesn't exist in resource " + topic +
+          " , cannot delete a non-existent partition state for " + HelixPartitionState.OFFLINE_PUSH.name());
+    }
     if (helixHybridStoreQuotaEnabled) {
-      super.deleteReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
-          getPartitionNameFromId(topic, partitionId));
+      try {
+        super.deleteReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA, topic,
+            getPartitionNameFromId(topic, partitionId));
+      } catch (NullPointerException e) {
+        logger.warn("The partition " + partitionId + " doesn't exist in resource " + topic +
+            " , cannot delete a non-existent partition state for " + HelixPartitionState.HYBRID_STORE_QUOTA.name());
+      }
     }
   }
 
