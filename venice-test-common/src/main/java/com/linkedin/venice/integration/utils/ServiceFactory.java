@@ -584,11 +584,16 @@ public class ServiceFactory {
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, String dataBasePath) {
+    return getGenericAvroDaVinciClient(storeName, cluster, dataBasePath, new DaVinciConfig());
+  }
+
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, String dataBasePath, DaVinciConfig daVinciConfig) {
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(ConfigKeys.DATA_BASE_PATH, dataBasePath)
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
         .build();
-    return getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig);
+    return getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig);
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, DaVinciConfig daVinciConfig, VeniceProperties backendConfig) {

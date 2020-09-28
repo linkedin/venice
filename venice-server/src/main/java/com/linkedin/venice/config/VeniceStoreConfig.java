@@ -3,8 +3,11 @@ package com.linkedin.venice.config;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
+
+import static com.linkedin.venice.store.rocksdb.RocksDBServerConfig.*;
 
 
 /**
@@ -21,12 +24,18 @@ public class VeniceStoreConfig extends VeniceServerConfig {
    */
   private Optional<PersistenceType> storePersistenceType = Optional.empty();
 
+  private final VeniceProperties persistStorageEngineConfigs;
   // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
 
   public VeniceStoreConfig(String storeName, VeniceProperties storeProperties)
     throws ConfigurationException {
     super(storeProperties);
     this.storeName = storeName;
+
+    // Stores all storage engine configs that are needed to be persisted to disk.
+    this.persistStorageEngineConfigs = new PropertyBuilder()
+        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled())
+        .build();
   }
 
   public VeniceStoreConfig(String storeName, VeniceProperties storeProperties,
@@ -77,5 +86,9 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     }
 
     this.storePersistenceType = Optional.of(storePersistenceType);
+  }
+
+  public VeniceProperties getPersistStorageEngineConfig() {
+    return persistStorageEngineConfigs;
   }
 }

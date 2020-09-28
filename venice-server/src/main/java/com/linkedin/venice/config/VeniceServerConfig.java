@@ -204,6 +204,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int ingestionServicePort;
   private final int ingestionApplicationPort;
   private final boolean databaseChecksumVerificationEnabled;
+  private final boolean rocksDbStorageEngineConfigCheckEnabled;
 
   private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
   private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
@@ -311,6 +312,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     kafkaConsumerConfigsForLocalConsumption = serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
     kafkaConsumerConfigsForRemoteConsumption = serverProperties.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
+    
+    rocksDbStorageEngineConfigCheckEnabled = serverProperties.getBoolean(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true);
   }
 
   public int getListenerPort() {
@@ -578,5 +581,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public VeniceProperties getKafkaConsumerConfigsForRemoteConsumption() {
     return kafkaConsumerConfigsForRemoteConsumption;
+  }
+
+  public boolean isRocksDbStorageEngineConfigCheckEnabled() {
+    return rocksDbStorageEngineConfigCheckEnabled;
   }
 }

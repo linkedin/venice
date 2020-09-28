@@ -5,6 +5,7 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.RemoteReadPolicy;
+import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -27,7 +28,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-
 import java.util.Properties;
 import java.io.File;
 import java.util.Collections;
@@ -370,9 +370,15 @@ public class DaVinciClientTest {
       });
     }
 
+    DaVinciConfig daVinciConfig = new DaVinciConfig().setStorageClass(StorageClass.DISK);
+    // Try to open the Da Vinci client with different storage class.
+    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
+      client.subscribeAll().get();
+    }
+
     // Create a new version, so that old local version is removed during bootstrap and the access will fail.
     cluster.createVersion(storeName, KEY_COUNT);
-    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
+    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath, daVinciConfig)) {
       assertThrows(VeniceException.class, () -> client.get(0).get());
     }
   }
