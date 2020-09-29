@@ -126,12 +126,26 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
             // We have attempted and gave up on this partition and declared that it's unrecoverable from reset, skip.
             continue;
           }
-          if (currentResetCount == errorPartitionAutoResetLimit || errorInstances.size() > 1) {
+          if (currentResetCount == errorPartitionAutoResetLimit) {
             // This partition is unrecoverable from reset either due to reset limit or too many error replicas.
             partitionResetCountMap.put(partition.getId(), errorPartitionAutoResetLimit + 1);
             errorPartitionStats.recordErrorPartitionUnrecoverableFromReset();
             logger.warn("Error partition unrecoverable from reset. Resource: " + resourceName + ", partition: "
                 + partition.getId() + ", reset count: " + currentResetCount);
+          } else if (errorInstances.size() > 1) {
+            // The following scenarios can occur:
+            // 1. Helix will trigger recovery re-balance in attempt to bring more replicas ONLINE.
+            // 2. The recovery re-balance was successful and we now have excess error replicas that should be reset.
+            //    e.g. 2 ERROR 3 ONLINE or 3 ERROR and 2 ONLINE for replication factor of 3 .
+            // 3. All replicas are in ERROR state and Helix has given up on this partition until manual intervention.
+            if (partition.getReadyToServeInstances().size() >= store.getReplicationFactor() - 1) {
+              // Only perform reset for scenario 2 since the error partition reset task is not responsible for 1 and 3.
+              partitionResetCountMap.put(partition.getId(), currentResetCount + 1);
+              for (Instance i : errorInstances) {
+                resetMap.computeIfAbsent(i.getNodeId(), k -> new ArrayList<>())
+                    .add(HelixUtils.getPartitionName(resourceName, partition.getId()));
+              }
+            }
           } else {
             // Perform more resets.
             partitionResetCountMap.put(partition.getId(), currentResetCount + 1);
