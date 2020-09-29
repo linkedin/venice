@@ -35,7 +35,9 @@ public class ErrorPartitionResetTaskTest {
   private final Instance[] instances = {
       new Instance("a", "a", 1),
       new Instance("b", "b", 2),
-      new Instance("c", "c", 3)};
+      new Instance("c", "c", 3),
+      new Instance("d", "d", 4),
+      new Instance("e", "e", 5)};
 
   private HelixAdminClient helixAdminClient;
   private CachedReadOnlyStoreRepository readOnlyStoreRepository;
@@ -57,8 +59,8 @@ public class ErrorPartitionResetTaskTest {
 
   @Test
   public void testErrorPartitionReset() {
-    // Setup a store where two of its partitions has exactly one error replica.
     String clusterName = TestUtils.getUniqueString("testCluster");
+    // Setup a store where two of its partitions has exactly one error replica.
     Store store = getStoreWithCurrentVersion();
     String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
     Map<String, List<Instance>> errorStateInstanceMap = new HashMap<>();
@@ -107,6 +109,48 @@ public class ErrorPartitionResetTaskTest {
     Assert.assertEquals(metricsRepository.getMetric(
         String.format(".%s--current_version_error_partition_unrecoverable_from_reset.Total", clusterName)).value(), 1.);
 
+    errorPartitionResetTask.close();
+  }
+
+  @Test
+  public void testErrorPartitionResetOnExcessErrorReplicas() {
+    String clusterName = TestUtils.getUniqueString("testCluster");
+    // Setup a store where one of its partitions has excess error replicas.
+    Store store = getStoreWithCurrentVersion();
+    String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
+    Map<String, List<Instance>> errorStateInstanceMap = new HashMap<>();
+    errorStateInstanceMap.put(HelixState.ERROR_STATE, Arrays.asList(instances[0], instances[1]));
+    errorStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[2], instances[3], instances[4]));
+    Partition excessErrorPartition0 = new Partition(0, errorStateInstanceMap);
+    Map<String, List<Instance>> healthyStateInstanceMap = new HashMap<>();
+    healthyStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[0], instances[1], instances[2]));
+    Partition healthyPartition1 = new Partition(1, healthyStateInstanceMap);
+    Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap);
+    PartitionAssignment partitionAssignment1 = new PartitionAssignment(resourceName, PARTITION_COUNT);
+    partitionAssignment1.addPartition(excessErrorPartition0);
+    partitionAssignment1.addPartition(healthyPartition1);
+    partitionAssignment1.addPartition(healthyPartition2);
+    PartitionAssignment partitionAssignment2 = new PartitionAssignment(resourceName, PARTITION_COUNT);
+    partitionAssignment2.addPartition(new Partition(0, healthyStateInstanceMap));
+    partitionAssignment2.addPartition(new Partition(1, healthyStateInstanceMap));
+    partitionAssignment2.addPartition(new Partition(2, healthyStateInstanceMap));
+    doReturn(Arrays.asList(store)).when(readOnlyStoreRepository).getAllStores();
+    when(routingDataRepository.getPartitionAssignments(resourceName))
+        .thenReturn(partitionAssignment1)
+        .thenReturn(partitionAssignment2);
+    ErrorPartitionResetTask errorPartitionResetTask = getErrorPartitionResetTask(clusterName);
+    errorPartitionResetExecutorService.submit(errorPartitionResetTask);
+
+    // Verify the reset is called for the two error replicas.
+    verify(helixAdminClient, timeout(VERIFY_TIMEOUT).times(1))
+        .resetPartition(clusterName, instances[0].getNodeId(), resourceName, Arrays.asList(
+            HelixUtils.getPartitionName(resourceName, excessErrorPartition0.getId())));
+    verify(helixAdminClient, timeout(VERIFY_TIMEOUT).times(1))
+        .resetPartition(clusterName, instances[1].getNodeId(), resourceName, Arrays.asList(
+            HelixUtils.getPartitionName(resourceName, excessErrorPartition0.getId())));
+    verify(helixAdminClient, never()).resetPartition(eq(clusterName), eq(instances[2].getNodeId()), eq(resourceName), anyList());
+    verify(helixAdminClient, never()).resetPartition(eq(clusterName), eq(instances[3].getNodeId()), eq(resourceName), anyList());
+    verify(helixAdminClient, never()).resetPartition(eq(clusterName), eq(instances[4].getNodeId()), eq(resourceName), anyList());
     errorPartitionResetTask.close();
   }
 
