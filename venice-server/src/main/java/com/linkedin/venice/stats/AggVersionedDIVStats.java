@@ -23,96 +23,96 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   }
 
   public void recordDuplicateMsg(String storeName, int version) {
-    getTotalStats(storeName).recordDuplicateMsg();
-    getStats(storeName, version).recordDuplicateMsg();
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordDuplicateMsg();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordDuplicateMsg();
   }
 
   public void recordMissingMsg(String storeName, int version) {
-    getTotalStats(storeName).recordMissingMsg();
-    getStats(storeName, version).recordMissingMsg();
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordMissingMsg();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordMissingMsg();
   }
 
   public void recordCorruptedMsg(String storeName, int version) {
-    getTotalStats(storeName).recordCorruptedMsg();
-    getStats(storeName, version).recordCorruptedMsg();
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordCorruptedMsg();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordCorruptedMsg();
   }
 
   public void recordSuccessMsg(String storeName, int version) {
-    getTotalStats(storeName).recordSuccessMsg();
-    getStats(storeName, version).recordSuccessMsg();
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordSuccessMsg();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordSuccessMsg();
   }
 
   public void recordCurrentIdleTime(String storeName, int version) {
     //we don't record current idle time for total stats
-    getStats(storeName, version).recordCurrentIdleTime();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordCurrentIdleTime();
   }
 
   public void recordOverallIdleTime(String storeName, int version) {
-    getTotalStats(storeName).recordOverallIdleTime();
-    getStats(storeName, version).recordOverallIdleTime();
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordOverallIdleTime();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordOverallIdleTime();
   }
 
   public void resetCurrentIdleTime(String storeName, int version) {
-    getStats(storeName, version).resetCurrentIdleTime();
+    if(getStats(storeName, version) != null) getStats(storeName, version).resetCurrentIdleTime();
   }
 
   public void recordProducerBrokerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordProducerBrokerLatencyMs(value);
-    getStats(storeName, version).recordProducerBrokerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordProducerBrokerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordProducerBrokerLatencyMs(value);
   }
 
   public void recordBrokerConsumerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordBrokerConsumerLatencyMs(value);
-    getStats(storeName, version).recordBrokerConsumerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordBrokerConsumerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordBrokerConsumerLatencyMs(value);
   }
 
   public void recordProducerConsumerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordProducerConsumerLatencyMs(value);
-    getStats(storeName, version).recordProducerConsumerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordProducerConsumerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordProducerConsumerLatencyMs(value);
   }
 
   public void recordProducerSourceBrokerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordProducerSourceBrokerLatencyMs(value);
-    getStats(storeName, version).recordProducerSourceBrokerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordProducerSourceBrokerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordProducerSourceBrokerLatencyMs(value);
   }
 
   public void recordSourceBrokerLeaderConsumerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordSourceBrokerLeaderConsumerLatencyMs(value);
-    getStats(storeName, version).recordSourceBrokerLeaderConsumerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordSourceBrokerLeaderConsumerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordSourceBrokerLeaderConsumerLatencyMs(value);
   }
 
   public void recordProducerLeaderConsumerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordProducerLeaderConsumerLatencyMs(value);
-    getStats(storeName, version).recordProducerLeaderConsumerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordProducerLeaderConsumerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordProducerLeaderConsumerLatencyMs(value);
   }
 
   public void recordProducerLocalBrokerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordProducerLocalBrokerLatencyMs(value);
-    getStats(storeName, version).recordProducerLocalBrokerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordProducerLocalBrokerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordProducerLocalBrokerLatencyMs(value);
   }
 
   public void recordLocalBrokerFollowerConsumerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordLocalBrokerFollowerConsumerLatencyMs(value);
-    getStats(storeName, version).recordLocalBrokerFollowerConsumerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordLocalBrokerFollowerConsumerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordLocalBrokerFollowerConsumerLatencyMs(value);
   }
 
   public void recordProducerFollowerConsumerLatencyMs(String storeName, int version, double value) {
-    getTotalStats(storeName).recordProducerFollowerConsumerLatencyMs(value);
-    getStats(storeName, version).recordProducerFollowerConsumerLatencyMs(value);
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordProducerFollowerConsumerLatencyMs(value);
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordProducerFollowerConsumerLatencyMs(value);
   }
 
   public void recordBenignLeaderOffsetRewind(String storeName, int version) {
-    getTotalStats(storeName).recordBenignLeaderOffsetRewind();
-    getStats(storeName, version).recordBenignLeaderOffsetRewind();
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordBenignLeaderOffsetRewind();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordBenignLeaderOffsetRewind();
   }
 
   public void recordPotentiallyLossyLeaderOffsetRewind(String storeName, int version) {
-    getTotalStats(storeName).recordPotentiallyLossyLeaderOffsetRewind();
-    getStats(storeName, version).recordPotentiallyLossyLeaderOffsetRewind();
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordPotentiallyLossyLeaderOffsetRewind();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordPotentiallyLossyLeaderOffsetRewind();
   }
 
   public void recordLeaderProducerFailure(String storeName, int version) {
-    getTotalStats(storeName).recordLeaderProducerFailure();
-    getStats(storeName, version).recordLeaderProducerFailure();
+    if(getTotalStats(storeName) != null) getTotalStats(storeName).recordLeaderProducerFailure();
+    if(getStats(storeName, version) != null) getStats(storeName, version).recordLeaderProducerFailure();
   }
 }
