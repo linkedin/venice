@@ -17,6 +17,7 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -38,7 +39,7 @@ public class IngestionService extends AbstractVeniceService {
   private final EventLoopGroup workerGroup;
   private ChannelFuture serverFuture;
 
-  // TODO: Make unused variable local in IngestionServiceTaskHandler
+  private MetricsRepository metricsRepository = null;
   private VeniceConfigLoader configLoader = null;
   private SubscriptionBasedReadOnlyStoreRepository storeRepository = null;
   private StorageService storageService = null;
@@ -144,6 +145,10 @@ public class IngestionService extends AbstractVeniceService {
     this.reportClient = reportClient;
   }
 
+  public void setMetricsRepository(MetricsRepository metricsRepository) {
+    this.metricsRepository = metricsRepository;
+  }
+
   public IngestionRequestClient getReportClient() {
     return reportClient;
   }
@@ -170,6 +175,10 @@ public class IngestionService extends AbstractVeniceService {
 
   public SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
+  }
+
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
   }
 
   public static void main(String[] args) throws Exception {

@@ -14,6 +14,7 @@ import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.ingestion.IngestionRequestClient;
 import com.linkedin.venice.ingestion.IngestionService;
+import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
@@ -42,6 +43,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
@@ -83,6 +85,12 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           byte[] serializedReport = serializeIngestionTaskReport(report);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedReport));
           break;
+        case METRIC:
+          logger.info("Received METRIC message.");
+          IngestionMetricsReport metricsReport = handleMetricsRequest();
+          byte[] serializedMetricsReport = serializeIngestionMetricsReport(metricsReport);
+          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetricsReport));
+          break;
         default:
           throw new UnsupportedOperationException("Unrecognized ingestion action: " + action);
       }
@@ -121,6 +129,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
     // Create MetricsRepository
     MetricsRepository metricsRepository = new MetricsRepository();
+    ingestionService.setMetricsRepository(metricsRepository);
 
     // Create ZkClient
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
@@ -235,6 +244,19 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       logger.error("Encounter exception while handling ingestion command: " + e.getMessage());
       report.isPositive = false;
       report.errorMessage = e.getMessage();
+    }
+    return report;
+  }
+
+  private IngestionMetricsReport handleMetricsRequest() {
+    IngestionMetricsReport report = new IngestionMetricsReport();
+    report.aggregatedMetrics = new HashMap<>();
+    if (ingestionService.getMetricsRepository() != null) {
+      ingestionService.getMetricsRepository().metrics().forEach((name, metric) -> {
+        if (metric != null) {
+          report.aggregatedMetrics.put(name, metric.value());
+        }
+      });
     }
     return report;
   }

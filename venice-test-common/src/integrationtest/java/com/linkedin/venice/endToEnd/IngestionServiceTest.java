@@ -59,7 +59,7 @@ public class IngestionServiceTest {
     cluster = ServiceFactory.getVeniceCluster(1, 1, 1);
     testStoreName = cluster.createStore(KEY_COUNT);
     forkedIngestionServiceListenerProcess = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(SERVICE_PORT));
-    ingestionReportListener = new IngestionReportListener(APPLICATION_PORT);
+    ingestionReportListener = new IngestionReportListener(APPLICATION_PORT, SERVICE_PORT);
     ingestionReportListener.startInner();
     waitPortBinding(SERVICE_PORT, CONNECTION_TIMEOUT);
     waitPortBinding(APPLICATION_PORT, CONNECTION_TIMEOUT);

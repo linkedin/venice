@@ -156,7 +156,9 @@ public class DaVinciBackend implements Closeable {
           }
         };
 
-        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, isolatedIngestionListener);
+        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort);
+        ingestionReportListener.setIngestionNotifier(isolatedIngestionListener);
+        ingestionReportListener.setMetricsRepository(metricsRepository);
         ingestionReportListener.startInner();
 
         InitializationConfigs initializationConfigs = new InitializationConfigs();

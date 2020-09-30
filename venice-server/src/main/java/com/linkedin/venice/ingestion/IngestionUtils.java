@@ -5,6 +5,7 @@ import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
@@ -44,6 +45,8 @@ public class IngestionUtils {
           AvroProtocolDefinition.INGESTION_TASK_COMMAND.getSerializer();
   public static final InternalAvroSpecificSerializer<IngestionTaskReport> ingestionTaskReportSerializer =
           AvroProtocolDefinition.INGESTION_TASK_REPORT.getSerializer();
+  public static final InternalAvroSpecificSerializer<IngestionMetricsReport> ingestionMetricsReportSerializer =
+          AvroProtocolDefinition.INGESTION_METRICS_REPORT.getSerializer();
 
   public static byte[] serializeInitializationConfigs(InitializationConfigs initializationConfigs) {
     return initializationConfigSerializer.serialize(null, initializationConfigs);
@@ -57,6 +60,10 @@ public class IngestionUtils {
     return ingestionTaskReportSerializer.serialize(null, ingestionTaskReport);
   }
 
+  public static byte[] serializeIngestionMetricsReport(IngestionMetricsReport ingestionMetricsReport) {
+    return ingestionMetricsReportSerializer.serialize(null, ingestionMetricsReport);
+  }
+
   public static IngestionTaskReport deserializeIngestionTaskReport(byte[] content) {
     return ingestionTaskReportSerializer.deserialize(null, content);
   }
@@ -67,6 +74,10 @@ public class IngestionUtils {
 
   public static InitializationConfigs deserializeInitializationConfigs(byte[] content) {
     return initializationConfigSerializer.deserialize(null, content);
+  }
+
+  public static IngestionMetricsReport deserializeIngestionMetricsReport(byte[] content) {
+    return ingestionMetricsReportSerializer.deserialize(null, content);
   }
 
   public static HttpResponse buildHttpResponse(HttpResponseStatus status, String msg) {
