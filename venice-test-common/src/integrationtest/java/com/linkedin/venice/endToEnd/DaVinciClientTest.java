@@ -28,12 +28,12 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Properties;
 import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -41,6 +41,7 @@ import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -234,6 +235,7 @@ public class DaVinciClientTest {
           keySet.add(i);
         }
       });
+
       // Make sure multiple clients can share same isolated ingestion service.
       DaVinciClient<Integer, Integer> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
       client2.subscribeAll().get();
@@ -241,6 +243,10 @@ public class DaVinciClientTest {
         int result = client2.get(k).get();
         assertEquals(result, 1);
       }
+      // This makes sure that we receive metrics from child process.
+      Thread.sleep(5000);
+      long ingestionIsolationMetricCount = metricsRepository.metrics().keySet().stream().filter(k -> k.contains("ingestion_isolation")).count();
+      Assert.assertTrue(ingestionIsolationMetricCount != 0);
     }
   }
 
