@@ -614,6 +614,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     double elapsedTimeForPuttingIntoQueue = 0;
     List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> processedRecord = new LinkedList<>();
     long beforeProcessingTimestamp = System.currentTimeMillis();
+    int recordNum = 0;
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
@@ -624,7 +625,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
       // Update the latest message consumption time
       partitionConsumptionStateMap.get(record.partition()).setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
+      ++recordNum;
     }
+    storeIngestionStats.recordProduceToDrainQueueRecordNum(storeName, recordNum);
 
     long quotaEnforcementStartTimeInNS = System.nanoTime();
     /**

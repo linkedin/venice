@@ -110,4 +110,9 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     totalStats.recordStorageEnginePutLatency(latency);
     getStoreStats(storeName).recordStorageEnginePutLatency(latency);
   }
+
+  public void recordProduceToDrainQueueRecordNum(String storeName, int recordNum) {
+    totalStats.recordProduceToDrainQueueRecordNum(recordNum);
+    getStoreStats(storeName).recordProduceToDrainQueueRecordNum(recordNum);
+  }
 }

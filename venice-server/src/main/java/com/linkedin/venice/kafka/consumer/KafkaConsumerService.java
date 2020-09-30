@@ -10,6 +10,7 @@ import com.linkedin.venice.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,6 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
@@ -73,9 +75,9 @@ public class KafkaConsumerService extends AbstractVeniceService {
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
-       * The consumer properties doesn't specify `client.id` explicitly, and internally Kafka client will assign an unique
-       * client id for each consumer.
+       * We need to assign an unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
+      consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
       SharedKafkaConsumer newConsumer = new SharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties), this);
       consumerExecutor.submit(new ConsumptionTask(newConsumer));
       consumers.add(newConsumer);
@@ -83,6 +85,10 @@ public class KafkaConsumerService extends AbstractVeniceService {
     consumerExecutor.shutdown();
 
     LOGGER.info("KafkaConsumerService was initialized with " + numOfConsumersPerKafkaCluster + " consumers.");
+  }
+
+  private String getUniqueClientId(String kafkaUrl, int suffix) {
+    return Utils.getHostName() + "_" + kafkaUrl + "_" + suffix;
   }
 
   KafkaConsumerServiceStats getStats() {

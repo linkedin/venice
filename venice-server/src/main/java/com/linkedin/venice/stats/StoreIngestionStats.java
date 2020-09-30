@@ -68,6 +68,16 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   // Measure the latency in putting data into storage engine
   private final Sensor storageEnginePutLatencySensor;
 
+  /**
+   * Measure the call count of {@literal StoreIngestionTask#produceToStoreBufferService}.
+   *
+   */
+  private final Sensor produceToDrainerQueueCallCountSensor;
+  /**
+   * Measure the record number passed to {@literal StoreIngestionTask#produceToStoreBufferService}.
+   */
+  private final Sensor produceToDrainerQueueRecordNumSensor;
+
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
     super(metricsRepository, storeName);
@@ -113,6 +123,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     quotaEnforcementLatencySensor = registerSensor("hybrid_quota_enforcement_latency", new Avg(), new Max());
     consumerToQueueLatencySensor = registerSensor("consumer_to_queue_latency", new Avg(), new Max());
     storageEnginePutLatencySensor = registerSensor("storage_engine_put_latency", new Avg(), new Max());
+    produceToDrainerQueueCallCountSensor = registerSensor("produce_to_drainer_queue_call_count", new Rate());
+    produceToDrainerQueueRecordNumSensor = registerSensor("produce_to_drainer_queue_record_num", new Avg(), new Max());
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -202,6 +214,11 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void recordStorageEnginePutLatency(double latency) {
     storageEnginePutLatencySensor.record(latency);
+  }
+
+  public void recordProduceToDrainQueueRecordNum(int recordNum) {
+    produceToDrainerQueueCallCountSensor.record();
+    produceToDrainerQueueRecordNumSensor.record(recordNum);
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {
