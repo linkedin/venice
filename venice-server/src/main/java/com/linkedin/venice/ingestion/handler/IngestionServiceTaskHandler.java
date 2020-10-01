@@ -2,6 +2,8 @@ package com.linkedin.venice.ingestion.handler;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
@@ -125,17 +127,23 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     ZkClient zkClient = ZkClientFactory.newZkClient(configLoader.getVeniceClusterConfig().getZookeeperAddress());
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, ".ingestion-service-zk-client"));
 
-    /**
-     * Create StoreRepository
-     * TODO: Currently we are using the ZK-based store repository. It will be switched to MetadataBasedStoreRepository to make it ZK-free.
-     */
-    SubscriptionBasedReadOnlyStoreRepository storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
-    storeRepository.refresh();
+    // Create StoreRepository and SchemaRepository
+    SubscriptionBasedReadOnlyStoreRepository storeRepository;
+    ReadOnlySchemaRepository schemaRepository;
+    boolean useSystemStore = veniceProperties.getBoolean(ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY, false);
+    logger.info("Isolated ingestion service uses system store repository: " + useSystemStore);
+    if (useSystemStore) {
+      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository = new MetadataStoreBasedStoreRepository(clusterName, clientConfig, 60);
+      metadataStoreBasedStoreRepository.refresh();
+      storeRepository = metadataStoreBasedStoreRepository;
+      schemaRepository = metadataStoreBasedStoreRepository;
+    } else {
+      storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
+      storeRepository.refresh();
+      schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
+      schemaRepository.refresh();
+    }
     ingestionService.setStoreRepository(storeRepository);
-
-    // Create SchemaRepository
-    ReadOnlySchemaRepository schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
-    schemaRepository.refresh();
 
     // Create RocksDBMemoryStats
     RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
@@ -200,7 +208,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           if (isolationMode.equals(IngestionIsolationMode.NO_OP)) {
             throw new VeniceException("Ingestion Isolation Mode is set as NO_OP(not enabled).");
           }
-
           // Subscribe to the store in store repository.
           String storeName = Version.parseStoreFromKafkaTopicName(topicName);
           // Ingestion Service needs store repository to subscribe to the store.

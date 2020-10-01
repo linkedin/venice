@@ -4,7 +4,6 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -21,7 +20,6 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
@@ -64,6 +62,8 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.meta.IngestionIsolationMode.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.meta.VersionStatus.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
@@ -393,23 +393,45 @@ public class SystemStoreTest {
     );
 
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    // Test Da Vinci client ingestion with system store.
     VeniceProperties backendConfig = new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
-        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     long memoryLimit = 1024 * 1024 * 1024; // 1GB
     daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(testMetadataStoreD2Client, metricsRepository, backendConfig);
-      DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig)) {
+    D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
+      DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
       GenericRecord actualValueRecord = client.get("testKey").get();
       assertEquals(actualValueRecord, expectedValueRecord);
+      client.unsubscribeAll();
     }
 
-      // Dematerialize the metadata store version and it should be cleaned up properly.
+    // Test Da Vinci client ingestion with both system store && ingestion isolation
+    backendConfig = new PropertyBuilder()
+            .put(DATA_BASE_PATH, baseDataPath)
+            .put(PERSISTENCE_TYPE, ROCKS_DB)
+            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+            .build();
+    metricsRepository = new MetricsRepository();
+    daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
+    daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
+      DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
+      client.subscribeAll().get();
+      GenericRecord actualValueRecord = client.get("testKey").get();
+      assertEquals(actualValueRecord, expectedValueRecord);
+      client.unsubscribeAll();
+    }
+
+    // Dematerialize the metadata store version and it should be cleaned up properly.
     controllerResponse = parentControllerClient.dematerializeMetadataStoreVersion(regularVeniceStoreName,
         metadataStoreVersionNumber);
     assertFalse(controllerResponse.isError(), "Failed to dematerialize metadata store version");
