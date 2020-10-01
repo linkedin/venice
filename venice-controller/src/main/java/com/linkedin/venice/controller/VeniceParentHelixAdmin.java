@@ -573,6 +573,7 @@ public class VeniceParentHelixAdmin implements Admin {
           .forEach(v -> store.deleteVersion(v.getNumber()));
       storeRepo.updateStore(store);
       if (store.isStoreMetadataSystemStoreEnabled()) {
+        veniceHelixAdmin.getMetadataStoreWriter().writeStoreAttributes(clusterName, storeName, store);
         veniceHelixAdmin.getMetadataStoreWriter().writeTargetVersionStates(clusterName, storeName, store.getVersions());
       }
     } finally {
