@@ -669,6 +669,7 @@ public abstract class AbstractPushMonitor
       }
       metadataRepository.updateStore(store);
       if (store.isStoreMetadataSystemStoreEnabled()) {
+        metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
         metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
             store.getCurrentVersion());
       }

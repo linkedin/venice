@@ -396,6 +396,7 @@ public class SystemStoreTest {
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .build();
     MetricsRepository metricsRepository = new MetricsRepository();
     DaVinciConfig daVinciConfig = new DaVinciConfig();

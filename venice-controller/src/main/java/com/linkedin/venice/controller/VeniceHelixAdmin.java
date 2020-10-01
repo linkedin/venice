@@ -1146,6 +1146,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 resources.unlockForMetadataOperation();
             }
             if (store.isStoreMetadataSystemStoreEnabled()) {
+                metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
                 metadataStoreWriter.writeTargetVersionStates(clusterName, storeName, store.getVersions());
             }
         }
@@ -1287,8 +1288,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     repository.updateStore(store);
                     if (store.isStoreMetadataSystemStoreEnabled()) {
                         if (multiClusterConfigs.isParent()) {
+                            metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
                             metadataStoreWriter.writeTargetVersionStates(clusterName, storeName, store.getVersions());
                         } else {
+                            metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
                             metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
                                 store.getCurrentVersion());
                         }
@@ -1864,6 +1867,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 logger.warn("Can not find version: " + versionNumber + " in store: " + storeName + ".  It has probably already been deleted");
             }
             if (store.isStoreMetadataSystemStoreEnabled()) {
+                metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
                 metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
                     store.getCurrentVersion());
             }
