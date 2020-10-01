@@ -370,4 +370,8 @@ public class VeniceProperties {
     properties.putAll(this.props);
     return properties;
   }
+
+  public boolean isEmpty() {
+    return this.props.isEmpty();
+  }
 }
