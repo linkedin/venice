@@ -60,6 +60,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1819,7 +1820,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     String kafkaSourceAddress = partitionConsumptionState.consumeRemotely() ? getBatchWriteSourceAddress()
         : this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     return consumerMap.computeIfAbsent(kafkaSourceAddress, source -> {
-      Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaSourceAddress);
+      Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaSourceAddress, partitionConsumptionState.consumeRemotely());
       if (serverConfig.isSharedConsumerPoolEnabled()) {
         return aggKafkaConsumerService.getConsumer(consumerProps,this);
       } else {
@@ -2171,11 +2172,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Override the {@link CommonClientConfigs#BOOTSTRAP_SERVERS_CONFIG} config with a remote Kafka bootstrap url.
    */
-  protected Properties updateKafkaConsumerProperties(Properties localConsumerProps, String remoteKafkaSourceAddress) {
-    Properties remoteConsumerProps = new Properties();
-    remoteConsumerProps.putAll(localConsumerProps);
-    remoteConsumerProps.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, remoteKafkaSourceAddress);
-    return remoteConsumerProps;
+  protected Properties updateKafkaConsumerProperties(Properties localConsumerProps, String remoteKafkaSourceAddress, boolean consumeRemotely) {
+    Properties newConsumerProps = new Properties();
+    newConsumerProps.putAll(localConsumerProps);
+    newConsumerProps.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, remoteKafkaSourceAddress);
+    VeniceProperties customizedConsumerConfigs = consumeRemotely ? serverConfig.getKafkaConsumerConfigsForRemoteConsumption()
+                                                                 : serverConfig.getKafkaConsumerConfigsForLocalConsumption();
+    if (!customizedConsumerConfigs.isEmpty()) {
+      newConsumerProps.putAll(customizedConsumerConfigs.toProperties());
+    }
+    return newConsumerProps;
   }
 
   /**

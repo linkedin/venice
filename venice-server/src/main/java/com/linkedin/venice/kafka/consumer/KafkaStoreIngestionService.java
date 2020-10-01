@@ -219,8 +219,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
        * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain any consumer pool yet until
        * a new Kafka cluster is registered; here we explicitly register the local Kafka cluster by invoking
        * {@link AggKafkaConsumerService#getKafkaConsumerService(Properties)}
+       *
+       * Pass through all the customized Kafka consumer configs into the consumer as long as the customized config key
+       * starts with {@link ConfigKeys#SERVER_LOCAL_CONSUMER_CONFIG_PREFIX}; the clipping and filtering work is done
+       * in {@link VeniceServerConfig} already.
+       *
+       * Here, we only pass through the customized Kafka consumer configs for local consumption, if an ingestion task
+       * creates a dedicated consumer or a new consumer service for a remote Kafka URL, we will passthrough the configs
+       * for remote consumption inside the ingestion task.
        */
-      aggKafkaConsumerService.getKafkaConsumerService(getCommonKafkaConsumerProperties(serverConfig));
+      Properties commonKafkaConsumerConfigs = getCommonKafkaConsumerProperties(serverConfig);
+      if (!serverConfig.getKafkaConsumerConfigsForLocalConsumption().isEmpty()) {
+        commonKafkaConsumerConfigs.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
+      }
+      aggKafkaConsumerService.getKafkaConsumerService(commonKafkaConsumerConfigs);
       logger.info("Shared consumer pool for ingestion is enabled");
     } else {
       aggKafkaConsumerService = null;

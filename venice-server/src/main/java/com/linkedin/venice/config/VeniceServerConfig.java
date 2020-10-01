@@ -206,6 +206,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int ingestionApplicationPort;
   private final boolean databaseChecksumVerificationEnabled;
 
+  private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
+  private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
@@ -307,6 +310,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionServicePort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_SERVICE_PORT, 27015);
     ingestionApplicationPort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, 27016);
     databaseChecksumVerificationEnabled = serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
+
+    kafkaConsumerConfigsForLocalConsumption = serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
+    kafkaConsumerConfigsForRemoteConsumption = serverProperties.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
   }
 
   public int getListenerPort() {
@@ -570,4 +576,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   public boolean isDatabaseChecksumVerificationEnabled() { return databaseChecksumVerificationEnabled;}
+
+  public VeniceProperties getKafkaConsumerConfigsForLocalConsumption() {
+    return kafkaConsumerConfigsForLocalConsumption;
+  }
+
+  public VeniceProperties getKafkaConsumerConfigsForRemoteConsumption() {
+    return kafkaConsumerConfigsForRemoteConsumption;
+  }
 }

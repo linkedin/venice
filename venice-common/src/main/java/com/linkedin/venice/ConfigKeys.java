@@ -430,6 +430,18 @@ public class ConfigKeys {
    */
   public static final String SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED = "server.database.checksum.verification.enabled";
 
+  /**
+   * Any server config that start with "server.local.consumer.config.prefix" will be used as a customized consumer config
+   * for local consumer.
+   */
+  public static final String SERVER_LOCAL_CONSUMER_CONFIG_PREFIX = "server.local.consumer.config.prefix.";
+
+  /**
+   * Any server config that start with "server.remote.consumer.config.prefix" will be used as a customized consumer config
+   * for remote consumer.
+   */
+  public static final String SERVER_REMOTE_CONSUMER_CONFIG_PREFIX = "server.remote.consumer.config.prefix.";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
