@@ -4,12 +4,13 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixInstanceConverter;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
-import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
@@ -20,22 +21,26 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Stream;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -43,6 +48,7 @@ import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.*;
 
 
@@ -154,6 +160,49 @@ public class TestUtils {
       } catch (Exception e) {
         throw new AssertionError(e);
       }
+    }
+  }
+
+  public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,
+      String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
+    VersionCreationResponse response = controllerClient.requestTopicForWrites(
+        storeName,
+        1024,
+        Version.PushType.BATCH,
+        Version.guidBasedDummyPushId(),
+        true,
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty());
+    assertFalse(response.isError());
+    writeBatchData(response, keySchema, valueSchema, batchData);
+    return response;
+  }
+
+  public static void writeBatchData(VersionCreationResponse response, String keySchema, String valueSchema,
+      Stream<Map.Entry> batchData) throws Exception {
+    Properties props = new Properties();
+    props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
+    props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
+    for (Map.Entry<String, String> entry : response.getPartitionerParams().entrySet()) {
+      props.setProperty(entry.getKey(), entry.getValue());
+    }
+    props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
+    VeniceWriterFactory writerFactory = new VeniceWriterFactory(props);
+
+    String kafkaTopic = response.getKafkaTopic();
+    try (
+        VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
+        VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
+        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer)) {
+
+      int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+      writer.broadcastStartOfPush(Collections.emptyMap());
+      for (Map.Entry e : (Iterable<Map.Entry>) batchData::iterator) {
+        writer.put(e.getKey(), e.getValue(), valueSchemaId).get();
+      }
+      writer.broadcastEndOfPush(Collections.emptyMap());
     }
   }
 

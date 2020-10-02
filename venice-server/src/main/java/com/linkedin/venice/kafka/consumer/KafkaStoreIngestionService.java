@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -18,7 +19,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
@@ -125,6 +125,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
                                     VeniceConfigLoader veniceConfigLoader,
                                     StorageMetadataService storageMetadataService,
+                                    ClusterInfoProvider clusterInfoProvider,
                                     ReadOnlyStoreRepository metadataRepo,
                                     ReadOnlySchemaRepository schemaRepo,
                                     MetricsRepository metricsRepository,
@@ -203,8 +204,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (clientConfig.isPresent()) {
       String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
       participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(
-          clusterName,
           this,
+          clusterInfoProvider,
           new ParticipantStoreConsumptionStats(metricsRepository, clusterName),
           ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
           serverConfig.getParticipantMessageConsumptionDelayMs());
@@ -379,6 +380,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     isRunning.set(false);
 
     shutdownExecutorService(participantStoreConsumerExecutorService, true);
+    if (participantStoreConsumptionTask != null) {
+      participantStoreConsumptionTask.close();
+    }
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
     /**
      * We would like to gracefully shutdown {@link #ingestionExecutorService}, so that it

@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.client.store.QueryTool;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -1136,7 +1137,19 @@ public class AdminTool {
       destVersions.stream().forEach(System.err::println);
     }
 
-    return destLatestOnlineVersion >= srcLatestOnlineVersion;
+    boolean destMetadataStoreOnline = true;
+    if (srcStore.isStoreMetadataSystemStoreEnabled()) {
+      String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
+      StoreInfo destZkSharedStore = destControllerClient.getStore(metadataStoreName).getStore();
+      if (null == destZkSharedStore) {
+        throw new VeniceException("Zk shared store does not exist in the destination cluster " + destControllerClient.getClusterName());
+      }
+      JobStatusQueryResponse jobStatusResponse =
+          destControllerClient.queryJobStatus(Version.composeKafkaTopic(metadataStoreName, destZkSharedStore.getCurrentVersion()));
+      destMetadataStoreOnline = jobStatusResponse.getStatus().equals(ExecutionStatus.COMPLETED.toString());
+    }
+
+    return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetadataStoreOnline;
   }
 
   private static ControllerClient[] createControllerClients(String clusterName, List<String> controllerUrls) {

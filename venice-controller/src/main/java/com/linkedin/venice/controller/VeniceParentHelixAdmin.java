@@ -1693,7 +1693,8 @@ public class VeniceParentHelixAdmin implements Admin {
          */
         Store store = veniceHelixAdmin.getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
         if ((!incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR) ||
-            !store.isIncrementalPushEnabled()) {
+            (!store.isIncrementalPushEnabled() &&
+                !multiClusterConfigs.getCommonConfig().disableParentTopicTruncationUponCompletion())) {
             logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
             truncateKafkaTopic(kafkaTopic);
             Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
@@ -280,9 +281,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     return new VeniceConfigLoader(config, config);
   }
 
-  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, boolean useSystemStoreBasedRepository) {
+  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
+      boolean useSystemStoreBasedRepository, long systemStoreBasedRepositoryRefreshIntervalInSeconds) {
     if (daVinciBackend == null) {
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, useSystemStoreBasedRepository), backend -> {
+      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader,
+          useSystemStoreBasedRepository, systemStoreBasedRepositoryRefreshIntervalInSeconds), backend -> {
         daVinciBackend = null;
         backend.close();
       });
@@ -298,7 +301,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
     logger.info("Starting Da Vinci client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader, backendConfig.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false));
+    initBackend(clientConfig, configLoader, backendConfig.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false),
+        backendConfig.getLong(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
+            MetadataStoreBasedStoreRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS));
 
     try {
       storeBackend = daVinciBackend.get().getStoreOrThrow(getStoreName());

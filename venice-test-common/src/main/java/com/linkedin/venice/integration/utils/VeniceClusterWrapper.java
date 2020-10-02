@@ -10,7 +10,6 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
@@ -22,7 +21,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
@@ -37,7 +35,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,6 +86,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
   private static Process veniceClusterProcess;
+  // Controller discovery URLs are controllers that's created outside of this cluster wrapper but are overseeing the
+  // cluster. e.g. controllers in a multi cluster wrapper.
+  private String externalControllerDiscoveryURL = "";
 
   VeniceClusterWrapper(
       File dataDirectory,
@@ -401,10 +401,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return getRandomRunningVeniceComponent(veniceControllerWrappers);
   }
 
+  public void setExternalControllerDiscoveryURL(String externalControllerDiscoveryURL) {
+    this.externalControllerDiscoveryURL = externalControllerDiscoveryURL;
+  }
+
   public synchronized String getAllControllersURLs() {
-    return veniceControllerWrappers.values().stream()
-               .map(VeniceControllerWrapper::getControllerUrl)
-               .collect(Collectors.joining(","));
+    return veniceControllerWrappers.isEmpty() ?
+        externalControllerDiscoveryURL : veniceControllerWrappers.values().stream()
+        .map(VeniceControllerWrapper::getControllerUrl)
+        .collect(Collectors.joining(","));
   }
 
   public VeniceControllerWrapper getMasterVeniceController() {
@@ -796,20 +801,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       if (response.isError()) {
         throw new VeniceException(response.getError());
       }
+      TestUtils.writeBatchData(response, keySchema, valueSchema, batchData);
 
-      Properties props = new Properties();
-      props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
-      props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
-      for (Map.Entry<String, String> entry : response.getPartitionerParams().entrySet()) {
-        props.setProperty(entry.getKey(), entry.getValue());
-      }
-      props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
-      VeniceWriterFactory writerFactory = new VeniceWriterFactory(props);
-
-      String kafkaTopic = response.getKafkaTopic();
-      writeBatchData(writerFactory, kafkaTopic, keySchema, valueSchema, batchData);
-
-      int versionId = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+      int versionId = response.getVersion();
       waitVersion(storeName, versionId);
       return versionId;
     }
@@ -834,21 +828,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       });
     }
     refreshAllRouterMetaData();
-  }
-
-  protected void writeBatchData(VeniceWriterFactory writerFactory, String kafkaTopic, String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
-    try (
-        VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
-        VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
-        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer)) {
-
-      int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-      writer.broadcastStartOfPush(Collections.emptyMap());
-      for (Map.Entry e : (Iterable<Map.Entry>) batchData::iterator) {
-        writer.put(e.getKey(), e.getValue(), valueSchemaId).get();
-      }
-      writer.broadcastEndOfPush(Collections.emptyMap());
-    }
   }
 
   /**

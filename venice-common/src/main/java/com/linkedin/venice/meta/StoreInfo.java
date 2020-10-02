@@ -52,6 +52,7 @@ public class StoreInfo {
     storeInfo.setIncrementalPushPolicy(store.getIncrementalPushPolicy());
     storeInfo.setReplicationFactor(store.getReplicationFactor());
     storeInfo.setMigrationDuplicateStore(store.isMigrationDuplicateStore());
+    storeInfo.setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
     return storeInfo;
   }
   /**
@@ -248,6 +249,11 @@ public class StoreInfo {
    * Whether or not the store is a duplicate store in the process of migration.
    */
   private boolean migrationDuplicateStore = false;
+
+  /**
+   * Whether or not metadata system store is enabled for this Venice store.
+   */
+  private boolean storeMetadataSystemStoreEnabled;
 
   public StoreInfo() {
   }
@@ -602,5 +608,13 @@ public class StoreInfo {
 
   public void setMigrationDuplicateStore(boolean migrationDuplicateStore) {
     this.migrationDuplicateStore = migrationDuplicateStore;
+  }
+
+  public boolean isStoreMetadataSystemStoreEnabled() {
+    return storeMetadataSystemStoreEnabled;
+  }
+
+  public void setStoreMetadataSystemStoreEnabled(boolean storeMetadataSystemStoreEnabled) {
+    this.storeMetadataSystemStoreEnabled = storeMetadataSystemStoreEnabled;
   }
 }

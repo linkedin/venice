@@ -4,29 +4,32 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.common.StoreMetadataType;
+import com.linkedin.venice.common.MetadataStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentStoreStates;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentVersionStates;
+import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
 import com.linkedin.venice.meta.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
@@ -41,12 +44,13 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -61,7 +65,10 @@ import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 import static java.lang.Thread.*;
 
 
-public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository {
+public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository,
+                                                          ReadOnlyStoreConfigRepository, ClusterInfoProvider {
+  public static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
+
   private static final Logger logger = Logger.getLogger(MetadataStoreBasedStoreRepository.class);
   private static final int KEY_SCHEMA_ID = 1;
   private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND;
@@ -69,8 +76,12 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
 
   // subscribedStores keeps track of all regular stores it is monitoring
   private final Set<String> subscribedStores = new HashSet<>();
+  // Keeps track of clusters associated with all Venice stores that are currently subscribed.
+  private final Set<String> subscribedClusters = ConcurrentHashMap.newKeySet();
   // Local cache for stores.
   private final Map<String, Store> storeMap = new VeniceConcurrentHashMap<>();
+  // Local cache for store attributes.
+  private final Map<String, StoreAttributes> storeAttributesMap = new VeniceConcurrentHashMap<>();
   // Local cache for key/value schemas. SchemaData supports one key schema per store only, which may need to be changed for key schema evolvability.
   private final Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
   // A lock to make sure that all updates are serialized and events are delivered in the correct order
@@ -80,13 +91,15 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
-  private final String clusterName;
   private final ClientConfig<StoreMetadataValue> clientConfig;
 
-  public MetadataStoreBasedStoreRepository(String clusterName, ClientConfig<StoreMetadataValue> clientConfig, long refreshIntervalInSeconds) {
-    this.clusterName = clusterName;
+  public MetadataStoreBasedStoreRepository(ClientConfig<StoreMetadataValue> clientConfig, long refreshIntervalInSeconds) {
     this.clientConfig = clientConfig;
     this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
+  }
+
+  public MetadataStoreBasedStoreRepository(ClientConfig<StoreMetadataValue> clientConfig) {
+    this(clientConfig, DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
   }
 
   @Override
@@ -119,7 +132,6 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
   public void unsubscribe(String storeName) {
     updateLock.lock();
     try {
-      subscribedStores.remove(storeName);
       removeStore(storeName);
     } finally {
       updateLock.unlock();
@@ -141,7 +153,7 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
     if (store != null) {
       return store.cloneStore();
     }
-    throw new VeniceNoStoreException(storeName, clusterName);
+    throw new VeniceNoStoreException(storeName);
   }
 
   @Override
@@ -153,7 +165,8 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
   public Store refreshOneStore(String storeName) {
     updateLock.lock();
     try {
-      Store newStore = getStoreFromFromSystemStore(storeName);
+      getAndSetStoreAttributeFromSystemStore(storeName);
+      Store newStore = getStoreFromSystemStore(storeName);
       if (newStore != null) {
         putStore(newStore);
       } else {
@@ -320,7 +333,7 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
    */
   @Override
   public void refresh() {
-    logger.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    logger.info("Refresh started for " + getClass().getSimpleName());
     updateLock.lock();
     try {
       List<Store> newStores = getStoresFromSystemStores();
@@ -335,7 +348,10 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
         removeStore(storeName);
         removeStoreSchema(storeName);
       }
-      logger.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
+      logger.info("Refresh finished for " + getClass().getSimpleName());
+    } catch (Exception e) {
+      // Catch all exceptions here so the scheduled periodic refresh doesn't break and transient errors can be retried.
+      logger.warn("Caught an exception when trying to refresh " + getClass().getSimpleName(), e);
     } finally {
       updateLock.unlock();
     }
@@ -347,16 +363,6 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
    */
   @Override
   public void clear() {
-    updateLock.lock();
-    try {
-      subscribedStores.clear();
-      storeMap.forEach((k,v) -> removeStore(k));
-      storeMap.clear();
-      totalStoreReadQuota.set(0);
-    } finally {
-      updateLock.unlock();
-    }
-
     scheduler.shutdown();
     try {
       if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
@@ -367,7 +373,10 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
     }
     updateLock.lock();
     try {
+      storeMap.forEach((k,v) -> removeStore(k));
       subscribedStores.clear();
+      subscribedClusters.clear();
+      storeAttributesMap.clear();
       storeMap.clear();
       schemaMap.clear();
       storeClientMap.forEach((k,v) -> v.close());
@@ -378,13 +387,37 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
     }
   }
 
-  protected Store getStoreFromFromSystemStore(String storeName) {
-    StoreMetadataKey storeCurrentStatesKey = new StoreMetadataKey();
-    storeCurrentStatesKey.keyStrings = Arrays.asList(storeName, clusterName);
-    storeCurrentStatesKey.metadataType = StoreMetadataType.CURRENT_STORE_STATES.getValue();
-    StoreMetadataKey storeCurrentVersionStatesKey = new StoreMetadataKey();
-    storeCurrentVersionStatesKey.keyStrings = Arrays.asList(storeName, clusterName);
-    storeCurrentVersionStatesKey.metadataType = StoreMetadataType.CURRENT_VERSION_STATES.getValue();
+  /**
+   * Get the StoreAttributes from system store and update the local cache with it. The StoreAttributes map is used for
+   * cluster discovery.
+   * @param storeName
+   */
+  protected void getAndSetStoreAttributeFromSystemStore(String storeName) {
+    StoreMetadataKey storeAttributeKey = MetadataStoreUtils.getStoreAttributesKey(storeName);
+    AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client = getAvroClientForSystemStore(storeName);
+    try {
+      StoreMetadataValue storeMetadataValue = client.get(storeAttributeKey).get();
+      if (storeMetadataValue != null) {
+        StoreAttributes storeAttributes = (StoreAttributes) storeMetadataValue.metadataUnion;
+        storeAttributesMap.put(getZkStoreName(storeName), storeAttributes);
+        subscribedClusters.add(storeAttributes.sourceCluster.toString());
+      } else {
+        throw new MissingKeyInStoreMetadataException(storeAttributeKey.toString(), StoreAttributes.class.getName());
+      }
+    } catch (ExecutionException | InterruptedException e) {
+      throw new VeniceClientException(e);
+    }
+  }
+
+  protected Store getStoreFromSystemStore(String storeName) {
+    StoreAttributes storeAttributes = storeAttributesMap.get(getZkStoreName(storeName));
+    if (storeAttributes == null) {
+      return null;
+    }
+    StoreMetadataKey storeCurrentStatesKey = MetadataStoreUtils.getCurrentStoreStatesKey(storeName,
+        storeAttributes.sourceCluster.toString());
+    StoreMetadataKey storeCurrentVersionStatesKey = MetadataStoreUtils.getCurrentVersionStatesKey(storeName,
+        storeAttributes.sourceCluster.toString());
 
     AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client = getAvroClientForSystemStore(storeName);
     StoreMetadataValue storeMetadataValue;
@@ -408,7 +441,8 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
   }
 
   protected List<Store> getStoresFromSystemStores() {
-    return subscribedStores.stream().map(this::getStoreFromFromSystemStore).collect(Collectors.toList());
+    subscribedStores.forEach(this::getAndSetStoreAttributeFromSystemStore);
+    return subscribedStores.stream().map(this::getStoreFromSystemStore).collect(Collectors.toList());
   }
 
   protected List<Version> getVersionsFromCurrentVersionStates(String storeName, CurrentVersionStates currentVersionStates) {
@@ -528,6 +562,7 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
       // Remove the store name from the subscription.
       subscribedStores.remove(storeName);
       Store oldStore = storeMap.remove(getZkStoreName(storeName));
+      storeAttributesMap.remove(getZkStoreName(storeName));
       if (oldStore != null) {
         totalStoreReadQuota.addAndGet(-oldStore.getReadQuotaInCU());
         notifyStoreDeleted(storeName);
@@ -607,12 +642,8 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
 
   protected SchemaData getSchemaDataFromSystemStore(String storeName) {
     // Prepare system store query keys.
-    StoreMetadataKey storeKeySchemasKey = new StoreMetadataKey();
-    storeKeySchemasKey.keyStrings = Arrays.asList(storeName, clusterName);
-    storeKeySchemasKey.metadataType = StoreMetadataType.STORE_KEY_SCHEMAS.getValue();
-    StoreMetadataKey storeValueSchemasKey = new StoreMetadataKey();
-    storeValueSchemasKey.keyStrings = Arrays.asList(storeName, clusterName);
-    storeValueSchemasKey.metadataType = StoreMetadataType.STORE_VALUE_SCHEMAS.getValue();
+    StoreMetadataKey storeKeySchemasKey = MetadataStoreUtils.getStoreKeySchemasKey(storeName);
+    StoreMetadataKey storeValueSchemasKey = MetadataStoreUtils.getStoreValueSchemasKey(storeName);
 
     AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client = getAvroClientForSystemStore(storeName);
 
@@ -663,5 +694,40 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
     } finally {
       updateLock.unlock();
     }
+  }
+
+  @Override
+  public Optional<StoreConfig> getStoreConfig(String storeName) {
+    StoreAttributes storeAttributes = storeAttributesMap.get(getZkStoreName(storeName));
+    StoreConfig storeConfig = null;
+    if (storeAttributes != null) {
+      storeConfig = new StoreConfig(storeName);
+      storeConfig.setCluster(storeAttributes.sourceCluster.toString());
+      // TODO depending on whether we are going to use the StoreConfig in SN for more than just cluster discovery we may
+      // need to populate and maintain the store migration fields properly.
+    }
+    return Optional.ofNullable(storeConfig);
+  }
+
+  /**
+   * Unlike the Zk based {@link com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository} this method will only
+   * return store configs for stores that are currently subscribed to and not all Venice stores. The store configs will
+   * also not carry any store migration related info due to the source is coming from metadata system stores.
+   * @return a list of {@link StoreConfig} for all the Venice stores that this repository is currently subscribed to.
+   */
+  @Override
+  public List<StoreConfig> getAllStoreConfigs() {
+    ArrayList<StoreConfig> storeConfigs = new ArrayList<>();
+    for (StoreAttributes attributes : storeAttributesMap.values()) {
+      StoreConfig storeConfig = new StoreConfig(attributes.configs.name.toString());
+      storeConfig.setCluster(attributes.sourceCluster.toString());
+      storeConfigs.add(storeConfig);
+    }
+    return storeConfigs;
+  }
+
+  @Override
+  public Set<String> getAssociatedClusters() {
+    return subscribedClusters;
   }
 }

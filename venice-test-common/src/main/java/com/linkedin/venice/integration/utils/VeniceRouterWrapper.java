@@ -74,6 +74,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
         D2TestUtils.setupD2Config(zkAddress, false, d2, d2, false);
         d2Servers = D2TestUtils.getD2Servers(
             zkAddress, new String[] {"http://localhost:" + port, "https://localhost:" + sslPortFromPort(port)}, d2);
+        // Also announce to the default service name (venice-discovery)
+        D2TestUtils.setupD2Config(zkAddress, false);
+        d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port,
+            "https://localhost:" + sslPortFromPort(port), D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
       } else {
         D2TestUtils.setupD2Config(zkAddress, false);
         // Announce to d2 by default
