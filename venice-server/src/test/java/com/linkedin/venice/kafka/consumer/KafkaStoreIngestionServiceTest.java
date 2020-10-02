@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -19,9 +20,6 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
@@ -39,6 +37,7 @@ public class KafkaStoreIngestionServiceTest {
   private StorageEngineRepository mockStorageEngineRepository;
   private VeniceConfigLoader mockVeniceConfigLoader;
   private StorageMetadataService storageMetadataService;
+  private ClusterInfoProvider mockClusterInfoProvider;
   private ReadOnlyStoreRepository mockmetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
 
@@ -48,6 +47,7 @@ public class KafkaStoreIngestionServiceTest {
   public void setup() {
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     storageMetadataService = mock(StorageMetadataService.class);
+    mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockmetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
 
@@ -80,7 +80,7 @@ public class KafkaStoreIngestionServiceTest {
    kafkaStoreIngestionService = new KafkaStoreIngestionService(
        mockStorageEngineRepository,
        mockVeniceConfigLoader,
-       storageMetadataService,
+       storageMetadataService, mockClusterInfoProvider,
        mockmetadataRepo,
        mockSchemaRepo,
        new MetricsRepository(),
@@ -153,7 +153,7 @@ public class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageEngineRepository,
         mockVeniceConfigLoader,
-        storageMetadataService,
+        storageMetadataService, mockClusterInfoProvider,
         mockmetadataRepo,
         mockSchemaRepo,
         new MetricsRepository(),

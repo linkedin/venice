@@ -25,6 +25,7 @@ import com.linkedin.venice.listener.StoreValueSchemasCacheService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -40,13 +41,13 @@ import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.Utils;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.HashSet;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -181,6 +182,7 @@ public class VeniceServer {
         storageService.getStorageEngineRepository(),
         veniceConfigLoader,
         storageMetadataService,
+        new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
         metadataRepo,
         schemaRepo,
         metricsRepository,

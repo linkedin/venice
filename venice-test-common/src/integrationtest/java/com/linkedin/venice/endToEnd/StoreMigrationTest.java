@@ -8,7 +8,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
-import com.linkedin.venice.common.StoreMetadataType;
+import com.linkedin.venice.common.MetadataStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -253,9 +253,7 @@ public class StoreMigrationTest {
     refreshAllRouterMetaData();
     try (AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client =
         ClientFactory.getAndStartSpecificAvroClient(clientConfig)) {
-      StoreMetadataKey storeAttributesKey = new StoreMetadataKey();
-      storeAttributesKey.keyStrings = Arrays.asList(STORE_NAME);
-      storeAttributesKey.metadataType = StoreMetadataType.STORE_ATTRIBUTES.getValue();
+      StoreMetadataKey storeAttributesKey = MetadataStoreUtils.getStoreAttributesKey(STORE_NAME);
       String metadataStoreTopic =
           Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(STORE_NAME), zkSharedStoreVersion);
       TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, srcControllerClient, 30, TimeUnit.SECONDS,

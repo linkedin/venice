@@ -1273,4 +1273,16 @@ public class ConfigKeys {
    * A config for Da-Vinci clients to use system store based repositories or Zk based repositories.
    */
   public static final String CLIENT_USE_SYSTEM_STORE_REPOSITORY = "client.use.system.store.repository";
+
+  /**
+   * The refresh interval for system store repositories that rely on periodic polling.
+   */
+  public static final String CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS = "client.system.store.repository.refresh.interval.seconds";
+
+  /**
+   * Test only config used to disable parent topic truncation upon job completion. This is needed because kafka cluster
+   * in test environment is shared between parent and child controllers. Truncating topic upon completion will confuse
+   * child controllers in certain scenarios.
+   */
+  public static final String CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION = "controller.disable.parent.topic.truncation.upon.completion";
 }

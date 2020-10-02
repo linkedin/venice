@@ -18,8 +18,10 @@ import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
@@ -42,6 +44,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
@@ -77,7 +80,8 @@ public class DaVinciBackend implements Closeable {
   private VeniceNotifier isolatedIngestionListener;
   private Process isolatedIngestionService;
 
-  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, boolean useSystemStoreBasedRepository) {
+  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, boolean useSystemStoreBasedRepository,
+      long systemStoreBasedRepositoryRefreshIntervalInSeconds) {
     this.configLoader = configLoader;
 
     metricsRepository =
@@ -89,12 +93,16 @@ public class DaVinciBackend implements Closeable {
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, ".davinci-zk-client"));
 
     String clusterName = configLoader.getVeniceClusterConfig().getClusterName();
+    ClusterInfoProvider clusterInfoProvider;
 
     if (useSystemStoreBasedRepository) {
-      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository = new MetadataStoreBasedStoreRepository(clusterName, clientConfig, 60);
+      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository =
+          new MetadataStoreBasedStoreRepository(clientConfig, systemStoreBasedRepositoryRefreshIntervalInSeconds);
+      clusterInfoProvider = metadataStoreBasedStoreRepository;
       storeRepository = metadataStoreBasedStoreRepository;
       schemaRepository = metadataStoreBasedStoreRepository;
     } else {
+      clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
       storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
       storeRepository.refresh();
 
@@ -130,6 +138,7 @@ public class DaVinciBackend implements Closeable {
         storageService.getStorageEngineRepository(),
         configLoader,
         storageMetadataService,
+        clusterInfoProvider,
         storeRepository,
         schemaRepository,
         metricsRepository,
@@ -285,7 +294,8 @@ public class DaVinciBackend implements Closeable {
       if (isolatedIngestionService != null) {
         isolatedIngestionService.destroy();
       }
-
+      storeRepository.clear();
+      schemaRepository.clear();
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Da Vinci backend", e);
     }

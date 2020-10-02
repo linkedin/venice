@@ -29,6 +29,7 @@ import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
@@ -53,6 +54,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -173,7 +175,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     boolean useSystemStore = veniceProperties.getBoolean(ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY, false);
     logger.info("Isolated ingestion service uses system store repository: " + useSystemStore);
     if (useSystemStore) {
-      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository = new MetadataStoreBasedStoreRepository(clusterName, clientConfig, 60);
+      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository = new MetadataStoreBasedStoreRepository(clientConfig);
       metadataStoreBasedStoreRepository.refresh();
       storeRepository = metadataStoreBasedStoreRepository;
       schemaRepository = metadataStoreBasedStoreRepository;
@@ -217,6 +219,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         storageService.getStorageEngineRepository(),
         configLoader,
         storageMetadataService,
+        new StaticClusterInfoProvider(Collections.singleton(clusterName)),
         storeRepository,
         schemaRepository,
         metricsRepository,

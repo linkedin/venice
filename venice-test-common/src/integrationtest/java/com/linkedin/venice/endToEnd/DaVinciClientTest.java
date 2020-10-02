@@ -570,7 +570,6 @@ public class DaVinciClientTest {
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setRocksDBMemoryLimit(1024 * 1024 * 1024); // 1GB
-    System.out.println("Xun's starting DaVinci client");
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, new MetricsRepository(), backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       CompletableFuture future = client.subscribeAll();

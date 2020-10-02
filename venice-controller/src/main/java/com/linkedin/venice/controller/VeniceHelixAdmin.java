@@ -608,7 +608,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store.isStoreMetadataSystemStoreEnabled()) {
                 // Attempt to dematerialize all possible versions, no-op if a version doesn't actually exist.
                 for (Version version : storeRepository.getStore(VeniceSystemStore.METADATA_STORE.getPrefix()).getVersions()) {
-                    dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), false);
+                    dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), !store.isMigrating());
                 }
             }
             // Delete All versions and push statues
@@ -1708,7 +1708,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Deleting version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
             deleteOneStoreVersion(clusterName, storeName, versionNum);
             logger.info("Deleted version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
-        }finally {
+        } finally {
             resources.unlockForMetadataOperation();
         }
     }

@@ -566,8 +566,9 @@ public abstract class AbstractPushMonitor
           handleOfflinePushUpdate(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
           logger.error(newStatusDetails);
         }
-      } else {
-        logger.info(offlinePushStatus.getKafkaTopic()+" is not ready to start buffer relay.");
+      } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
+        logger.info(offlinePushStatus.getKafkaTopic() + " is not ready to start buffer replay. Current state: "
+            + offlinePushStatus.getCurrentStatus().toString());
       }
     }
   }

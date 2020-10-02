@@ -72,6 +72,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean enforceSSLOnly;
   private final long terminalStateTopicCheckerDelayMs;
+  /**
+   * Test only config used to disable parent topic truncation upon job completion. This is needed because kafka cluster
+   * in test environment is shared between parent and child controllers. Truncating topic upon completion will confuse
+   * child controllers in certain scenarios.
+   */
+  private final boolean disableParentTopicTruncationUponCompletion;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -162,6 +168,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.backupVersionRetentionBasedCleanupEnabled = false;
     this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure routes
     this.terminalStateTopicCheckerDelayMs = props.getLong(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
+    this.disableParentTopicTruncationUponCompletion = props.getBoolean(CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION, false);
   }
 
   public int getAdminPort() {
@@ -336,6 +343,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getTerminalStateTopicCheckerDelayMs() {
     return terminalStateTopicCheckerDelayMs;
+  }
+
+  public boolean disableParentTopicTruncationUponCompletion() {
+    return disableParentTopicTruncationUponCompletion;
   }
 
   /**

@@ -8,6 +8,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 
 import java.io.File;
@@ -26,16 +27,18 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
   private final BrooklinWrapper brooklinWrapper;
+  private final String clusterToD2;
 
   VeniceMultiClusterWrapper(File dataDirectory, ZkServerWrapper zkServerWrapper, KafkaBrokerWrapper kafkaBrokerWrapper,
       BrooklinWrapper brooklinWrapper, Map<String, VeniceClusterWrapper> clusters,
-      Map<Integer, VeniceControllerWrapper> controllers) {
+      Map<Integer, VeniceControllerWrapper> controllers, String clusterToD2) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
     this.brooklinWrapper = brooklinWrapper;
     this.controllers = controllers;
     this.clusters = clusters;
+    this.clusterToD2 = clusterToD2;
   }
 
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(int numberOfClusters, int numberOfControllers,
@@ -93,12 +96,15 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
                 clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableWhitelist,
                 enableAutoJoinWhitelist, delayToReblanceMS, minActiveReplica, sslToStorageNodes, false, veniceProperties);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
+        clusterWrapper.setExternalControllerDiscoveryURL(controllerMap.values().stream()
+            .map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(",")));
       }
       final ZkServerWrapper finalZkServerWrapper = zkServerWrapper;
       final KafkaBrokerWrapper finalKafkaBrokerWrapper = kafkaBrokerWrapper;
       final BrooklinWrapper finalBrooklinWrapper = brooklinWrapper;
+      final String finalClusterToD2 = clusterToD2;
       return (serviceName, port) -> new VeniceMultiClusterWrapper(null, finalZkServerWrapper, finalKafkaBrokerWrapper,
-          finalBrooklinWrapper, clusterWrapperMap, controllerMap);
+          finalBrooklinWrapper, clusterWrapperMap, controllerMap, finalClusterToD2);
     } catch (Exception e) {
       IOUtils.closeQuietly(zkServerWrapper);
       IOUtils.closeQuietly(kafkaBrokerWrapper);
@@ -189,6 +195,10 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   public String[] getClusterNames() {
     return clusters.keySet().toArray(new String[clusters.keySet().size()]);
+  }
+
+  public String getClusterToD2() {
+    return clusterToD2;
   }
 
   public void restartControllers() {

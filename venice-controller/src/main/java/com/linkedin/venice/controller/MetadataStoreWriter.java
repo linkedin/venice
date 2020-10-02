@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.common.MetadataStoreUtils;
 import com.linkedin.venice.common.StoreMetadataType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -51,9 +52,7 @@ public class MetadataStoreWriter {
 
   public void writeStoreAttributes(String clusterName, String storeName, Store store) {
     VeniceWriter writer = prepareToWrite(clusterName, storeName);
-    StoreMetadataKey key = new StoreMetadataKey();
-    key.keyStrings = Arrays.asList(storeName);
-    key.metadataType = StoreMetadataType.STORE_ATTRIBUTES.getValue();
+    StoreMetadataKey key = MetadataStoreUtils.getStoreAttributesKey(storeName);
     StoreMetadataValue value = new StoreMetadataValue();
     StoreAttributes storeAttributes = (StoreAttributes) StoreMetadataType.STORE_ATTRIBUTES.getNewInstance();
     // TODO Revisit the way we populate sourceCluster and otherClusters when we decide to materialize Venice store in multiple clusters.
@@ -67,9 +66,7 @@ public class MetadataStoreWriter {
 
   public void writeTargetVersionStates(String clusterName, String storeName, List<Version> versions) {
     VeniceWriter writer = prepareToWrite(clusterName, storeName);
-    StoreMetadataKey key = new StoreMetadataKey();
-    key.keyStrings = Arrays.asList(storeName);
-    key.metadataType = StoreMetadataType.TARGET_VERSION_STATES.getValue();
+    StoreMetadataKey key = MetadataStoreUtils.getTargetVersionStatesKey(storeName);
     StoreMetadataValue value = new StoreMetadataValue();
     TargetVersionStates targetVersionStates =
         (TargetVersionStates) StoreMetadataType.TARGET_VERSION_STATES.getNewInstance();
@@ -81,9 +78,7 @@ public class MetadataStoreWriter {
 
   public void writeCurrentStoreStates(String clusterName, String storeName, Store store) {
     VeniceWriter writer = prepareToWrite(clusterName, storeName);
-    StoreMetadataKey key = new StoreMetadataKey();
-    key.keyStrings = Arrays.asList(storeName, clusterName);
-    key.metadataType = StoreMetadataType.CURRENT_STORE_STATES.getValue();
+    StoreMetadataKey key = MetadataStoreUtils.getCurrentStoreStatesKey(storeName, clusterName);
     StoreMetadataValue value = new StoreMetadataValue();
     CurrentStoreStates currentStoreStates = (CurrentStoreStates) StoreMetadataType.CURRENT_STORE_STATES.getNewInstance();
     currentStoreStates.states = populateStoreProperties(store);
@@ -94,9 +89,7 @@ public class MetadataStoreWriter {
 
   public void writeCurrentVersionStates(String clusterName, String storeName, List<Version> versions, int currentVersion) {
     VeniceWriter writer = prepareToWrite(clusterName, storeName);
-    StoreMetadataKey key = new StoreMetadataKey();
-    key.keyStrings = Arrays.asList(storeName, clusterName);
-    key.metadataType = StoreMetadataType.CURRENT_VERSION_STATES.getValue();
+    StoreMetadataKey key = MetadataStoreUtils.getCurrentVersionStatesKey(storeName, clusterName);
     StoreMetadataValue value = new StoreMetadataValue();
     CurrentVersionStates currentVersionStates =
         (CurrentVersionStates) StoreMetadataType.CURRENT_VERSION_STATES.getNewInstance();
@@ -113,12 +106,15 @@ public class MetadataStoreWriter {
     StoreMetadataKey key = new StoreMetadataKey();
     key.keyStrings = Arrays.asList(storeName, clusterName);
     key.metadataType = StoreMetadataType.STORE_KEY_SCHEMAS.getValue();
+    StoreMetadataKey clusterFreeKey = MetadataStoreUtils.getStoreKeySchemasKey(storeName);
     StoreMetadataValue value = new StoreMetadataValue();
     StoreKeySchemas storeSchemas = (StoreKeySchemas) StoreMetadataType.STORE_KEY_SCHEMAS.getNewInstance();
     storeSchemas.keySchemaMap = parseSchemaMap(keySchemaMap);
     value.metadataUnion = storeSchemas;
     value.timestamp = System.currentTimeMillis();
+    // TODO remove writing into the key space with clusterName once all Zk free Da-Vinci client is upgraded
     writer.put(key, value, storeMetadataSchemaIdMap.get(clusterName));
+    writer.put(clusterFreeKey, value, storeMetadataSchemaIdMap.get(clusterName));
   }
 
   public void writeStoreValueSchemas(String clusterName, String storeName, Collection<SchemaEntry> valueSchemaMap) {
@@ -126,12 +122,15 @@ public class MetadataStoreWriter {
     StoreMetadataKey key = new StoreMetadataKey();
     key.keyStrings = Arrays.asList(storeName, clusterName);
     key.metadataType = StoreMetadataType.STORE_VALUE_SCHEMAS.getValue();
+    StoreMetadataKey clusterFreeKey = MetadataStoreUtils.getStoreValueSchemasKey(storeName);
     StoreMetadataValue value = new StoreMetadataValue();
     StoreValueSchemas storeSchemas = (StoreValueSchemas) StoreMetadataType.STORE_VALUE_SCHEMAS.getNewInstance();
     storeSchemas.valueSchemaMap = parseSchemaMap(valueSchemaMap);
     value.metadataUnion = storeSchemas;
     value.timestamp = System.currentTimeMillis();
+    // TODO remove writing into the key space with clusterName once all Zk free Da-Vinci client is upgraded
     writer.put(key, value, storeMetadataSchemaIdMap.get(clusterName));
+    writer.put(clusterFreeKey, value, storeMetadataSchemaIdMap.get(clusterName));
   }
 
   private VeniceWriter prepareToWrite(String clusterName, String storeName) {

@@ -8,6 +8,7 @@ import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.MetadataStoreUtils;
 import com.linkedin.venice.common.StoreMetadataType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -257,7 +258,7 @@ public class SystemStoreTest {
         StoreMetadataValue.class).setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setD2Client(testMetadataStoreD2Client).setVeniceURL(venice.getZk().getAddress());
     // Create MetadataStoreBasedStoreRepository
-    MetadataStoreBasedStoreRepository storeRepository = new MetadataStoreBasedStoreRepository(venice.getClusterName(), clientConfig, 60);
+    MetadataStoreBasedStoreRepository storeRepository = new MetadataStoreBasedStoreRepository(clientConfig);
     // Create test listener to monitor store repository changes.
     AtomicInteger creationCount = new AtomicInteger(0);
     AtomicInteger changeCount = new AtomicInteger(0);
@@ -271,24 +272,12 @@ public class SystemStoreTest {
     storeRepository.subscribe(regularVeniceStoreName);
     assertListenerCounts(testListener, creationCount.addAndGet(1), changeCount.get(), deletionCount.get(), "store creations");
 
-    StoreMetadataKey storeAttributesKey = new StoreMetadataKey();
-    storeAttributesKey.keyStrings = Arrays.asList(regularVeniceStoreName);
-    storeAttributesKey.metadataType = StoreMetadataType.STORE_ATTRIBUTES.getValue();
-    StoreMetadataKey storeTargetVersionStatesKey = new StoreMetadataKey();
-    storeTargetVersionStatesKey.keyStrings = Arrays.asList(regularVeniceStoreName);
-    storeTargetVersionStatesKey.metadataType = StoreMetadataType.TARGET_VERSION_STATES.getValue();
-    StoreMetadataKey storeCurrentStatesKey = new StoreMetadataKey();
-    storeCurrentStatesKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
-    storeCurrentStatesKey.metadataType = StoreMetadataType.CURRENT_STORE_STATES.getValue();
-    StoreMetadataKey storeCurrentVersionStatesKey = new StoreMetadataKey();
-    storeCurrentVersionStatesKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
-    storeCurrentVersionStatesKey.metadataType = StoreMetadataType.CURRENT_VERSION_STATES.getValue();
-    StoreMetadataKey storeKeySchemasKey = new StoreMetadataKey();
-    storeKeySchemasKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
-    storeKeySchemasKey.metadataType = StoreMetadataType.STORE_KEY_SCHEMAS.getValue();
-    StoreMetadataKey storeValueSchemasKey = new StoreMetadataKey();
-    storeValueSchemasKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
-    storeValueSchemasKey.metadataType = StoreMetadataType.STORE_VALUE_SCHEMAS.getValue();
+    StoreMetadataKey storeAttributesKey = MetadataStoreUtils.getStoreAttributesKey(regularVeniceStoreName);
+    StoreMetadataKey storeTargetVersionStatesKey = MetadataStoreUtils.getTargetVersionStatesKey(regularVeniceStoreName);
+    StoreMetadataKey storeCurrentStatesKey = MetadataStoreUtils.getCurrentStoreStatesKey(regularVeniceStoreName, clusterName);
+    StoreMetadataKey storeCurrentVersionStatesKey = MetadataStoreUtils.getCurrentVersionStatesKey(regularVeniceStoreName, clusterName);
+    StoreMetadataKey storeKeySchemasKey = MetadataStoreUtils.getStoreKeySchemasKey(regularVeniceStoreName);
+    StoreMetadataKey storeValueSchemasKey = MetadataStoreUtils.getStoreValueSchemasKey(regularVeniceStoreName);
 
     try (AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client =
         ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig
