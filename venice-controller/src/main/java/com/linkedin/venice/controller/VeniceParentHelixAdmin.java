@@ -1193,6 +1193,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<IncrementalPushPolicy> incrementalPushPolicy = params.getIncrementalPushPolicy();
       Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
       Optional<Integer> replicationFactor = params.getReplicationFactor();
+      Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
 
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
       if (null == store) {
@@ -1204,7 +1205,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.owner = owner.orElseGet(store::getOwner);
       // Invalid config update on hybrid will not be populated to admin channel so subsequent updates on the store won't be blocked by retry mechanism.
       if (store.isHybrid()) {
-        if (partitionCount.isPresent()){
+        // Update-store message copied to the other cluster during store migration also has partitionCount.
+        // Allow updating store if the partitionCount is equal to the existing value.
+        if (partitionCount.isPresent() && partitionCount.get() != store.getPartitionCount()){
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores");
         }
         if (amplificationFactor.isPresent() || partitionerClass.isPresent() || partitionerParams.isPresent()) {
@@ -1335,6 +1338,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.incrementalPushPolicy = incrementalPushPolicy.map(IncrementalPushPolicy::getValue).orElseGet(() -> store.getIncrementalPushPolicy().getValue());
       setStore.backupVersionRetentionMs = backupVersionRetentionMs.orElseGet(store::getBackupVersionRetentionMs);
       setStore.replicationFactor = replicationFactor.orElseGet(store::getReplicationFactor);
+      setStore.migrationDuplicateStore = migrationDuplicateStore.orElseGet(store::isMigrationDuplicateStore);
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;

@@ -749,8 +749,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         // Update store and storeConfig to support single datacenter store migration
-        this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));
-        this.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
+        if (!multiClusterConfigs.isParent()) {
+            this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));
+            this.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
+        }
 
         String destControllerUrl = this.getMasterController(destClusterName).getUrl(false);
         ControllerClient destControllerClient = new ControllerClient(destClusterName, destControllerUrl, sslFactory);
@@ -778,8 +780,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Copy remaining properties that will make the cloned store almost identical to the original
         UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore)
             .setStoreMigration(true)
-            // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
-            .setLargestUsedVersionNumber(0);
+            .setMigrationDuplicateStore(true) // Mark as duplicate store, to which L/F SN refers to avoid multi leaders
+            .setLargestUsedVersionNumber(0); // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
         destControllerClient.updateStore(storeName, params);
 
         if (srcStore.isStoreMetadataSystemStoreEnabled()) {
@@ -2330,6 +2332,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void setMigrationDuplicateStore(String clusterName, String storeName,
+        boolean migrationDuplicateStore) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setMigrationDuplicateStore(migrationDuplicateStore);
+            return store;
+        });
+    }
+
     public synchronized void setWriteComputationEnabled(String clusterName, String storeName,
         boolean writeComputationEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
@@ -2506,6 +2516,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<IncrementalPushPolicy> incrementalPushPolicy = params.getIncrementalPushPolicy();
         Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
         Optional<Integer> replicationFactor = params.getReplicationFactor();
+        Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
 
         Optional<HybridStoreConfig> hybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
@@ -2634,6 +2645,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (storeMigration.isPresent()) {
                 setStoreMigration(clusterName, storeName, storeMigration.get());
+            }
+
+            if (migrationDuplicateStore.isPresent()) {
+                setMigrationDuplicateStore(clusterName, storeName, migrationDuplicateStore.get());
             }
 
             if (writeComputationEnabled.isPresent()) {

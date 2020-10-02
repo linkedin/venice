@@ -369,6 +369,13 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getInteger(REPLICATION_FACTOR);
   }
 
+  public UpdateStoreQueryParams setMigrationDuplicateStore(boolean migrationDuplicateStore) {
+    return putBoolean(MIGRATION_DUPLICATE_STORE, migrationDuplicateStore);
+  }
+  public Optional<Boolean> getMigrationDuplicateStore() {
+    return getBoolean(MIGRATION_DUPLICATE_STORE);
+  }
+
   //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {
     return (UpdateStoreQueryParams) add(name, value);

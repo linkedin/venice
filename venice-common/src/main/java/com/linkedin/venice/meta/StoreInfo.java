@@ -51,6 +51,7 @@ public class StoreInfo {
     storeInfo.setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     storeInfo.setIncrementalPushPolicy(store.getIncrementalPushPolicy());
     storeInfo.setReplicationFactor(store.getReplicationFactor());
+    storeInfo.setMigrationDuplicateStore(store.isMigrationDuplicateStore());
     return storeInfo;
   }
   /**
@@ -242,6 +243,11 @@ public class StoreInfo {
    * Incremental Push Policy to reconcile with real time pushes.
    */
   private IncrementalPushPolicy incrementalPushPolicy;
+
+  /**
+   * Whether or not the store is a duplicate store in the process of migration.
+   */
+  private boolean migrationDuplicateStore = false;
 
   public StoreInfo() {
   }
@@ -588,5 +594,13 @@ public class StoreInfo {
 
   public void setReplicationFactor(int replicationFactor) {
     this.replicationFactor = replicationFactor;
+  }
+
+  public boolean isMigrationDuplicateStore() {
+    return migrationDuplicateStore;
+  }
+
+  public void setMigrationDuplicateStore(boolean migrationDuplicateStore) {
+    this.migrationDuplicateStore = migrationDuplicateStore;
   }
 }

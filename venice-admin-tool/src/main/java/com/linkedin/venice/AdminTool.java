@@ -1299,7 +1299,7 @@ public class AdminTool {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
-    // Make sure destClusternName does agree with the cluster discovery result
+    // Make sure destClusterName does agree with the cluster discovery result
     String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
     if (!clusterDiscovered.equals(destClusterName)) {
       System.err.println("ERROR: store " + storeName + " belongs to cluster " + clusterDiscovered
@@ -1319,9 +1319,22 @@ public class AdminTool {
       }
     }
 
-    // Reset migration flag
+    // If this is a parent controller, verify that original store is deleted in all child fabrics
+    Map<String, String> childClusterMap = srcControllerClient.listChildControllers(srcClusterName).getChildClusterMap();
+    if (childClusterMap != null) {
+      for (Map.Entry<String, String> entry : childClusterMap.entrySet()) {
+        ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, entry.getValue(), sslFactory);
+        if (null != srcChildControllerClient.getStore(storeName).getStore()) {
+          System.err.println("ERROR: store " + storeName + " still exists in source cluster " + srcClusterName
+              + " in fabric " + entry.getKey() + ". Please try again later.");
+        }
+      }
+    }
+
+    // Reset migration flags
+    System.err.println("\nOriginal store does not exist. Resetting migration flags...");
     ControllerResponse controllerResponse =
-        destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(false));
+        destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(false).setMigrationDuplicateStore(false));
     printObject(controllerResponse);
   }
 
