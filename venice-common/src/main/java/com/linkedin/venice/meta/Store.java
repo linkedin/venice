@@ -268,6 +268,11 @@ public class Store {
    */
   private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
 
+  /**
+   * Whether or not the store is a duplicate store in the process of migration.
+   */
+  private boolean migrationDuplicateStore = false;
+
 
   public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
       RoutingStrategy routingStrategy, ReadStrategy readStrategy,
@@ -706,6 +711,14 @@ public class Store {
     this.replicationFactor = replicationFactor;
   }
 
+  public boolean isMigrationDuplicateStore() {
+    return migrationDuplicateStore;
+  }
+
+  public void setMigrationDuplicateStore(boolean migrationDuplicateStore) {
+    this.migrationDuplicateStore = migrationDuplicateStore;
+  }
+
   /**
    * Add a version into store.
    *
@@ -962,6 +975,7 @@ public class Store {
     result = 31 * result + incrementalPushPolicy.hashCode();
     result = 31 * result + (int) (backupVersionRetentionMs ^ (backupVersionRetentionMs >>> 32));
     result = 31 * result + replicationFactor;
+    result = 31 * result + (migrationDuplicateStore ? 1 : 0);
 
     return result;
   }
@@ -1010,6 +1024,7 @@ public class Store {
     if (incrementalPushPolicy != store.incrementalPushPolicy) return false;
     if (backupVersionRetentionMs != store.backupVersionRetentionMs) return false;
     if (replicationFactor != store.replicationFactor) return false;
+    if (migrationDuplicateStore != store.migrationDuplicateStore) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
         && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
   }
@@ -1059,6 +1074,7 @@ public class Store {
     clonedStore.setIncrementalPushPolicy(incrementalPushPolicy);
     clonedStore.setBackupVersionRetentionMs(backupVersionRetentionMs);
     clonedStore.setReplicationFactor(replicationFactor);
+    clonedStore.setMigrationDuplicateStore(migrationDuplicateStore);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion(), true);
     }

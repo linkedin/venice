@@ -78,9 +78,12 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
         controllerProperties.put(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
       }
+      // Setup D2 for controller
+      String zkAddress = zkServerWrapper.getAddress();
+      D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
       for (int i = 0; i < numberOfControllers; i++) {
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicationFactor, partitionSize,
-            delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false, controllerProperties);
+            delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, true, controllerProperties);
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
       for (int i = 0; i < numberOfClusters; i++) {

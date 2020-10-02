@@ -402,7 +402,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
-        .setReplicationFactor(message.replicationFactor);
+        .setReplicationFactor(message.replicationFactor)
+        .setMigrationDuplicateStore(message.migrationDuplicateStore);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -420,7 +421,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBackupVersionRetentionMs(message.backupVersionRetentionMs);
 
     if (checkPreConditionForReplicateUpdateStore(clusterName, storeName,
-        message.isMigrating, message.enableReads, message.enableWrites)) {
+        message.isMigrating, message.enableReads, message.enableWrites, message.migrationDuplicateStore)) {
       admin.replicateUpdateStore(clusterName, storeName, params);
     }
 
@@ -509,14 +510,15 @@ public class AdminExecutionTask implements Callable<Void> {
   }
 
   private boolean checkPreConditionForReplicateUpdateStore(String clusterName, String storeName,
-      boolean isMigrating, boolean isEnableReads, boolean isEnableWrites) {
+      boolean isMigrating, boolean isEnableReads, boolean isEnableWrites, boolean isMigrationDuplicateStore) {
     if (this.isParentController && admin.hasStore(clusterName, storeName)) {
       Store store = admin.getStore(clusterName, storeName);
       if (store.isMigrating()) {
         boolean storeMigrationUpdated = isMigrating != store.isMigrating();
         boolean readabilityUpdated =  isEnableReads != store.isEnableReads();
         boolean writeabilityUpdated = isEnableWrites != store.isEnableWrites();
-        if (storeMigrationUpdated || readabilityUpdated || writeabilityUpdated) {
+        boolean migrationDuplicateStoreUpdated = isMigrationDuplicateStore != store.isMigrationDuplicateStore();
+        if (storeMigrationUpdated || readabilityUpdated || writeabilityUpdated || migrationDuplicateStoreUpdated) {
           // No need to mirror these updates
           return false;
         }

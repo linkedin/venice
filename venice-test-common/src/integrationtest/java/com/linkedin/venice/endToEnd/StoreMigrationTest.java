@@ -17,8 +17,10 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -26,6 +28,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -38,14 +41,29 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.log4j.Logger;
+import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
 
+/**
+ * The suite includes integration tests for all store migration tools, including migrate-store, complete-migration,
+ * end-migration and abort-migration. It tests both multi-colo and single-colo store migration.
+ *
+ * The test store created in {@link StoreMigrationTest#setup()} is a hybrid store and is used by all tests to reduce
+ * the running time of this suite. When each migration ends, source cluster name and dest cluster name are swapped to
+ * prepare for the next test.
+ *
+ * The suite also uses constructor {@link StoreMigrationTest#StoreMigrationTest(boolean)} to test both Online/Offline
+ * model and Leader/Follower model.
+ */
 public class StoreMigrationTest {
   private static final String STORE_NAME = "testStore";
   private static final String OWNER = "";
@@ -53,6 +71,7 @@ public class StoreMigrationTest {
   private static final String FABRIC0 = "dc-0";
   private static final String FABRIC1 = "dc-1";
   private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = {false, true, true};
+  private static final int STREAMING_RECORD_SIZE = 1024;
 
   private VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> multiClusterWrappers;
@@ -61,29 +80,56 @@ public class StoreMigrationTest {
   private String parentControllerUrl;
   private String childControllerUrl0;
   private int zkSharedStoreVersion = 1;
+  private boolean isLeaderFollowerModel;
+
+  @Factory(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public StoreMigrationTest(boolean isLeaderFollowerModel) {
+    this.isLeaderFollowerModel = isLeaderFollowerModel;
+  }
 
   @BeforeClass
   public void setup() {
-    Properties properties = new Properties();
+    Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
-    properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
-    VeniceProperties veniceProperties = new VeniceProperties(properties);
-    twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(2, 2,
-        3, 3, 1, 1, veniceProperties, true);
+    parentControllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+
+    Properties serverProperties = new Properties();
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+
+    // RF 2 with 2 servers to test both the leader and follower code paths
+    twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        2,
+        2,
+        1,
+        1,
+        2,
+        1,
+        2,
+        Optional.empty(),
+        Optional.of(new VeniceProperties(parentControllerProperties)),
+        Optional.empty(),
+        Optional.of(new VeniceProperties(serverProperties)),
+        true,
+        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+
     multiClusterWrappers = twoLayerMultiColoMultiClusterWrapper.getClusters();
     String[] clusterNames = multiClusterWrappers.get(0).getClusterNames();
     Arrays.sort(clusterNames);
     srcClusterName = clusterNames[0];
     destClusterName = clusterNames[1];
     parentControllerUrl = twoLayerMultiColoMultiClusterWrapper.getParentControllers().stream()
-        .map(veniceControllerWrapper -> veniceControllerWrapper.getControllerUrl())
+        .map(VeniceControllerWrapper::getControllerUrl)
         .collect(Collectors.joining(","));
     childControllerUrl0 = multiClusterWrappers.get(0).getControllerConnectString();
 
     // Create and populate testStore in src cluster
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
     srcControllerClient.createNewStore(STORE_NAME, OWNER, "\"string\"", "\"string\"");
-    srcControllerClient.updateStore(STORE_NAME, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
+    srcControllerClient.updateStore(STORE_NAME, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setHybridRewindSeconds(10L)
+        .setHybridOffsetLagThreshold(2L)
+        .setLeaderFollowerModel(isLeaderFollowerModel));
 
     // Populate store
     populateStore(parentControllerUrl, STORE_NAME, 1);
@@ -371,6 +417,9 @@ public class StoreMigrationTest {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(controllerUrl, inputDirPath, storeName);
 
+    SystemProducer veniceProducer0 = null;
+    SystemProducer veniceProducer1 = null;
+
     try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
       writeSimpleAvroFileWithUserSchema(inputDir);
       job.run();
@@ -383,8 +432,23 @@ public class StoreMigrationTest {
       Assert.assertEquals(job.getKeySchemaString(), STRING_SCHEMA);
       Assert.assertEquals(job.getValueSchemaString(), STRING_SCHEMA);
       Assert.assertEquals(job.getInputFileDataSize(), 3872);
+
+      // Write streaming records
+      veniceProducer0 = getSamzaProducer(multiClusterWrappers.get(0).getClusters().get(srcClusterName), storeName, Version.PushType.STREAM);
+      veniceProducer1 = getSamzaProducer(multiClusterWrappers.get(1).getClusters().get(srcClusterName), storeName, Version.PushType.STREAM);
+      for (int i = 1; i <= 10; i++) {
+        sendCustomSizeStreamingRecord(veniceProducer0, storeName, i, STREAMING_RECORD_SIZE);
+        sendCustomSizeStreamingRecord(veniceProducer1, storeName, i, STREAMING_RECORD_SIZE);
+      }
     } catch (Exception e) {
       throw new VeniceException(e);
+    } finally {
+      if (null != veniceProducer0) {
+        veniceProducer0.stop();
+      }
+      if (null != veniceProducer1) {
+        veniceProducer1.stop();
+      }
     }
   }
 
@@ -438,6 +502,7 @@ public class StoreMigrationTest {
       storeResponse = destControllerClient.getStore(STORE_NAME);
       Assert.assertNotNull(storeResponse.getStore());
       Assert.assertFalse(storeResponse.getStore().isMigrating());
+      Assert.assertFalse(storeResponse.getStore().isMigrationDuplicateStore());
     });
     swapSrcAndDest();
   }
@@ -450,7 +515,18 @@ public class StoreMigrationTest {
   }
 
   private void verifyStoreData(AvroGenericStoreClient<String, Object> client) throws Exception {
-    for (int i = 1; i <= 100; ++i) {
+    for (int i = 1; i <= 10; i++) {
+      String key = Integer.toString(i);
+      String value = client.get(key).get().toString();
+      assertEquals(value.length(), STREAMING_RECORD_SIZE);
+
+      String expectedChar = Integer.toString(i).substring(0, 1);
+      for (int j = 0; j < value.length(); j++) {
+        assertEquals(value.substring(j, j + 1), expectedChar);
+      }
+    }
+
+    for (int i = 11; i <= 100; ++i) {
       String expected = "test_name_" + i;
       String actual = client.get(Integer.toString(i)).get().toString();
       Assert.assertEquals(actual, expected);

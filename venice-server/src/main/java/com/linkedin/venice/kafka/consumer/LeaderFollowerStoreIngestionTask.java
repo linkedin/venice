@@ -19,6 +19,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -221,12 +222,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + ", because this replica is the leader already.");
           return;
         }
+        Store store = storeRepository.getStore(storeName);
+        if (store.isMigrationDuplicateStore()) {
+          partitionConsumptionState.setLeaderState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
+          logger.info(consumerTaskId + " for partition " + partition + " is paused transition from STANDBY to LEADER;\n"
+              + partitionConsumptionState.getOffsetRecord().toDetailedString());
+        } else {
+          // Mark this partition in the middle of STANDBY to LEADER transition
+          partitionConsumptionState.setLeaderState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
 
-        // Mark this partition in the middle of STANDBY to LEADER transition
-        partitionConsumptionState.setLeaderState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
-
-        logger.info(consumerTaskId + " for partition " + partition + " is in transition from STANDBY to LEADER;\n"
-            + partitionConsumptionState.getOffsetRecord().toDetailedString());
+          logger.info(consumerTaskId + " for partition " + partition + " is in transition from STANDBY to LEADER;\n"
+              + partitionConsumptionState.getOffsetRecord().toDetailedString());
+        }
         break;
       case LEADER_TO_STANDBY:
         checker = message.getLeaderSessionIdChecker();
@@ -309,6 +316,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long checkStartTimeInNS = System.nanoTime();
     for (PartitionConsumptionState partitionConsumptionState : partitionConsumptionStateMap.values()) {
       switch (partitionConsumptionState.getLeaderState()) {
+        case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
+          Store store = storeRepository.getStore(storeName);
+          if (!store.isMigrationDuplicateStore()) {
+            partitionConsumptionState.setLeaderState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
+            logger.info(consumerTaskId + " became in transition to leader for partition " + partitionConsumptionState.getPartition());
+          }
+          break;
         case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
           int partition = partitionConsumptionState.getPartition();
 
