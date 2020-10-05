@@ -197,6 +197,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         throw new VeniceNoStoreException("Cannot add version to store " + storeName + " because it's missing.");
       }
       Version version = new Version(storeName, 1, "test-id");
+      version.setReplicationFactor(replicationFactor);
       List<Version> versions = new ArrayList<>();
       versions.add(version);
       systemStores.get(storeName).setVersions(versions);

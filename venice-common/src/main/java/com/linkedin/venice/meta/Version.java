@@ -273,6 +273,10 @@ public class Version implements Comparable<Version> {
     this.replicationFactor = replicationFactor;
   }
 
+  public int getMinActiveReplicas() {
+    return replicationFactor - 1;
+  }
+
   @Override
   public String toString() {
     return "Version{" +
