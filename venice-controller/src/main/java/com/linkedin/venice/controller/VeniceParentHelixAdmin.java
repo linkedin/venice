@@ -62,6 +62,7 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -1786,11 +1787,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public NodeRemovableResult isInstanceRemovable(String clusterName, String instanceId, boolean isFromInstanceView) {
-    throw new VeniceException("isInstanceRemovable is not supported!");
-  }
-
-  @Override
-  public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas, boolean isInstanceView) {
     throw new VeniceException("isInstanceRemovable is not supported!");
   }
 

@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -319,8 +318,6 @@ public interface Admin extends AutoCloseable, Closeable {
      *                           If the value is false, we will check all partitions of resources this instance hold.
      */
     NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, boolean isFromInstanceView);
-
-    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas, boolean isInstanceView);
 
     /**
      * Get instance of master controller. If there is no master controller for the given cluster, throw a

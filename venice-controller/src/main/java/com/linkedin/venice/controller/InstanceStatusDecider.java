@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -17,6 +18,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
@@ -52,9 +54,9 @@ public class InstanceStatusDecider {
   }
 
   protected static NodeRemovableResult isRemovable(VeniceHelixResources resources, String clusterName,
-      String instanceId, int minActiveReplicas) {
+      String instanceId) {
 
-    return isRemovable(resources, clusterName, instanceId, minActiveReplicas, false);
+    return isRemovable(resources, clusterName, instanceId, false);
   }
 
   /**
@@ -67,7 +69,7 @@ public class InstanceStatusDecider {
    *  3.1 Push will not fail after removing this node from the cluster.
    */
   protected static NodeRemovableResult isRemovable(VeniceHelixResources resources, String clusterName, String instanceId,
-      int minActiveReplicas, boolean isInstanceView) {
+      boolean isInstanceView) {
     try {
       // If instance is not alive, it's removable.
       if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getController())) {
@@ -105,7 +107,18 @@ public class InstanceStatusDecider {
                     + result.getSecond());
                 return NodeRemovableResult.nonremoveableResult(resourceName, NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA, result.getSecond());
               }
-              result = willTriggerRebalance(partitionAssignmentAfterRemoving, minActiveReplicas);
+
+              Optional<Version> version = resources.getMetadataRepository()
+                  .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
+                  .getVersion(Version.parseVersionFromKafkaTopicName(resourceName));
+
+              if (version.isPresent()) {
+                result = willTriggerRebalance(partitionAssignmentAfterRemoving, version.get().getMinActiveReplicas());
+              } else {
+                result = new Pair<>(false, "Cannot find the version info. Ignore it since it's been deleted. "
+                    + "Resource: " + resourceName);
+              }
+
               if (result.getFirst()) {
                 logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName + " would be re-balanced if this instance was removed from cluster:" + clusterName + " details: "
                     + result.getSecond());

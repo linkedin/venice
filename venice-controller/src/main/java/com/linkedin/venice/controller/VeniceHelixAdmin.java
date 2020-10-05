@@ -2281,7 +2281,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public synchronized void setReplicaFactor(String clusterName, String storeName, int replicaFactor) {
+    public synchronized void setReplicationFactor(String clusterName, String storeName, int replicaFactor) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setReplicationFactor(replicaFactor);
 
@@ -2611,7 +2611,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (replicationFactor.isPresent()) {
-                setReplicaFactor(clusterName, storeName, replicationFactor.get());
+                setReplicationFactor(clusterName, storeName, replicationFactor.get());
             }
 
             if (storeMigration.isPresent()) {
@@ -3396,15 +3396,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, boolean isFromInstanceView) {
         checkControllerMastership(clusterName);
-        int minActiveReplicas = getVeniceHelixResource(clusterName).getConfig().getMinActiveReplica();
-        return isInstanceRemovable(clusterName, helixNodeId, minActiveReplicas, isFromInstanceView);
-    }
-
-    @Override
-    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas, boolean isInstanceView) {
-        checkControllerMastership(clusterName);
         return InstanceStatusDecider
-            .isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId, minActiveReplicas, isInstanceView);
+            .isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId, isFromInstanceView);
     }
 
     @Override
