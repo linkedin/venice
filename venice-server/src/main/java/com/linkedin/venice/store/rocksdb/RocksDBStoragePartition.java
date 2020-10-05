@@ -82,6 +82,22 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private final String fullPathForPartitionDB;
 
   /**
+   * This class will be used in {@link #put(byte[], ByteBuffer)} to improve GC.
+   * Since the only update is from {@literal com.linkedin.venice.kafka.consumer.StoreBufferService.StoreBufferDrainer}, the
+   * total amount of memory pre-allocated is limited.
+   */
+  private static class ReusableObjects {
+    public ByteBuffer directKeyBuffer;
+    public ByteBuffer directValueBuffer;
+
+    public ReusableObjects() {
+      directKeyBuffer = ByteBuffer.allocateDirect(1024 * 1024);
+      directValueBuffer = ByteBuffer.allocateDirect(1024 * 1024 + 128); // Adding another 128 bytes considering potential overhead of metadata
+    }
+  }
+  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
+
+  /**
    * The passed in {@link Options} instance.
    * For now, the RocksDB version being used right now doesn't support shared block cache unless
    * all the RocksDB databases reuse the same {@link Options} instance, which is not great.
@@ -390,7 +406,23 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
           throw new VeniceException("currentSSTFileWriter is null for store: " + storeName + ", partition id: "
               + partitionId + ", 'beginBatchWrite' should be invoked before any write");
         }
-        currentSSTFileWriter.put(key, ByteUtils.extractByteArray(valueBuffer));
+        ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+        reusableObjects.directKeyBuffer.clear();
+        if (key.length > reusableObjects.directKeyBuffer.capacity()) {
+          reusableObjects.directKeyBuffer = ByteBuffer.allocateDirect(key.length);
+        }
+        reusableObjects.directKeyBuffer.put(key);
+        reusableObjects.directKeyBuffer.flip();
+        reusableObjects.directValueBuffer.clear();
+        if (valueBuffer.remaining() > reusableObjects.directValueBuffer.capacity()) {
+          reusableObjects.directValueBuffer = ByteBuffer.allocateDirect(valueBuffer.remaining());
+        }
+        valueBuffer.mark();
+        reusableObjects.directValueBuffer.put(valueBuffer);
+        valueBuffer.reset();
+        reusableObjects.directValueBuffer.flip();
+
+        currentSSTFileWriter.put(reusableObjects.directKeyBuffer, reusableObjects.directValueBuffer);
         ++recordNumInCurrentSSTFile;
       } else {
         rocksDB.put(writeOptions, key, 0, key.length, valueBuffer.array(), valueBuffer.position(), valueBuffer.remaining());
