@@ -7,10 +7,14 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.net.ServerSocket;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -29,6 +33,8 @@ public final class ForkedJavaProcess extends Process {
    * the debugger is attached. Debug mode is not intended to be used as part of the regular suite.
    */
   private static final boolean debug = false;
+  private static final Logger classLogger = Logger.getLogger(ForkedJavaProcess.class);
+
   private final ExecutorService executorService;
   private final Process process;
   private final Thread processReaper;
@@ -38,10 +44,20 @@ public final class ForkedJavaProcess extends Process {
   public static Process exec(Class klass, String... params) throws IOException, InterruptedException {
     // Argument preparation
     String javaBin = Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString();
-    String classpath = System.getProperty("java.class.path");
+    StringBuilder classpath = new StringBuilder(System.getProperty("java.class.path"));
+    // Using set to remove duplicate classpath folders to avoid argument list too long error.
+    Set<String> classPathDirs = new HashSet<>();
+    // Adding classpath from current classloader.
+    for (URL url : ((URLClassLoader) (Thread.currentThread().getContextClassLoader())).getURLs()) {
+      classPathDirs.add(Paths.get(url.getPath()).getParent().toString());
+    }
+    for (String classPathDir : classPathDirs) {
+      classLogger.info("Adding class path dir: " + classPathDir);
+      classpath.append(":").append(classPathDir).append("/*");
+    }
     String className = klass.getCanonicalName();
     List<String> args = new ArrayList<>();
-    args.addAll(Arrays.asList(javaBin, "-cp", classpath));
+    args.addAll(Arrays.asList(javaBin, "-cp", classpath.toString()));
     int debugPort = -1;
     if (debug) {
       debugPort = getFreePort();
