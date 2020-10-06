@@ -114,7 +114,14 @@ public enum StatsErrorCode {
   /**
    * Used by {@link AggVersionedStorageIngestionStats} when the stats reporter fetches a null stats.
    */
-  NULL_INGESTION_STATS(-20);
+  NULL_INGESTION_STATS(-20),
+
+  /**
+   * Some metrics only make sense in the context of L/F stores and should not
+   * be queried otherwise. If they are queried regardless, then we will emit this
+   * error code.
+   */
+  METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES(-21);
 
   public final int code;
 

@@ -1310,7 +1310,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return NO_SUBSCRIBED_PARTITION.code;
     }
 
-    long offsetLag = partitionConsumptionStateMap.values().parallelStream()
+    long offsetLag = partitionConsumptionStateMap.values().stream()
         .filter(pcs -> pcs.isEndOfPushReceived() &&
             pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent())
         .mapToLong(pcs -> measureHybridOffsetLag(pcs, false))
@@ -1318,6 +1318,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     return minZeroLag(offsetLag);
   }
+
+  /**
+   * Measure the offset lag between follower and leader
+   */
+  public abstract long getFollowerOffsetLag();
 
   public long getOffsetLagThreshold() {
     if (!hybridStoreConfig.isPresent()) {
@@ -1332,7 +1337,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * values. Negative lag does not make sense so the intent is to ease interpretation by applying a
    * lower bound of zero on these metrics...
    */
-  private long minZeroLag(long value) {
+  protected long minZeroLag(long value) {
     if (value < 0) {
       logger.debug("Got a negative value for a lag metric. Will report zero.");
       return 0;
@@ -1353,7 +1358,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return NO_SUBSCRIBED_PARTITION.code;
     }
 
-    return partitionConsumptionStateMap.values().parallelStream()
+    return partitionConsumptionStateMap.values().stream()
         .filter(pcs -> !pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()).count();
   }
 
@@ -1362,6 +1367,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       logger.error("hybrid config shouldn't be null. Something bad happened. Topic: " + getVersionTopic());
     }
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
+  }
+
+  public boolean isLeaderFollowerMode() {
+    return this instanceof LeaderFollowerStoreIngestionTask;
   }
 
   protected void processStartOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
