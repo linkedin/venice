@@ -57,6 +57,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.stats.StatsErrorCode.*;
 import static com.linkedin.venice.store.record.ValueRecord.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
@@ -1066,6 +1067,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       super.recordWriterStats(producerTimestampMs, brokerTimestampMs, consumerTimestampMs, partitionConsumptionState);
     }
+  }
+
+  @Override
+  public long getFollowerOffsetLag() {
+    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+    if (!svs.isPresent()) {
+      return STORE_VERSION_STATE_UNAVAILABLE.code;
+    }
+
+    if (partitionConsumptionStateMap.isEmpty()) {
+      return NO_SUBSCRIBED_PARTITION.code;
+    }
+
+    long offsetLag = partitionConsumptionStateMap.values().stream()
+        //only calculate followers who have received EOP since before that, both leaders and followers
+        //consume from VT
+        .filter(pcs -> pcs.isEndOfPushReceived() && !pcs.getLeaderState().equals(LEADER))
+        //the lag is (latest VT offset - consumed VT offset
+        .mapToLong(pcs ->
+            cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, pcs.getPartition()) - pcs.getOffsetRecord().getOffset())
+        .sum();
+
+    return minZeroLag(offsetLag);
   }
 
 

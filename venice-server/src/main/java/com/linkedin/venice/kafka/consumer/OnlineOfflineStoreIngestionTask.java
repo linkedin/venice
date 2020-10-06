@@ -35,6 +35,8 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.stats.StatsErrorCode.*;
+
 
 public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
@@ -251,5 +253,10 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
     }
 
     return super.shouldProcessRecord(record);
+  }
+
+  @Override
+  public long getFollowerOffsetLag() {
+    return METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
   }
 }

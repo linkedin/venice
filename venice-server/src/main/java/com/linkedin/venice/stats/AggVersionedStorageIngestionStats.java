@@ -31,10 +31,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
     int version = Version.parseVersionFromKafkaTopicName(storeVersionTopic);
     try {
-      if (ingestionTask.isHybridMode()) {
-        // Make sure the hybrid store stats are registered
-        registerConditionalStats(storeName);
-      }
+      // Make sure the hybrid store/Leader follower stats are registered
+      registerConditionalStats(storeName);
+
       getStats(storeName, version).setIngestionTask(ingestionTask);
     } catch (Exception e) {
       LOGGER.warn("Failed to set up versioned storage ingestion stats of store: " + storeName
@@ -92,6 +91,18 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     public int getIngestionTaskErroredGauge() {
       return ingestionTaskErroredGauge;
     }
+
+    public long getFollowerOffsetLag() {
+      return ingestionTask.getFollowerOffsetLag();
+    }
+
+    public boolean isHybridEnabled() {
+      return ingestionTask.isHybridMode();
+    }
+
+    public boolean isLeaderFollowerEnabled() {
+      return ingestionTask.isLeaderFollowerMode();
+    }
   }
 
   static class StorageIngestionStatsReporter extends AbstractVeniceStatsReporter<StorageIngestionStats> {
@@ -108,14 +119,21 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     // Only register these stats if the store is hybrid.
     @Override
     protected void registerConditionalStats() {
-      registerSensor("rt_topic_offset_lag", new IngestionStatsGauge(this,
-          () -> (double) getStats().getRtTopicOffsetLag()));
+      if (getStats().isHybridEnabled()) {
+        registerSensor("rt_topic_offset_lag", new IngestionStatsGauge(this, () ->
+            (double) getStats().getRtTopicOffsetLag()));
 
-      registerSensor("rt_topic_offset_lag_over_threshold", new IngestionStatsGauge(this,
-          () -> (double) getStats().getRtTopicOffsetLagOverThreshold()));
+        registerSensor("rt_topic_offset_lag_over_threshold", new IngestionStatsGauge(this, () ->
+            (double) getStats().getRtTopicOffsetLagOverThreshold()));
 
-      registerSensor("number_of_partitions_not_receive_SOBR", new IngestionStatsGauge(this,
-          () -> (double) getStats().getNumberOfPartitionsNotReceiveSOBR()));
+        registerSensor("number_of_partitions_not_receive_SOBR", new IngestionStatsGauge(this, () ->
+            (double) getStats().getNumberOfPartitionsNotReceiveSOBR()));
+      }
+
+      if (getStats().isLeaderFollowerEnabled()) {
+        registerSensor("follower_offset_lag", new IngestionStatsGauge(this, () ->
+            (double) getStats().getFollowerOffsetLag()));
+      }
     }
 
     private static class IngestionStatsGauge extends Gauge {
