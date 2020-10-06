@@ -1,3 +1,19 @@
+pluginManagement {
+  repositories {
+    ivy {  //TODO: remove this before opensourcing
+      url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
+      patternLayout {
+        ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
+        artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
+        m2compatible = true
+      }
+    }
+    mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
+    maven {
+      url 'https://dl.bintray.com/linkedin/maven/'
+    }
+  }
+}
 include 'venice-common'
 include 'venice-thin-client'
 include 'venice-server'
