@@ -168,6 +168,7 @@ public class DaVinciClientTest {
     final int partition = 1;
     final int partitionCount = 2;
     String storeName = TestUtils.getUniqueString("store");
+    String storeName2 = cluster.createStore(KEY_COUNT);
     Consumer<UpdateStoreQueryParams> paramsConsumer =
             params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
                     .setPartitionCount(partitionCount)
@@ -193,9 +194,8 @@ public class DaVinciClientTest {
             .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD)
             .build();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
-         DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
-
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+      DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
       client.subscribe(Collections.singleton(emptyPartition)).get();
@@ -214,13 +214,33 @@ public class DaVinciClientTest {
           assertEquals(client.get(i).get(), i);
           keySet.add(i);
         }
-
-        Map<Integer, Integer> valueMap = client.batchGet(keySet).get();
-        assertNotNull(valueMap);
+      });
+    }
+    // Restart Da Vinci client to test bootstrap logic.
+    d2Client = new D2ClientBuilder()
+        .setZkHosts(cluster.getZk().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client);
+    metricsRepository = new MetricsRepository();
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+      DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+      client.subscribe(Collections.singleton(partition)).get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Set<Integer> keySet = new HashSet<>();
         for (Integer i = 0; i < KEY_COUNT; i++) {
-          assertEquals(valueMap.get(i), i);
+          assertEquals(client.get(i).get(), i);
+          keySet.add(i);
         }
       });
+      // Make sure multiple clients can share same isolated ingestion service.
+      DaVinciClient<Integer, Integer> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
+      client2.subscribeAll().get();
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        int result = client2.get(k).get();
+        assertEquals(result, 1);
+      }
     }
   }
 

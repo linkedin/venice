@@ -220,7 +220,7 @@ public class VersionBackend {
   }
 
   synchronized void completeSubPartitionByIsolatedIngestionService(int subPartition) {
-    logger.warn("Topic" + version.kafkaTopicName() + "Partition " + subPartition + " completed by ingestion isolation service.");
+    logger.warn("Topic " + version.kafkaTopicName() + ", partition: " + subPartition + " completed by ingestion isolation service.");
     // Re-open the storage engine partition in backend.
     storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
     // For hybrid store, the consumption task should be re-started on Da Vinci side to receive future nearline update.

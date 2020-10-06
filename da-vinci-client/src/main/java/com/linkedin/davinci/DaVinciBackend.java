@@ -34,6 +34,7 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
@@ -125,12 +126,17 @@ public class DaVinciBackend implements Closeable {
         Optional.of(clientConfig));
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
-
-    /**
-     * Start ingestion service in child process and ingestion listener service.
-     * TODO: This part is subject to change when forked ingestion service is integrating with Da Vinci client.
-     */
+    Map<String, Pair<Version, Set<Integer>>> bootstrapStoreNameToVersionPartitionsMap = new HashMap<>();
+    // Start ingestion service in child process and ingestion listener service.
     if (configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+      /**
+       * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
+       * record all store versions that are up-to-date and close all storage engines. This will make sure child process
+       * can open RocksDB stores.
+       */
+      bootstrap(bootstrapStoreNameToVersionPartitionsMap);
+
+      // Initialize isolated ingestion service.
       int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
       int ingestionListenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
       ingestionRequestClient = new IngestionRequestClient(ingestionServicePort);
@@ -170,13 +176,15 @@ public class DaVinciBackend implements Closeable {
       } catch (Exception e) {
         throw new VeniceException("Exception caught during initialization of ingestion service.", e);
       }
+      // Send out subscribe requests to child process to complete bootstrap process.
+      bootstrapWithIngestionIsolation(bootstrapStoreNameToVersionPartitionsMap);
+    } else {
+      bootstrap(bootstrapStoreNameToVersionPartitionsMap);
     }
-
-    bootstrap();
     storeRepository.registerStoreDataChangedListener(storeChangeListener);
   }
 
-  protected synchronized void bootstrap() {
+  protected synchronized void bootstrap(Map<String, Pair<Version, Set<Integer>>> bootstrapStoreNameToVersionPartitionsMap) {
     for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
       String kafkaTopicName = storageEngine.getName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
@@ -206,8 +214,35 @@ public class DaVinciBackend implements Closeable {
       StoreBackend store = getStoreOrThrow(storeName);
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
       Set<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
-      store.subscribe(ComplementSet.wrap(partitions), Optional.of(version));
+      if (configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+        logger.info("Will bootstrap store " + storeName + " with version " + version.kafkaTopicName() + " with partitions: " + partitions);
+        // If ingestion isolation is turned on, we will not subscribe to versions immediately, but instead stores all versions of interest.
+        bootstrapStoreNameToVersionPartitionsMap.put(storeName, new Pair<>(version, partitions));
+      } else {
+        store.subscribe(ComplementSet.wrap(partitions), Optional.of(version));
+      }
     }
+
+    if (configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+      // Close all opened store engines so child process can open them.
+      logger.info(
+          "Storage service has " + storageService.getStorageEngineRepository().getAllLocalStorageEngines().size() + " storage engine before clean up.");
+      for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
+        storageService.getStorageEngineRepository().removeLocalStorageEngine(storageEngine.getName()).close();
+      }
+      logger.info(
+          "Storage service has " + storageService.getStorageEngineRepository().getAllLocalStorageEngines().size() + " storage engine after clean up.");
+    }
+  }
+
+  // bootstrapWithIngestionIsolation sends out store subscribe request to isolated ingestion service to complete bootstrap.
+  protected synchronized void bootstrapWithIngestionIsolation(Map<String, Pair<Version, Set<Integer>>> bootstrapStoreNameToVersionPartitionsMap) {
+    bootstrapStoreNameToVersionPartitionsMap.forEach((name, versionPartitionPair) -> {
+      StoreBackend store = getStoreOrThrow(name);
+      Version bootstrapVersion = versionPartitionPair.getFirst();
+      logger.info("Bootstrap sending subscribe request to isolated ingestion service" + name + " " + bootstrapVersion + " " + versionPartitionPair.getSecond().toString());
+      store.subscribe(ComplementSet.wrap(versionPartitionPair.getSecond()), Optional.of(bootstrapVersion));
+    });
   }
 
   @Override
@@ -331,6 +366,4 @@ public class DaVinciBackend implements Closeable {
       }
     }
   };
-
-
 }

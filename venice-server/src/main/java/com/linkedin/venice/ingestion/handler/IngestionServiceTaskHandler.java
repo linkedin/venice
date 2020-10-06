@@ -40,11 +40,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -209,6 +205,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           String storeName = Version.parseStoreFromKafkaTopicName(topicName);
           // Ingestion Service needs store repository to subscribe to the store.
           ingestionService.getStoreRepository().subscribe(storeName);
+          logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
           ingestionService.addIngestionPartition(topicName, partitionId);
           storageService.openStoreForNewPartition(storeConfig, partitionId);
           storeIngestionService.startConsumption(storeConfig, partitionId, false);
