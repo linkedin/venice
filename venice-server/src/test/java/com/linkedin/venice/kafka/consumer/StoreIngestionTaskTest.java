@@ -695,6 +695,7 @@ public class StoreIngestionTaskTest {
         () -> {
           Store mockStore = mock(Store.class);
           doReturn(true).when(mockStore).isHybrid();
+          doReturn(Optional.of(new Version("storeName", 1))).when(mockStore).getVersion(1);
           doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
           doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
         },
