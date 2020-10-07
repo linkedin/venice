@@ -568,14 +568,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {
       consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
-    } else {
-      // Currently this method is called only from AbstractParticipantModel#removePartitionFromStore which does
-      // call dropStorePartition later which would clear the offset metadata when the following config is enabled
-      if (!veniceConfigLoader.getVeniceServerConfig().isRocksDBOffsetMetadataEnabled()) {
-        logger.info("There is no active task for Topic " + topic + " Partition " + partitionId
-            +" Using offset manager directly");
-        storageMetadataService.clearOffset(topic, partitionId);
-      }
     }
     logger.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
   }
