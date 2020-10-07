@@ -186,7 +186,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int computeQueueCapacity;
   private final BlockingQueueType blockingQueueType;
   private final boolean restServiceEpollEnabled;
-  private final boolean enableRocksDBOffsetMetadata;
   private final String kafkaAdminClass;
   private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
@@ -265,7 +264,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     });
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
-    enableRocksDBOffsetMetadata = serverProperties.getBoolean(SERVER_ENABLE_ROCKSDB_METADATA, false);
     kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
     helixOfflinePushEnabled = serverProperties.getBoolean(HELIX_OFFLINE_PUSH_ENABLED, false);
     helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
@@ -507,9 +505,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isRestServiceEpollEnabled() {
     return restServiceEpollEnabled;
-  }
-  public boolean isRocksDBOffsetMetadataEnabled() {
-    return enableRocksDBOffsetMetadata;
   }
 
   public String getKafkaAdminClass() {

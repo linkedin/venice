@@ -59,7 +59,6 @@ public class TestRocksDBOffsetStore {
   private Properties getRocksDBOffsetStoreEnabledProperties() {
     Properties serverProperties = new Properties();
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
-    serverProperties.put(SERVER_ENABLE_ROCKSDB_METADATA, true);
     return serverProperties;
   }
 }

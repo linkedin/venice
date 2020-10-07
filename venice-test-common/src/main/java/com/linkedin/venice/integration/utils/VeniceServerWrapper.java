@@ -97,7 +97,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(PERSISTENCE_TYPE, ROCKS_DB)
           .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true)
-          .put(SERVER_ENABLE_ROCKSDB_METADATA, true)
           .put(ROCKSDB_OPTIONS_USE_DIRECT_READS, false) // Required by PlainTable format
           .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 0)
           .put(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 1000)

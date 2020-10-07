@@ -344,11 +344,6 @@ public class ConfigKeys {
   public static final String SERVER_COMPUTE_QUEUE_CAPACITY = "server.compute.queue.capacity";
 
   /**
-   * enable rocksDB metadata partition to store offset records instead of BDB.
-   */
-  public static final String SERVER_ENABLE_ROCKSDB_METADATA = "server.enable.rocksdb.offset.metadata";
-
-  /**
    * Check the available types in {@literal com.linkedin.venice.config.BlockingQueueType}
    */
   public static final String SERVER_BLOCKING_QUEUE_TYPE = "server.blocking.queue.type";
