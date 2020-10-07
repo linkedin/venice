@@ -1884,6 +1884,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeout) {
+    // TODO: remove this check after verifying the spam log fix
+    if (!storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber).isPresent()) {
+      throw new VeniceException("Version " + versionNumber + " does not exist. Should not poll.");
+    }
     List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = new ArrayList<>(consumerMap.size());
     consumerMap.values().stream().forEach(consumer -> {
       if (consumer.hasSubscription()) {

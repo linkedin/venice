@@ -219,6 +219,10 @@ public class VersionBackend {
     subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).complete(null);
   }
 
+  synchronized void completeErrorSubPartition(int subPartition, Exception e) {
+    subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).completeExceptionally(e);
+  }
+
   synchronized void completeSubPartitionByIsolatedIngestionService(int subPartition) {
     logger.warn("Topic " + version.kafkaTopicName() + ", partition: " + subPartition + " completed by ingestion isolation service.");
     // Re-open the storage engine partition in backend.
