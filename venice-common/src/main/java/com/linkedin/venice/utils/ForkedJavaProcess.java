@@ -44,12 +44,19 @@ public final class ForkedJavaProcess extends Process {
   public static Process exec(Class klass, String... params) throws IOException, InterruptedException {
     // Argument preparation
     String javaBin = Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString();
-    StringBuilder classpath = new StringBuilder(System.getProperty("java.class.path"));
+    String originalClassPath = System.getProperty("java.class.path");
+    Set<String> addedJarPaths = Arrays.stream(originalClassPath.split(":")).filter(p -> p.endsWith(".jar")).collect(
+        Collectors.toSet());
+    StringBuilder classpath = new StringBuilder(originalClassPath);
     // Using set to remove duplicate classpath folders to avoid argument list too long error.
     Set<String> classPathDirs = new HashSet<>();
     // Adding classpath from current classloader.
     for (URL url : ((URLClassLoader) (Thread.currentThread().getContextClassLoader())).getURLs()) {
-      classPathDirs.add(Paths.get(url.getPath()).getParent().toString());
+      String extractedJarPath = Paths.get(url.getPath()).toString();
+      if (!addedJarPaths.contains(extractedJarPath)) {
+        // Only include jars that are not in the classpath
+        classPathDirs.add(Paths.get(url.getPath()).getParent().toString());
+      }
     }
     for (String classPathDir : classPathDirs) {
       classLogger.info("Adding class path dir: " + classPathDir);
@@ -65,6 +72,8 @@ public final class ForkedJavaProcess extends Process {
     }
     args.add(className);
     args.addAll(Arrays.asList(params));
+    classLogger.info("Original classpath length: " + originalClassPath.length());
+    classLogger.info("Updated classpath length: " + classpath.length());
 
     // Actual process forking
     ProcessBuilder builder = new ProcessBuilder(args).redirectErrorStream(true);
