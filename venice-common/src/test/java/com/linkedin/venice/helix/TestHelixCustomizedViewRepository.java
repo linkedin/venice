@@ -335,20 +335,7 @@ public class TestHelixCustomizedViewRepository {
       }
     };
 
-    offlinePushOnlyRepository.subscribeRoutingDataChange(resourceName, listener);
-    // Participant become offline.
-    manager0.disconnect();
-    // Wait notification.
-    Thread.sleep(WAIT_TIME);
-    Assert.assertEquals(isNoticed[0], false, "External view change should not be triggered");
-    Assert.assertEquals(isNoticed[1], true, "Can not get notification from customized view change.");
-    Assert.assertEquals(isNoticed[2], true, "Can not get notification from per partition change.");
-    Assert.assertEquals(isNoticed[3], false, "There is not resource deleted.");
-
-    isNoticed[1] = false;
-    isNoticed[2] = false;
     offlinePushOnlyRepository.unSubscribeRoutingDataChange(resourceName, listener);
-    manager0.connect();
     // Wait notification.
     Thread.sleep(WAIT_TIME);
     Assert.assertEquals(isNoticed[0], false, "Should not get notification after un-registering.");
@@ -357,7 +344,6 @@ public class TestHelixCustomizedViewRepository {
     Assert.assertEquals(isNoticed[3], false, "Should not get notification after un-registering.");
 
     offlinePushOnlyRepository.subscribeRoutingDataChange(resourceName, listener);
-    admin.dropResource(clusterName, resourceName);
 
     accessor0.deleteReplicaStatus(resourceName, partitionId0);
     accessor0.deleteReplicaStatus(resourceName, partitionId1);
