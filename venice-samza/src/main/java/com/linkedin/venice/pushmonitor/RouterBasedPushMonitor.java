@@ -1,6 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -21,8 +20,6 @@ import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.client.store.ClientConfig.*;
-
 
 /**
  * This push monitor is able to query push job status from routers; it only works for
@@ -34,20 +31,16 @@ public class RouterBasedPushMonitor implements Closeable {
   private static final int POLL_CYCLE_DELAY_MS = 10000;
   private static final long POLL_TIMEOUT_MS = 10000l;
 
-  private final String d2ZkConnection;
   private final String topicName;
   private final ExecutorService executor;
 
   private PushMonitorTask pushMonitorTask;
   private ExecutionStatus currentStatus = ExecutionStatus.UNKNOWN;
 
-  public RouterBasedPushMonitor(String veniceD2ZKHost, String resourceName, VeniceSystemFactory factory, SystemProducer producer) {
-    this.d2ZkConnection = veniceD2ZKHost;
+  public RouterBasedPushMonitor(D2TransportClient d2TransportClient, String resourceName, VeniceSystemFactory factory, SystemProducer producer) {
     this.topicName = resourceName;
     executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("RouterBasedPushMonitor"));
-    D2TransportClient transportClient = new D2TransportClient(veniceD2ZKHost, DEFAULT_D2_SERVICE_NAME,
-        ClientConfig.DEFAULT_D2_ZK_BASE_PATH, ClientConfig.DEFAULT_ZK_TIMEOUT_MS);
-    pushMonitorTask = new PushMonitorTask(transportClient, topicName, this, factory, producer);
+    pushMonitorTask = new PushMonitorTask(d2TransportClient, topicName, this, factory, producer);
   }
 
   public void start() {

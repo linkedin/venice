@@ -34,11 +34,9 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
   private HybridQuotaMonitorTask hybridQuotaMonitorTask;
   private HybridStoreQuotaStatus currentStatus = HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED;
 
-  public RouterBasedHybridStoreQuotaMonitor(String veniceD2ZKHost, String resourceName) {
+  public RouterBasedHybridStoreQuotaMonitor(D2TransportClient transportClient, String resourceName) {
     this.topicName = resourceName;
     executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("RouterBasedHybridQuotaMonitor"));
-    D2TransportClient transportClient = new D2TransportClient(veniceD2ZKHost, DEFAULT_D2_SERVICE_NAME,
-        ClientConfig.DEFAULT_D2_ZK_BASE_PATH, ClientConfig.DEFAULT_ZK_TIMEOUT_MS);
     hybridQuotaMonitorTask = new HybridQuotaMonitorTask(transportClient, topicName, this);
   }
 

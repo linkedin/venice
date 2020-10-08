@@ -4,6 +4,8 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -227,7 +229,7 @@ public class VeniceSystemProducer implements SystemProducer {
 
     if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      pushMonitor = Optional.of(new RouterBasedPushMonitor(veniceD2ZKHost, versionTopic, factory, this));
+      pushMonitor = Optional.of(new RouterBasedPushMonitor(new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), versionTopic, factory, this));
       pushMonitor.get().start();
     }
 
@@ -243,7 +245,7 @@ public class VeniceSystemProducer implements SystemProducer {
       }
     }
     if (pushType.equals(Version.PushType.STREAM)) {
-      hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(veniceD2ZKHost, storeName));
+      hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), storeName));
       hybridStoreQuotaMonitor.get().start();
     }
   }
