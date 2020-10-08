@@ -371,7 +371,6 @@ public class DaVinciBackend implements Closeable {
       VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
       if (versionBackend != null) {
         versionBackend.completeErrorSubPartition(partitionId, e);
-        versionBackend.delete();
       }
     }
   };
