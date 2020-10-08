@@ -62,9 +62,13 @@ public final class ForkedJavaProcess extends Process {
       classLogger.info("Adding class path dir: " + classPathDir);
       classpath.append(":").append(classPathDir).append("/*");
     }
+
+    String tempFolder = System.getProperty("java.io.tmpdir");
+    classLogger.info("Getting current tmp folder: " + tempFolder);
+
     String className = klass.getCanonicalName();
     List<String> args = new ArrayList<>();
-    args.addAll(Arrays.asList(javaBin, "-cp", classpath.toString()));
+    args.addAll(Arrays.asList(javaBin, "-cp", classpath.toString(), "-Djava.io.tmpdir=" + tempFolder));
     int debugPort = -1;
     if (debug) {
       debugPort = getFreePort();
