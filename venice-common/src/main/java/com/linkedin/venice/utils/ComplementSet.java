@@ -2,9 +2,13 @@ package com.linkedin.venice.utils;
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Set;
 
 /**
  * A set that uses complement representation, which is useful when universal set cardinality is unknown.
+ *
+ * If "isComplement" is set to false, the ComplementSet is the same as a regular Set;
+ * if "isComplement" is set to true, the "elements" inside ComplementSet represents the elements that the Set doesn't have.
 */
 public class ComplementSet<T> {
   private boolean isComplement;
@@ -15,8 +19,24 @@ public class ComplementSet<T> {
     this.elements = elements;
   }
 
+  /**
+   * This API will reuse the input "elements" which cannot be unmodifiable.
+   */
   public static <T> ComplementSet<T> wrap(Collection<T> elements) {
     return new ComplementSet<>(false, elements);
+  }
+
+  /**
+   * This API will result in copying the data set, which is not performant or GC friendly if it's
+   * in critical path.
+   */
+  public static <T> ComplementSet<T> newSet(Collection<T> elements) {
+    /**
+     * Copy data from input to a new collection in case the input collection is unmodifiable.
+     */
+    Set<T> clonedElements = new HashSet<>(elements.size());
+    clonedElements.addAll(elements);
+    return new ComplementSet<>(false, clonedElements);
   }
 
   public static <T> ComplementSet<T> emptySet() {

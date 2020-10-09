@@ -98,7 +98,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     throwIfNotReady();
-    return storeBackend.subscribe(ComplementSet.wrap(partitions));
+    return storeBackend.subscribe(ComplementSet.newSet(partitions));
   }
 
   @Override
@@ -110,7 +110,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   @Override
   public void unsubscribe(Set<Integer> partitions) {
     throwIfNotReady();
-    storeBackend.unsubscribe(ComplementSet.wrap(partitions));
+    storeBackend.unsubscribe(ComplementSet.newSet(partitions));
   }
 
   @Override
