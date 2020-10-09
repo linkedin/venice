@@ -175,6 +175,17 @@ public class VersionBackend {
 
   private synchronized CompletableFuture subscribeSubPartition(int subPartition) {
     /**
+     * If the partition has been subscribed already, return the future without
+     * subscribing again.
+     */
+    CompletableFuture partitionFuture = subPartitionFutures.get(subPartition);
+    if (null != partitionFuture) {
+      logger.info("Partition " + subPartition + " for store version " + version.kafkaTopicName() + " has been subscribed already, "
+          + "ignore the duplicate subscribe request");
+      return partitionFuture;
+    }
+
+    /**
      * When storage engine is null, it means it is the first time for ingestion and it should be proceed on child process.
      * When child process has done ingestion, storage engine here will be set, and for future subscribe request, it will
      * always be proceed in parent process due to the limitation of metadata partition.
@@ -208,6 +219,11 @@ public class VersionBackend {
   }
 
   private synchronized void unsubscribeSubPartition(int subPartition) {
+    if (!subPartitionFutures.containsKey(subPartition)) {
+      logger.info("Partition " + subPartition + " for store version " + version.kafkaTopicName() + " has been unsubscribed already, "
+          + "ignore the duplicate unsubscribe request");
+      return;
+    }
     backend.getIngestionService().stopConsumption(config, subPartition);
     CompletableFuture future = subPartitionFutures.remove(subPartition);
     if (future != null) {
