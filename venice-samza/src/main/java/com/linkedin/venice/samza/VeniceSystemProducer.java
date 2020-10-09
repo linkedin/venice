@@ -57,6 +57,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 public class VeniceSystemProducer implements SystemProducer {
   private static final Logger LOGGER = Logger.getLogger(VeniceSystemProducer.class);
+  private static final String FSBASE_PATH = "/tmp/d2/systemproducer";
 
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
   private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
@@ -181,6 +182,8 @@ public class VeniceSystemProducer implements SystemProducer {
         .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
         .setIsSSLEnabled(sslFactory.isPresent())
         .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
+        .setFsBasePath(FSBASE_PATH)
+        .setEnableSaveUriDataOnDisk(true)
         .build();
     D2ClientUtils.startClient(d2Client);
     // Discover cluster
