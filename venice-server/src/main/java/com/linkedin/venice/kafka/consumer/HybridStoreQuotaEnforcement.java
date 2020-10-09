@@ -147,12 +147,12 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
      * we check if the partition is in paused partitions to decide whether to resume it, we may never resume it.
      */
     if (isStorageQuotaExceeded(partition)) {
+      storeIngestionTask.reportQuotaViolated(partition);
       if (isRTJob()) {
         /**
          * Pause the partition for RT job.
          */
         pausePartition(partition, consumingTopic);
-        storeIngestionTask.reportQuotaViolated(partition);
         logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition.");
       } else {
         /**
@@ -172,8 +172,8 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
       /**
        * Only RT jobs partitions could be resumed
        */
+      storeIngestionTask.reportQuotaNotViolated(partition);
       if (isRTJob() && isPartitionPausedIngestion(partition)) {
-        storeIngestionTask.reportQuotaNotViolated(partition);
         resumePartition(partition, consumingTopic);
         logger.info("Quota available for store " + storeName + " partition " + partition + ", resumed this partition.");
       }

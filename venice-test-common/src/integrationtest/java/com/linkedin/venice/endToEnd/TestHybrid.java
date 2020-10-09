@@ -15,8 +15,11 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
+import com.linkedin.venice.helix.HelixOfflinePushRepository;
 import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -30,6 +33,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -58,6 +62,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.log4j.Logger;
@@ -633,15 +639,42 @@ public class TestHybrid {
         CustomizedStateConfig.Builder customizedStateConfigBuilder = new CustomizedStateConfig.Builder();
         List<String> aggregationEnabledTypes = new ArrayList<String>();
         aggregationEnabledTypes.add(HelixPartitionState.HYBRID_STORE_QUOTA.name());
+        aggregationEnabledTypes.add(HelixPartitionState.OFFLINE_PUSH.name());
         customizedStateConfigBuilder.setAggregationEnabledTypes(aggregationEnabledTypes);
         CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
         helixAdmin.addCustomizedStateConfig(venice.getClusterName(), customizedStateConfig);
         Assert.assertFalse(response.isError());
 
+        SafeHelixManager readManager = new SafeHelixManager(
+            HelixManagerFactory.getZKHelixManager(venice.getClusterName(), "reader", InstanceType.SPECTATOR,
+                venice.getZk().getAddress()));
+        readManager.connect();
+        HelixOfflinePushRepository offlinePushRepository = new HelixOfflinePushRepository(readManager);
+        HelixHybridStoreQuotaRepository hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
+        offlinePushRepository.refresh();
+        hybridStoreQuotaOnlyRepository.refresh();
+
         //Do an H2V push
         runH2V(h2vProperties, 1, controllerClient);
         String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
 
+        //Do an H2V push
+        runH2V(h2vProperties, 2, controllerClient);
+        String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
+        Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
+            "topic: " + topicForStoreVersion1 + " should have compaction enabled");
+        // We did not do any STREAM push here. For a version topic, it should have both hybrid store quota status and offline
+        // push status.
+        assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion1),
+            HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
+        assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion1));
+        assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion2),
+            HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
+        assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion2));
+
+        //Do an H2V push
+        runH2V(h2vProperties, 3, controllerClient);
+        String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
         long storageQuotaInByte = 60000; // A small quota, easily violated.
 
         //  Need to update store with quota here.
@@ -654,8 +687,6 @@ public class TestHybrid {
             .setHybridStoreDiskQuotaEnabled(true)
             .setStorageQuotaInByte(storageQuotaInByte)
         );
-        Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
-            "topic: " + topicForStoreVersion1 + " should have compaction enabled");
 
         veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM); // new producer, new DIV segment.
         for (int i=1; i<=20; i++) {
@@ -664,6 +695,9 @@ public class TestHybrid {
         long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(15);
         logger.info("normalTimeForConsuming:" + normalTimeForConsuming );
         Utils.sleep(normalTimeForConsuming);
+        assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion3),
+            HybridStoreQuotaStatus.QUOTA_VIOLATED);
+        assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion3));
         sendStreamingRecord(veniceProducer, storeName, 21);
         Assert.fail("Exception should be thrown because quota violation happens.");
       } catch (VeniceException e) {
