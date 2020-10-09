@@ -13,6 +13,8 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.ReplicaState;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -107,6 +109,22 @@ public class TestPartitionStatusOnlineInstanceFinder {
 
     finder.handleChildChange("/cluster/OfflinePushes", Arrays.asList(topic));
     Mockito.verify(offlinePushAccessor).subscribePartitionStatusChange(offlinePushStatus, finder);
+  }
+
+  @Test
+  public void testGetLatestPartitionStatus() {
+    // The snapshots have different times from earlier to later
+    StatusSnapshot snapshot1 = new StatusSnapshot(ExecutionStatus.ERROR, LocalDateTime.now().toString());
+    StatusSnapshot snapshot2 = new StatusSnapshot(ExecutionStatus.STARTED, LocalDateTime.now().toString());
+    StatusSnapshot snapshot3 = new StatusSnapshot(ExecutionStatus.COMPLETED, LocalDateTime.now().toString());
+    List<StatusSnapshot> historicStatusList = new ArrayList<>();
+    historicStatusList.add(snapshot1);
+    // The latest in time partition status should be returned
+    Assert.assertEquals(ExecutionStatus.ERROR, PushStatusDecider.getReplicaCurrentStatus(historicStatusList));
+    historicStatusList.add(snapshot2);
+    Assert.assertEquals(ExecutionStatus.STARTED, PushStatusDecider.getReplicaCurrentStatus(historicStatusList));
+    historicStatusList.add(snapshot3);
+    Assert.assertEquals(ExecutionStatus.COMPLETED, PushStatusDecider.getReplicaCurrentStatus(historicStatusList));
   }
 
   private PartitionStatusOnlineInstanceFinder initFinder() {

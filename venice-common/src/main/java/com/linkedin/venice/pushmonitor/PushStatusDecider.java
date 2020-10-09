@@ -255,9 +255,9 @@ public abstract class PushStatusDecider {
   public static ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
     List<ExecutionStatus> statusList = historicStatusList.stream()
         .map(statusSnapshot -> statusSnapshot.getStatus())
-        .sorted(Collections.reverseOrder())
         .collect(Collectors.toList());
-
+    // prep to traverse the list from latest status.
+    Collections.reverse(statusList);
     ExecutionStatus status = STARTED;
     for (ExecutionStatus executionStatus : statusList) {
       if (isDeterminedStatus(executionStatus)) {
