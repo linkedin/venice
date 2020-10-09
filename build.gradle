@@ -45,8 +45,8 @@ ext.libraries = [ // Groovy map literal
                   mockito: 'org.mockito:mockito-core:3.3.3',
                   netty: 'io.netty:netty-all:4.1.22.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
-                  d2: 'com.linkedin.container:pegasus-d2-server-factory:25.2.15',
-                  d2Client: 'com.linkedin.container:pegasus-d2-client-factory:25.2.15',
+                  d2: 'com.linkedin.container:pegasus-d2-server-factory:30.1.265',
+                  d2Client: 'com.linkedin.container:pegasus-d2-client-factory:30.1.265',
                   routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
                   routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
                   routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,

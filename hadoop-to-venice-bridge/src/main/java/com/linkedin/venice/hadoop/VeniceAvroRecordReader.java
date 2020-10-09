@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericDatumReader;
@@ -19,7 +20,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.log4j.Logger;
-import org.jetbrains.annotations.NotNull;
 
 public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapper<IndexedRecord>, NullWritable> {
   private static final Logger LOGGER = Logger.getLogger(VeniceAvroRecordReader.class);
