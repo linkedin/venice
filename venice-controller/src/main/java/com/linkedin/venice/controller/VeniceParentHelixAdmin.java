@@ -1196,6 +1196,9 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> replicationFactor = params.getReplicationFactor();
 
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+      if (null == store) {
+        throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
+      }
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;

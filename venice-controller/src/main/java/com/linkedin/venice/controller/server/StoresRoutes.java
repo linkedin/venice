@@ -309,7 +309,7 @@ public class StoresRoutes extends AbstractRoute {
         try {
           admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams(params));
         } catch (Exception e) {
-          veniceResponse.setError(e.getMessage());
+          veniceResponse.setError("Failed when updating store " + storeName + ". Exception type: " + e.getClass().toString() + ". Detailed message = " + e.getMessage());
         }
       }
     };
