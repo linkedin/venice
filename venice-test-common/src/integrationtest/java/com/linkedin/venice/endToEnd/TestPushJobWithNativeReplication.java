@@ -28,6 +28,7 @@ import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -47,6 +48,12 @@ public class TestPushJobWithNativeReplication {
   private List<VeniceMultiClusterWrapper> childClusters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+
+  @DataProvider(name = "storeSize")
+  public static Object[][] storeSize() {
+    return new Object[][]{{50, 2}};
+  }
+
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -84,11 +91,10 @@ public class TestPushJobWithNativeReplication {
     multiColoMultiClusterWrapper.close();
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testNativeReplicationForBatchPush() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
+  public void testNativeReplicationForBatchPush(int recordCount, int partitionCount) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    int recordCount = 50;
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
@@ -103,7 +109,7 @@ public class TestPushJobWithNativeReplication {
      */
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(2)
+        .setPartitionCount(partitionCount)
         .setLeaderFollowerModel(true)
         .setNativeReplicationEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
