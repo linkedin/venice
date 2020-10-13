@@ -1795,29 +1795,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * N.B.: Although this is a one-time initialization routine, there should be no need to guard it by
-   *       synchronization, since the {@link StoreIngestionTask} is supposed to process messages in a
-   *       sequential, and therefore inherently thread-safe, fashion. If that assumption changes, then
-   *       let's make this synchronized.
+   * N.B.:
+   *    With L/F+native replication and many Leader partitions getting assigned to a single SN this function may be called
+   *    from multiple thread simultaneously to initialize the veniceWriter during start of batch push. So it needs to be thread safe
+   *    and provide initialization guarantee that only one instance of veniceWriter is created for the entire ingestion task.
    *
    * @return the instance of {@link VeniceWriter}, lazily initialized if necessary.
    */
   protected VeniceWriter getVeniceWriter() {
     if (null == veniceWriter) {
-      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-      if (storeVersionState.isPresent()) {
-        veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner);
-      } else {
-        /**
-         * In general, a partition in version topic follows this pattern:
-         * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
-         * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
-         * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
-         *
-         * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
-         * different in some test cases which reuse the same VeniceWriter.
-         */
-        veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner);
+      synchronized (this) {
+        if (null == veniceWriter) {
+          Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+          if (storeVersionState.isPresent()) {
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner);
+          } else {
+            /**
+             * In general, a partition in version topic follows this pattern:
+             * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
+             * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
+             * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
+             *
+             * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
+             * different in some test cases which reuse the same VeniceWriter.
+             */
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner);
+          }
+        }
       }
     }
     return veniceWriter;
