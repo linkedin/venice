@@ -16,6 +16,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 
 import java.nio.ByteBuffer;
 import java.util.Date;
@@ -30,6 +31,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Logger;
 import org.bouncycastle.crypto.digests.MD5Digest;
 
+import static com.linkedin.venice.utils.RedundantExceptionFilter.*;
+
 
 /**
  * This class maintains state about what an upstream producer has written into Kafka.
@@ -41,6 +44,16 @@ import org.bouncycastle.crypto.digests.MD5Digest;
  */
 @NotThreadsafe
 public class ProducerTracker {
+  /**
+   * A logging throttler singleton for ProducerTracker with a 64KB bitset.
+   *
+   * If an exception will be tolerated, there is no need to print a log for each single message;
+   * we can log only once a minute. The error message identifier pattern for log throttling is:
+   * topicName-partitionNum-exceptionType
+   */
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter(64 * 1024, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
+
   private final Logger logger;
 
   private final GUID producerGUID;
@@ -273,7 +286,10 @@ public class ProducerTracker {
       extraInfo += ", tolerateAnyMessageType=" + tolerateAnyMessageType;
     }
     if (tolerateMissingMessage && tolerateAnyMessageType.orElse(true)) {
-      logger.warn("Will " + extraInfo);
+      String errorMsgIdentifier = consumerRecord.topic() + "-" + consumerRecord.partition() + "-" + DataFaultType.UNREGISTERED_PRODUCER.toString();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
+        logger.warn("Will " + extraInfo);
+      }
     } else {
       throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(segment, consumerRecord, Optional.of("Cannot " + extraInfo));
     }
@@ -334,7 +350,10 @@ public class ProducerTracker {
           /**
            * Only log and report error if the error metric tracking callback is not empty.
            */
-          logger.warn("Encountered missing data message, which could happen if EOP has been received. Error msg:\n" + dataMissingException.getMessage());
+          String errorMsgIdentifier = consumerRecord.topic() + "-" + consumerRecord.partition() + "-" + DataFaultType.MISSING.toString();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
+            logger.warn("Encountered missing data message, which could happen if EOP has been received. Error msg:\n" + dataMissingException.getMessage());
+          }
           errorMetricCallback.get().execute(dataMissingException);
         }
       } else {
@@ -386,7 +405,10 @@ public class ProducerTracker {
            * checksum, the checksum will not match if any message is missing.
            */
           segment.end(incomingEndOfSegment.finalSegment);
-          logger.warn("Encountered corrupt checksum, which could happen if log compaction is enabled. Error msg:\n" + dataCorruptException.getMessage());
+          String errorMsgIdentifier = consumerRecord.topic() + "-" + consumerRecord.partition() + "-" + DataFaultType.CORRUPT.toString();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
+            logger.warn("Encountered corrupt checksum, which could happen if log compaction is enabled. Error msg:\n" + dataCorruptException.getMessage());
+          }
           errorMetricCallback.ifPresent(callback -> callback.execute(dataCorruptException));
         } else {
           // Uh oh. Checksums don't match.
