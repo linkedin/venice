@@ -48,7 +48,7 @@ public class RedundantExceptionFilter {
     return getRedundantExceptionFilter(DEFAULT_BITSET_SIZE, Time.MS_PER_DAY);
   }
 
-  protected synchronized static RedundantExceptionFilter getRedundantExceptionFilter(int bitSetSize,
+  public synchronized static RedundantExceptionFilter getRedundantExceptionFilter(int bitSetSize,
       long noRedundantExceptionDurationMs) {
     if (singleton == null) {
       singleton = new RedundantExceptionFilter(bitSetSize, noRedundantExceptionDurationMs);

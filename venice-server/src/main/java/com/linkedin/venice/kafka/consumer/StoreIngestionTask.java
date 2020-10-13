@@ -222,7 +222,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Set<String> topicWithLogCompaction = new ConcurrentSkipListSet<>();
 
   private IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
-  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final AggKafkaConsumerService aggKafkaConsumerService;
   /**
@@ -569,7 +569,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String msg = kafkaVersionTopic + partitionConsumptionState.getPartition();
 
       // Log only once a minute per partition.
-      boolean shouldLogLag = !filter.isRedundantException(msg);
+      boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
 
       /**
        * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
@@ -1164,7 +1164,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       String message = "The record was received after 'EOP', but the store: " + kafkaVersionTopic +
           " is neither hybrid nor incremental push enabled, so will skip it.";
-      if (!filter.isRedundantException(message)) {
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
         logger.warn(message);
       }
       return false;
