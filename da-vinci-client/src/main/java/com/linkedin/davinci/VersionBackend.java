@@ -136,8 +136,7 @@ public class VersionBackend {
 
   synchronized void unsubscribe(ComplementSet<Integer> partitions) {
     Set<Integer> subPartitions = getSubPartitions(partitions);
-    logger.info("Subscribing to sub-partitions, storeName=" + this + ", subPartitions=" + subPartitions);
-
+    logger.info("Unsubscribing to sub-partitions, storeName=" + this + ", subPartitions=" + subPartitions);
     for (Integer id : subPartitions) {
       unsubscribeSubPartition(id);
     }
@@ -240,13 +239,12 @@ public class VersionBackend {
   }
 
   synchronized void completeSubPartitionByIsolatedIngestionService(int subPartition) {
-    logger.warn("Topic " + version.kafkaTopicName() + ", partition: " + subPartition + " completed by ingestion isolation service.");
+    logger.info("Topic " + version.kafkaTopicName() + ", partition: " + subPartition + " completed by ingestion isolation service.");
     // Re-open the storage engine partition in backend.
     storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
-    // For hybrid store, the consumption task should be re-started on Da Vinci side to receive future nearline update.
+    // The consumption task should be re-started on DaVinci side to receive future updates for hybrid stores and consumer
+    // action messages for all stores. The partition and its corresponding future will be completed by the main ingestion task.
     backend.getIngestionService().startConsumption(config, subPartition, false);
-    // Complete the corresponding partition future.
-    completeSubPartition(subPartition);
   }
 
   private void makeSureSubPartitionIsNotConsuming(int subPartition) throws InterruptedException {
