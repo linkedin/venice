@@ -254,7 +254,11 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     if (ingestionService.getMetricsRepository() != null) {
       ingestionService.getMetricsRepository().metrics().forEach((name, metric) -> {
         if (metric != null) {
-          report.aggregatedMetrics.put(name, metric.value());
+          try {
+            report.aggregatedMetrics.put(name, metric.value());
+          } catch (Exception e) {
+            logger.info("Encounter exception when retrieving value of metric: " + name + " " + e);
+          }
         }
       });
     }

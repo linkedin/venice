@@ -128,6 +128,8 @@ public class IngestionReportListener extends AbstractVeniceService {
       IngestionMetricsReport metricsReport = deserializeIngestionMetricsReport(responseContent);
       logger.info("Collecting " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
       ingestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
+      // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
+      response.release();
     } catch (Exception e) {
       logger.warn("Unable to collect metrics from ingestion service", e);
     }

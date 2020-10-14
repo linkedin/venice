@@ -205,6 +205,8 @@ public class VersionBackend {
         response.content().readBytes(responseContent);
         IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
         logger.info("Received ingestion task report response: " + ingestionTaskReport);
+        // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
+        response.release();
       } catch (Exception e) {
         logger.info("Received exception in start consumption: " + e);
         throw new VeniceException(e.getMessage());

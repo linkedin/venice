@@ -173,7 +173,8 @@ public class DaVinciBackend implements Closeable {
           String stringMessage = message.readCharSequence(message.readableBytes(), Charsets.UTF_8).toString();
           throw new VeniceException("Isolated ingestion service initialization failed: " + stringMessage);
         }
-
+        // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
+        response.release();
         logger.info("Isolated ingestion service initialization finished.");
       } catch (Exception e) {
         throw new VeniceException("Exception caught during initialization of ingestion service.", e);
