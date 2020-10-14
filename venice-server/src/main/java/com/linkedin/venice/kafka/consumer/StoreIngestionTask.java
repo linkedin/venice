@@ -252,6 +252,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final int amplificationFactor;
 
+  int writeComputeFailureCode = 0;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -1324,6 +1326,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public abstract long getFollowerOffsetLag();
 
+  public abstract int getWriteComputeErrorCode();
+
   public long getOffsetLagThreshold() {
     if (!hybridStoreConfig.isPresent()) {
       return METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
@@ -1367,10 +1371,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       logger.error("hybrid config shouldn't be null. Something bad happened. Topic: " + getVersionTopic());
     }
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
-  }
-
-  public boolean isLeaderFollowerMode() {
-    return this instanceof LeaderFollowerStoreIngestionTask;
   }
 
   protected void processStartOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
@@ -1998,20 +1998,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
         }
 
-        long lookupStartTimeInNS = System.nanoTime();
-        boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
-        GenericRecord originalValue = GenericRecordChunkingAdapter.INSTANCE.get(storageEngineRepository.getLocalStorageEngine(
-            kafkaVersionTopic), amplificationFactor != 1 ? venicePartitioner.getPartitionId(keyBytes, amplificationFactor * realTimeTopicPartitionCount) : partition,
-            ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
-            storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic), serverConfig.isComputeFastAvroEnabled(),
-            schemaRepository, storeName);
-        storeIngestionStats.recordWriteComputeLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+        GenericRecord originalValue;
+        boolean isChunkedTopic;
+        try {
+          long lookupStartTimeInNS = System.nanoTime();
+          isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
+          originalValue = GenericRecordChunkingAdapter.INSTANCE.get(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
+              amplificationFactor != 1 ? venicePartitioner.getPartitionId(keyBytes, amplificationFactor * realTimeTopicPartitionCount) : partition,
+              ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null, storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
+              serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+          storeIngestionStats.recordWriteComputeLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+        } catch (Exception e) {
+          writeComputeFailureCode = WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+          throw e;
+        }
 
-
-        long writeComputeStartTimeInNS = System.nanoTime();
-        byte[] updatedValueBytes = ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue,
-            update.updateValue, valueSchemaId, derivedSchemaId);
-        storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
+        byte[] updatedValueBytes;
+        try {
+          long writeComputeStartTimeInNS = System.nanoTime();
+          updatedValueBytes =
+              ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue, update.updateValue, valueSchemaId,
+                  derivedSchemaId);
+          storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
+        } catch (Exception e) {
+          writeComputeFailureCode = WRITE_COMPUTE_UPDATE_FAILURE.code;
+          throw e;
+        }
 
         if (updatedValueBytes == null) {
           valueLen = 0;

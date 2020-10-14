@@ -119,9 +119,22 @@ public enum StatsErrorCode {
   /**
    * Some metrics only make sense in the context of L/F stores and should not
    * be queried otherwise. If they are queried regardless, then we will emit this
-   * error code.
+   * error code. We deliberately set it value to be 0 since it's mostly benign. If
+   * the resource doesn't belong to L/F model, it shouldn't encounter any L/F error :D
    */
-  METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES(-21);
+  METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES(0),
+
+  /**
+   * This is bubbled up when write compute adapter fails to get the current
+   * value from the storage engine.
+   */
+  WRITE_COMPUTE_DESERIALIZATION_FAILURE(-21),
+
+  /**
+   * This is bubbled up when write compute adapter fails to perform update
+   * operations on top of the current value.
+   */
+  WRITE_COMPUTE_UPDATE_FAILURE(-22);
 
   public final int code;
 

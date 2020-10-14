@@ -259,4 +259,9 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   public long getFollowerOffsetLag() {
     return METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
   }
+
+  @Override
+  public int getWriteComputeErrorCode() {
+    return METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
+  }
 }
