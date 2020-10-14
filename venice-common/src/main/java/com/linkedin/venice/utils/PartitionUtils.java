@@ -128,7 +128,8 @@ public class PartitionUtils {
     if (version.isPresent()) {
       amplifcationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
     } else {
-      throw new VeniceException("Can not get amplificationFactor. Version " + versionNumber + " does not exist.");
+      logger.warn("Version " + versionNumber + " does not exist.");
+      amplifcationFactor = readOnlyStoreRepository.getStore(storeName).getPartitionerConfig().getAmplificationFactor();
     }
     return amplifcationFactor;
   }
