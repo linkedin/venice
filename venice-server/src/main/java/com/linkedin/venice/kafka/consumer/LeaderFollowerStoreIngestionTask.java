@@ -1092,6 +1092,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return minZeroLag(offsetLag);
   }
 
+  @Override
+  public int getWriteComputeErrorCode() {
+    return writeComputeFailureCode;
+  }
 
   private class LeaderProducerMessageCallback implements ChunkAwareCallback {
     private final PartitionConsumptionState partitionConsumptionState;
