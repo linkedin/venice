@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.IngestionIsolationMode;
@@ -35,9 +36,13 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
@@ -49,6 +54,8 @@ import org.testng.internal.thread.ThreadTimeoutException;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
+import static com.linkedin.venice.meta.IngestionIsolationMode.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
 import static org.testng.Assert.*;
 
 
@@ -452,6 +459,51 @@ public class DaVinciClientTest {
     daVinciConfig.setRocksDBMemoryLimit(1L);
     try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       client.subscribeAll().get();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testSubscribeAndUnsubscribe() throws Exception {
+    // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing.
+    // Enable ingestion isolation since it's more likely for the race condition to occur and make sure the future is
+    // only completed when the main process's ingestion task is subscribed to avoid deadlock.
+    String storeName = cluster.createStore(KEY_COUNT);
+    D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+        .build();
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setRocksDBMemoryLimit(1024 * 1024 * 1024); // 1GB
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, new MetricsRepository(), backendConfig)) {
+      DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
+      client.subscribeAll().get();
+      client.unsubscribeAll();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUnsubscribeBeforeFutureGet() throws Exception {
+    // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing and before the
+    // the future is complete. The future should also return exceptionally.
+    String storeName = cluster.createStore(10000); // A large amount of keys to give window for potential race conditions
+    D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+        .build();
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setRocksDBMemoryLimit(1024 * 1024 * 1024); // 1GB
+    System.out.println("Xun's starting DaVinci client");
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, new MetricsRepository(), backendConfig)) {
+      DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
+      CompletableFuture future = client.subscribeAll();
+      client.unsubscribeAll();
+      future.get(); // Expecting exception here if we unsubscribed before subscribe was completed.
+    } catch (ExecutionException e) {
+      assertTrue(e.getCause() instanceof CancellationException);
     }
   }
 
