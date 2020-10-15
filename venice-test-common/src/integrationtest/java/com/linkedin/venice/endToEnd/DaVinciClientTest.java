@@ -52,6 +52,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import org.testng.internal.thread.ThreadTimeoutException;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionIsolationMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
@@ -84,7 +85,7 @@ public class DaVinciClientTest {
 
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder()
-            .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
+            .put(DATA_BASE_PATH, baseDataPath)
             .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             .build();
 
@@ -192,7 +193,7 @@ public class DaVinciClientTest {
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
 
     VeniceProperties backendConfig = new PropertyBuilder()
-            .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
+            .put(DATA_BASE_PATH, baseDataPath)
             .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD)
             .build();
@@ -394,7 +395,7 @@ public class DaVinciClientTest {
     String storeName = cluster.createStore(KEY_COUNT);
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     VeniceProperties backendConfig = new PropertyBuilder()
-            .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+            .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
             .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             .build();
 
@@ -444,7 +445,7 @@ public class DaVinciClientTest {
     String storeName = cluster.createStore(KEY_COUNT);
 
     VeniceProperties backendConfig = new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
         .build();
 
