@@ -98,18 +98,18 @@ public class OfflinePushStatusTest {
   @Test
   public void testUpdateStatusFromERROR() {
     testValidTargetStatuses(ERROR, ARCHIVED);
-    testInvalidTargetStatuses(ERROR, STARTED, COMPLETED);
+    testInvalidTargetStatuses(ERROR, STARTED, ERROR, COMPLETED);
   }
 
   @Test
   public void testUpdateStatusFromCOMPLETED() {
     testValidTargetStatuses(COMPLETED, ARCHIVED);
-    testInvalidTargetStatuses(COMPLETED, ERROR, STARTED);
+    testInvalidTargetStatuses(COMPLETED, ERROR, COMPLETED, STARTED);
   }
 
   @Test
   public void testUpdateStatusFromARCHIVED() {
-    testInvalidTargetStatuses(ARCHIVED, STARTED, ERROR, COMPLETED);
+    testInvalidTargetStatuses(ARCHIVED, ARCHIVED, STARTED, ERROR, COMPLETED);
   }
 
   @Test

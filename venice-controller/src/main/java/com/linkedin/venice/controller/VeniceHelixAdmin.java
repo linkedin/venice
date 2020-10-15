@@ -1233,7 +1233,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (pushType.isStreamReprocessing()) {
                     topicManager.createTopic(
                         Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
-                        numberOfPartitions * amplificationFactor,
+                        numberOfPartitions,
                         clusterConfig.getKafkaReplicationFactor(),
                         true,
                         false,
@@ -1338,7 +1338,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (startIngestion) {
                     // We need to prepare to monitor before creating helix resource.
                     startMonitorOfflinePush(
-                        clusterName, version.kafkaTopicName(), numberOfPartitions * amplificationFactor, replicationFactor, strategy);
+                        clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, strategy);
                     helixAdminClient.createVeniceStorageClusterResources(clusterName, version.kafkaTopicName(),
                         numberOfPartitions, replicationFactor, isLeaderFollowerStateModel);
                     waitUntilNodesAreAssignedForResource(clusterName, version.kafkaTopicName(), strategy,

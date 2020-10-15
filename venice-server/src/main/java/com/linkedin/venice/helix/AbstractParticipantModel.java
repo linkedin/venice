@@ -9,13 +9,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.controller.VeniceStateModel;
 import com.linkedin.venice.utils.Utils;
-import java.util.Collections;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.NotificationContext;
@@ -53,6 +50,7 @@ public abstract class AbstractParticipantModel extends StateModel {
   private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = 300000;
 
   private final StoreIngestionService storeIngestionService;
+  private final ReadOnlyStoreRepository metaDataRepo;
   private final StorageService storageService;
   private final VeniceStoreConfig storeConfig;
   private final int partition;
@@ -62,9 +60,6 @@ public abstract class AbstractParticipantModel extends StateModel {
   private Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionStatusAccessorFuture;
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
   private final String instanceName;
-  private final int amplificationFactor;
-
-  protected final ReadOnlyStoreRepository metaDataRepo;
 
   public AbstractParticipantModel(StoreIngestionService storeIngestionService, ReadOnlyStoreRepository metaDataRepo,
       StorageService storageService, VeniceStoreConfig storeConfig, int partition, Time time,
@@ -84,7 +79,6 @@ public abstract class AbstractParticipantModel extends StateModel {
      */
     partitionStatusAccessorFuture = accessorFuture;
     this.instanceName = instanceName;
-    this.amplificationFactor = PartitionUtils.getAmplificationFactor(metaDataRepo, storeConfig.getStoreName());
   }
 
   protected void executeStateTransition(Message message, NotificationContext context,
@@ -200,10 +194,8 @@ public abstract class AbstractParticipantModel extends StateModel {
      * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
      * will not create them again.
      */
-    for (int subPartition : getSubPartitions()) {
-      storageService.openStoreForNewPartition(storeConfig, subPartition);
-      storeIngestionService.startConsumption(storeConfig, subPartition, isLeaderFollowerModel);
-    }
+    storageService.openStoreForNewPartition(storeConfig, partition);
+    storeIngestionService.startConsumption(storeConfig, partition, isLeaderFollowerModel);
   }
 
   protected void removePartitionFromStoreGracefully() {
@@ -240,15 +232,11 @@ public abstract class AbstractParticipantModel extends StateModel {
      * RESET_OFFSET only happens when we want to drop the corresponding database, and this is independent
      * from the topic partition unsubscription.
      */
-    for (int subPartition : getSubPartitions()) {
-      getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), subPartition);
-    }
+    getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), partition);
 
     // Catch exception separately to ensure reset consumption offset would be executed for sure.
     try {
-      for (int subPartition : getSubPartitions()) {
-        getStorageService().dropStorePartition(getStoreConfig(), subPartition);
-      }
+      getStorageService().dropStorePartition(getStoreConfig(), partition);
     } catch (Exception e) {
       logger.error(
           "Error dropping the partition:" + partition + " in store:" + getStoreConfig().getStoreName());
@@ -279,9 +267,7 @@ public abstract class AbstractParticipantModel extends StateModel {
                   attempt, storeName, partition, instanceName));
         }
         try {
-          for (int subPartition : getSubPartitions()) {
-            partitionPushStatusAccessor.deleteReplicaStatus(storeName, subPartition);
-          }
+          partitionPushStatusAccessor.deleteReplicaStatus(storeName, partition);
           isSuccess = true;
         } catch (Exception e) {
           logger.error(String.format("Error in removing customized state for store: %s, partition: %s, on instance: %s",
@@ -307,13 +293,7 @@ public abstract class AbstractParticipantModel extends StateModel {
     final int RETRY_NUM = 100; // 5 mins
     int current = 0;
     while (current++ < RETRY_NUM) {
-      boolean allSubPartitionsNotConsuming = true;
-      for (int subPartition : getSubPartitions()) {
-        if (getStoreIngestionService().isPartitionConsuming(getStoreConfig(), subPartition)) {
-          allSubPartitionsNotConsuming = false;
-        }
-      }
-      if (allSubPartitionsNotConsuming) {
+      if (!getStoreIngestionService().isPartitionConsuming(getStoreConfig(), partition)) {
         return;
       }
       getTime().sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
@@ -353,9 +333,7 @@ public abstract class AbstractParticipantModel extends StateModel {
   }
 
   protected void stopConsumption() {
-    for (int subPartition : getSubPartitions()) {
-      storeIngestionService.stopConsumption(storeConfig, subPartition);
-    }
+    storeIngestionService.stopConsumption(storeConfig, partition);
   }
 
   protected void stopConsumptionAndDropPartitionOnError() {
@@ -381,14 +359,6 @@ public abstract class AbstractParticipantModel extends StateModel {
 
   public int getPartition() {
     return partition;
-  }
-
-  public Set<Integer> getSubPartitions() {
-    return PartitionUtils.getSubPartitions(Collections.singleton(partition), amplificationFactor);
-  }
-
-  public int getLeaderSubPartition() {
-    return partition * amplificationFactor;
   }
 
   public Time getTime() {

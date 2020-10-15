@@ -212,7 +212,7 @@ public class VersionBackend {
     } else {
       // Create partition in storage engine for ingestion.
       storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
-      backend.getIngestionService().startConsumption(config, subPartition, version.isLeaderFollowerModelEnabled());
+      backend.getIngestionService().startConsumption(config, subPartition, false);
     }
     return subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture());
   }

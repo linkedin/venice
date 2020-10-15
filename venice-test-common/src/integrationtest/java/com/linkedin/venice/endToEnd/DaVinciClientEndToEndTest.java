@@ -85,7 +85,6 @@ public class DaVinciClientEndToEndTest {
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setAmplificationFactor(amplificationFactor)
             .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-            .setLeaderFollowerModel(true)
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId)));
     Consumer<Properties> propertiesConsumer = properties ->

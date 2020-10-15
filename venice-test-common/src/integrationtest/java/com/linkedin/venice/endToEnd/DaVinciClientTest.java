@@ -52,7 +52,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import org.testng.internal.thread.ThreadTimeoutException;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionIsolationMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
@@ -68,11 +67,7 @@ public class DaVinciClientTest {
   @BeforeClass
   public void setup() {
     Utils.thisIsLocalhost();
-    // Reduce leader promotion delay to 3 seconds;
-    Properties extraProperties = new Properties();
-    extraProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
-        100, false, false, extraProperties);
+    cluster = ServiceFactory.getVeniceCluster(1, 1, 1);
   }
 
   @AfterClass
@@ -301,8 +296,7 @@ public class DaVinciClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testAmplificationFactorInHybridStore()
-      throws Exception {
+  public void testAmplificationFactorInHybridStore() throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
     final int amplificationFactor = 10;
@@ -312,12 +306,11 @@ public class DaVinciClientTest {
             .setPartitionCount(partitionCount)
             .setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setAmplificationFactor(amplificationFactor)
-            .setLeaderFollowerModel(true)
-            .setReplicationFactor(2)
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
             );
     setupHybridStore(storeName, paramsConsumer);
+
     try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
       client.subscribe(Collections.singleton(partition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
