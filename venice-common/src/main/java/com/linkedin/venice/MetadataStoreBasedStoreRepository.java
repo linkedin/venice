@@ -370,6 +370,7 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
       subscribedStores.clear();
       storeMap.clear();
       schemaMap.clear();
+      storeClientMap.forEach((k,v) -> v.close());
       storeClientMap.clear();
       totalStoreReadQuota.set(0);
     } finally {
