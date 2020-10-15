@@ -247,7 +247,7 @@ public class TestHybrid {
 
         //write streaming records
         veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
-        for (int i = 1; i <= 10; i++) {
+        for (int i=1; i<=10; i++) {
           // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
           // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
           // max chunk size is not altered, and thus this will be under threshold.
@@ -998,58 +998,6 @@ public class TestHybrid {
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
           for (Integer i = 0; i < keyCount; i++) {
             assertEquals(client.get(i).get(), new Integer(i + 1));
-          }
-        });
-      }
-    }
-  }
-
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testHybridWithAmplificationFactor() throws Exception {
-    final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-    final int partitionCount = 3;
-    final int keyCount = 20;
-    final int amplificationFactor = 10;
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
-        100, false, false, extraProperties);) {
-      UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-          // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
-          .setHybridRewindSeconds(2000000)
-          .setHybridOffsetLagThreshold(10)
-          .setPartitionCount(partitionCount)
-          .setReplicationFactor(2)
-          .setAmplificationFactor(amplificationFactor)
-          .setLeaderFollowerModel(true);
-      String storeName = TestUtils.getUniqueString("store");
-      try (ControllerClient client = cluster.getControllerClient()) {
-        client.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-        client.updateStore(storeName, params);
-      }
-      cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
-      try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
-        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-          for (Integer i = 0; i < keyCount; i++) {
-            assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
-          }
-        });
-        SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
-        for (int i = 0; i < keyCount; i++) {
-          TestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
-        }
-        producer.stop();
-
-        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-          for (int i = 0; i < keyCount; i++) {
-            checkLargeRecord(client, i);
-          }
-        });
-
-        cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i + 2))));
-        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-          for (int i = 0; i < keyCount; i++) {
-            checkLargeRecord(client, i);
           }
         });
       }

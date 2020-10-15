@@ -14,16 +14,13 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
@@ -802,17 +799,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       Properties props = new Properties();
       props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
-      Properties partitionerProperties = new Properties();
-      partitionerProperties.putAll(response.getPartitionerParams());
-      VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
-          response.getPartitionerClass(),
-          response.getAmplificationFactor(),
-          new VeniceProperties(partitionerProperties));
-
+      props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
+      for (Map.Entry<String, String> entry : response.getPartitionerParams().entrySet()) {
+        props.setProperty(entry.getKey(), entry.getValue());
+      }
+      props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
       VeniceWriterFactory writerFactory = new VeniceWriterFactory(props);
 
       String kafkaTopic = response.getKafkaTopic();
-      writeBatchData(writerFactory, kafkaTopic, keySchema, valueSchema, venicePartitioner, batchData);
+      writeBatchData(writerFactory, kafkaTopic, keySchema, valueSchema, batchData);
 
       int versionId = Version.parseVersionFromKafkaTopicName(kafkaTopic);
       waitVersion(storeName, versionId);
@@ -841,12 +836,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     refreshAllRouterMetaData();
   }
 
-  protected void writeBatchData(VeniceWriterFactory writerFactory, String kafkaTopic, String keySchema,
-      String valueSchema, VenicePartitioner venicePartitioner, Stream<Map.Entry> batchData) throws Exception {
+  protected void writeBatchData(VeniceWriterFactory writerFactory, String kafkaTopic, String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
     try (
         VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
-        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer, venicePartitioner)) {
+        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer)) {
 
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
       writer.broadcastStartOfPush(Collections.emptyMap());

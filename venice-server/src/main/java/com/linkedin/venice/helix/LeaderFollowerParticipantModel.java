@@ -80,17 +80,15 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    executeStateTransition(message, context, () -> {
-      getStoreIngestionService().promoteToLeader(getStoreConfig(), getLeaderSubPartition(), checker);
-    });
+    executeStateTransition(message, context, () ->
+      getStoreIngestionService().promoteToLeader(getStoreConfig(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    executeStateTransition(message, context, () -> {
-      getStoreIngestionService().demoteToStandby(getStoreConfig(), getLeaderSubPartition(), checker);
-    });
+    executeStateTransition(message, context, () ->
+      getStoreIngestionService().demoteToStandby(getStoreConfig(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)

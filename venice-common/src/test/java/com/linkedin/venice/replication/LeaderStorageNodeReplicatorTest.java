@@ -5,7 +5,6 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -61,7 +60,7 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
-    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(any(), any(Time.class));
+    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(any(), any());
 
 
     leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore);

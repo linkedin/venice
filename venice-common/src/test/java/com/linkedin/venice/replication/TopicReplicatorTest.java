@@ -48,7 +48,7 @@ public class TopicReplicatorTest {
     when(topicManager.containsTopicAndAllPartitionsAreOnline(anyString())).thenReturn(true);
     when(veniceWriterFactory.createBasicVeniceWriter(
         anyString(),
-        any(Time.class)))
+        any(ReflectUtils.loadClass(Time.class.getName()))))
         .thenReturn(veniceWriter);
 
     // Methods under test

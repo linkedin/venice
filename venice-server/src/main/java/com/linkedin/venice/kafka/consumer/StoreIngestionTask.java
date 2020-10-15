@@ -41,8 +41,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
@@ -60,7 +58,6 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -72,7 +69,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -246,12 +242,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final long startReportingReadyToServeTimestamp;
 
-  protected final int realTimeTopicPartitionCount;
-
-  protected VenicePartitioner venicePartitioner;
-
-  protected final int amplificationFactor;
-
   int writeComputeFailureCode = 0;
 
   public StoreIngestionTask(
@@ -363,24 +353,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
 
     buildRocksDBMemoryEnforcer();
-
-    // set amplificationFactor
-    Optional<Version> version = storeRepository.getStoreOrThrow(storeName).getVersion(Version.parseVersionFromKafkaTopicName(kafkaVersionTopic));
-    if (version.isPresent()) {
-      realTimeTopicPartitionCount = version.get().getPartitionCount();
-      if (version.get().getPartitionerConfig() != null) {
-        amplificationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
-      } else {
-        amplificationFactor = 1;
-      }
-      if (version.get().getPartitionerConfig() != null) {
-        venicePartitioner = PartitionUtils.getVenicePartitioner(version.get().getPartitionerConfig());
-      } else {
-        venicePartitioner = new DefaultVenicePartitioner();
-      }
-    } else {
-      throw new VeniceException("Version " + versionNumber + " does not exist.");
-    }
   }
 
   protected void validateState() {
@@ -615,18 +587,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (lagIsAcceptable) {
-      if (hybridStoreConfig.isPresent() && bufferReplayEnabledForHybrid && amplificationFactor != 1) {
-        // mark all sub-partitions in this user-partition to avoid duplicate calculations
-        for (int subPartition : PartitionUtils
-            .getSubPartitions(Collections.singleton(partitionConsumptionState.getUserPartition()), amplificationFactor)) {
-          if (partitionConsumptionStateMap.containsKey(subPartition)
-              && partitionConsumptionStateMap.get(subPartition).isEndOfPushReceived()) {
-            partitionConsumptionStateMap.get(subPartition).lagHasCaughtUp();
-          }
-        }
-      } else {
-        partitionConsumptionState.lagHasCaughtUp();
-      }
+      partitionConsumptionState.lagHasCaughtUp();
     }
 
     return lagIsAcceptable;
@@ -664,12 +625,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       storeBufferService.putConsumerRecord(record, this); // blocking call
       elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
       totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
-
-      // if record is from a RT topic, we select partitionConsumptionState of leaderSubPartition
-      // to record the consuming status
-      int partition = Version.isRealTimeTopic(record.topic()) ? record.partition() * amplificationFactor :  record.partition();
       // Update the latest message consumption time
-      partitionConsumptionStateMap.get(partition).setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
+      partitionConsumptionStateMap.get(record.partition()).setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
       ++recordNum;
     }
     storeIngestionStats.recordProduceToDrainQueueRecordNum(storeName, recordNum);
@@ -1056,7 +1013,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         OffsetRecord record = storageMetadataService.getLastOffset(topic, partition);
 
         // First let's try to restore the state retrieved from the OffsetManager
-        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, amplificationFactor, record, hybridStoreConfig.isPresent(), isIncrementalPushEnabled);
+        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record, hybridStoreConfig.isPresent(), isIncrementalPushEnabled);
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -1107,7 +1064,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 + "on resetting offset for Topic: " + topic + " Partition Id: " + partition);
           }
           partitionConsumptionStateMap.put(partition,
-              new PartitionConsumptionState(partition, amplificationFactor, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
+              new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
         } else {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);
@@ -1133,10 +1090,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * check whether server continues receiving messages after EOP for a batch-only store.
    */
   protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    // if record is from a RT topic, we select partitionConsumptionState of leaderSubPartition
-    // to record the consuming status
-    int partitionId = Version.isRealTimeTopic(record.topic()) ?
-        record.partition() * amplificationFactor :  record.partition();
+    int partitionId = record.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
 
     if (partitionConsumptionState.isEndOfPushReceived() &&
@@ -1179,10 +1133,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param record
    */
   public void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) throws InterruptedException {
-    // if record is from a RT topic, we select partitionConsumptionState of leaderSubPartition
-    // to record the consuming status
-    int partition = Version.isRealTimeTopic(record.topic()) ?
-        record.partition() * amplificationFactor :  record.partition();
+    int partition = record.partition();
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when unsubscribing)
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
     // reference to all downstream methods so that all offset persistence operations use the same partitionConsumptionState
@@ -1203,13 +1154,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordSize = internalProcessConsumerRecord(record, partitionConsumptionState);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
-      String errorMessage;
-      if (Version.isRealTimeTopic(record.topic()) && amplificationFactor != 1) {
-        errorMessage = "Fatal data validation problem with in RT topic partition " + faultyPartition
-            + ", offset " + record.offset() + ", leaderSubPartition: " + partition;
-      } else {
-        errorMessage = "Fatal data validation problem with partition " + faultyPartition + ", offset " + record.offset();
-      }
+      String errorMessage = "Fatal data validation problem with partition " + faultyPartition + ", offset " + record.offset();
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore) during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
       if (needToUnsub) {
@@ -1518,7 +1463,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * If END_OF_PUSH is not received. Both DIV and leader SN pass-through mode are enabled. In that case, we
          * need to re-produce SOS and EOS to make DIV work.
          */
-        if (!partitionConsumptionState.isEndOfPushReceived()) {
+        if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
           produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
             getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
         }
@@ -1808,7 +1753,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (null == veniceWriter) {
           Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
           if (storeVersionState.isPresent()) {
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner);
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked);
           } else {
             /**
              * In general, a partition in version topic follows this pattern:
@@ -1819,7 +1764,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
              * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
              * different in some test cases which reuse the same VeniceWriter.
              */
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner);
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic);
           }
         }
       }
@@ -1852,39 +1797,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public boolean consumerHasSubscription(String topic, PartitionConsumptionState partitionConsumptionState) {
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
-    if (Version.isRealTimeTopic(topic)) {
-      return consumer.hasSubscription(topic, partitionConsumptionState.getUserPartition());
-    } else {
-      return consumer.hasSubscription(topic, partitionConsumptionState.getPartition());
-    }
+    return consumer.hasSubscription(topic, partitionConsumptionState.getPartition());
   }
 
   public void consumerUnSubscribe(String topic, PartitionConsumptionState partitionConsumptionState) {
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
-    if (Version.isRealTimeTopic(topic)) {
-      consumer.unSubscribe(topic, partitionConsumptionState.getUserPartition());
-    } else {
-      consumer.unSubscribe(topic, partitionConsumptionState.getPartition());
-    }
+    consumer.unSubscribe(topic, partitionConsumptionState.getPartition());
   }
 
   public void consumerSubscribe(String topic, PartitionConsumptionState partitionConsumptionState, long offset) {
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
-    if (Version.isRealTimeTopic(topic)) {
-      // only the first subPartition takes care of consuming from RT topic to prevent duplicate process of a single record
-      subscribe(consumer, topic, partitionConsumptionState.getUserPartition(), offset);
-    } else {
-      subscribe(consumer, topic, partitionConsumptionState.getPartition(), offset);
-    }
+    subscribe(consumer, topic, partitionConsumptionState.getPartition(), offset);
   }
 
   public void consumerResetOffset(String topic, PartitionConsumptionState partitionConsumptionState) {
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
-    if (Version.isRealTimeTopic(topic)) {
-      consumer.resetOffset(topic, partitionConsumptionState.getUserPartition());
-    } else {
-      consumer.resetOffset(topic, partitionConsumptionState.getPartition());
-    }
+    consumer.resetOffset(topic, partitionConsumptionState.getPartition());
   }
 
   public List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeout) {
@@ -1940,14 +1868,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Write to storage engine; potentially produce the PUT message to version topic
         produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
-            key -> {
-              prependHeaderAndWriteToStorageEngine(kafkaVersionTopic,
-                  // Leaders might consume from a RT topic and immediately write into StorageEngine,
-                  // so we need to re-calculate partition.
-                  // Followers are not affected since they are always consuming from VTs.
-                  amplificationFactor != 1 ? venicePartitioner.getPartitionId(keyBytes, amplificationFactor * realTimeTopicPartitionCount) : partition,
-                  key, putValue, put.schemaId);
-            },
+            key -> prependHeaderAndWriteToStorageEngine(kafkaVersionTopic, partition, key, putValue, put.schemaId),
             (callback, sourceTopicOffset) -> {
               /**
                * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
@@ -2004,7 +1925,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           long lookupStartTimeInNS = System.nanoTime();
           isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
           originalValue = GenericRecordChunkingAdapter.INSTANCE.get(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
-              amplificationFactor != 1 ? venicePartitioner.getPartitionId(keyBytes, amplificationFactor * realTimeTopicPartitionCount) : partition,
+              partition,
               ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null, storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
               serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
           storeIngestionStats.recordWriteComputeLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
@@ -2028,10 +1949,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (updatedValueBytes == null) {
           valueLen = 0;
           produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, key -> {
-            storageEngine.delete(
-                amplificationFactor != 1 ? venicePartitioner.getPartitionId(keyBytes, amplificationFactor * realTimeTopicPartitionCount) : partition,
-                key
-            );
+            storageEngine.delete(partition, key);
           }, (callback, sourceTopicOffset) -> getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset));
         } else {
           valueLen = updatedValueBytes.length;
@@ -2048,25 +1966,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               // from user's input instead of getting it from store's metadata repo. This causes SN
               // to der-se of keys a couple of times.
               // TODO: Remove chunking logic form SN side once Samze VeniceWriter gets fixed.
-              writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
-                  amplificationFactor != 1 ? venicePartitioner.getPartitionId(keyBytes, amplificationFactor * realTimeTopicPartitionCount) : partition,
+              writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
                   ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes),
                   updateValueWithSchemaId);
             } else {
-              writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
-                  amplificationFactor != 1 ? venicePartitioner.getPartitionId(keyBytes, amplificationFactor * realTimeTopicPartitionCount) : partition,
+              writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
                   keyBytes, updateValueWithSchemaId);
             }
           }, (callback, sourceTopicOffset) -> getVeniceWriter().put(keyBytes, updatedValueBytes, valueSchemaId,
               callback, sourceTopicOffset));
         }
+
         return valueLen;
       case DELETE:
         // Write to storage engine; potentially produce the DELETE message to version topic
         produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
             key -> {
               long deleteStartTimeNs = System.nanoTime();
-              storageEngine.delete(amplificationFactor != 1 ? venicePartitioner.getPartitionId(keyBytes, amplificationFactor * realTimeTopicPartitionCount) : partition, key);
+              storageEngine.delete(partition, key);
 
               if (logger.isTraceEnabled()) {
                 logger.trace(consumerTaskId + " : Completed DELETE to Store: " + kafkaVersionTopic + " in " +
@@ -2333,9 +2250,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
           if (partitionConsumptionState.isCompletionReported()) {
             // Completion has been reported so extraDisjunctionCondition must be true to enter here.
-            logger.info(consumerTaskId + " Partition " + partition + " synced offset: " + partitionConsumptionState
-                .getOffsetRecord()
-                .getOffset());
+            logger.info(consumerTaskId + " Partition " + partition + " synced offset: "
+                + partitionConsumptionState.getOffsetRecord().getOffset());
           } else {
             /**
              * Check whether we need to warm-up cache here.
@@ -2377,25 +2293,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 }
               }
             } else {
-              if (hybridStoreConfig.isPresent() && bufferReplayEnabledForHybrid && amplificationFactor != 1) {
-                /**
-                 * make sure all subPartitions marked as completed
-                 * isReadyToServe check is called after each record is consumed. With amplificationFactor enabled, one userPartition can map
-                 * to many subPartitions. The completion of a userPartition comes with completion of all subPartiions.
-                 * So we need to run ready check for each subPartition.
-                 */
-                for (int subPartition :
-                    PartitionUtils.getSubPartitions(Collections.singleton(partitionConsumptionState.getUserPartition()), amplificationFactor)) {
-                  if (partitionConsumptionStateMap.containsKey(subPartition)
-                      && partitionConsumptionStateMap.get(subPartition).isComplete()) {
-                    notificationDispatcher.reportCompleted(partitionConsumptionStateMap.get(subPartition));
-                    logger.info(consumerTaskId + " Partition " + subPartition + " is ready to serve");
-                  }
-                }
-              } else {
-                notificationDispatcher.reportCompleted(partitionConsumptionState);
-                logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
-              }
+              notificationDispatcher.reportCompleted(partitionConsumptionState);
+              logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
             }
           }
         } else {

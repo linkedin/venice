@@ -243,7 +243,7 @@ public class RouterServer extends AbstractVeniceService {
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.routingDataRepository =
         config.isHelixOfflinePushEnabled() ? new HelixOfflinePushRepository(manager)
-            : new HelixExternalViewRepository(manager, metadataRepository);
+            : new HelixExternalViewRepository(manager);
     this.hybridStoreQuotaRepository =
         config.isHelixHybridStoreQuotaEnabled()? Optional.of(new HelixHybridStoreQuotaRepository(manager)) : Optional.empty();
     this.storeConfigRepository =
