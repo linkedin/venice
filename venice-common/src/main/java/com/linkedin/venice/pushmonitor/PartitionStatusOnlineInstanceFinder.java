@@ -190,6 +190,7 @@ public class PartitionStatusOnlineInstanceFinder
       // In theory, the version should exist since the corresponding offline push status ZNode is newly created.
       // But there's a race condition that in-memory metadata hasn't been refreshed yet, so here refresh the store.
       logger.warn(String.format("Version %d does not exist in store %s. Refresh the store.", storeVersion, storeName));
+      String logMessage = "still does not exist in store";
       int attempt = 0;
       while (attempt < retryStoreRefreshAttempt) {
         store = metadataRepo.refreshOneStore(storeName);
@@ -197,12 +198,25 @@ public class PartitionStatusOnlineInstanceFinder
         if (version.isPresent()) {
           break;
         }
+        if (storeVersion <= store.getLargestUsedVersionNumber()) {
+          /**
+           * This is to handle an edge case: a version becomes error version and gets deleted quickly
+           * (e.g. TestBatchForRocksDB.testDuplicateKey). If the version is already deleted by the time
+           * PartitionStatusOnlineInstanceFinder handles new push status, no matter how many times the
+           * store is refreshed, version is still not present. As a result, router will waste time on
+           * refreshing store and synchronized methods will be blocked.
+           *
+           * Solution: end store refresh earlier when the version does not exist but version number <=
+           * the largest used version number, which indicates that the version is deleted.
+           */
+          logMessage = "was delete from store";
+          break;
+        }
         attempt++;
         Utils.sleep(retryStoreRefreshIntervalInMs);
       }
       if (!version.isPresent()) {
-        logger.warn(String.format("Version %d still does not exist in store %s after refreshing. Skip subscription.",
-                storeVersion, storeName));
+        logger.warn(String.format("Version %d %s %s. Skip subscription.", storeVersion, logMessage, storeName));
         return false;
       }
       return version.get().isLeaderFollowerModelEnabled();

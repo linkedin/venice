@@ -90,15 +90,15 @@ public class TestPartitionStatusOnlineInstanceFinder {
   public void testSubscribePartitionStatusChange() {
     PartitionStatusOnlineInstanceFinder finder = initFinder();
 
-    String storeName = "testStore";
-    String topic = "testStore_v1";
-    OfflinePushStatus offlinePushStatus = new OfflinePushStatus(topic, partitionCount, 2,
-            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    String storeName = "testDelayedStoreMetadataUpdate";
+    int versionNumber = 1;
+    String topic = Version.composeKafkaTopic(storeName, versionNumber);
+    OfflinePushStatus offlinePushStatus = getMockPushStatus(topic).get(0);
     Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
             OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     store.setLeaderFollowerModelEnabled(true);
-    Version version = new Version(storeName, 1, "pushJobId");
+    Version version = new Version(storeName, versionNumber, "pushJobId");
     version.setLeaderFollowerModelEnabled(true);
     Store refreshedStore = store.cloneStore();
     refreshedStore.addVersion(version);
@@ -108,7 +108,28 @@ public class TestPartitionStatusOnlineInstanceFinder {
     Mockito.doReturn(refreshedStore).when(metaDataRepo).refreshOneStore(storeName);
 
     finder.handleChildChange("/cluster/OfflinePushes", Arrays.asList(topic));
-    Mockito.verify(offlinePushAccessor).subscribePartitionStatusChange(offlinePushStatus, finder);
+    Mockito.verify(metaDataRepo, Mockito.times(1)).refreshOneStore(storeName);
+    Mockito.verify(offlinePushAccessor, Mockito.times(1)).subscribePartitionStatusChange(offlinePushStatus, finder);
+
+    storeName = "testDeletedStoreVersion";
+    topic = Version.composeKafkaTopic(storeName, versionNumber);
+    offlinePushStatus = getMockPushStatus(topic).get(0);
+    store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
+            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    store.setLeaderFollowerModelEnabled(true);
+    version = new Version(storeName, versionNumber, "pushJobId");
+    version.setLeaderFollowerModelEnabled(true);
+    store.addVersion(version);
+    store.deleteVersion(versionNumber);
+
+    Mockito.doReturn(offlinePushStatus).when(offlinePushAccessor).getOfflinePushStatusAndItsPartitionStatuses(topic);
+    Mockito.doReturn(store).when(metaDataRepo).getStore(storeName);
+    Mockito.doReturn(store).when(metaDataRepo).refreshOneStore(storeName);
+
+    finder.handleChildChange("/cluster/OfflinePushes", Arrays.asList(topic));
+    Mockito.verify(metaDataRepo, Mockito.times(1)).refreshOneStore(storeName);
+    Mockito.verify(offlinePushAccessor, Mockito.never()).subscribePartitionStatusChange(offlinePushStatus, finder);
   }
 
   @Test
@@ -136,7 +157,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
     partitionAssignment.addPartition(new Partition(0, instances));
     Mockito.doReturn(partitionAssignment).when(routingDataRepo).getPartitionAssignments(testTopic);
     Mockito.doReturn(instances).when(routingDataRepo).getAllInstances(testTopic, 0);
-    Mockito.doReturn(getMockPushStatus()).when(offlinePushAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    Mockito.doReturn(getMockPushStatus(testTopic)).when(offlinePushAccessor).loadOfflinePushStatusesAndPartitionStatuses();
     Mockito.doReturn(partitionCount).when(routingDataRepo).getNumberOfPartitions(testTopic);
 
     finder.refresh();
@@ -153,8 +174,8 @@ public class TestPartitionStatusOnlineInstanceFinder {
     return instanceMap;
   }
 
-  private List<OfflinePushStatus> getMockPushStatus() {
-    OfflinePushStatus offlinePushStatus = new OfflinePushStatus(testTopic,
+  private List<OfflinePushStatus> getMockPushStatus(String topic) {
+    OfflinePushStatus offlinePushStatus = new OfflinePushStatus(topic,
         partitionCount, 2, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     PartitionStatus partitionStatus = new PartitionStatus(0);
     ReplicaStatus host0 = new ReplicaStatus("host0_1");
