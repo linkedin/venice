@@ -133,6 +133,10 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       lastRouterCount = routerCount;
     }
 
+    if (routerCount <= 0) {
+      logger.error("Could not find any live router to serve traffic.");
+    }
+
     long idealStoreQuotaPerRouter = routerCount > 0
         ? storeQuota / routerCount
         : 0;
