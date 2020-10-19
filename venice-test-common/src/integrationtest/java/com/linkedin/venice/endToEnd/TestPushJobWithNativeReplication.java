@@ -51,7 +51,7 @@ public class TestPushJobWithNativeReplication {
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
-    return new Object[][]{{50, 2}};
+    return new Object[][]{{50, 2}, {10000, 100}};
   }
 
 
@@ -69,6 +69,9 @@ public class TestPushJobWithNativeReplication {
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+
+    Properties controllerProps = new Properties();
+    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
@@ -78,7 +81,8 @@ public class TestPushJobWithNativeReplication {
         1,
         2,
         Optional.empty(),
-        Optional.empty(),
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false,
         MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
