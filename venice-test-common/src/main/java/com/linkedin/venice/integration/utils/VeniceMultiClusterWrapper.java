@@ -41,7 +41,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(int numberOfClusters, int numberOfControllers,
       int numberOfServers, int numberOfRouters, int replicationFactor, int partitionSize, boolean enableWhitelist,
       boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
-      Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup, Optional<VeniceProperties> veniceProperties,
+      Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup,
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties,
       boolean multiD2) {
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
@@ -67,7 +68,12 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       clusterToD2 = clusterToD2.substring(0, clusterToD2.length()-1);
 
       // Create controllers for multi-cluster
-      Properties controllerProperties = new Properties();
+      Properties controllerProperties;
+      if (!childControllerProperties.isPresent()) {
+        controllerProperties = new Properties();
+      } else {
+        controllerProperties = childControllerProperties.get();
+      }
       if (multiColoSetup) {
         // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
         controllerProperties.put(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
