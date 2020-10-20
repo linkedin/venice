@@ -204,6 +204,20 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
+  public synchronized void closeStorageEngine(AbstractStorageEngine engine) {
+    verifyPersistenceType(engine);
+    final String storeName = engine.getName();
+    if (storageEngineMap.containsKey(storeName)) {
+      LOGGER.info("Started closing RocksDB storage engine for store: " + storeName);
+      storageEngineMap.get(storeName).close();
+      storageEngineMap.remove(storeName);
+      LOGGER.info("Finished closing RocksDB storage engine for store: " + storeName);
+    } else {
+      LOGGER.info("RocksDB store: " + storeName + " doesn't exist");
+    }
+  }
+
+  @Override
   public PersistenceType getPersistenceType() {
     return PersistenceType.ROCKS_DB;
   }

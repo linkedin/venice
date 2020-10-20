@@ -45,6 +45,14 @@ public abstract class StorageEngineFactory {
   public abstract void removeStorageEngine(AbstractStorageEngine engine);
 
   /**
+   * Close the storage engine from the underlying storage configuration
+   *
+   * @param engine Specifies the storage engine to be removed
+   */
+  public abstract void closeStorageEngine(AbstractStorageEngine engine);
+
+
+  /**
    * Return the persistence type current factory supports.
    * @return
    */

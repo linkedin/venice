@@ -49,6 +49,11 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
+  public void closeStorageEngine(AbstractStorageEngine engine) {
+    // Nothing to do here since we do not track the created storage engine
+  }
+
+  @Override
   public PersistenceType getPersistenceType() {
     return PersistenceType.IN_MEMORY;
   }

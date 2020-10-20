@@ -31,6 +31,11 @@ public class BlackHoleStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
+  public void closeStorageEngine(AbstractStorageEngine engine) {
+    // Right away!
+  }
+
+  @Override
   public PersistenceType getPersistenceType() {
     return PersistenceType.BLACK_HOLE;
   }

@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -74,7 +75,21 @@ public class IngestionService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    serverFuture = bootstrap.bind(servicePort).sync();
+    IngestionUtils.releaseTargetPortBinding(servicePort);
+    int maxAttempt = 100;
+    int retryCount = 0;
+    while (true) {
+      try {
+        serverFuture = bootstrap.bind(servicePort).sync();
+        break;
+      } catch (Exception e) {
+        retryCount += 1;
+        if (retryCount > maxAttempt) {
+          throw new VeniceException("Ingestion Service is unable to bind to target port " + servicePort  + " after " + maxAttempt + " retries.");
+        }
+      }
+      Utils.sleep(100);
+    }
     logger.info("Listener service started on port: " + servicePort);
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
