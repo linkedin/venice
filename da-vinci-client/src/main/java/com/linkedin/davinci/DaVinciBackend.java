@@ -5,9 +5,9 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.ingestion.IngestionReportListener;
 import com.linkedin.venice.ingestion.IngestionRequestClient;
@@ -143,7 +143,7 @@ public class DaVinciBackend implements Closeable {
       try {
         isolatedIngestionService = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(ingestionServicePort));
         // Wait for server in forked child process to bind the listening port.
-        waitPortBinding(ingestionServicePort, 3000);
+        waitPortBinding(ingestionServicePort, 100);
 
         // Isolated ingestion listener handles status report from isolated ingestion service.
         isolatedIngestionListener = new VeniceNotifier() {
@@ -156,10 +156,6 @@ public class DaVinciBackend implements Closeable {
           }
         };
 
-        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort);
-        ingestionReportListener.setIngestionNotifier(isolatedIngestionListener);
-        ingestionReportListener.setMetricsRepository(metricsRepository);
-        ingestionReportListener.startInner();
 
         InitializationConfigs initializationConfigs = new InitializationConfigs();
         initializationConfigs.aggregatedConfigs = new HashMap<>();
@@ -176,6 +172,11 @@ public class DaVinciBackend implements Closeable {
         // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
         response.release();
         logger.info("Isolated ingestion service initialization finished.");
+
+        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort);
+        ingestionReportListener.setIngestionNotifier(isolatedIngestionListener);
+        ingestionReportListener.setMetricsRepository(metricsRepository);
+        ingestionReportListener.startInner();
       } catch (Exception e) {
         throw new VeniceException("Exception caught during initialization of ingestion service.", e);
       }
@@ -231,7 +232,7 @@ public class DaVinciBackend implements Closeable {
       logger.info(
           "Storage service has " + storageService.getStorageEngineRepository().getAllLocalStorageEngines().size() + " storage engine before clean up.");
       for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
-        storageService.getStorageEngineRepository().removeLocalStorageEngine(storageEngine.getName()).close();
+        storageService.closeStorageEngine(storageEngine.getName());
       }
       logger.info(
           "Storage service has " + storageService.getStorageEngineRepository().getAllLocalStorageEngines().size() + " storage engine after clean up.");

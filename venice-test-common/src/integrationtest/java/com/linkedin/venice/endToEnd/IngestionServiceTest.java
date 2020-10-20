@@ -44,9 +44,9 @@ import static org.testng.Assert.*;
 
 public class IngestionServiceTest {
   private static final int APPLICATION_PORT = 12345;
-  private static final int SERVICE_PORT = 23456;
+  private static final int SERVICE_PORT = 27015;
   private static final int KEY_COUNT = 10;
-  private static final int CONNECTION_TIMEOUT = 5000;
+  private static final int MAX_ATTEMPT = 100;
 
   private static Process forkedIngestionServiceListenerProcess;
   private static IngestionReportListener ingestionReportListener;
@@ -61,8 +61,8 @@ public class IngestionServiceTest {
     forkedIngestionServiceListenerProcess = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(SERVICE_PORT));
     ingestionReportListener = new IngestionReportListener(APPLICATION_PORT, SERVICE_PORT);
     ingestionReportListener.startInner();
-    waitPortBinding(SERVICE_PORT, CONNECTION_TIMEOUT);
-    waitPortBinding(APPLICATION_PORT, CONNECTION_TIMEOUT);
+    waitPortBinding(SERVICE_PORT, MAX_ATTEMPT);
+    waitPortBinding(APPLICATION_PORT, MAX_ATTEMPT);
   }
 
   @AfterClass

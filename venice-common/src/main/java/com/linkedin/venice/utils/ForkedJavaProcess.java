@@ -151,6 +151,10 @@ public final class ForkedJavaProcess extends Process {
     return pid;
   }
 
+  public long getPidOfRawProcess() {
+    return ForkedJavaProcess.getPidOfProcess(this.process);
+  }
+
   @Override
   public OutputStream getOutputStream() {
     return process.getOutputStream();

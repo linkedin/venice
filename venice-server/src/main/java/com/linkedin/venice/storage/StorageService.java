@@ -219,6 +219,15 @@ public class StorageService extends AbstractVeniceService {
     factory.removeStorageEngine(storageEngine);
   }
 
+  public synchronized void closeStorageEngine(String storeName) {
+    AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().getLocalStorageEngine(storeName);
+    VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
+    storeConfig.setStorePersistenceType(storageEngine.getType());
+
+    storageEngineRepository.removeLocalStorageEngine(storeName).close();
+    StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
+    factory.closeStorageEngine(storageEngine);
+  }
   public void cleanupAllStores(VeniceConfigLoader configLoader) {
     // Load local storage and delete them safely.
     // TODO Just clean the data dir in case loading and deleting is too slow.

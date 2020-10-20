@@ -11,6 +11,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.Utils;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -28,9 +29,15 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
+
 
 /**
  * IngestionUtils class contains methods used for communication between ingestion client and server.
@@ -137,11 +144,10 @@ public class IngestionUtils {
    * waitPortBinding is used to test server port binding in other process. Since we cannot control the connection setup
    * on other process, we can only test by trying to establish a connection to the target port.
    * @param port Target port to test connection.
-   * @param timeout Connection timeout.
+   * @param maxAttempt Max number of connection retries before it announces fail to connect.
    * @throws Exception
    */
-  public static void waitPortBinding(int port, int timeout) throws Exception{
-    long timeoutTime = System.currentTimeMillis() + timeout;
+  public static void waitPortBinding(int port, int maxAttempt) throws Exception{
     long waitTime = 100;
     EventLoopGroup workerGroup = new NioEventLoopGroup();
     Bootstrap bootstrap = new Bootstrap();
@@ -154,19 +160,75 @@ public class IngestionUtils {
       }
     });
     long startTime = System.currentTimeMillis();
+    int retryCount = 0;
     while (true) {
       try {
         ChannelFuture f = bootstrap.connect("localhost", port).sync();
         f.channel().close();
         break;
       } catch (Exception e) {
-        com.linkedin.venice.utils.Utils.sleep(waitTime);
-        if (System.currentTimeMillis() > timeoutTime) {
+        retryCount++;
+        if (retryCount > maxAttempt) {
+          logger.info("Fail to connect to target port " + port + " after " + maxAttempt + " retries.");
           throw e;
         }
+        Utils.sleep(waitTime);
       }
     }
     long endTime = System.currentTimeMillis();
-    logger.info("Connect time in millis: " + (endTime - startTime));
+    logger.info("Connect time to target port in millis: " + (endTime - startTime));
   }
+
+  /**
+   * releaseTargetPortBinding aims to release the target port by killing dangling ingestion isolation process bound to
+   * the port, which is created from previous deployment and was not killed due to failures.
+   */
+  public static void releaseTargetPortBinding(int port) {
+    String processId = constructStringFromInputStream(executeShellCommand(new String[]{"lsof", "-t", "-i", ":" + port}));
+    if (!processId.equals("")) {
+      logger.info("Target port: " + port + " is bind to process id: " + processId);
+      String fullProcessName = constructStringFromInputStream(executeShellCommand(new String[]{"ps", "-p", processId, "-o", "command"}));
+      if (fullProcessName.contains(IngestionService.class.getName())) {
+        executeShellCommand(new String[]{"kill", processId});
+        logger.info("Killed IngestionService process on pid " + processId);
+      } else {
+        logger.info("Target port is bind to unknown process: " + fullProcessName);
+      }
+    } else {
+      logger.info("No process is bind to target port.");
+    }
+  }
+
+  /**
+   * executeShellCommand takes in a String array of command arguments and execute the shell command. It will return
+   * the inputStream of the exec process for user to consume.
+   */
+  static InputStream executeShellCommand(String[] command) {
+    Process p = null;
+    try {
+      p = Runtime.getRuntime().exec(command);
+    } catch (Exception err) {
+      logger.info("Encounter err when executing shell command" + Arrays.toString(command) + " " + err);
+    }
+    return p.getInputStream();
+  }
+
+  /**
+   *  constructStringFromInputStream will read from provided inputStream and construct it as a String.
+   */
+  static String constructStringFromInputStream(InputStream inputStream) {
+    StringBuilder stringBuilder = new StringBuilder();
+    String line;
+    BufferedReader input = new BufferedReader(new InputStreamReader(inputStream));
+    try {
+      while ((line = input.readLine()) != null) {
+        stringBuilder.append(line);
+      }
+      input.close();
+    } catch (IOException e) {
+      throw new VeniceException("Encounter exception when reading the shell exec command output", e);
+    }
+    return stringBuilder.toString();
+  }
+
 }
