@@ -241,22 +241,21 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
       }
 
-      if (!venicePath.getRequestType().equals(RequestType.SINGLE_GET) && !venicePath.isRetryRequest()) {
+      if (!venicePath.isRetryRequest()) {
         /**
          * Here is the only suitable place to throttle multi-get/compute request since we want to fail the whole request
          * if some scatter request gets throttled.
          *
          * Venice doesn't apply quota enforcement for retry request since retry is a way for latency guarantee,
          * which should be transparent to customers.
-         *
-         * For single-get request, the throttling logic is happening in {@link VeniceDispatcher} because of caching logic.
          */
         int keyCount = part.getPartitionKeys().size();
         try {
           readRequestThrottler.mayThrottleRead(storeName, keyCount * readRequestThrottler.getReadCapacity(), Optional.of(veniceInstance.getNodeId()));
         } catch (QuotaExceededException e) {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-              TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());
+              TOO_MANY_REQUESTS, "Quota exceeded for '" + storeName + "' while serving a " + venicePath.getRequestType()
+                  + " request! msg: " + e.getMessage());
         }
       }
     }
