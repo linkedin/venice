@@ -127,6 +127,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
         if (isRemoteReadAllowed()) {
           return veniceClient.get(key);
         }
+        storeBackend.getStats().recordUnhealthyRequest();
         throw new VeniceException("Unable to find a ready version, storeName=" + getStoreName());
       }
 
@@ -150,6 +151,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       }
 
       if (!versionBackend.getStorageEngine().containsPartition(subPartitionId)) {
+        storeBackend.getStats().recordUnhealthyRequest();
         throw new VeniceException("Cannot access not-subscribed partition, version=" + versionBackend +", subPartition=" + subPartitionId);
       }
       return CompletableFuture.completedFuture(null);
@@ -165,6 +167,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
         if (isRemoteReadAllowed()) {
           return veniceClient.batchGet(keys);
         }
+        storeBackend.getStats().recordUnhealthyRequest();
         throw new VeniceException("Unable to find a ready version, storeName=" + getStoreName());
       }
 
@@ -192,6 +195,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
           remoteKeys.add(key);
 
         } else if (!versionBackend.getStorageEngine().containsPartition(subPartitionId)) {
+          storeBackend.getStats().recordUnhealthyRequest();
           throw new VeniceException("Cannot access not-subscribed partition, version=" + versionBackend + ", subPartition=" + subPartitionId);
         }
       }

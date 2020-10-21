@@ -7,6 +7,8 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 
+import com.linkedin.davinci.client.ClientStats;
+
 import org.apache.log4j.Logger;
 
 import java.util.Optional;
@@ -17,6 +19,7 @@ public class StoreBackend {
 
   private final DaVinciBackend backend;
   private final String storeName;
+  private final ClientStats stats;
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
   private final ConcurrentRef<VersionBackend> currentVersionRef = new ConcurrentRef<>(this::deleteVersion);
   private VersionBackend currentVersion;
@@ -25,6 +28,7 @@ public class StoreBackend {
   StoreBackend(DaVinciBackend backend, String storeName) {
     this.backend = backend;
     this.storeName = storeName;
+    this.stats = new ClientStats(backend.getMetricsRepository(), storeName);
     try {
       backend.getStoreRepository().subscribe(storeName);
     } catch (InterruptedException e) {
@@ -64,6 +68,10 @@ public class StoreBackend {
       currentVersion = null;
     }
     backend.getStoreRepository().unsubscribe(storeName);
+  }
+
+  public ClientStats getStats() {
+    return stats;
   }
 
   public ReferenceCounted<VersionBackend> getCurrentVersion() {
