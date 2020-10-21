@@ -86,47 +86,55 @@ public class RouterRequestThrottlingTest {
   public void testSingleGetThrottling() throws Exception {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(Long.MAX_VALUE).when(routerConfig).getMaxPendingRequest();
-
-    VeniceHostHealth healthMonitor = mock(VeniceHostHealth.class);
+    doReturn(true).when(routerConfig).isStickyRoutingEnabledForSingleGet();
+    doReturn(KEY_BASED_STICKY_ROUTING).when(routerConfig).getMultiKeyRoutingStrategy();
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    StorageNodeClient storageNodeClient = mock(StorageNodeClient.class);
-    RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository);
-    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, healthMonitor, storeRepository,
-        mock(RouterStats.class), metricsRepository, storageNodeClient, routeHttpRequestStats, mock(AggHostHealthStats.class));
-    // set the ReadRequestThrottler
-    dispatcher.initReadRequestThrottler(throttler);
-    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType)));
 
-    // mock inputs for VeniceDispatcher#dispatch()
-    Scatter<Instance, VenicePath, RouterKey> scatter = mock(Scatter.class);
-    ScatterGatherRequest<Instance, RouterKey> part = mock(ScatterGatherRequest.class);
-    Instance instance = new Instance(Utils.getHelixNodeIdentifier(10000), "localhost", 10000);
-    Set<String> partitionNames = new HashSet<>();
-    partitionNames.add(storeName + "_v1-0");
-    doReturn(Arrays.asList(instance)).when(part).getHosts();
-    doReturn(partitionNames).when(part).getPartitionsNames();
+    VeniceDelegateMode delegateMode = new VeniceDelegateMode(routerConfig, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
+    delegateMode.initReadRequestThrottler(throttler);
+
+    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType)));
 
     VenicePath path = mock(VenicePath.class);
     doReturn(storeName).when(path).getStoreName();
     // mock single-get request
     doReturn(RequestType.SINGLE_GET).when(path).getRequestType();
     doReturn(false).when(path).isRetryRequest();
+    doReturn(true).when(path).canRequestStorageNode(any());
+    doReturn(storeName).when(path).getStoreName();
 
-    BasicHttpRequest request = mock(BasicHttpRequest.class);
+    RouterKey key = mock(RouterKey.class);
+    doReturn(key).when(path).getPartitionKey();
 
-    AsyncPromise<Instance> hostSelected = mock(AsyncPromise.class);
-    AsyncPromise<List<FullHttpResponse>> responseFuture = mock(AsyncPromise.class);
-    AsyncPromise<HttpResponseStatus> retryFuture = mock(AsyncPromise.class);
-    AsyncFuture<Void> timeoutFuture = mock(AsyncFuture.class);
-    Executor contextExecutor = mock(Executor.class);
+    // mock inputs for VeniceDispatcher#dispatch()
+    Scatter<Instance, VenicePath, RouterKey> scatter = mock(Scatter.class);
+    doReturn(path).when(scatter).getPath();
+    doReturn(0).when(scatter).getOfflineRequestCount();
+    ScatterGatherRequest<Instance, RouterKey> part = mock(ScatterGatherRequest.class);
+    Instance instance = new Instance(Utils.getHelixNodeIdentifier(10000), "localhost", 10000);
+    Set<String> partitionNames = new HashSet<>();
+    partitionNames.add(storeName + "_v1-0");
+    doReturn(Arrays.asList(instance)).when(part).getHosts();
+    doReturn(partitionNames).when(part).getPartitionsNames();
+    SortedSet<RouterKey> keys = mock(SortedSet.class);
+    // 1 key per request
+    doReturn(1).when(keys).size();
+    doReturn(keys).when(part).getPartitionKeys();
+    doReturn(Arrays.asList(part)).when(scatter).getOnlineRequests();
+
+    // mock other inputs for VeniceDelegateMode#scatter()
+    PartitionFinder<RouterKey> partitionFinder = mock(PartitionFinder.class);
+    HostFinder<Instance, VeniceRole> hostFinder = mock(HostFinder.class);
+    HostHealthMonitor<Instance> hostHealthMonitor = mock(HostHealthMonitor.class);
+    Metrics metrics = mock(Metrics.class);
 
     // The router shouldn't throttle any request if the QPS is below 1000
     for (int iter = 0; iter < 3; iter++) {
       for (int i = 0; i < totalQuota; i++) {
         try {
-          dispatcher.dispatch(scatter, part, path, request, hostSelected, responseFuture, retryFuture, timeoutFuture,
-              contextExecutor);
+          delegateMode.scatter(scatter, HttpMethod.GET.name(), storeName + "_v1", partitionFinder, hostFinder,
+              hostHealthMonitor, VeniceRole.REPLICA, metrics);
         } catch (Exception e) {
           if (e instanceof RouterException) {
             Assert.fail("Router shouldn't throttle any single-get requests if the QPS is below 1000");
@@ -144,9 +152,8 @@ public class RouterRequestThrottlingTest {
     boolean singleGetThrottled = false;
     for (int i = 0; i < totalQuota + 200; i++) {
       try {
-        dispatcher.dispatch(scatter, part, path, request, hostSelected, responseFuture, retryFuture, timeoutFuture,
-            contextExecutor);
-
+        delegateMode.scatter(scatter, HttpMethod.GET.name(), storeName + "_v1", partitionFinder, hostFinder,
+            hostHealthMonitor, VeniceRole.REPLICA, metrics);
       } catch (Exception e) {
         singleGetThrottled = true;
         if (i < totalQuota) {
