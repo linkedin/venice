@@ -298,6 +298,10 @@ public class DaVinciBackend implements Closeable {
     return configLoader;
   }
 
+  MetricsRepository getMetricsRepository() {
+    return metricsRepository;
+  }
+
   SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
   }
