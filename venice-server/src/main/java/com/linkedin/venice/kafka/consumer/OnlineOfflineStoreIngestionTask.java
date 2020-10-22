@@ -184,13 +184,13 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
     /**
      * After END_OF_PUSH received, `isReadyToServe()` is invoked for each message until the lag is caught up (otherwise,
      * if we only check ready to serve periodically, the lag may never catch up); in order not to slow down the hybrid
-     * ingestion, {@link CachedLatestOffsetGetter} was introduced to get the latest offset periodically;
+     * ingestion, {@link CachedKafkaMetadataGetter} was introduced to get the latest offset periodically;
      * with this strategy, it is possible that partition could become 'ONLINE' at most
-     * {@link CachedLatestOffsetGetter#ttlMs} earlier.
+     * {@link CachedKafkaMetadataGetter#ttlMs} earlier.
      */
     if (bufferReplayEnabledForHybrid) {
       StartOfBufferReplay sobr = storeVersionStateOptional.get().startOfBufferReplay;
-      long sourceTopicMaxOffset = cachedLatestOffsetGetter.getOffset(sobr.sourceTopicName.toString(), partition);
+      long sourceTopicMaxOffset = cachedKafkaMetadataGetter.getOffset(sobr.sourceTopicName.toString(), partition);
       long sobrSourceOffset = sobr.sourceOffsets.get(partition);
 
       if (!partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
@@ -208,7 +208,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
 
       return lag;
     } else {
-      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, partition);
+      long storeVersionTopicLatestOffset = cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partition);
       long lag = storeVersionTopicLatestOffset - currentOffset;
       if (shouldLogLag) {
         logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Dest Latest [%d] - Dest Current [%d]) = Lag [%d]",

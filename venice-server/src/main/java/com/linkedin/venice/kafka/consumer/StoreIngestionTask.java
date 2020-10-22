@@ -78,7 +78,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
@@ -141,7 +140,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   protected final StorageMetadataService storageMetadataService;
   protected final TopicManager topicManager;
-  protected final CachedLatestOffsetGetter cachedLatestOffsetGetter;
+  protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
   protected final EventThrottler bandwidthThrottler;
   protected final EventThrottler recordsThrottler;
   protected final EventThrottler unorderedBandwidthThrottler;
@@ -245,8 +244,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   int writeComputeFailureCode = 0;
 
-  private final long maxDelayToGoOnlineForInactiveRealTimeTopicInMS;
-
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -306,7 +303,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManager = topicManager;
-    this.cachedLatestOffsetGetter = new CachedLatestOffsetGetter(topicManager, storeConfig.getTopicOffsetCheckIntervalMs());
+    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(topicManager, storeConfig.getTopicOffsetCheckIntervalMs());
 
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
@@ -354,8 +351,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.errorPartitionId = errorPartitionId;
     this.cacheWarmingThreadPool = cacheWarmingThreadPool;
     this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
-
-    this.maxDelayToGoOnlineForInactiveRealTimeTopicInMS = serverConfig.getMaxDelayToGoOnlineForInactiveRealTimeTopicInMS();
 
     buildRocksDBMemoryEnforcer();
   }
@@ -540,7 +535,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Currently, we make it a sloppy in case Kafka topic have duplicate messages.
      * TODO: find a better solution
      */
-      lagIsAcceptable = cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, partitionId) <=
+      lagIsAcceptable = cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partitionId) <=
         partitionConsumptionState.getOffsetRecord().getOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
@@ -583,20 +578,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               (timestampLagIsAcceptable ? "<" : ">"), producerTimeLagThresholdInMS));
         }
         /**
-         * If time lag is not acceptable but there hasn't been any consumption for the partition for over 10 minutes,
-         * it means the store doesn't have any real-time updates, so it's safe to ignore the time lag.
+         * If time lag is not acceptable but the producer timestamp of the last message of RT is smaller or equal than
+         * the known latest producer timestamp in server, it means ingestion task has reached the end of RT, so it's
+         * safe to ignore the time lag.
          *
          * Notice that if EOP is not received, this function will be short circuit before reaching here, so there is
          * no risk of meeting the time lag earlier than expected.
          */
-        if (!timestampLagIsAcceptable
-            && LatencyUtils.getElapsedTimeInMs(partitionConsumptionState.getLatestMessageConsumptionTimestampInMs())
-              > maxDelayToGoOnlineForInactiveRealTimeTopicInMS) {
-          timestampLagIsAcceptable = true;
-          String msgIdentifier = this.kafkaVersionTopic + "_" + partitionId + "_exceeds_max_delay";
-          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
-            logger.info(String.format("%s [Time lag] partition %d exceeds max delay to go online for inactive RT: %d; ignoring time lag.",
-                consumerTaskId, partitionId, maxDelayToGoOnlineForInactiveRealTimeTopicInMS));
+        if (!timestampLagIsAcceptable) {
+          String msgIdentifier = this.kafkaVersionTopic + "_" + partitionId + "_ignore_time_lag";
+          String realTimeTopic = Version.composeRealTimeTopic(storeName);
+          if (!cachedKafkaMetadataGetter.containsTopic(realTimeTopic)) {
+            timestampLagIsAcceptable = true;
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
+              logger.info(String.format("%s [Time lag] Real-time topic %s doesn't exist; ignoring time lag.", consumerTaskId, realTimeTopic));
+            }
+          } else {
+            long latestProducerTimestampInRT = cachedKafkaMetadataGetter.getProducerTimestampOfLastMessage(realTimeTopic, partitionId);
+            if (latestProducerTimestampInRT < 0 || latestProducerTimestampInRT <= latestProducerTimestamp) {
+              timestampLagIsAcceptable = true;
+              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
+                if (latestProducerTimestampInRT < 0) {
+                  logger.info(String.format("%s [Time lag] Real-time topic %s is empty or all messages have been truncated; ignoring time lag.", consumerTaskId, realTimeTopic));
+                } else {
+                  logger.info(String.format("%s [Time lag] Producer timestamp of last message in Real-time topic %s "
+                      + "partition %d: %d, which is smaller or equal than the known latest producer time: %d. Consumption "
+                      + "lag is caught up already.", consumerTaskId, realTimeTopic, partitionId, latestProducerTimestampInRT, latestProducerTimestamp));
+                }
+              }
+            }
           }
         }
         if (offsetThreshold > 0) {
@@ -2362,15 +2372,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Since get real-time topic offset is expensive, so we will only retrieve source topic offset after the predefined
-   * ttlMs
+   * Since get real-time topic offset, get producer timestamp, and check topic existence are expensive, so we will only
+   * retrieve such information after the predefined ttlMs
    */
-  protected class CachedLatestOffsetGetter {
+  protected class CachedKafkaMetadataGetter {
     private final long ttl;
     private final TopicManager topicManager;
-    private final Map<Pair<String, Integer>, Pair<Long, Long>> offsetCache = new ConcurrentHashMap<>();
+    private final Map<String, Pair<Long, Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
+    private final Map<Pair<String, Integer>, Pair<Long, Long>> offsetCache = new VeniceConcurrentHashMap<>();
+    private final Map<Pair<String, Integer>, Pair<Long, Long>> lastProducerTimestampCache = new VeniceConcurrentHashMap<>();
 
-    CachedLatestOffsetGetter(TopicManager topicManager, long timeToLiveMs) {
+    CachedKafkaMetadataGetter(TopicManager topicManager, long timeToLiveMs) {
       this.ttl = MILLISECONDS.toNanos(timeToLiveMs);
       this.topicManager = topicManager;
     }
@@ -2384,9 +2396,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return entry.getSecond();
       }
 
-      entry = offsetCache.compute(key, (k, e) ->
-          (e != null && e.getFirst() > now) ?
-              e : new Pair<>(now + ttl, topicManager.getLatestOffsetAndRetry(topicName, partitionId, 10)));
+      entry = offsetCache.compute(key, (k, oldValue) ->
+          (oldValue != null && oldValue.getFirst() > now) ?
+              oldValue : new Pair<>(now + ttl, topicManager.getLatestOffsetAndRetry(topicName, partitionId, 10)));
+      return entry.getSecond();
+    }
+
+    long getProducerTimestampOfLastMessage(String topicName, int partitionId) {
+      long now = System.nanoTime();
+
+      Pair key = new Pair<>(topicName, partitionId);
+      Pair<Long, Long> entry = lastProducerTimestampCache.get(key);
+      if (entry != null && entry.getFirst() > now) {
+        return entry.getSecond();
+      }
+
+      entry = lastProducerTimestampCache.compute(key, (k, oldValue) ->
+          (oldValue != null && oldValue.getFirst() > now) ?
+              oldValue : new Pair<>(now + ttl, topicManager.getLatestProducerTimestampAndRetry(topicName, partitionId, 10)));
+      return entry.getSecond();
+    }
+
+    boolean containsTopic(String topicName) {
+      long now = System.nanoTime();
+
+      Pair<Long, Boolean> entry = topicExistenceCache.get(topicName);
+      if (entry != null && entry.getFirst() > now) {
+        return entry.getSecond();
+      }
+
+      entry = topicExistenceCache.compute(topicName, (k, oldValue) ->
+          (oldValue != null && oldValue.getFirst() > now) ?
+              oldValue : new Pair<>(now + ttl, topicManager.containsTopic(topicName)));
       return entry.getSecond();
     }
   }

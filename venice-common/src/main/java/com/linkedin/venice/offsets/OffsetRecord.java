@@ -52,7 +52,7 @@ public class OffsetRecord {
     emptyPartitionState.offset = LOWEST_OFFSET;
     emptyPartitionState.producerStates = new HashMap<>();
     emptyPartitionState.endOfPush = false;
-    emptyPartitionState.lastUpdate = System.currentTimeMillis();
+    emptyPartitionState.lastUpdate = 0;
     emptyPartitionState.startOfBufferReplayDestinationOffset = null;
     emptyPartitionState.databaseInfo = new HashMap<>();
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;

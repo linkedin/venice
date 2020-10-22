@@ -23,6 +23,7 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -39,6 +40,7 @@ import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -1038,13 +1040,10 @@ public class TestHybrid {
     }
   }
 
-  @Test(timeOut = 90_000)
-  public void testHybridStoreTimeLagThresholdWithEmptyRT() throws Exception {
+  @Test(timeOut = 90_000, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridStoreTimeLagThresholdWithEmptyRT(boolean isRealTimeTopicEmpty) throws Exception {
     Properties extraProperties = new Properties();
-    /**
-     * If there is no updates in RT for over 5 seconds, ignore the time lag. We can't tolerate a 10 minutes delay in test.
-     */
-    extraProperties.setProperty(MAX_DELAY_TO_GO_ONLINE_FOR_INACTIVE_REAL_TIME_TOPIC_IN_SECONDS, Long.toString(5L));
+    extraProperties.setProperty(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, Integer.toString(1));
 
     SystemProducer veniceProducer = null;
 
@@ -1083,7 +1082,7 @@ public class TestHybrid {
         runH2V(h2vProperties, 1, controllerClient);
 
         //Verify some records (note, records 1-100 have been pushed)
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           try {
             for (int i = 1; i < 100; i++) {
               String key = Integer.toString(i);
@@ -1095,6 +1094,55 @@ public class TestHybrid {
             throw new VeniceException(e);
           }
         });
+
+        if (!isRealTimeTopicEmpty) {
+          //write streaming records
+          veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+          for (int i=1; i<=10; i++) {
+            // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
+            // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
+            // max chunk size is not altered, and thus this will be under threshold.
+            sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+          }
+
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            try {
+              checkLargeRecord(client, 2);
+            } catch (Exception e) {
+              throw new VeniceException(e);
+            }
+          });
+        }
+
+        // bounce servers
+        List<VeniceServerWrapper> servers = venice.getVeniceServers();
+        for (VeniceServerWrapper server : servers) {
+          venice.stopAndRestartVeniceServer(server.getPort());
+        }
+
+        if (!isRealTimeTopicEmpty) {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            try {
+              checkLargeRecord(client, 2);
+            } catch (Exception e) {
+              throw new VeniceException(e);
+            }
+          });
+        } else {
+          //Verify some records (note, records 1-100 have been pushed)
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+            try {
+              for (int i = 1; i < 100; i++) {
+                String key = Integer.toString(i);
+                Object value = client.get(key).get();
+                assertNotNull(value, "Key " + i + " should not be missing!");
+                assertEquals(value.toString(), "test_name_" + key);
+              }
+            } catch (Exception e) {
+              throw new VeniceException(e);
+            }
+          });
+        }
       }
     } finally {
       if (null != veniceProducer) {
