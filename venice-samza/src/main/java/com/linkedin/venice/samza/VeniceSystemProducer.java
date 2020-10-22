@@ -127,17 +127,25 @@ public class VeniceSystemProducer implements SystemProducer {
 
   protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier) {
     String errorMsg = "";
-    for (int currentAttempt = 0; currentAttempt < 60; currentAttempt++) {
-      ControllerResponse controllerResponse = supplier.get();
-      if (!controllerResponse.isError()) {
-        return controllerResponse;
-      } else {
-        try {
-          time.sleep(1000);
-        } catch (InterruptedException e) {
+    for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
+      try {
+        ControllerResponse controllerResponse = supplier.get();
+        if (!controllerResponse.isError()) {
+          return controllerResponse;
+        } else {
+          time.sleep(1000 * (currentAttempt + 1));
+          errorMsg = controllerResponse.getError();
+        }
+      } catch (Exception e) {
+        if (e instanceof InterruptedException) {
           throw new VeniceException(e);
         }
-        errorMsg = controllerResponse.getError();
+        try {
+          time.sleep(1000 * (currentAttempt + 1));
+        } catch (InterruptedException ie) {
+          throw new VeniceException(ie);
+        }
+        errorMsg = e.getMessage();
       }
     }
     throw new SamzaException("Failed to send request to Controller, error: " + errorMsg);

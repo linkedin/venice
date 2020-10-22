@@ -893,9 +893,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     /**
      * After END_OF_PUSH received, `isReadyToServe()` is invoked for each message until the lag is caught up (otherwise,
      * if we only check ready to serve periodically, the lag may never catch up); in order not to slow down the hybrid
-     * ingestion, {@link CachedLatestOffsetGetter} was introduced to get the latest offset periodically;
+     * ingestion, {@link CachedKafkaMetadataGetter} was introduced to get the latest offset periodically;
      * with this strategy, it is possible that partition could become 'ONLINE' at most
-     * {@link CachedLatestOffsetGetter#ttlMs} earlier.
+     * {@link CachedKafkaMetadataGetter#ttlMs} earlier.
      */
     if (bufferReplayEnabledForHybrid) {
       String leaderTopic = offsetRecord.getLeaderTopic();
@@ -916,7 +916,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       // leaderTopic is the real-time topic now
       long leaderOffset = offsetRecord.getLeaderOffset();
-      long lastOffsetInRealTimeTopic = cachedLatestOffsetGetter.getOffset(leaderTopic, partition);
+      long lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(leaderTopic, partition);
 
       long lag = lastOffsetInRealTimeTopic - leaderOffset;
       if (shouldLogLag) {
@@ -930,7 +930,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * If buffer replay is disabled, all replicas are consuming from version topic, so check the lag in version topic.
        */
       long versionTopicConsumedOffset = offsetRecord.getOffset();
-      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, partition);
+      long storeVersionTopicLatestOffset = cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partition);
       long lag = storeVersionTopicLatestOffset - versionTopicConsumedOffset;
       if (shouldLogLag) {
         logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Last VT offset [%d] - Last VT consumed offset [%d]) = Lag [%d]",
@@ -945,7 +945,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int partition = pcs.getPartition();
 
     if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
-      if (cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, partition) - 1 <= pcs.getOffsetRecord().getOffset()) {
+      if (cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partition) - 1 <= pcs.getOffsetRecord().getOffset()) {
         notificationDispatcher.reportCatchUpBaseTopicOffsetLag(pcs);
 
         /**
@@ -1049,7 +1049,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(pcs -> pcs.isEndOfPushReceived() && !pcs.getLeaderState().equals(LEADER))
         //the lag is (latest VT offset - consumed VT offset
         .mapToLong(pcs ->
-            cachedLatestOffsetGetter.getOffset(kafkaVersionTopic, pcs.getPartition()) - pcs.getOffsetRecord().getOffset())
+            cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, pcs.getPartition()) - pcs.getOffsetRecord().getOffset())
         .sum();
 
     return minZeroLag(offsetLag);

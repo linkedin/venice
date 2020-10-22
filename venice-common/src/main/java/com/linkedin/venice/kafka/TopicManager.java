@@ -4,6 +4,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -59,7 +63,8 @@ public class TopicManager implements Closeable {
 
   // Mutable, lazily initialized, state
   private KafkaAdminWrapper kafkaAdmin;
-  private KafkaConsumer<byte[], byte[]> kafkaConsumer;
+  private KafkaConsumer<byte[], byte[]> kafkaRawBytesConsumer;
+  private KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaRecordConsumer;
 
   private static final Logger logger = Logger.getLogger(TopicManager.class);
   public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
@@ -508,7 +513,7 @@ public class TopicManager implements Closeable {
   }
 
   public synchronized Set<String> listTopics() {
-    Set<String> topics = getConsumer().listTopics().keySet();
+    Set<String> topics = getRawBytesConsumer().listTopics().keySet();
     return topics;
   }
 
@@ -540,7 +545,7 @@ public class TopicManager implements Closeable {
       return false;
     }
 
-    List<PartitionInfo> partitionInfoList = getConsumer().partitionsFor(topic);
+    List<PartitionInfo> partitionInfoList = getRawBytesConsumer().partitionsFor(topic);
     if (partitionInfoList == null) {
       logger.warn("getConsumer().partitionsFor() returned null for topic: " + topic);
       return false;
@@ -579,7 +584,7 @@ public class TopicManager implements Closeable {
       return false;
     }
 
-    List<PartitionInfo> partitionInfoList = getConsumer(closeAndRecreateConsumer).partitionsFor(topic);
+    List<PartitionInfo> partitionInfoList = getRawBytesConsumer(closeAndRecreateConsumer).partitionsFor(topic);
     if (partitionInfoList == null) {
       logger.trace("getConsumer().partitionsFor() returned null for topic: " + topic);
       return true;
@@ -608,7 +613,7 @@ public class TopicManager implements Closeable {
       logger.warn("Topic: " + topic + " doesn't exist, returning empty map for latest offsets");
       return new HashMap<>();
     }
-    KafkaConsumer<byte[], byte[]> consumer = getConsumer();
+    KafkaConsumer<byte[], byte[]> consumer = getRawBytesConsumer();
     List<PartitionInfo> partitionInfoList = consumer.partitionsFor(topic);
     if (null == partitionInfoList || partitionInfoList.isEmpty()) {
       logger.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
@@ -639,6 +644,23 @@ public class TopicManager implements Closeable {
     throw lastException;
   }
 
+  public long getLatestProducerTimestampAndRetry(String topic, int partition, int retries) {
+    int attempt = 0;
+    long timestamp;
+    VeniceOperationAgainstKafkaTimedOut lastException = new VeniceOperationAgainstKafkaTimedOut("This exception should not be thrown");
+    while (attempt < retries){
+      try {
+        timestamp = getLatestProducerTimestamp(topic, partition);
+        return timestamp;
+      } catch (VeniceOperationAgainstKafkaTimedOut e){// topic and partition is listed in the exception object
+        logger.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
+        lastException = e;
+        attempt ++;
+      }
+    }
+    throw lastException;
+  }
+
   /**
    * This method is synchronized because it calls #getConsumer()
    *
@@ -649,7 +671,7 @@ public class TopicManager implements Closeable {
    * fail {@link #getLatestOffset(String, int)} since some transient non-ISR could happen randomly.
    */
   public synchronized long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
-    return getLatestOffset(getConsumer(), topic, partition, true);
+    return getLatestOffset(getRawBytesConsumer(), topic, partition, true);
   }
 
   private synchronized Long getLatestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
@@ -674,11 +696,73 @@ public class TopicManager implements Closeable {
   }
 
   /**
+   * If the topic is empty or all the messages are truncated (startOffset==endOffset), return -1;
+   * otherwise, return the producer timestamp of the last message in the selected partition of a topic
+   */
+  private synchronized Long getLatestProducerTimestamp(String topic, Integer partition) throws TopicDoesNotExistException {
+    if (!containsTopic(topic)) {
+      throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
+    }
+    if (partition < 0) {
+      throw new IllegalArgumentException("Cannot retrieve latest producer timestamp for invalid partition " + partition + " topic " + topic);
+    }
+
+    KafkaConsumer<KafkaKey, KafkaMessageEnvelope> consumer = getRecordConsumer();
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
+
+    long latestProducerTimestamp;
+    try {
+      consumer.assign(Arrays.asList(topicPartition));
+      consumer.seekToEnd(Arrays.asList(topicPartition));
+      long latestOffset = consumer.position(topicPartition);
+      if (latestOffset <= 0) {
+        // empty topic
+        latestProducerTimestamp = -1;
+      } else {
+        consumer.seekToBeginning(Arrays.asList(topicPartition));
+        long earliestOffset = consumer.position(topicPartition);
+        if (earliestOffset == latestOffset) {
+          // empty topic
+          latestProducerTimestamp = -1;
+        } else {
+          // poll the last message and retrieve the producer timestamp
+          consumer.seek(topicPartition, latestOffset - 1);
+          ConsumerRecords records = ConsumerRecords.EMPTY;
+          int attempts = 0;
+          while (attempts++ < KAFKA_POLLING_RETRY_ATTEMPT && records.isEmpty()) {
+            logger.info("Trying to get the last record from topic: " + topicPartition.toString() + " at offset: " + (latestOffset - 1)
+                + ". Attempt#" + attempts + "/" + KAFKA_POLLING_RETRY_ATTEMPT);
+            records = consumer.poll(kafkaOperationTimeoutMs);
+          }
+          if (records.isEmpty()) {
+            /**
+             * Failed the job if we cannot get the last offset of the topic.
+             */
+            String errorMsg = "Failed to get the last record from topic: " + topicPartition.toString() +
+                " after " + KAFKA_POLLING_RETRY_ATTEMPT + " attempts";
+            logger.error(errorMsg);
+            throw new VeniceException(errorMsg);
+          }
+
+          // Get the latest record from the poll result
+          ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = (ConsumerRecord<KafkaKey, KafkaMessageEnvelope>) records.iterator().next();
+          latestProducerTimestamp = record.value().producerMetadata.messageTimestamp;
+        }
+      }
+      consumer.assign(Arrays.asList());
+    } catch (org.apache.kafka.common.errors.TimeoutException ex) {
+      throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to end to get latest offset"
+          + " for topic: " + topic + " and partition: " + partition, ex);
+    }
+    return latestProducerTimestamp;
+  }
+
+  /**
    * Get offsets for all the partitions with a specific timestamp.
    */
   public synchronized Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
     int remainingAttempts = 5;
-    List<PartitionInfo> partitionInfoList = getConsumer().partitionsFor(topic);
+    List<PartitionInfo> partitionInfoList = getRawBytesConsumer().partitionsFor(topic);
     // N.B.: During unit test development, getting a null happened occasionally without apparent
     //       reason. In their current state, the tests have been run with a high invocationCount and
     //       no failures, so it may be a non-issue. If this happens again, and we find some test case
@@ -686,7 +770,7 @@ public class TopicManager implements Closeable {
     //       a bug to Kafka.
     while (remainingAttempts > 0 && (null == partitionInfoList || partitionInfoList.isEmpty())) {
       Utils.sleep(500);
-      partitionInfoList = getConsumer().partitionsFor(topic);
+      partitionInfoList = getRawBytesConsumer().partitionsFor(topic);
       remainingAttempts -= 1;
     }
     if (null == partitionInfoList || partitionInfoList.isEmpty()) {
@@ -704,7 +788,7 @@ public class TopicManager implements Closeable {
    * @throws TopicDoesNotExistException
    */
   public synchronized long getEarliestOffset(String topic, int partition) throws TopicDoesNotExistException {
-    return getEarliestOffset(getConsumer(), topic, partition, true);
+    return getEarliestOffset(getRawBytesConsumer(), topic, partition, true);
   }
 
   private synchronized Long getEarliestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
@@ -742,7 +826,7 @@ public class TopicManager implements Closeable {
    */
   public synchronized Map<Integer, Long> getOffsetsByTime(String topic, Map<TopicPartition, Long> timestampsToSearch, long timestamp) {
     int expectedPartitionNum = timestampsToSearch.size();
-    Map<Integer, Long>  result = getConsumer().offsetsForTimes(timestampsToSearch)
+    Map<Integer, Long>  result = getRawBytesConsumer().offsetsForTimes(timestampsToSearch)
         .entrySet()
         .stream()
         .collect(Collectors.toMap(
@@ -760,13 +844,13 @@ public class TopicManager implements Closeable {
     // The given timestamp exceed the timestamp of the last message. So return the last offset.
     if (result.isEmpty()) {
       logger.warn("Offsets result is empty. Will complement with the last offsets.");
-      result = getConsumer().endOffsets(timestampsToSearch.keySet())
+      result = getRawBytesConsumer().endOffsets(timestampsToSearch.keySet())
           .entrySet()
           .stream()
           .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset).getKey().partition(),
               partitionToOffset -> partitionToOffset.getValue()));
     } else if (result.size() != expectedPartitionNum) {
-      Map<TopicPartition, Long>  endOffests = getConsumer().endOffsets(timestampsToSearch.keySet());
+      Map<TopicPartition, Long>  endOffests = getRawBytesConsumer().endOffsets(timestampsToSearch.keySet());
       // Get partial offsets result.
       logger.warn("Missing offsets for some partitions. Partition Number should be :" + expectedPartitionNum
           + " but only got: " + result.size()+". Will complement with the last offsets.");
@@ -808,7 +892,7 @@ public class TopicManager implements Closeable {
       return latestOffset;
     }
 
-    KafkaConsumer consumer = getConsumer();
+    KafkaConsumer consumer = getRawBytesConsumer();
     try {
       consumer.assign(Arrays.asList(topicPartition));
       consumer.seek(topicPartition, latestOffset - 1);
@@ -857,34 +941,34 @@ public class TopicManager implements Closeable {
    * @return
    */
   public synchronized List<PartitionInfo> getPartitions(String topic){
-    KafkaConsumer<byte[], byte[]> consumer = getConsumer();
+    KafkaConsumer<byte[], byte[]> consumer = getRawBytesConsumer();
     return consumer.partitionsFor(topic);
   }
 
   /**
-   * The first time this is called, it lazily initializes {@link #kafkaConsumer}.
+   * The first time this is called, it lazily initializes {@link #kafkaRawBytesConsumer}.
    * Any method that uses this consumer must be synchronized.  Since the same
    * consumer is returned each time and some methods modify the consumer's state
    * we must guard against concurrent modifications.
    *
    * @return The internal {@link KafkaConsumer} instance.
    */
-  private KafkaConsumer<byte[], byte[]> getConsumer() {
-    return getConsumer(false);
+  private KafkaConsumer<byte[], byte[]> getRawBytesConsumer() {
+    return getRawBytesConsumer(false);
   }
 
-  private synchronized KafkaConsumer<byte[], byte[]> getConsumer(boolean closeAndRecreate) {
-    if (this.kafkaConsumer == null) {
-      this.kafkaConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaConsumerProps());
+  private synchronized KafkaConsumer<byte[], byte[]> getRawBytesConsumer(boolean closeAndRecreate) {
+    if (this.kafkaRawBytesConsumer == null) {
+      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaRawBytesConsumerProps());
     } else if (closeAndRecreate) {
-      this.kafkaConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
-      this.kafkaConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaConsumerProps());
+      this.kafkaRawBytesConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
+      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaRawBytesConsumerProps());
       logger.info("Closed and recreated consumer.");
     }
-    return this.kafkaConsumer;
+    return this.kafkaRawBytesConsumer;
   }
 
-  private Properties getKafkaConsumerProps() {
+  private Properties getKafkaRawBytesConsumerProps() {
     Properties props = new Properties();
     //This is a temporary fix for the issue described here
     //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
@@ -893,6 +977,31 @@ public class TopicManager implements Closeable {
     //Trying to avoid class loading via Kafka's ConfigDef class
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
+    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    return props;
+  }
+
+  private KafkaConsumer<KafkaKey, KafkaMessageEnvelope> getRecordConsumer() {
+    if (this.kafkaRecordConsumer == null) {
+      synchronized (this) {
+        if (this.kafkaRecordConsumer == null) {
+          this.kafkaRecordConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaRecordConsumerProps());
+        }
+      }
+    }
+    return this.kafkaRecordConsumer;
+  }
+
+  private Properties getKafkaRecordConsumerProps() {
+    Properties props = new Properties();
+    //This is a temporary fix for the issue described here
+    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
+    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
+    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
+    //Trying to avoid class loading via Kafka's ConfigDef class
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
     // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
     props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     return props;
@@ -914,7 +1023,7 @@ public class TopicManager implements Closeable {
 
   @Override
   public synchronized void close() throws IOException {
-    IOUtils.closeQuietly(kafkaConsumer);
+    IOUtils.closeQuietly(kafkaRawBytesConsumer);
     IOUtils.closeQuietly(kafkaAdmin);
   }
 }
