@@ -444,6 +444,16 @@ public class ConfigKeys {
    */
   public static final String SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED = "server.rocksdb.storage.config.check.enabled";
 
+  /**
+   * For hybrid stores, if producer time lag threshold is positive, Venice server will check whether it receives a fresh
+   * message from real-time topic before putting the partition online. However, if users never produce any real-time
+   * updates, ingestion will hang and cannot put the store online. This config will define how long the servers will wait
+   * for an inactive real-time topic before putting store online.
+   *
+   * By default, max wait time is 10 minutes.
+   */
+  public static final String MAX_DELAY_TO_GO_ONLINE_FOR_INACTIVE_REAL_TIME_TOPIC_IN_SECONDS = "max.delay.to.go.online.for.inactive.real.time.topic.in.seconds";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

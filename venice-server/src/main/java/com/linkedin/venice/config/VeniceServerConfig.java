@@ -209,6 +209,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
   private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
 
+  private final long maxDelayToGoOnlineForInactiveRealTimeTopicInMS;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
@@ -312,8 +314,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     kafkaConsumerConfigsForLocalConsumption = serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
     kafkaConsumerConfigsForRemoteConsumption = serverProperties.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
-    
+
     rocksDbStorageEngineConfigCheckEnabled = serverProperties.getBoolean(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true);
+
+    maxDelayToGoOnlineForInactiveRealTimeTopicInMS = TimeUnit.SECONDS.toMillis(serverProperties.getLong(
+        MAX_DELAY_TO_GO_ONLINE_FOR_INACTIVE_REAL_TIME_TOPIC_IN_SECONDS, 600)); // by default 10 minutes
   }
 
   public int getListenerPort() {
@@ -585,5 +590,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isRocksDbStorageEngineConfigCheckEnabled() {
     return rocksDbStorageEngineConfigCheckEnabled;
+  }
+
+  public long getMaxDelayToGoOnlineForInactiveRealTimeTopicInMS() {
+    return maxDelayToGoOnlineForInactiveRealTimeTopicInMS;
   }
 }
