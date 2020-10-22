@@ -1004,6 +1004,71 @@ public class TestHybrid {
     }
   }
 
+  @Test(timeOut = 90_000)
+  public void testHybridStoreTimeLagThresholdWithEmptyRT() throws Exception {
+    Properties extraProperties = new Properties();
+    /**
+     * If there is no updates in RT for over 5 seconds, ignore the time lag. We can't tolerate a 10 minutes delay in test.
+     */
+    extraProperties.setProperty(MAX_DELAY_TO_GO_ONLINE_FOR_INACTIVE_REAL_TIME_TOPIC_IN_SECONDS, Long.toString(5L));
+
+    SystemProducer veniceProducer = null;
+
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,
+        1, 1000000, false, false, extraProperties)) {
+      long streamingRewindSeconds = 10L;
+      // Disable offset lag threshold
+      long streamingMessageLag = -1L;
+      // Time lag threshold is 30 seconds for the test case
+      long streamingTimeLag = 30L;
+
+      String storeName = TestUtils.getUniqueString("hybrid-store");
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+
+      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+          TopicManager topicManager = new TopicManager(
+              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+              100,
+              MIN_COMPACTION_LAG,
+              TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+
+        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setHybridRewindSeconds(streamingRewindSeconds)
+            .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setHybridTimeLagThreshold(streamingTimeLag)
+        );
+
+        Assert.assertFalse(response.isError());
+
+        //Do an H2V push with an empty RT
+        runH2V(h2vProperties, 1, controllerClient);
+
+        //Verify some records (note, records 1-100 have been pushed)
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          try {
+            for (int i = 1; i < 100; i++) {
+              String key = Integer.toString(i);
+              Object value = client.get(key).get();
+              assertNotNull(value, "Key " + i + " should not be missing!");
+              assertEquals(value.toString(), "test_name_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    } finally {
+      if (null != veniceProducer) {
+        veniceProducer.stop();
+      }
+    }
+  }
+
   /**
    * Blocking, waits for new version to go online
    */
