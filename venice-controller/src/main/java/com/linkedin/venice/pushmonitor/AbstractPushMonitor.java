@@ -275,7 +275,7 @@ public abstract class AbstractPushMonitor
     try {
       result.addAll(topicToPushMap.values()
           .stream()
-          .filter(status -> status.getCurrentStatus().equals(ExecutionStatus.STARTED))
+          .filter(status -> !status.getCurrentStatus().isTerminal())
           .map(OfflinePushStatus::getKafkaTopic)
           .collect(Collectors.toList()));
     } finally {
