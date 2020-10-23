@@ -6,9 +6,11 @@ import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
+import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.Utils;
@@ -54,6 +56,10 @@ public class IngestionUtils {
           AvroProtocolDefinition.INGESTION_TASK_REPORT.getSerializer();
   public static final InternalAvroSpecificSerializer<IngestionMetricsReport> ingestionMetricsReportSerializer =
           AvroProtocolDefinition.INGESTION_METRICS_REPORT.getSerializer();
+  public static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+      AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+  public static final InternalAvroSpecificSerializer<IngestionStorageMetadata> ingestionStorageMetadataSerializer =
+      AvroProtocolDefinition.INGESTION_STORAGE_METADATA.getSerializer();
 
   public static byte[] serializeInitializationConfigs(InitializationConfigs initializationConfigs) {
     return initializationConfigSerializer.serialize(null, initializationConfigs);
@@ -71,6 +77,14 @@ public class IngestionUtils {
     return ingestionMetricsReportSerializer.serialize(null, ingestionMetricsReport);
   }
 
+  public static byte[] serializeStoreVersionState(String topicName, StoreVersionState storeVersionState) {
+    return storeVersionStateSerializer.serialize(topicName, storeVersionState);
+  }
+
+  public static byte[] serializeIngestionStorageMetadata(IngestionStorageMetadata ingestionStorageMetadata) {
+    return ingestionStorageMetadataSerializer.serialize(null, ingestionStorageMetadata);
+  }
+
   public static IngestionTaskReport deserializeIngestionTaskReport(byte[] content) {
     return ingestionTaskReportSerializer.deserialize(null, content);
   }
@@ -85,6 +99,14 @@ public class IngestionUtils {
 
   public static IngestionMetricsReport deserializeIngestionMetricsReport(byte[] content) {
     return ingestionMetricsReportSerializer.deserialize(null, content);
+  }
+
+  public static StoreVersionState deserializeStoreVersionState(String topicName, byte[] content) {
+    return storeVersionStateSerializer.deserialize(topicName, content);
+  }
+
+  public static IngestionStorageMetadata deserializeIngestionStorageMetadata(byte[] content) {
+    return ingestionStorageMetadataSerializer.deserialize(null, content);
   }
 
   public static HttpResponse buildHttpResponse(HttpResponseStatus status, String msg) {

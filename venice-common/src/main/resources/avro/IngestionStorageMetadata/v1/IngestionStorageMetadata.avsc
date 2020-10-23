@@ -1,5 +1,5 @@
 {
-  "name": "IngestionTaskCommand",
+  "name": "IngestionStorageMetadata",
   "namespace": "com.linkedin.venice.ingestion.protocol",
   "type": "record",
   "fields": [
@@ -12,8 +12,12 @@
       "type": "int"
     },
     {
-      "name": "commandType",
-      "doc": "0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming, 5 => DropStore",
+      "name": "payload",
+      "type": "bytes"
+    },
+    {
+      "name": "metadataUpdateType",
+      "doc": "0 => PutOffsetRecord, 1 => ClearOffsetRecord, 2 => PutStoreVersionState, 3 => ClearStoreVersionState",
       "type": "int"
     }
   ]

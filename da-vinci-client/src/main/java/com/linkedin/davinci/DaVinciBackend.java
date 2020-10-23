@@ -12,6 +12,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.ingestion.IngestionReportListener;
 import com.linkedin.venice.ingestion.IngestionRequestClient;
 import com.linkedin.venice.ingestion.IngestionService;
+import com.linkedin.venice.ingestion.IngestionStorageMetadataService;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
@@ -30,6 +31,7 @@ import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
+import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ComplementSet;
@@ -75,6 +77,7 @@ public class DaVinciBackend implements Closeable {
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
 
+  private StorageMetadataService storageMetadataService;
   private IngestionRequestClient ingestionRequestClient;
   private IngestionReportListener ingestionReportListener;
   private VeniceNotifier isolatedIngestionListener;
@@ -114,10 +117,15 @@ public class DaVinciBackend implements Closeable {
         ClientConfig.cloneConfig(clientConfig)
             .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
 
+    // TODO: May need to reorder the object to make it looks cleaner.
+    storageMetadataService = configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)
+        ? new IngestionStorageMetadataService(configLoader.getVeniceServerConfig().getIngestionServicePort())
+        : new StorageEngineMetadataService(storageService.getStorageEngineRepository());
+
     ingestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
         configLoader,
-        new StorageEngineMetadataService(storageService.getStorageEngineRepository()),
+        storageMetadataService,
         storeRepository,
         schemaRepository,
         metricsRepository,
@@ -156,7 +164,6 @@ public class DaVinciBackend implements Closeable {
           }
         };
 
-
         InitializationConfigs initializationConfigs = new InitializationConfigs();
         initializationConfigs.aggregatedConfigs = new HashMap<>();
         configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
@@ -176,6 +183,7 @@ public class DaVinciBackend implements Closeable {
         ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort);
         ingestionReportListener.setIngestionNotifier(isolatedIngestionListener);
         ingestionReportListener.setMetricsRepository(metricsRepository);
+        ingestionReportListener.setStorageMetadataService((IngestionStorageMetadataService)storageMetadataService);
         ingestionReportListener.startInner();
       } catch (Exception e) {
         throw new VeniceException("Exception caught during initialization of ingestion service.", e);
@@ -314,6 +322,10 @@ public class DaVinciBackend implements Closeable {
 
   StorageService getStorageService() {
     return storageService;
+  }
+
+  StorageMetadataService getStorageMetadataService() {
+    return storageMetadataService;
   }
 
   StoreIngestionService getIngestionService() {

@@ -4,10 +4,13 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.channel.IngestionServiceChannelInitializer;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -19,10 +22,12 @@ import io.netty.channel.ServerChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.log4j.Logger;
@@ -45,6 +50,7 @@ public class IngestionService extends AbstractVeniceService {
   private SubscriptionBasedReadOnlyStoreRepository storeRepository = null;
   private StorageService storageService = null;
   private KafkaStoreIngestionService storeIngestionService = null;
+  private StorageMetadataService storageMetadataService = null;
   private boolean isInitiated = false;
   private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Map<Integer, Long>> readyToServePartitionMap = new VeniceConcurrentHashMap<>();
@@ -128,16 +134,8 @@ public class IngestionService extends AbstractVeniceService {
     readyToServePartitionMap.put(topicName, readyPartitions);
     updateLock.unlock();
 
-    // All partitions related to this topic has been ingested successfully.
-    if (activePartitions.isEmpty()) {
-      logger.info("All partitions have done consumption for topic " + topicName + ", closing storage engine now.");
-      // Close all partitions including metadata partition. This will unblock the storage engine serving in main service.
-      storageService.getStorageEngineRepository().getLocalStorageEngine(topicName).close();
-      readyToServePartitionMap.remove(topicName);
-      readyPartitions.forEach((p, o) -> {
-        reportIngestionCompletion(topicName, p, o);
-      });
-    }
+    logger.info("Close partition " + partitionId + " of topic " + topicName);
+    reportIngestionCompletion(topicName, partitionId, offset);
   }
 
   public void setConfigLoader(VeniceConfigLoader configLoader) {
@@ -154,6 +152,10 @@ public class IngestionService extends AbstractVeniceService {
 
   public void setStoreIngestionService(KafkaStoreIngestionService storeIngestionService) {
     this.storeIngestionService = storeIngestionService;
+  }
+
+  public void setStorageMetadataService(StorageMetadataService storageMetadataService) {
+    this.storageMetadataService = storageMetadataService;
   }
 
   public void setReportClient(IngestionRequestClient reportClient) {
@@ -188,6 +190,10 @@ public class IngestionService extends AbstractVeniceService {
     return storeIngestionService;
   }
 
+  public StorageMetadataService getStorageMetadataService() {
+    return storageMetadataService;
+  }
+
   public SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
   }
@@ -216,7 +222,17 @@ public class IngestionService extends AbstractVeniceService {
     report.topicName = topicName;
     report.partitionId = partitionId;
     report.offset = offset;
+    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partitionId);
+    logger.info("OffsetRecord of topic " + topicName + " , partition " + partitionId + " " + offsetRecord.toString());
+    report.offsetRecord = ByteBuffer.wrap(offsetRecord.toBytes());
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
+    if (storeVersionState.isPresent()) {
+      report.storeVersionState = ByteBuffer.wrap(IngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
+    } else {
+      throw new VeniceException("StoreVersionState does not exist for version " + topicName);
+    }
     byte[] serializedReport = serializeIngestionTaskReport(report);
+    storageService.getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
     try {
       logger.info("Sending ingestion completion report for version:  " + topicName + " partition id:" + partitionId + " offset:" + offset);
       reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));

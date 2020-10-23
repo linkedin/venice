@@ -336,9 +336,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException("Metadata partition id should not be used as argument in putPartitionOffset.");
     }
-    if (!containsPartition(partitionId)) {
-      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
-    }
     metadataPartition.put(getPartitionMetadataKey(partitionId), offsetRecord.toBytes());
   }
 
@@ -351,9 +348,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException("Metadata partition id should not be used as argument in getPartitionOffset.");
-    }
-    if (!containsPartition(partitionId)) {
-      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
     }
     byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId));
     if (null == value) {
@@ -371,9 +365,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
-    }
-    if (!containsPartition(partitionId)) {
-      logger.warn("partitionId " + partitionId + " does not exist in partitionList.");
     }
     metadataPartition.delete(getPartitionMetadataKey(partitionId));
   }

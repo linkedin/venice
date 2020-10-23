@@ -41,6 +41,16 @@
       "name": "errorMessage",
       "type": "string",
       "default": ""
+    },
+    {
+      "name": "offsetRecord",
+      "type": ["null", "bytes"],
+      "default": null
+    },
+    {
+      "name": "storeVersionState",
+      "type": ["null", "bytes"],
+      "default": null
     }
   ]
 }
