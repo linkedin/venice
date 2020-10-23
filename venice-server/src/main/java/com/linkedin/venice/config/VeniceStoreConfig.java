@@ -27,6 +27,8 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   private final VeniceProperties persistStorageEngineConfigs;
   // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
 
+  public boolean restoreStoragePartitions = true;
+
   public VeniceStoreConfig(String storeName, VeniceProperties storeProperties)
     throws ConfigurationException {
     super(storeProperties);
@@ -54,6 +56,14 @@ public class VeniceStoreConfig extends VeniceServerConfig {
       throw new VeniceException("The persistence type of store: " + storeName + " is still unknown, something wrong happened");
     }
     return storePersistenceType.get();
+  }
+
+  public boolean isRestoreStoragePartitions() {
+    return restoreStoragePartitions;
+  }
+
+  public void setRestoreStoragePartitions(boolean restoreStoragePartitions) {
+    this.restoreStoragePartitions = restoreStoragePartitions;
   }
 
   /**

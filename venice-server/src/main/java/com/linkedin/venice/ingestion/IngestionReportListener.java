@@ -5,6 +5,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.storage.StorageMetadataService;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -39,6 +40,7 @@ public class IngestionReportListener extends AbstractVeniceService {
   private MetricsRepository metricsRepository;
   private IngestionRequestClient metricsClient;
   private IngestionProcessStats ingestionProcessStats;
+  private IngestionStorageMetadataService storageMetadataService;
 
   private VeniceNotifier ingestionNotifier = null;
 
@@ -105,6 +107,14 @@ public class IngestionReportListener extends AbstractVeniceService {
 
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
+  }
+
+  public void setStorageMetadataService(IngestionStorageMetadataService storageMetadataService) {
+    this.storageMetadataService = storageMetadataService;
+  }
+
+  public IngestionStorageMetadataService getStorageMetadataService() {
+    return storageMetadataService;
   }
 
   private void setupMetricsCollection() {

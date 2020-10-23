@@ -14,7 +14,9 @@ import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.ingestion.IngestionRequestClient;
 import com.linkedin.venice.ingestion.IngestionService;
+import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
+import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
@@ -22,16 +24,19 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionIsolationMode;
+import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
+import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -43,6 +48,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -90,6 +96,13 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           IngestionMetricsReport metricsReport = handleMetricsRequest();
           byte[] serializedMetricsReport = serializeIngestionMetricsReport(metricsReport);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetricsReport));
+          break;
+        case UPDATE_METADATA:
+          logger.info("Received UPDATE_METADATA message.");
+          IngestionStorageMetadata ingestionStorageMetadata = parseIngestionStorageMetadataUpdate(msg);
+          IngestionTaskReport metadataUpdateReport = handleIngestionStorageMetadataUpdate(ingestionStorageMetadata);
+          byte[] serializedMetadataUpdateReport = serializeIngestionTaskReport(metadataUpdateReport);
+          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetadataUpdateReport));
           break;
         default:
           throw new UnsupportedOperationException("Unrecognized ingestion action: " + action);
@@ -156,7 +169,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
     // Create RocksDBMemoryStats
     RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
-        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBStatisticsEnabled()) : null;
+        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
 
     // Create StorageService
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
@@ -169,11 +182,14 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
     );
 
+    StorageMetadataService storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository());
+    ingestionService.setStorageMetadataService(storageMetadataService);
+
     // Create KafkaStoreIngestionService
     KafkaStoreIngestionService storeIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
         configLoader,
-        new StorageEngineMetadataService(storageService.getStorageEngineRepository()),
+        storageMetadataService,
         storeRepository,
         schemaRepository,
         metricsRepository,
@@ -202,6 +218,8 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     report.errorMessage = "";
     report.topicName = topicName;
     report.partitionId = partitionId;
+    report.offsetRecord = ByteBuffer.allocate(1);
+    report.storeVersionState = ByteBuffer.allocate(1);
     try {
       if (!ingestionService.isInitiated()) {
         throw new VeniceException("IngestionService has not been initiated.");
@@ -237,6 +255,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           break;
         case IS_PARTITION_CONSUMING:
           report.isPositive = storeIngestionService.isPartitionConsuming(storeConfig, partitionId);
+          break;
+        case DROP_STORE:
+          ingestionService.getStorageService().removeStorageEngine(ingestionTaskCommand.topicName.toString());
+          logger.info("Remaining storage engines after dropping: " + ingestionService.getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().toString());
         default:
           break;
       }
@@ -257,10 +279,51 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           try {
             report.aggregatedMetrics.put(name, metric.value());
           } catch (Exception e) {
-            logger.info("Encounter exception when retrieving value of metric: " + name + " " + e);
+            logger.info("Encounter exception when retrieving value of metric: " + name);
           }
         }
       });
+    }
+    return report;
+  }
+
+  private IngestionTaskReport handleIngestionStorageMetadataUpdate(IngestionStorageMetadata ingestionStorageMetadata) {
+    String topicName = ingestionStorageMetadata.topicName.toString();
+    int partitionId = ingestionStorageMetadata.partitionId;
+
+    IngestionTaskReport report = new IngestionTaskReport();
+    report.isPositive = true;
+    report.errorMessage = "";
+    report.topicName = topicName;
+    report.partitionId = partitionId;
+    try {
+      if (!ingestionService.isInitiated()) {
+        throw new VeniceException("IngestionService has not been initiated.");
+      }
+      switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
+        case PUT_OFFSET_RECORD:
+          logger.info("Put OffsetRecord");
+          ingestionService.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array()));
+          break;
+        case CLEAR_OFFSET_RECORD:
+          logger.info("Clear OffsetRecord");
+          ingestionService.getStorageMetadataService().clearOffset(topicName, partitionId);
+          break;
+        case PUT_STORE_VERSION_STATE:
+          logger.info("Put StoreVersionState");
+          ingestionService.getStorageMetadataService().put(topicName, IngestionUtils.deserializeStoreVersionState(topicName, ingestionStorageMetadata.payload.array()));
+          break;
+        case CLEAR_STORE_VERSION_STATE:
+          logger.info("Clear StoreVersionState");
+          ingestionService.getStorageMetadataService().clearStoreVersionState(topicName);
+          break;
+        default:
+          break;
+      }
+    } catch (Exception e) {
+      logger.error("Encounter exception while updating storage metadata: " + e.getMessage());
+      report.isPositive = false;
+      report.errorMessage = e.getMessage();
     }
     return report;
   }
@@ -287,6 +350,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
   private IngestionTaskCommand parseIngestionTaskCommand(FullHttpRequest httpRequest) {
     return deserializeIngestionTaskCommand(readHttpRequestContent(httpRequest));
+  }
+
+  private IngestionStorageMetadata parseIngestionStorageMetadataUpdate(FullHttpRequest httpRequest) {
+    return deserializeIngestionStorageMetadata(readHttpRequestContent(httpRequest));
   }
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {

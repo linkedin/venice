@@ -4,7 +4,9 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import org.apache.log4j.Logger;
 
 
@@ -27,6 +29,7 @@ public class IngestionProcessStats extends AbstractVeniceStats {
     }
 
     public void updateMetricMap(Map<CharSequence, Double> updateMetricValueMap) {
+        Set<String> newMetricNameSet = new HashSet<>();
         updateMetricValueMap.forEach((name, value) -> {
             /**
              * Metric name from the isolated ingestion process may contain attribute name like METRIC_NAME.AVG
@@ -42,9 +45,12 @@ public class IngestionProcessStats extends AbstractVeniceStats {
                  * is enough.
                  */
                 registerSensor(correctedMetricName, new Gauge(() -> this.metricValueMap.get(correctedMetricName)));
-                logger.info("Registering metric: " + correctedMetricName);
+                newMetricNameSet.add(correctedMetricName);
             }
             metricValueMap.put(correctedMetricName, value);
         });
+        if (!newMetricNameSet.isEmpty()) {
+            logger.info("Registered " + newMetricNameSet.size() + " new metrics: " + newMetricNameSet.toString());
+        }
     }
 }

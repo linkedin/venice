@@ -48,6 +48,10 @@ public class VersionBackend {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
+    if (this.config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+      // Explicitly disable the store restore.
+      this.config.setRestoreStoragePartitions(false);
+    }
     this.partitioner = PartitionUtils.getVenicePartitioner(version.getPartitionerConfig());
     this.subPartitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
     storageEngine.set(backend.getStorageService().getStorageEngineRepository().getLocalStorageEngine(version.kafkaTopicName()));
@@ -77,6 +81,29 @@ public class VersionBackend {
     close();
     for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
       backend.getStorageService().dropStorePartition(config, entry.getKey());
+    }
+
+    // Send remote request to isolated ingestion service to stop ingestion.
+    if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+      logger.info("Sending DROP_STORE request to child process to drop metadata partition for store: "  + version.kafkaTopicName());
+      IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+      ingestionTaskCommand.commandType = IngestionCommandType.DROP_STORE.getValue();
+      ingestionTaskCommand.topicName = version.kafkaTopicName();
+      byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
+      try {
+        IngestionRequestClient client = backend.getIngestionRequestClient();
+        HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
+        FullHttpResponse response = client.sendRequest(httpRequest);
+        logger.info("Received ingestion task report response.");
+        byte[] responseContent = new byte[response.content().readableBytes()];
+        response.content().readBytes(responseContent);
+        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
+        logger.info("Received ingestion task report response: " + ingestionTaskReport);
+        // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
+        response.release();
+      } catch (Exception e) {
+        throw new VeniceException("Encounter exception when dropping storage engine opened in child process", e);
+      }
     }
   }
 
@@ -173,10 +200,7 @@ public class VersionBackend {
   }
 
   private synchronized CompletableFuture subscribeSubPartition(int subPartition) {
-    /**
-     * If the partition has been subscribed already, return the future without
-     * subscribing again.
-     */
+    // If the partition has been subscribed already, return the future without subscribing again.
     CompletableFuture partitionFuture = subPartitionFutures.get(subPartition);
     if (null != partitionFuture) {
       logger.info("Partition " + subPartition + " for store version " + version.kafkaTopicName() + " has been subscribed already, "
@@ -184,12 +208,7 @@ public class VersionBackend {
       return partitionFuture;
     }
 
-    /**
-     * When storage engine is null, it means it is the first time for ingestion and it should be proceed on child process.
-     * When child process has done ingestion, storage engine here will be set, and for future subscribe request, it will
-     * always be proceed in parent process due to the limitation of metadata partition.
-     */
-    if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD) && (storageEngine.get() == null)) {
+    if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
       // Send ingestion request to ingestion service.
       IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
       ingestionTaskCommand.commandType = IngestionCommandType.START_CONSUMPTION.getValue();
@@ -200,7 +219,6 @@ public class VersionBackend {
         IngestionRequestClient client = backend.getIngestionRequestClient();
         HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
         FullHttpResponse response = client.sendRequest(httpRequest);
-        logger.info("Received ingestion task report response.");
         byte[] responseContent = new byte[response.content().readableBytes()];
         response.content().readBytes(responseContent);
         IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
@@ -242,6 +260,7 @@ public class VersionBackend {
 
   synchronized void completeSubPartitionByIsolatedIngestionService(int subPartition) {
     logger.info("Topic " + version.kafkaTopicName() + ", partition: " + subPartition + " completed by ingestion isolation service.");
+
     // Re-open the storage engine partition in backend.
     storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
     // The consumption task should be re-started on DaVinci side to receive future updates for hybrid stores and consumer

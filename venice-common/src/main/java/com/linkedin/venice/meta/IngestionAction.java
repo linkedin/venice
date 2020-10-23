@@ -4,5 +4,6 @@ public enum IngestionAction {
   INIT,
   COMMAND,
   REPORT,
-  METRIC
+  METRIC,
+  UPDATE_METADATA
 }

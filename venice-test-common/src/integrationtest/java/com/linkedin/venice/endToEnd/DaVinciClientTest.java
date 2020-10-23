@@ -167,7 +167,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testDaVinciWithIngestionIsolation() throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
@@ -213,13 +213,12 @@ public class DaVinciClientTest {
       // subscribe to a partition with data
       client.subscribe(Collections.singleton(partition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Set<Integer> keySet = new HashSet<>();
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
-          keySet.add(i);
         }
       });
     }
+    Utils.sleep(1000);
     // Restart Da Vinci client to test bootstrap logic.
     d2Client = new D2ClientBuilder()
         .setZkHosts(cluster.getZk().getAddress())
@@ -232,10 +231,8 @@ public class DaVinciClientTest {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       client.subscribe(Collections.singleton(partition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Set<Integer> keySet = new HashSet<>();
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
-          keySet.add(i);
         }
       });
 
@@ -252,6 +249,7 @@ public class DaVinciClientTest {
       Assert.assertTrue(ingestionIsolationMetricCount != 0);
     }
   }
+
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testHybridStore() throws Exception {

@@ -63,10 +63,12 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
         }
       }
     }
-    // restoreStoragePartitions will create metadata partition if not exist.
-    restoreStoragePartitions();
-    // Persist RocksDB table format option used in building the storage engine.
-    persistStoreEngineConfig();
+    if (storeConfig.isRestoreStoragePartitions()) {
+      // restoreStoragePartitions will create metadata partition if not exist.
+      restoreStoragePartitions();
+      // Persist RocksDB table format option used in building the storage engine.
+      persistStoreEngineConfig();
+    }
   }
 
   @Override
@@ -101,14 +103,18 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   @Override
   public void drop() {
     super.drop();
-    // Remove store db dir
-    File storeDbDir = new File(storeDbPath);
-    if (storeDbDir.exists()) {
-      LOGGER.info("Started removing database dir: " + storeDbPath + " for store: " + getName());
-      if (!storeDbDir.delete()) {
-        LOGGER.warn("Failed to remove dir: " + storeDbDir);
-      } else {
-        LOGGER.info("Finished removing database dir: " + storeDbPath + " for store: " + getName());
+
+    // We only drop the storage engine folder when open in regular mode.
+    if (storeConfig.isRestoreStoragePartitions()) {
+      // Remove store db dir
+      File storeDbDir = new File(storeDbPath);
+      if (storeDbDir.exists()) {
+        LOGGER.info("Started removing database dir: " + storeDbPath + " for store: " + getName());
+        if (!storeDbDir.delete()) {
+          LOGGER.warn("Failed to remove dir: " + storeDbDir);
+        } else {
+          LOGGER.info("Finished removing database dir: " + storeDbPath + " for store: " + getName());
+        }
       }
     }
   }

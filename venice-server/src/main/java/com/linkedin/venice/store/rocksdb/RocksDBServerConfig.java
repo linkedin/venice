@@ -1,13 +1,10 @@
 package com.linkedin.venice.store.rocksdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
-
+import java.util.Arrays;
 import org.rocksdb.CompactionStyle;
 import org.rocksdb.CompressionType;
-
-import java.util.Arrays;
 
 
 public class RocksDBServerConfig {

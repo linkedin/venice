@@ -7,10 +7,10 @@ package com.linkedin.venice.ingestion.protocol;
 
 @SuppressWarnings("all")
 public class IngestionTaskCommand extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"IngestionTaskCommand\",\"namespace\":\"com.linkedin.venice.ingestion.protocol\",\"fields\":[{\"name\":\"topicName\",\"type\":\"string\"},{\"name\":\"partitionId\",\"type\":\"int\"},{\"name\":\"commandType\",\"type\":\"int\",\"doc\":\"0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"IngestionTaskCommand\",\"namespace\":\"com.linkedin.venice.ingestion.protocol\",\"fields\":[{\"name\":\"topicName\",\"type\":\"string\"},{\"name\":\"partitionId\",\"type\":\"int\"},{\"name\":\"commandType\",\"type\":\"int\",\"doc\":\"0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming, 5 => DropStore\"}]}");
   public java.lang.CharSequence topicName;
   public int partitionId;
-  /** 0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming */
+  /** 0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming, 5 => DropStore */
   public int commandType;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
