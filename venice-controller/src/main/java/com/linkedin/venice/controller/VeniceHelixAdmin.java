@@ -2423,7 +2423,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         boolean finalIncrementalPushEnabled = newIncrementalPushEnabled.orElse(store.isIncrementalPushEnabled());
         IncrementalPushPolicy finalIncrementalPushPolicy = newIncrementalPushPolicy.orElse(store.getIncrementalPushPolicy());
         HybridStoreConfig finalHybridStoreConfig = newHybridStoreConfig.orElse(store.getHybridStoreConfig());
-        boolean finalHybridEnabled = finalHybridStoreConfig != null && finalHybridStoreConfig.getRewindTimeInSeconds() >= 0 && finalHybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0;
+        boolean finalHybridEnabled = isHybrid(finalHybridStoreConfig);
 
         if (finalIncrementalPushEnabled && finalHybridEnabled && !finalIncrementalPushPolicy.isCompatibleWithHybridStores()) {
             throw new VeniceException("Hybrid and incremental push cannot be enabled simultaneously for store: " + storeName
@@ -2440,10 +2440,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      *       If updateStore is triggered only in child controller, hybridStoreDbOverheadBypass would be ignored.
      */
     @Override
-    public synchronized void updateStore(
-        String clusterName,
-        String storeName,
-        UpdateStoreQueryParams params) {
+    public synchronized void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -2558,8 +2555,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // To fix the final variable problem in the lambda expression
                 final HybridStoreConfig finalHybridConfig = hybridStoreConfig.get();
                 storeMetadataUpdate(clusterName, storeName, store -> {
-                    if (finalHybridConfig.getRewindTimeInSeconds() < 0 && finalHybridConfig.getOffsetLagThresholdToGoOnline() < 0
-                        && finalHybridConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() < 0) {
+                    if (!isHybrid(finalHybridConfig)) {
                         /**
                          * If all of the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
                          */
@@ -2582,6 +2578,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     return store;
                 });
             }
+
             if (accessControlled.isPresent()) {
                 setAccessControl(clusterName, storeName, accessControlled.get());
             }
@@ -4140,5 +4137,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throwStoreDoesNotExist(clusterName, storeName);
         }
         return store;
+    }
+
+    private boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
+        /** A store is not hybrid in the following two scenarios:
+         * If hybridStoreConfig is null, it means store is not hybrid.
+         * If all of the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
+         */
+        return hybridStoreConfig != null
+            && (hybridStoreConfig.getRewindTimeInSeconds() >= 0
+                || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
+                || hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
     }
 }

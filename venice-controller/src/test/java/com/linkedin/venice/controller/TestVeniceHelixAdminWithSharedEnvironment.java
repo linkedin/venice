@@ -1292,6 +1292,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams()
         .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
         .setHybridOffsetLagThreshold(0)
+        .setHybridTimeLagThreshold(0)
         .setHybridRewindSeconds(0)
     );
 
@@ -1320,8 +1321,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
     HybridStoreConfig mockHybridToBatchConfig = mock(HybridStoreConfig.class);
-    HybridStoreConfig mockHybridToBatchConfigNegativeRewind = mock(HybridStoreConfig.class);
-    HybridStoreConfig mockHybridToBatchConfigNegativeThreshold = mock(HybridStoreConfig.class);
 
     doReturn(incrementalEnabledStoreName).when(incrementalEnabledStore).getName();
     doReturn(false).when(incrementalEnabledStore).isHybrid();
@@ -1342,15 +1341,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     doReturn(0L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(0L).when(mockHybridConfig).getOffsetLagThresholdToGoOnline();
+    doReturn(0L).when(mockHybridConfig).getProducerTimestampLagThresholdToGoOnlineInSeconds();
 
     doReturn(-1L).when(mockHybridToBatchConfig).getRewindTimeInSeconds();
     doReturn(-1L).when(mockHybridToBatchConfig).getOffsetLagThresholdToGoOnline();
-
-    doReturn(-1L).when(mockHybridToBatchConfigNegativeRewind).getRewindTimeInSeconds();
-    doReturn(0L).when(mockHybridToBatchConfigNegativeRewind).getOffsetLagThresholdToGoOnline();
-
-    doReturn(0L).when(mockHybridToBatchConfigNegativeThreshold).getRewindTimeInSeconds();
-    doReturn(-1L).when(mockHybridToBatchConfigNegativeThreshold).getOffsetLagThresholdToGoOnline();
+    doReturn(-1L).when(mockHybridToBatchConfig).getProducerTimestampLagThresholdToGoOnlineInSeconds();
 
     Optional<Boolean> newIncrementalPushEnabled = Optional.of(true);
     Optional<Boolean> newIncrementalPushDisabled = Optional.of(false);

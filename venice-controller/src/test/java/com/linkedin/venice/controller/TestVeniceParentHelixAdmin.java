@@ -1654,4 +1654,47 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertThrows(
         VeniceUnsupportedOperationException.class, () -> parentAdmin.deleteAclForStore(clusterName, storeName));
   }
+
+  @Test
+  public void testIncompatibleHybridAndIncrementalUpdateStoreDontWriteToAdminTopic() {
+    String storeName = TestUtils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName,storeName);
+    doCallRealMethod().when(internalAdmin).checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(any(), any(), any(), any());
+
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+
+    parentAdmin.start(clusterName);
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setHybridOffsetLagThreshold(20000).setHybridRewindSeconds(60));
+
+    verify(zkClient, times(1)).readData(zkMetadataNodePath, null);
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    Assert.assertEquals(keyBytes.length, 0);
+
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
+    Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
+
+    store.setHybridStoreConfig(new HybridStoreConfig(60, 20000, 0));
+    Assert.assertThrows(VeniceException.class, () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
+
+    // veniceWriter.put should not be called if validation fails
+    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+  }
 }
