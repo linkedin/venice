@@ -125,6 +125,7 @@ import org.codehaus.jackson.node.ObjectNode;
  * update.
  * For every admin update operation, it will first push admin operation messages to Kafka,
  * then wait for the admin consumer to consume the message.
+ * All validations on the updates should be done before the admin operation message is published to Kafka.
  */
 public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
@@ -1150,9 +1151,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void updateStore(String clusterName,
-      String storeName,
-      UpdateStoreQueryParams params) {
+  public void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
     acquireLock(clusterName, storeName);
 
     try {
@@ -1276,6 +1275,8 @@ public class VeniceParentHelixAdmin implements Admin {
         hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds();
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
+
+      veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(store, incrementalPushEnabled, incrementalPushPolicy, Optional.ofNullable(hybridStoreConfig));
 
       /**
        * Set storage quota according to store properties. For hybrid stores, rocksDB has the overhead ratio as we
