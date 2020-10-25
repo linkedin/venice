@@ -208,6 +208,8 @@ public class VeniceSystemProducer implements SystemProducer {
         () -> this.controllerClient.getStore(storeName));
     this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
 
+    boolean hybridStoreDiskQuotaEnabled = storeResponse.getStore().isHybridStoreDiskQuotaEnabled();
+
     SchemaResponse keySchemaResponse = (SchemaResponse)controllerRequestWithRetry(
         () -> this.controllerClient.getKeySchema(this.storeName)
     );
@@ -239,7 +241,8 @@ public class VeniceSystemProducer implements SystemProducer {
         throw new VeniceException("Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
       }
     }
-    if (pushType.equals(Version.PushType.STREAM)) {
+
+    if (pushType.equals(Version.PushType.STREAM) && hybridStoreDiskQuotaEnabled) {
       hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), storeName));
       hybridStoreQuotaMonitor.get().start();
     }

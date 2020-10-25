@@ -2213,12 +2213,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (int partition : partitionConsumptionStateMap.keySet()) {
       subscribedPartitionToSize.get().put(partition, 0);
     }
-      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
-        int partition = record.partition();
-        int recordSize = record.serializedKeySize() + record.serializedValueSize();
-        subscribedPartitionToSize.get().put(partition,
-                                            subscribedPartitionToSize.get().getOrDefault(partition, 0) + recordSize);
-      }
+    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+      int partition = record.partition();
+      int recordSize = record.serializedKeySize() + record.serializedValueSize();
+      subscribedPartitionToSize.get().put(partition,
+          subscribedPartitionToSize.get().getOrDefault(partition, 0) + recordSize);
+    }
   }
 
   /**
