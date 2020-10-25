@@ -101,7 +101,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
 
   /**
    * Enforce partition level quota for the map.
-   * This function could be inovked by multiple threads when shared consumer is being used.
+   * This function could be invoked by multiple threads when shared consumer is being used.
    * Check {@link StoreIngestionTask#produceToStoreBufferService} and {@link StoreIngestionTask#processMessages}
    * to find more details.
    *

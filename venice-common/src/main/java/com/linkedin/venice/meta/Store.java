@@ -223,7 +223,9 @@ public class Store {
   private int latestSuperSetValueSchemaId = -1;
 
   /**
-   * Whether or not storage disk quota is enabled for a hybrid store.
+   * Whether or not storage disk quota is enabled for a hybrid store. This store config cannot be enabled until the
+   * routers and servers in the corresponding cluster are upgraded to the right version: 0.2.249 or above for routers and
+   * servers.
    */
   private boolean hybridStoreDiskQuotaEnabled = false;
 
