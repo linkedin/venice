@@ -1064,6 +1064,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         );
 
         checkConsumptionStateWhenStart(record, newPartitionConsumptionState);
+        reportIfCatchUpBaseTopicOffset(newPartitionConsumptionState);
         consumerSubscribe(topic, newPartitionConsumptionState, record.getOffset());
         logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
             + record.getOffset());
