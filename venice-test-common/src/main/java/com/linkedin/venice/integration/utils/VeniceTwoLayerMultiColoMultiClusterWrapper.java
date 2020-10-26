@@ -56,6 +56,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
     try {
       final ZkServerWrapper finalZk = zk = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
+
       final KafkaBrokerWrapper finalParentKafka = parentKafka = ServiceFactory.getKafkaBroker(zk);
 
       String clusterToD2 = "";
@@ -181,5 +182,13 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Utils.sleep(Time.MS_PER_SECOND);
     }
     throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
+  }
+
+  public void addMirrorMakerBetween(VeniceMultiClusterWrapper srcColo, VeniceMultiClusterWrapper dstColo,
+      String whitelistConfigForKMM) {
+    MirrorMakerWrapper mirrorMakerWrapper =
+        ServiceFactory.getKafkaMirrorMaker(srcColo.getKafkaBrokerWrapper(), dstColo.getKafkaBrokerWrapper(),
+            whitelistConfigForKMM);
+    mirrorMakers.add(mirrorMakerWrapper);
   }
 }

@@ -65,6 +65,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       sslConfig.entrySet().stream().forEach(entry->configMap.put((String)entry.getKey(), entry.getValue()));
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = instantiateNewKafkaServer(kafkaConfig, mockTime);
+      logger.info("KafkaBroker URL: " + kafkaServer.config().hostName() + ":" + kafkaServer.config().port());
       return new KafkaBrokerWrapper(kafkaConfig, kafkaServer, dir, zkServerWrapper, mockTime, sslPort);
     };
   }
