@@ -1,11 +1,17 @@
 package com.linkedin.venice.helix;
 
-
+/**
+ * This class used to override {@link #catchUpBaseTopicOffsetLag(String, int)} to
+ * release the latch when the resource is the current version. We remove the logic
+ * due to a potential race condition between latch being released and push being
+ * completed.
+ *
+ * As for now, it's a placeholder for any future modification for L/F state model.
+ * TODO: remove the class when every store is running in L/F model!
+ */
 public class LeaderFollowerStateModelNotifier extends StateModelNotifier {
   @Override
   public void catchUpBaseTopicOffsetLag(String kafkaTopic, int partitionId) {
-    if (getLatch(kafkaTopic, partitionId) != null) {
-      getLatch(kafkaTopic, partitionId).countDown();
-    }
+    //no ops
   }
 }

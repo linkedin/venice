@@ -992,6 +992,73 @@ public class TestHybrid {
     }
   }
 
+  @Test
+  public void testLeaderCanReleaseLatch() throws InterruptedException, ExecutionException {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+
+    try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,1,
+        1,1, 1000000, false, false, extraProperties)) {
+      Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
+      String clusterName = veniceClusterWrapper.getClusterName();
+      String storeName = "test-store";
+
+      try (ControllerClient controllerClient = new ControllerClient(clusterName, veniceClusterWrapper.getAllControllersURLs())) {
+        controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setHybridRewindSeconds(25L)
+            .setHybridOffsetLagThreshold(1L)
+            .setLeaderFollowerModel(true));
+
+        // Create a new version, and do an empty push for that version
+        controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+
+        //write a few of messages from the Samza
+        SystemProducer producer = TestPushUtils.getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+        for (int i = 0; i < 10; i ++) {
+          sendStreamingRecord(producer, storeName, i);
+        }
+
+        //make sure the v1 is online and all the writes have been consumed by the SN
+        try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
+            Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1));
+
+          for (int i = 0; i < 10; i++) {
+            String key = Integer.toString(i);
+            Object value = client.get(key).get();
+            Assert.assertNotNull(value);
+            Assert.assertEquals(value.toString(), "stream_" + key);
+          }
+
+          //stop the SN (leader) and write more messages
+          VeniceServerWrapper serverWrapper = veniceClusterWrapper.getVeniceServers().get(0);
+          veniceClusterWrapper.stopVeniceServer(serverWrapper.getPort());
+
+          for (int i = 10; i < 20; i ++) {
+            sendStreamingRecord(producer, storeName, i);
+          }
+
+          //restart the SN (leader). The node is supposed to be promoted to leader even with the offset lags.
+          veniceClusterWrapper.restartVeniceServer(serverWrapper.getPort());
+
+          String resourceName = Version.composeKafkaTopic(storeName, 1);
+          HelixBaseRoutingRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
+            Assert.assertNotNull(routingDataRepo.getLeaderInstance(resourceName, 0)));
+
+          for (int i = 10; i < 20; i++) {
+            String key = Integer.toString(i);
+            Object value = client.get(key).get();
+            Assert.assertNotNull(value);
+            Assert.assertEquals(value.toString(), "stream_" + key);
+          }
+        }
+      }
+    }
+  }
+
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testHybridMultipleVersions() throws Exception {
     final Properties extraProperties = new Properties();
