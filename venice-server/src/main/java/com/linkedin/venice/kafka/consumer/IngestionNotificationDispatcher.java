@@ -102,6 +102,17 @@ class IngestionNotificationDispatcher {
   }
 
   void reportCompleted(PartitionConsumptionState pcs) {
+    reportCompleted(pcs, false);
+  }
+
+  /**
+   * @param forceCompletion a flag that forces the completion announcement even there are still
+   *                        offset lags. It's only used in
+   *                        {@link LeaderFollowerStoreIngestionTask#reportIfCatchUpBaseTopicOffset(PartitionConsumptionState)}
+   *                        when we need a leader to continue replication. Check out the method above
+   *                        for more details.
+   */
+  void reportCompleted(PartitionConsumptionState pcs, boolean forceCompletion) {
     report(pcs, ExecutionStatus.COMPLETED,
         notifier -> {
           notifier.completed(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset());
@@ -115,15 +126,15 @@ class IngestionNotificationDispatcher {
                 ", Last Offset: " + pcs.getOffsetRecord().getOffset());
             return false;
           }
-          if (!pcs.isComplete()) {
-            logger.error("Unexpected! Received a request to report completion " +
-                "but the PartitionConsumptionState says it is incomplete: " + pcs);
-            return false;
-          }
-          if (pcs.isCompletionReported()) {
-            logger.info("Received a request to report completion, but it has already been reported. Skipping.");
-            return false;
-          }
+            if (!forceCompletion && !pcs.isComplete()) {
+              logger.error("Unexpected! Received a request to report completion "
+                  + "but the PartitionConsumptionState says it is incomplete: " + pcs);
+              return false;
+            }
+            if (pcs.isCompletionReported()) {
+              logger.info("Received a request to report completion, but it has already been reported. Skipping.");
+              return false;
+            }
           return true;
         }
     );

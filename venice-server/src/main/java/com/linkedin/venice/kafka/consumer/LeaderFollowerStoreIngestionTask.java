@@ -898,7 +898,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * the rebalance.
          */
         if (isCurrentVersion.getAsBoolean()) {
-          notificationDispatcher.reportCompleted(pcs);
+          notificationDispatcher.reportCompleted(pcs, true);
         }
       }
     }
