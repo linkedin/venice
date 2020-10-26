@@ -95,9 +95,27 @@ public class ConfigKeys {
   public static final String KAFKA_REPLICATION_FACTOR = "kafka.replication.factor";
 
   /**
-   * Sets the default for weather or not native replication is enabled or not for a venice store.
+   * Sets the default for whether or not native replication is enabled or not for a venice store.
    */
   public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT = "enable.native.replication.as.default";
+
+  /**
+   * Sets the default for whether or not leader follower is enabled or not for a hybrid store.
+   */
+  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES =
+      "enable.leader.follower.as.default.for.hybrid.stores";
+
+  /**
+   * Sets the default for whether or not leader follower is enabled or not for an incremental push store.
+   */
+  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES =
+      "enable.leader.follower.as.default.for.incremental.push.stores";
+
+  /**
+   * Sets the default for whether or not leader follower is enabled or not for a venice store.
+   */
+  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES =
+      "enable.leader.follower.as.default.for.all.stores";
 
   /**
    * Fallback to remain compatible with the old config spelling.

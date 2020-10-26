@@ -68,6 +68,21 @@ public class VeniceControllerClusterConfig {
   private boolean nativeReplicationEnabled;
 
   /**
+   * When this option is enabled, all new hybrid stores will have leader follower enabled.
+   */
+  private boolean leaderFollowerEnabledForHybridStores;
+
+  /**
+   * When this option is enabled, all new incremental push stores will have leader follower enabled.
+   */
+  private boolean leaderFollowerEnabledForIncrementalPushStores;
+
+  /**
+   * When this option is enabled, all new stores will have leader follower enabled.
+   */
+  private boolean leaderFollowerEnabledForAllStores;
+
+  /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
    */
   private long delayToRebalanceMS;
@@ -163,8 +178,15 @@ public class VeniceControllerClusterConfig {
     } else {
       routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }
-    // TODO: This should throw an error if leader follower isn't also enabled by default.  Needs Leader/Follower cluster config to be added
+
     nativeReplicationEnabled = props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT, false);
+    leaderFollowerEnabledForHybridStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, false);
+    leaderFollowerEnabledForIncrementalPushStores =
+        props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, false);
+    leaderFollowerEnabledForAllStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, false);
+    if (!leaderFollowerEnabledForAllStores && nativeReplicationEnabled) {
+      throw new ConfigurationException("Cannot enable native replication when leader follower is not enabled.");
+    }
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
@@ -359,5 +381,17 @@ public class VeniceControllerClusterConfig {
 
   public boolean getNativeReplicationEnabled() {
     return nativeReplicationEnabled;
+  }
+
+  public boolean isLeaderFollowerEnabledForHybridStores() {
+    return leaderFollowerEnabledForHybridStores;
+  }
+
+  public boolean isLeaderFollowerEnabledForIncrementalPushStores() {
+    return leaderFollowerEnabledForIncrementalPushStores;
+  }
+
+  public boolean isLeaderFollowerEnabledForAllStores() {
+    return leaderFollowerEnabledForAllStores;
   }
 }
