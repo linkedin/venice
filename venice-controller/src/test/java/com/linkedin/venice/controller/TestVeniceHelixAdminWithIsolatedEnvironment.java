@@ -306,4 +306,54 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName3),
         "Store3 is hybrid store, and ssl for nearline push is disabled, so by default ssl should be enabled because we turned on the cluster level ssl switcher.");
   }
+
+  @Test
+  public void testEnableLeaderFollower() throws IOException {
+    veniceAdmin.stop(clusterName);
+    veniceAdmin.close();
+    String storeName1 = "testEnableLeaderFollowerForHybridStores";
+    String storeName2 = "testEnableLeaderFollowerForIncrementalPushStores";
+
+    Properties properties = getControllerProperties(clusterName);
+    properties.put(ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, true);
+    properties.put(ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, true);
+
+    veniceAdmin = new VeniceHelixAdmin(
+            TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
+            new MetricsRepository());
+    veniceAdmin.start(clusterName);
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isMasterController(clusterName));
+    veniceAdmin.addStore(clusterName, storeName1, "test", KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.addStore(clusterName, storeName2, "test", KEY_SCHEMA, VALUE_SCHEMA);
+    // Store1 is a hybrid store.
+    veniceAdmin.updateStore(clusterName, storeName1, new UpdateStoreQueryParams()
+            .setHybridRewindSeconds(1000L)
+            .setHybridOffsetLagThreshold(1000L));
+    // Store2 is an incremental push store.
+    veniceAdmin.updateStore(clusterName, storeName2, new UpdateStoreQueryParams()
+            .setIncrementalPushEnabled(true));
+
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName1).isLeaderFollowerModelEnabled(),
+            "Store1 is a hybrid store and L/F for hybrid stores config is true. L/F should be enabled.");
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName2).isLeaderFollowerModelEnabled(),
+            "Store2 is an incremental push store and L/F for incremental push stores config is true. L/F should be enabled.");
+
+    veniceAdmin.stop(clusterName);
+    veniceAdmin.close();
+    String storeName3 = "testEnableLeaderFollowerForAllStores";
+
+    properties = getControllerProperties(clusterName);
+    properties.put(ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true);
+
+    veniceAdmin = new VeniceHelixAdmin(
+            TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
+            new MetricsRepository());
+    veniceAdmin.start(clusterName);
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isMasterController(clusterName));
+    // Store3 is a batch store
+    veniceAdmin.addStore(clusterName, storeName3, "test", KEY_SCHEMA, VALUE_SCHEMA);
+
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName3).isLeaderFollowerModelEnabled(),
+            "Store3 is a batch store and L/F for all stores config is true. L/F should be enabled.");
+  }
 }

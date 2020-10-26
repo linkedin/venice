@@ -489,12 +489,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             Store newStore = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
                 config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
-            HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
-            if(newStore.isLeaderFollowerModelEnabled()) {
+
+            if (config.isLeaderFollowerEnabledForAllStores()) {
+                // Enable L/F for the new store (no matter which type it is) if the config is set to true.
+                newStore.setLeaderFollowerModelEnabled(true);
+            }
+            if (newStore.isLeaderFollowerModelEnabled()) {
                 newStore.setNativeReplicationEnabled(config.getNativeReplicationEnabled());
             } else {
                 newStore.setNativeReplicationEnabled(false);
             }
+
+            HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
             storeRepo.lock();
             try {
                 Store existingStore = storeRepo.getStore(storeName);
@@ -2279,6 +2285,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (incrementalPushEnabled && store.isHybrid() && incrementalPushPolicy.equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) {
                 throw new VeniceException("hybrid store doesn't support incremental push with policy " + incrementalPushPolicy);
             }
+            VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+            if (!store.isIncrementalPushEnabled() && incrementalPushEnabled
+                && config.isLeaderFollowerEnabledForIncrementalPushStores()) {
+                // This is a new incremental push enabled store. Enable L/F if the config is set to true.
+                store.setLeaderFollowerModelEnabled(true);
+            }
             store.setIncrementalPushEnabled(incrementalPushEnabled);
 
             return  store;
@@ -2568,6 +2580,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                 onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName()));
                         }
                     } else {
+                        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+                        if (!store.isHybrid() && config.isLeaderFollowerEnabledForHybridStores()) {
+                            // This is a new hybrid store. Enable L/F if the config is set to true.
+                            store.setLeaderFollowerModelEnabled(true);
+                        }
                         store.setHybridStoreConfig(finalHybridConfig);
                         if (topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
                             // RT already exists, ensure the retention is correct
