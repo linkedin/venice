@@ -22,6 +22,7 @@ import org.apache.kafka.common.protocol.SecurityProtocol;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -32,6 +33,8 @@ import static com.linkedin.venice.ConfigKeys.*;
  * Calling close() will clean up the controller's data directory.
  */
 public class VeniceControllerWrapper extends ProcessWrapper {
+  public static final Logger logger = Logger.getLogger(VeniceControllerWrapper.class);
+
   public static final String SERVICE_NAME = "VeniceController";
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
 
@@ -134,6 +137,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             }
             builder.put(CHILD_CLUSTER_URL_PREFIX + "." + childDataCenterName, childController.getControllerUrl());
             builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childDataCenterName, childController.getKafkaBootstrapServers(sslToKafka));
+            logger.info("ControllerConfg: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childDataCenterName + " KafkaUrl: " +  childController.getKafkaBootstrapServers(sslToKafka));
           }
           builder.put(CHILD_CLUSTER_WHITELIST, clusterWhiteList);
           builder.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");

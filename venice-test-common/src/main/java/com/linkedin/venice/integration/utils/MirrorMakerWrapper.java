@@ -56,6 +56,7 @@ public class MirrorMakerWrapper extends ProcessWrapper {
     return (serviceName, port, dataDirectory) -> {
       String consumerConfigPath = createConsumerConfig(dataDirectory, sourceKafkaAddress, consumerProperties);
       String producerConfigPath = createProducerConfig(dataDirectory, targetKafkaAddress, targetZkAddress, producerProperties);
+      logger.info("MirrorMaker: source:" + sourceKafkaAddress + " dest:" + targetKafkaAddress);
       return new MirrorMakerWrapper(serviceName, dataDirectory, topicWhitelist, consumerConfigPath, producerConfigPath);
     };
   }

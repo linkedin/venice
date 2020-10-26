@@ -918,4 +918,11 @@ public class TestPushUtils {
   public static String loadFileAsString(String fileName) throws IOException {
     return IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName), "utf-8");
   }
+
+  public static void updateStore(String clusterName, String storeName, ControllerClient controllerClient, UpdateStoreQueryParams params) {
+    ControllerResponse controllerResponse = controllerClient.retryableRequest(5, c -> c.updateStore(
+          storeName, params));
+    Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
+  }
+
 }
