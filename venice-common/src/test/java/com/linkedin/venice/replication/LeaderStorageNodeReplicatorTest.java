@@ -67,4 +67,35 @@ public class LeaderStorageNodeReplicatorTest {
 
     verify(mockVeniceWriter).broadcastTopicSwitch(any(), anyString(), anyLong(), any());
   }
+
+  @Test
+  public void testPrepareAndStartReplicationWithNativeReplication() {
+    String srcTopic = "testTopic_rt";
+    String destTopic = "testTopic_v1";
+    String nativeReplicationSourceAddress = "native-repl-source-address";
+    Store mockStore = mock(Store.class);
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+    List<PartitionInfo> partitionInfos = new ArrayList<>();
+    VeniceWriter<byte[], byte[], byte[]> mockVeniceWriter = mock(VeniceWriter.class);
+
+    doReturn(true).when(mockStore).isHybrid();
+    doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    Version version = new Version(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
+    version.setNativeReplicationEnabled(true);
+    version.setPushStreamSourceAddress(nativeReplicationSourceAddress);
+    doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
+    doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
+    doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
+    doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
+    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(any(), any());
+
+
+    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore);
+
+    List<CharSequence> expectedSourceClusters = new ArrayList<>();
+    expectedSourceClusters.add(nativeReplicationSourceAddress);
+    verify(mockVeniceWriter).broadcastTopicSwitch(eq(expectedSourceClusters), eq(srcTopic), anyLong(), any());
+  }
 }

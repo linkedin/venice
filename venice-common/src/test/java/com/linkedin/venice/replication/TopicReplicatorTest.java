@@ -54,15 +54,15 @@ public class TopicReplicatorTest {
     // Methods under test
     doCallRealMethod().when(topicReplicator).checkPreconditions(anyString(), anyString(), any());
     doCallRealMethod().when(topicReplicator).getRewindStartTime(store);
-    doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong());
+    doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong(), anyString());
 
     topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store);
     long rewindStartTime = topicReplicator.getRewindStartTime(store);
     assertEquals(rewindStartTime, mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME,
         "Rewind start timestamp is not calculated properly");
-    topicReplicator.beginReplication(sourceTopicName, destinationTopicName, rewindStartTime);
+    topicReplicator.beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
-    verify(topicReplicator).beginReplication(sourceTopicName, destinationTopicName, rewindStartTime);
+    verify(topicReplicator).beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
     try {
       store.setHybridStoreConfig(null);
