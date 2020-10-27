@@ -38,7 +38,6 @@ public class HybridStoreQuotaEnforcementTest {
 
   @BeforeClass
   public void setup() {
-    storeIngestionTask = mock(StoreIngestionTask.class);
     storageEngine = mock(AbstractStorageEngine.class);
     store = mock(Store.class);
     version = mock(Version.class);
@@ -46,6 +45,7 @@ public class HybridStoreQuotaEnforcementTest {
 
   @BeforeMethod
   private void buildNewQuotaEnforcer() {
+    storeIngestionTask = mock(StoreIngestionTask.class);
     when(store.getName()).thenReturn(storeName);
     when(store.getStorageQuotaInByte()).thenReturn(storeQuotaInBytes);
     when(store.getPartitionCount()).thenReturn(storePartitionCount);
