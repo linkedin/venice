@@ -41,17 +41,27 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
     }
     String finalDestTopicName = version.get().getPushType().isStreamReprocessing() ?
         Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()) : destTopicName;
+    String nativeReplicationSourceKafkaCluster = null;
+    if (version.get().isNativeReplicationEnabled()) {
+      nativeReplicationSourceKafkaCluster = version.get().getPushStreamSourceAddress();
+      if (nativeReplicationSourceKafkaCluster == null || nativeReplicationSourceKafkaCluster.length() == 0) {
+        throw new VeniceException("Native replication is enabled but remote source address is not found");
+      }
+    }
     logger.info("Starting buffer replay for topic: " + finalDestTopicName
         + " with buffer replay start timestamp: " + bufferReplayStartTime);
-    beginReplication(srcTopicName, finalDestTopicName, bufferReplayStartTime);
+    beginReplication(srcTopicName, finalDestTopicName, bufferReplayStartTime, nativeReplicationSourceKafkaCluster);
   }
 
   @Override
   void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
-      long rewindStartTimestamp) {
+      long rewindStartTimestamp, String nativeReplicationSourceKafkaCluster) {
     List<CharSequence> sourceClusters = new ArrayList<>();
-    // Currently we only have intra-cluster replication, therefore source cluster bootstrap servers equals to destination
-    sourceClusters.add(destKafkaBootstrapServers);
+    if (nativeReplicationSourceKafkaCluster != null) {
+      sourceClusters.add(nativeReplicationSourceKafkaCluster);
+    } else {
+      sourceClusters.add(destKafkaBootstrapServers);
+    }
     getVeniceWriterFactory().useVeniceWriter(
         () -> getVeniceWriterFactory().createBasicVeniceWriter(destinationTopic, getTimer()),
         veniceWriter -> veniceWriter.broadcastTopicSwitch(sourceClusters, sourceTopic, rewindStartTimestamp, new HashMap<>())

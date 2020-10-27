@@ -107,7 +107,7 @@ public class TestBrooklin {
 
         //create replication stream
         try {
-          replicator.beginReplication(sourceTopic, destinationTopic, 0);
+          replicator.beginReplication(sourceTopic, destinationTopic, 0, null);
         } catch (TopicException e) {
           throw new VeniceException(e);
         }

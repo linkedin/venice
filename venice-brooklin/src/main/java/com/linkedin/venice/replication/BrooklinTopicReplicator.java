@@ -131,12 +131,12 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store) {
     checkPreconditions(srcTopicName, destTopicName, store);
     long bufferReplayStartTime = getRewindStartTime(store);
-    beginReplication(srcTopicName, destTopicName, bufferReplayStartTime);
+    beginReplication(srcTopicName, destTopicName, bufferReplayStartTime, null);
   }
 
   @Override
   void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
-      long rewindStartTimestamp) {
+      long rewindStartTimestamp, String nativeReplicationSourceKafkaCluster) {
 
     Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(sourceTopic, rewindStartTimestamp);
     List<Long> startingOffsets = startingOffsetsMap.entrySet().stream()
@@ -145,6 +145,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
         .collect(Collectors.toList());
     getVeniceWriterFactory().useVeniceWriter(
         () -> getVeniceWriterFactory().createBasicVeniceWriter(destinationTopic, getTimer()),
+        // Online/Offline does not support native replication. Parameter nativeReplicationSourceKafkaCluster is ignored.
         veniceWriter -> veniceWriter.broadcastStartOfBufferReplay(startingOffsets, destKafkaBootstrapServers, sourceTopic, new HashMap<>())
     );
 
