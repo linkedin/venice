@@ -220,7 +220,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Set<String> topicWithLogCompaction = new ConcurrentSkipListSet<>();
 
   private IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
-  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final AggKafkaConsumerService aggKafkaConsumerService;
   /**

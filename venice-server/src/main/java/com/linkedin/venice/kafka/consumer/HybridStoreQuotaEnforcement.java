@@ -11,9 +11,9 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.StoragePartitionDiskUsage;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
 
@@ -139,21 +139,26 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
          }
       }
     }
+    String msgIdentifier = this.versionTopic + "_" + partition + "_quota_exceeded";
+    // Log quota exceeded info only once a minute per partition.
 
+    boolean shouldLogQuotaExceeded = !storeIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
     /**
      * check if the current partition violates the partition-level quota.
      * It's possible to pause an already-paused partition or resume an un-paused partition. The reason that
      * we don't prevent this is that when a SN gets restarted, the in-memory paused partitions are empty. If
      * we check if the partition is in paused partitions to decide whether to resume it, we may never resume it.
      */
-    if (isStorageQuotaExceeded(partition)) {
+    if (isStorageQuotaExceeded(partition, shouldLogQuotaExceeded)) {
       storeIngestionTask.reportQuotaViolated(partition);
       if (isRTJob()) {
         /**
          * Pause the partition for RT job.
          */
         pausePartition(partition, consumingTopic);
-        logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition.");
+        if (shouldLogQuotaExceeded) {
+          logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition.");
+        }
       } else {
         /**
          * GF job or hadoop push for a hybrid store, directly throw exception
@@ -183,9 +188,10 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   /**
    * Compare the partition's usage with partition-level hybrid quota
    * @param partition
+   * @param shouldLogQuotaExceeded Log quota exceeded warning only once a minute per partition.
    * @return true if the quota is exceeded for given partition
    */
-  private boolean isStorageQuotaExceeded(int partition) {
+  private boolean isStorageQuotaExceeded(int partition, boolean shouldLogQuotaExceeded) {
     double diskUsagePerPartition = partitionConsumptionSizeMap.get(partition).getUsage();
     /**
      * emit metrics for the ratio of (partition usage/partition quota)
@@ -196,7 +202,9 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
           diskQuotaPerPartition > 0 ? (diskUsagePerPartition / diskQuotaPerPartition) : 0);
     }
     if (storeQuotaInBytes != Store.UNLIMITED_STORAGE_QUOTA && diskUsagePerPartition >= diskQuotaPerPartition) {
-      logger.warn(storeIngestionTask.consumerTaskId + " exceeded the storage quota " + diskQuotaPerPartition);
+      if (shouldLogQuotaExceeded) {
+        logger.warn(storeIngestionTask.consumerTaskId + " exceeded the storage quota " + diskQuotaPerPartition);
+      }
       return true;
     }
     return false;
