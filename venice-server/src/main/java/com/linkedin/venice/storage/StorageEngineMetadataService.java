@@ -9,6 +9,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import java.util.Optional;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -16,6 +17,8 @@ import java.util.Optional;
  * It contains methods to read/write/clear the store version state and partition offset that are stored in metadata partition.
  */
 public class StorageEngineMetadataService extends AbstractVeniceService implements StorageMetadataService  {
+  private static final Logger logger = Logger.getLogger(StorageEngineMetadataService.class);
+
   private final StorageEngineRepository storageEngineRepository;
 
   public StorageEngineMetadataService(StorageEngineRepository storageEngineRepository) {
@@ -29,7 +32,12 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    getStorageEngine(topicName).clearPartitionOffset(partitionId);
+    AbstractStorageEngine<?> storageEngine = this.storageEngineRepository.getLocalStorageEngine(topicName);
+    if (storageEngine == null) {
+      logger.info("Store " + topicName +  " could not be located, ignoring the reset partition message.");
+      return;
+    }
+    storageEngine.clearPartitionOffset(partitionId);
   }
 
   @Override

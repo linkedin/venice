@@ -957,7 +957,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceIngestionTaskKilledException(kafkaVersionTopic, e);
       } catch (Exception ex) {
         if (message.getAttemptsCount() < MAX_CONTROL_MESSAGE_RETRIES) {
-          logger.info("Error Processing message will retry later" + message , ex);
+          logger.info("Error Processing message will retry later " + message , ex);
           return;
         } else {
           logger.error("Ignoring message:  " + message + " after retries " + message.getAttemptsCount(), ex);
