@@ -11,6 +11,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.PartitionInfo;
@@ -59,6 +60,17 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    */
   private final Map<String, StoreIngestionTask> topicToIngestionTaskMap = new VeniceConcurrentHashMap<>();
 
+  /**
+   * This indicates if there is any thread waiting for a poll to happen
+   */
+  private final AtomicBoolean waitingForPoll = new AtomicBoolean(false);
+
+  /**
+   * an ever increasing count of number of time poll has been invoked.
+   */
+  private volatile long pollTimes = 0 ;
+
+
   public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service) {
     this(delegate, service, 1000);
   }
@@ -86,10 +98,28 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     updateCurrentAssignment(false);
   }
 
+  /**
+   * There is an additional goal of this function which is to make sure that all the records consumed for this {topic,partition} prior to
+   * calling unsubscribe here is produced to drainer service. {@link KafkaConsumerService.ConsumptionTask#run()} calls
+   * {@link SharedKafkaConsumer#poll(long)} and produceToStoreBufferService sequentially. So waiting for at least one more
+   * invocation of {@link SharedKafkaConsumer#poll(long)} achieves the above objective.
+   */
   @Override
   public synchronized void unSubscribe(String topic, int partition) {
+    long currentPollTimes = pollTimes;
     this.delegate.unSubscribe(topic, partition);
     updateCurrentAssignment(false);
+
+    currentPollTimes++;
+    waitingForPoll.set(true);
+    try {
+      while (currentPollTimes > pollTimes) {
+        wait();
+      }
+      //no action to take actually, just return;
+    } catch (InterruptedException e) {
+      throw new VeniceException("Wait for poll request in `unSubscribe` function got interrupted.");
+    }
   }
 
   @Override
@@ -153,6 +183,13 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public synchronized ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout) {
+    //notify any waiter who might be waiting for a invocation of poll to happen
+    pollTimes++;
+    if (waitingForPoll.get()) {
+      waitingForPoll.set(false);
+      notifyAll();
+    }
+
     if (++pollTimesSinceLastSanitization == sanitizeTopicSubscriptionAfterPollTimes) {
       /**
        * The reasons only to sanitize the subscription periodically:
