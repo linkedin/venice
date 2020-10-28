@@ -278,7 +278,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     }
   }
 
-  private <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
+  public static <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
       ClientStats clientStats, long startTimeInNS) {
     return (T value, Throwable throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);

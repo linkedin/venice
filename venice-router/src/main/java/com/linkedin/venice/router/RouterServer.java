@@ -16,6 +16,7 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
@@ -137,6 +138,7 @@ public class RouterServer extends AbstractVeniceService {
   private HelixLiveInstanceMonitor liveInstanceMonitor;
   private PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder;
   private HelixInstanceConfigRepository instanceConfigRepository;
+  private OnlineInstanceFinderDelegator onlineInstanceFinder;
   private HelixGroupSelector helixGroupSelector;
   private VeniceResponseAggregator responseAggregator;
   private TimeoutProcessor timeoutProcessor;
@@ -394,7 +396,7 @@ public class RouterServer extends AbstractVeniceService {
               routingDataRepository);
     }
 
-    OnlineInstanceFinderDelegator onlineInstanceFinder =
+    onlineInstanceFinder =
         new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository,
             partitionStatusOnlineInstanceFinder, config.isHelixOfflinePushEnabled());
 
@@ -652,6 +654,14 @@ public class RouterServer extends AbstractVeniceService {
 
   public HelixReadOnlyStoreRepository getMetadataRepository() {
     return metadataRepository;
+  }
+
+  public OnlineInstanceFinder getOnlineInstanceFinder()  {
+    return onlineInstanceFinder;
+  }
+
+  public HelixReadOnlySchemaRepository getSchemaRepository() {
+    return schemaRepository;
   }
 
 

@@ -47,6 +47,8 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor appTimedOutRequestResultRatioSensor;
   private final Sensor clientFutureTimeoutSensor;
 
+  private final Rate requestRate;
+
   public static ClientStats getClientStats(MetricsRepository metricsRepository, String storeName,
       RequestType requestType, ClientConfig clientConfig) {
     String prefix = clientConfig == null ? null : clientConfig.getStatsPrefix();
@@ -54,26 +56,26 @@ public class ClientStats extends AbstractVeniceHttpStats {
     return new ClientStats(metricsRepository, metricName, requestType);
   }
 
-  private ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
+  protected ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
 
     /**
      * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
      * {@link io.tehuti.metrics.stats.SampledStat}.
      */
-    Rate request = new OccurrenceRate();
-    Rate healthyRequest = new OccurrenceRate();
-    Rate requestRetryCount = new OccurrenceRate();
+    requestRate = new OccurrenceRate();
+    Rate healthyRequestRate = new OccurrenceRate();
+    Rate requestRetryCountRate = new OccurrenceRate();
 
-    requestSensor = registerSensor("request", request);
-    healthySensor = registerSensor("healthy_request", healthyRequest);
-    requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCount);
+    requestSensor = registerSensor("request", requestRate);
+    healthySensor = registerSensor("healthy_request", healthyRequestRate);
+    requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
     unhealthySensor = registerSensor("unhealthy_request", new OccurrenceRate());
     healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg());
     unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
 
     successRequestRatioSensor = registerSensor("success_request_ratio",
-        new TehutiUtils.SimpleRatioStat(healthyRequest, request));
+        new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
     Rate requestKeyCount = new Rate();
     Rate successRequestKeyCount = new Rate();
     requestKeyCountSensor = registerSensor("request_key_count", requestKeyCount, new Avg(), new Max());
@@ -142,6 +144,10 @@ public class ClientStats extends AbstractVeniceHttpStats {
     appTimedOutRequestResultRatioSensor = registerSensorWithDetailedPercentiles("app_timed_out_request_result_ratio",
         new Avg(), new Min(), new Max());
     clientFutureTimeoutSensor = registerSensor("client_future_timeout", new Avg(), new Min(), new Max());
+  }
+
+  protected Rate getRequestRate() {
+    return requestRate;
   }
 
   public void recordRequest() {

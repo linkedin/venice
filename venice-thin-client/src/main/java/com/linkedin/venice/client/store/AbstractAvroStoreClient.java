@@ -6,6 +6,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.schema.SchemaRetriever;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.stats.Reporter;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
@@ -117,11 +118,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     logger.info("Detected: " + version.toString() + " on the classpath.");
   }
 
-  private static class ReusableObjects {
-    final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
-    final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+  public static class ReusableObjects {
+    public final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
+    public final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
   }
-  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
+  public static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
 
 
   private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET = CompletableFuture.completedFuture(new HashMap<>());
@@ -433,7 +434,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return valueFuture;
   }
 
-  private <T> T tryToDeserialize(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId, K key) {
+  private <T> T tryToDeserialize(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId,
+      K key) {
+    return tryToDeserializeWithVerboseLogging(dataDeserializer, data, writerSchemaId, key, getKeySerializer(), getSchemaReader(), logger);
+  }
+
+  public static <T, K> T tryToDeserializeWithVerboseLogging(RecordDeserializer<T> dataDeserializer, ByteBuffer data, int writerSchemaId,
+      K key, RecordSerializer<K> keySerializer, SchemaRetriever schemaRetriever, Logger logger) {
     try {
       return dataDeserializer.deserialize(data);
     } catch (VeniceSerializationException e) {
@@ -453,14 +460,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
 
       try {
-        keyHex = Hex.encodeHexString(getKeySerializer().serialize(key));
+        keyHex = Hex.encodeHexString(keySerializer.serialize(key));
       } catch (Exception e3) {
         keyHex = "failed to serialize key and encode it as hex";
         logger.error(keyHex + " for logging purposes...", e3);
       }
 
       try {
-        latestSchemaId = getSchemaReader().getLatestValueSchemaId().toString();
+        latestSchemaId = schemaRetriever.getLatestValueSchemaId().toString();
       } catch (Exception e4) {
         latestSchemaId = "failed to retrieve latest value schema ID";
         logger.error(latestSchemaId + " for logging purposes...", e4);

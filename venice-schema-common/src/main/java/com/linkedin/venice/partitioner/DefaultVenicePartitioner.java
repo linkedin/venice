@@ -1,11 +1,9 @@
 package com.linkedin.venice.partitioner;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.ByteUtils;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
-import java.security.DigestException;
 import org.apache.log4j.Logger;
 
 import java.security.MessageDigest;

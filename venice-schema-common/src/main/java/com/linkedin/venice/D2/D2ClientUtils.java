@@ -110,7 +110,7 @@ public class D2ClientUtils {
       throw new VeniceException("Failed to create URI for path " + requestPath, e);
     }
 
-    return new RestRequestBuilder(requestUri).setMethod("get").setHeaders(headers).build();
+    return new RestRequestBuilder(requestUri).setMethod("GET").setHeaders(headers).build();
   }
 
    static public RestResponse sendD2GetRequest(String requestPath, D2Client client) {
@@ -132,7 +132,7 @@ public class D2ClientUtils {
       throw new VeniceException("Failed to create URI for path " + requestPath, e);
     }
 
-    RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod("post").setHeaders(headers).setEntity(body);
+    RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod("POST").setHeaders(headers).setEntity(body);
     if (keyCount != 0) {
       builder.setHeader(VENICE_KEY_COUNT, Integer.toString(keyCount));
     }

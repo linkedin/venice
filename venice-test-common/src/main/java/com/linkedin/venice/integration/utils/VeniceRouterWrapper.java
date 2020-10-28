@@ -2,7 +2,9 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.tehuti.MetricsAware;
@@ -133,8 +135,16 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     return service.getMetadataRepository();
   }
 
+  public HelixReadOnlySchemaRepository getSchemaRepository() {
+    return service.getSchemaRepository();
+  }
+
   public ZkRoutersClusterManager getRoutersClusterManager() {
     return service.getRoutersClusterManager();
+  }
+
+  public OnlineInstanceFinder getOnlineInstanceFinder() {
+    return service.getOnlineInstanceFinder();
   }
 
   @Override
