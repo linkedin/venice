@@ -34,7 +34,7 @@ import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
-import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
+import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -855,11 +855,12 @@ public class AdminTool {
   private static void deleteKafkaTopic(CommandLine cmd) throws Exception {
     long startTime = System.currentTimeMillis();
     String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    String zkConnectionString = getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL);
     Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServer);
+    properties.put(ConfigKeys.KAFKA_ZK_ADDRESS, zkConnectionString);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
-    KafkaClientFactory kafkaClientFactory = new VeniceAdminToolConsumerFactory(veniceProperties);
-    String zkConnectionString = getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL);
+    KafkaClientFactory kafkaClientFactory = new VeniceKafkaConsumerFactory(veniceProperties);
     int zkSessionTimeoutMs = 30 * Time.MS_PER_SECOND;
     int zkConnectionTimeoutMs = 60 * Time.MS_PER_SECOND;
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
