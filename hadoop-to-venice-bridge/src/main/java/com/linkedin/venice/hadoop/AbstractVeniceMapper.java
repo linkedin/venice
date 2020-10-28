@@ -9,7 +9,7 @@ import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
+import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerFactory;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -186,7 +186,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
    * Start Of Push message.
    */
   private ByteBuffer readDictionaryFromKafka(VeniceProperties props) {
-    KafkaClientFactory kafkaClientFactory = new VeniceAdminToolConsumerFactory(props);
+    KafkaClientFactory kafkaClientFactory = new VeniceKafkaConsumerFactory(props);
 
     try (KafkaConsumer<byte[], byte[]> consumer = kafkaClientFactory.getKafkaConsumer(getKafkaConsumerProps())) {
       String topicName = props.getString(TOPIC_PROP);
