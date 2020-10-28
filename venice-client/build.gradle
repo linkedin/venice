@@ -1,0 +1,26 @@
+apply plugin: 'java-library'
+
+task buildJar(type: Jar) {
+  manifest {
+    attributes 'Implementation-Title': 'Venice Client',
+        'Implementation-Version': version
+  }
+  baseName = project.name
+  from { configurations.implementation
+      .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
+      .collect { it.isDirectory() ? it : zipTree(it) } }
+  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
+  with jar
+}
+
+dependencies {
+  implementation project(':venice-schema-common')
+  implementation project(':venice-thin-client')
+  implementation project(':da-vinci-client')
+
+  implementation libraries.r2Client
+
+  testImplementation project(':venice-common')
+  testImplementation project(':venice-test-common')
+  testImplementation libraries.kafkaClients
+}

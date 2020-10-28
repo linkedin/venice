@@ -26,7 +26,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 /**
  * This class is used to fetch key/value schema for a given store.
  */
-public class SchemaReader implements Closeable {
+public class SchemaReader implements SchemaRetriever {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   private static final ObjectMapper mapper = new ObjectMapper();
@@ -55,6 +55,7 @@ public class SchemaReader implements Closeable {
     this.readerSchema = readerSchema;
   }
 
+  @Override
   public Schema getKeySchema() {
     if (null != keySchema) {
       return keySchema;
@@ -72,6 +73,7 @@ public class SchemaReader implements Closeable {
     }
   }
 
+  @Override
   public Schema getValueSchema(int id) {
     Schema valueSchema = valueSchemaMap.get(id);
     if (valueSchema != null) {
@@ -98,11 +100,15 @@ public class SchemaReader implements Closeable {
   }
 
   private static final Function<SchemaEntry, Schema> SCHEMA_EXTRACTOR = schemaEntry -> schemaEntry.getSchema();
+
+  @Override
   public Schema getLatestValueSchema() throws VeniceClientException {
     return ensureLatestValueSchemaIsFetched(SCHEMA_EXTRACTOR);
   }
 
   private static final Function<SchemaEntry, Integer> SCHEMA_ID_EXTRACTOR = schemaEntry -> schemaEntry.getId();
+
+  @Override
   public Integer getLatestValueSchemaId() throws VeniceClientException {
     return ensureLatestValueSchemaIsFetched(SCHEMA_ID_EXTRACTOR);
   }

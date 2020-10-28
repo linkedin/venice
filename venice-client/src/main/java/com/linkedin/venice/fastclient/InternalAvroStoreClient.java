@@ -1,0 +1,42 @@
+package com.linkedin.venice.fastclient;
+
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ComputeRequestBuilder;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+
+
+/**
+ * All the internal implementations of different tiers should extend this class.
+ */
+public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreClient<K, V> {
+
+  public CompletableFuture<V> get(K key) throws VeniceClientException {
+    return get(new GetRequestContext(), key);
+  }
+
+  /**
+   * This function is using a {@link RequestContext} object for the communication among different tiers.
+   */
+  protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
+
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    throw new VeniceClientException("'batchGet' is not supported.");
+  }
+
+  public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
+    throw new VeniceClientException("'streamingBatchGet' is not supported.");
+  }
+
+  public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    throw new VeniceClientException("'streamingBatchGet' is not supported.");
+  }
+
+  public ComputeRequestBuilder<K> compute() {
+    throw new VeniceClientException("'compute' is not supported.");
+  }
+}
