@@ -31,7 +31,6 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -44,8 +43,9 @@ import static org.testng.Assert.*;
 
 
 public class IngestionServiceTest {
+  private static final int TEST_TIMEOUT = 60_000;
   private static final int APPLICATION_PORT = 12345;
-  private static final int SERVICE_PORT = 27015;
+  private static final int SERVICE_PORT = 12346;
   private static final int KEY_COUNT = 10;
   private static final int MAX_ATTEMPT = 100;
 
@@ -73,7 +73,7 @@ public class IngestionServiceTest {
     cluster.close();
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testInitialization() throws Exception {
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     InitializationConfigs initializationConfigs = createInitializationConfigs(baseDataPath);
@@ -84,7 +84,7 @@ public class IngestionServiceTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testIngestionCommandWithoutInitialization() throws Exception {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.topicName = Version.composeKafkaTopic(testStoreName, 1);
@@ -99,7 +99,7 @@ public class IngestionServiceTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testTopicIngestionParentChildMode() throws Exception {
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     InitializationConfigs initializationConfigs = createInitializationConfigs(baseDataPath);
@@ -108,7 +108,7 @@ public class IngestionServiceTest {
     sendStartConsumptionMessage(testStoreName, 1, 0);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testTopicIngestion() throws Exception {
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
 
@@ -137,7 +137,7 @@ public class IngestionServiceTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testIngestionReportListener() throws Exception {
     IngestionTaskReport ingestionTaskReport = new IngestionTaskReport();
     ingestionTaskReport.topicName = "";

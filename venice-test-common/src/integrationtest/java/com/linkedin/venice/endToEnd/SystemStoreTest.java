@@ -44,6 +44,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.Map;
@@ -412,12 +414,16 @@ public class SystemStoreTest {
       client.unsubscribeAll();
     }
 
+    int applicationListenerPort = getFreePort();
+    int servicePort = getFreePort();
     // Test Da Vinci client ingestion with both system store && ingestion isolation
     backendConfig = new PropertyBuilder()
             .put(DATA_BASE_PATH, baseDataPath)
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
             .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+            .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+            .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
             .build();
     metricsRepository = new MetricsRepository();
     daVinciConfig = new DaVinciConfig();
@@ -570,5 +576,13 @@ public class SystemStoreTest {
 
   private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, boolean newStore) {
     return getNewStoreVersion(controllerClient, TestUtils.getUniqueString("test-kill"), newStore);
+  }
+
+  private int getFreePort() {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
+    } catch(IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

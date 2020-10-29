@@ -92,7 +92,7 @@ public class TestHybrid {
     return new Object[][]{{false}, {true}};
   }
 
-  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  @Test(dataProvider = "isLeaderFollowerModelEnabled", timeOut = 60 * Time.MS_PER_SECOND)
   public void testHybridInitializationOnMultiColo(boolean isLeaderFollowerModelEnabled) throws IOException {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
@@ -175,7 +175,7 @@ public class TestHybrid {
    * @param isLeaderFollowerModelEnabled Whether to enable Leader/Follower state transition model.
    * @param chunkingEnabled Whether chunking should be enabled (only supported in {@param isLeaderFollowerModelEnabled} is true).
    */
-  @Test(dataProvider = "testPermutations", groups="flaky")
+  @Test(dataProvider = "testPermutations", groups="flaky", timeOut = 60 * Time.MS_PER_SECOND)
   public void testHybridEndToEnd(boolean multiDivStream, boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();
@@ -424,7 +424,7 @@ public class TestHybrid {
    * @param isLeaderFollowerModelEnabled true if the resource is running in L/F model. Otherwise, the resource is running in O/O model.
    *                                     Pass-through mode is enabled during L/F model and we have extra check for it.
    */
-  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  @Test(dataProvider = "isLeaderFollowerModelEnabled", timeOut = 60 * Time.MS_PER_SECOND)
   public void testSamzaBatchLoad(boolean isLeaderFollowerModelEnabled) throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
@@ -583,7 +583,7 @@ public class TestHybrid {
     };
   }
 
-  @Test(dataProvider = "testHybridQuotaPermutations")
+  @Test(dataProvider = "testHybridQuotaPermutations", timeOut = 60 * Time.MS_PER_SECOND)
   public void testHybridStoreQuota(boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();
@@ -712,7 +712,7 @@ public class TestHybrid {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testMultiStreamReprocessingSystemProducers() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
