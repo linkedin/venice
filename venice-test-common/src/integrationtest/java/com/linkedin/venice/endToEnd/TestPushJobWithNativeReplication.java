@@ -15,6 +15,9 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -22,6 +25,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -121,7 +125,7 @@ public class TestPushJobWithNativeReplication {
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
 
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       // Current version should become 1
       for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
         Assert.assertEquals(version, 1);
@@ -138,6 +142,22 @@ public class TestPushJobWithNativeReplication {
           Assert.assertEquals(actual, expected);
         }
       }
+
+      /**
+       * The offset metadata recorded in storage node must be smaller than or equal to the end offset of the local version topic
+       */
+      String versionTopic = Version.composeKafkaTopic(storeName, 1);
+      VeniceServer serverInRemoteFabric = childDataCenter.getClusters().get(clusterName).getVeniceServers().get(0).getVeniceServer();
+      Set<Integer> partitionIds = serverInRemoteFabric.getStorageService().getStorageEngineRepository().getLocalStorageEngine(versionTopic).getPartitionIds();
+      Assert.assertFalse(partitionIds.isEmpty());
+      int partitionId = partitionIds.iterator().next();
+      // Get the end offset of the selected partition from version topic
+      long latestOffsetInVersionTopic = childDataCenter.getRandomController().getVeniceAdmin().getTopicManager().getLatestOffset(versionTopic, partitionId);
+      // Get the offset metadata of the selected partition from storage node
+      StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
+      OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
+
+      Assert.assertTrue(offsetRecord.getOffset() <= latestOffsetInVersionTopic);
     });
   }
 

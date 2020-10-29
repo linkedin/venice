@@ -415,6 +415,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived()) {
             // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
             consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
+            // If remote consumption flag is false, existing messages for the partition in the drainer queue should be processed before that
+            storeBufferService.drainBufferedRecordsFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition());
             partitionConsumptionState.setConsumeRemotely(false);
             logger.info(consumerTaskId + " disabled remote consumption for partition " + partitionConsumptionState.getPartition());
             // Subscribe to local Kafka topic
@@ -739,7 +741,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       /**
        * If either (1) this is a follower replica or (2) this is a leader replica who is consuming from version topic,
        * we can update the offset metadata in offset record right after consuming a message; otherwise, if the leader
-       * is consuming from real-time topic or grandfathering topic, it should update offset metadata after succeesfully
+       * is consuming from real-time topic or grandfathering topic, it should update offset metadata after successfully
        * produce a corresponding message.
        */
       KafkaMessageEnvelope kafkaValue = consumerRecord.value();

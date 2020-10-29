@@ -1494,10 +1494,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
         /**
-         * If END_OF_PUSH is not received. Both DIV and leader SN pass-through mode are enabled. In that case, we
-         * need to re-produce SOS and EOS to make DIV work.
+         * SOS and EOS will be produced to the local version topic with DIV pass-through mode by leader in the following cases:
+         * 1. SOS and EOS are from stream-reprocessing topics (use cases: stream-reprocessing)
+         * 2. SOS and EOS are from version topics in a remote fabric (use cases: native replication for remote fabrics)
+         *
+         * SOS and EOS will not be produced to local version topic in the following cases:
+         * 1. SOS and EOS are from real-time topics (use cases: hybrid ingestion, incremental push to RT)
+         * 2. SOS and EOS are from version topics in local fabric, which has 2 different scenarios:
+         *    i.  native replication is enabled, but the current fabric is the source fabric (use cases: native repl for source fabric)
+         *    ii. native replication is not enabled; it doesn't matter whether current replica is leader or follower,
+         *        messages from local VT doesn't need to be reproduced into local VT again (use cases: local batch consumption,
+         *        incremental push to VT)
          */
-        if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
+        if (!Version.isRealTimeTopic(consumerRecord.topic())) {
           produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
             getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
         }
