@@ -211,7 +211,7 @@ public class TestMultiDataCenterPush {
     Assert.assertTrue(topicRetentionTimeInSecond >= highRewindTimeInSecond);
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*")
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*", timeOut = TEST_TIMEOUT)
   public void testPushDirectlyToChildColo() throws IOException {
     // In multi-colo setup, the batch push to child controller should be disabled.
     String clusterName = CLUSTER_NAMES[0];
@@ -232,7 +232,7 @@ public class TestMultiDataCenterPush {
     return new Object[][] { {true}, {false} };
   }
 
-  @Test (dataProvider = "testEmptyPushDataProvider")
+  @Test (dataProvider = "testEmptyPushDataProvider", timeOut = TEST_TIMEOUT)
   public void testEmptyPush(boolean toParent) {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("store");
@@ -252,7 +252,7 @@ public class TestMultiDataCenterPush {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testHybridConfigPartitionerConfigConflict() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("store");
@@ -332,7 +332,7 @@ public class TestMultiDataCenterPush {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testFailedAdminMessages() {
     String clusterName = CLUSTER_NAMES[1];
     VeniceControllerWrapper parentController =

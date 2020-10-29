@@ -15,6 +15,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.IngestionIsolationMode;
@@ -30,6 +31,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -192,10 +195,14 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
 
+    int applicationListenerPort = getFreePort();
+    int servicePort = getFreePort();
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(DATA_BASE_PATH, baseDataPath)
             .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD)
+            .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+            .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
             .build();
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
@@ -461,10 +468,14 @@ public class DaVinciClientTest {
     // only completed when the main process's ingestion task is subscribed to avoid deadlock.
     String storeName = cluster.createStore(KEY_COUNT);
     D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
+    int applicationListenerPort = getFreePort();
+    int servicePort = getFreePort();
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setRocksDBMemoryLimit(1024 * 1024 * 1024); // 1GB
@@ -481,10 +492,14 @@ public class DaVinciClientTest {
     // the future is complete. The future should also return exceptionally.
     String storeName = cluster.createStore(10000); // A large amount of keys to give window for potential race conditions
     D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
+    int applicationListenerPort = getFreePort();
+    int servicePort = getFreePort();
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setRocksDBMemoryLimit(1024 * 1024 * 1024); // 1GB
@@ -514,6 +529,14 @@ public class DaVinciClientTest {
         TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
       }
       producer.stop();
+    }
+  }
+
+  private int getFreePort() {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
+    } catch(IOException e) {
+      throw new RuntimeException(e);
     }
   }
 }
