@@ -336,6 +336,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException("Metadata partition id should not be used as argument in putPartitionOffset.");
     }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in putPartitionOffset");
+    }
     metadataPartition.put(getPartitionMetadataKey(partitionId), offsetRecord.toBytes());
   }
 
@@ -348,6 +351,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException("Metadata partition id should not be used as argument in getPartitionOffset.");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in getPartitionOffset");
     }
     byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId));
     if (null == value) {
@@ -365,6 +371,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in clearPartitionOffset");
     }
     metadataPartition.delete(getPartitionMetadataKey(partitionId));
   }
