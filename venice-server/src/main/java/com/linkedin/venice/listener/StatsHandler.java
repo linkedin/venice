@@ -275,7 +275,7 @@ public class StatsHandler extends ChannelDuplexHandler {
         double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
         //if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
         //records a successRequest in stats. Otherwise, records a errorRequest in stats;
-        if (result.isSuccess() && (responseStatus == OK || responseStatus == NOT_FOUND)) {
+        if (result.isSuccess() && (responseStatus.equals(OK) || responseStatus.equals(NOT_FOUND))) {
           successRequest(elapsedTime);
         } else {
           errorRequest(elapsedTime);

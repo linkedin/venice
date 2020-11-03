@@ -1,5 +1,6 @@
 package com.linkedin.venice.ingestion.handler;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.IngestionReportListener;
 import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
@@ -39,6 +40,12 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
     if (ingestionReportListener.getIngestionNotifier() != null) {
       if (report.isComplete) {
         ingestionReportListener.getIngestionNotifier().completed(topicName, partitionId, report.offset);
+        ingestionReportListener.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+      } else if (report.isError) {
+        ingestionReportListener.getIngestionNotifier().error(topicName, partitionId, report.errorMessage.toString(), new VeniceException(report.errorMessage.toString()));
+        ingestionReportListener.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+      } else {
+        logger.info("Received unsupported ingestion report, it will be ignored for now.");
       }
     }
 

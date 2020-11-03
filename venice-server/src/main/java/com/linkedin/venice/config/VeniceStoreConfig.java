@@ -27,7 +27,8 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   private final VeniceProperties persistStorageEngineConfigs;
   // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
 
-  public boolean restoreStoragePartitions = true;
+  private boolean restoreDataPartitions = true;
+  private boolean restoreMetadataPartition = true;
 
   public VeniceStoreConfig(String storeName, VeniceProperties storeProperties)
     throws ConfigurationException {
@@ -58,12 +59,20 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     return storePersistenceType.get();
   }
 
-  public boolean isRestoreStoragePartitions() {
-    return restoreStoragePartitions;
+  public boolean isRestoreDataPartitions() {
+    return restoreDataPartitions;
   }
 
-  public void setRestoreStoragePartitions(boolean restoreStoragePartitions) {
-    this.restoreStoragePartitions = restoreStoragePartitions;
+  public void setRestoreDataPartitions(boolean restoreDataPartitions) {
+    this.restoreDataPartitions = restoreDataPartitions;
+  }
+
+  public boolean isRestoreMetadataPartition() {
+    return restoreMetadataPartition;
+  }
+
+  public void setRestoreMetadataPartition(boolean restoreMetadataPartition) {
+    this.restoreMetadataPartition = restoreMetadataPartition;
   }
 
   /**
