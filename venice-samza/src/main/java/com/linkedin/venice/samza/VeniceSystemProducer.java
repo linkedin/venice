@@ -182,8 +182,7 @@ public class VeniceSystemProducer implements SystemProducer {
         .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
         .setIsSSLEnabled(sslFactory.isPresent())
         .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
-        .setFsBasePath(FSBASE_PATH)
-        .setEnableSaveUriDataOnDisk(true)
+        .setEnableSaveUriDataOnDisk(false)
         .build();
     D2ClientUtils.startClient(d2Client);
     // Discover cluster
