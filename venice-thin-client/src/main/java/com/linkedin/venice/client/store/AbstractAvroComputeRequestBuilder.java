@@ -10,12 +10,14 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
+import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.utils.Time;
 import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -56,6 +58,13 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
   protected static final String PROJECTION_SPEC = "projection_spec";
   protected static final String DOT_PRODUCT_SPEC = "dotProduct_spec";
   protected static final String COSINE_SIMILARITY_SPEC = "cosineSimilarity_spec";
+  private static final String HADAMARD_PRODUCT_SPEC = "hadamardProduct_spec";
+
+  private static final Schema HADAMARD_PRODUCT_RESULT_SCHEMA = Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.createArray(Schema.create(Schema.Type.FLOAT))));
+
+  protected static final Schema DOT_PRODUCT_RESULT_SCHEMA = Schema.createUnion(
+      Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.FLOAT)));
+  protected static final Schema COSINE_SIMILARITY_RESULT_SCHEMA = Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.FLOAT)));
 
   private final Time time;
   protected final Schema latestValueSchema;
@@ -63,6 +72,7 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
   protected final String resultSchemaName;
   private final Optional<ClientStats> stats;
   private final Optional<ClientStats> streamingStats;
+  private List<HadamardProduct> hadamardProducts = new LinkedList<>();
 
   private final boolean reuseObjects;
   private final BinaryEncoder reusedEncoder;
@@ -158,6 +168,11 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
       cosineSimilarityPairs.add(Pair.create(cosineSimilarity.field, cosineSimilarity.resultFieldName));
     });
     computeSpec.put(COSINE_SIMILARITY_SPEC, cosineSimilarityPairs);
+    List<Pair<CharSequence, CharSequence>> hadamardProductPairs = new LinkedList<>();
+    hadamardProducts.forEach( hadamardProduct -> {
+      hadamardProductPairs.add(Pair.create(hadamardProduct.field, hadamardProduct.resultFieldName));
+    });
+    computeSpec.put(HADAMARD_PRODUCT_SPEC, hadamardProductPairs);
     return computeSpec;
   }
 
@@ -189,6 +204,12 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
             cosineSimilarity.resultFieldName.toString(),
             computeResultFields,
             COSINE_SIMILARITY));
+    // HadamardProduct
+    hadamardProducts.forEach(hadamardProduct ->
+        checkComputeFieldValidity(hadamardProduct.field.toString(),
+            hadamardProduct.resultFieldName.toString(),
+            computeResultFields,
+            HADAMARD_PRODUCT));
 
     return computeResultFields;
   }
@@ -217,6 +238,14 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
           getCosineSimilarityResultDefaultValue());
       resultSchemaFields.add(cosineSimilarityField);
     });
+    hadamardProducts.forEach( hadamardProduct -> {
+      Schema.Field hadamardProductField = new Schema.Field(hadamardProduct.resultFieldName.toString(),
+          HADAMARD_PRODUCT_RESULT_SCHEMA,
+          "",
+          JsonNodeFactory.instance.nullNode());
+      resultSchemaFields.add(hadamardProductField);
+    });
+    resultSchemaFields.add(VENICE_COMPUTATION_ERROR_MAP_FIELD);
     return resultSchemaFields;
   }
 
@@ -236,6 +265,12 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
       ComputeOperation computeOperation = new ComputeOperation();
       computeOperation.operationType = COSINE_SIMILARITY.getValue();
       computeOperation.operation = cosineSimilarity;
+      operations.add(computeOperation);
+    });
+    hadamardProducts.forEach( hadamardProduct -> {
+      ComputeOperation computeOperation = new ComputeOperation();
+      computeOperation.operationType = HADAMARD_PRODUCT.getValue();
+      computeOperation.operation = hadamardProduct;
       operations.add(computeOperation);
     });
     return operations;
@@ -312,13 +347,20 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
     if (null == fieldSchema) {
       throw new VeniceClientException("Unknown " + computeType + " field: " + computeFieldName);
     }
-    if (fieldSchema.schema().getType() != Schema.Type.ARRAY) {
-      throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't with 'ARRAY' type");
-    }
-    // TODO: is it necessary to be 'FLOAT' only?
-    Schema elementSchema = fieldSchema.schema().getElementType();
-    if (elementSchema.getType() != Schema.Type.FLOAT) {
-      throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't an 'ARRAY' of 'FLOAT'");
+
+    if (computeType == COUNT) {
+      if (fieldSchema.schema().getType() != Schema.Type.ARRAY && fieldSchema.schema().getType() != Schema.Type.MAP) {
+        throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't 'ARRAY' or 'MAP' type");
+      }
+    } else {
+      if (fieldSchema.schema().getType() != Schema.Type.ARRAY) {
+        throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't an 'ARRAY' type");
+      }
+      // TODO: is it necessary to be 'FLOAT' only?
+      Schema elementSchema = fieldSchema.schema().getElementType();
+      if (elementSchema.getType() != Schema.Type.FLOAT) {
+        throw new VeniceClientException(computeType + " field: " + computeFieldName + " isn't an 'ARRAY' of 'FLOAT'");
+      }
     }
 
     if (resultFieldsSet.contains(resultFieldName)) {
@@ -336,48 +378,51 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
     resultFieldsSet.add(resultFieldName);
   }
 
-  /**
-   * Generate result schema.
-   * @return
-   */
-  protected abstract Pair<Schema, String> getResultSchema();
+  protected Pair<Schema, String> getResultSchema() {
+    Map<String, Object> computeSpec = getCommonComputeSpec();
 
-  /**
-   * Generate ComputeRequestWrapper record.
-   * @param resultSchemaStr
-   * @return
-   */
+    return RESULT_SCHEMA_CACHE.computeIfAbsent(computeSpec, spec -> {
+      /**
+       * This class delayed all the validity check here to avoid unnecessary overhead for every request
+       * when application always specify the same compute operations.
+       */
+      // Check the validity first
+      commonValidityCheck();
+      // Generate result schema
+      List<Schema.Field> resultSchemaFields = getCommonResultFields();
+      Schema generatedResultSchema = Schema.createRecord(resultSchemaName, "", "", false);
+      generatedResultSchema.setFields(resultSchemaFields);
+      return Pair.create(generatedResultSchema, generatedResultSchema.toString());
+    });
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> hadamardProduct(String inputFieldName, List<Float> hadamardProductParam, String resultFieldName)
+      throws VeniceClientException {
+    HadamardProduct hadamardProduct = (HadamardProduct) HADAMARD_PRODUCT.getNewInstance();
+    hadamardProduct.field = inputFieldName;
+    hadamardProduct.hadamardProductParam = hadamardProductParam;
+    hadamardProduct.resultFieldName = resultFieldName;
+    hadamardProducts.add(hadamardProduct);
+
+    return this;
+  }
+
   protected abstract ComputeRequestWrapper generateComputeRequest(String resultSchemaStr);
 
-  /**
-   * Get dot product result schema;
-   * V1: "double"
-   * V2: ["null", "float"]
-   * @return
-   */
-  protected abstract Schema getDotProductResultSchema();
+  protected Schema getDotProductResultSchema() {
+    return DOT_PRODUCT_RESULT_SCHEMA;
+  }
 
-  /**
-   * Get cosine similarity result schema;
-   * V1: "double"
-   * V2: ["null", "float"]
-   * @return
-   */
-  protected abstract Schema getCosineSimilarityResultSchema();
+  protected Schema getCosineSimilarityResultSchema() {
+    return COSINE_SIMILARITY_RESULT_SCHEMA;
+  }
 
-  /**
-   * Get dot product result default value
-   * V1: 0 (null can not be the default result for "double" schema)
-   * V2: null
-   * @return
-   */
-  protected abstract JsonNode getDotProductResultDefaultValue();
+  protected JsonNode getDotProductResultDefaultValue() {
+    return JsonNodeFactory.instance.nullNode();
+  }
 
-  /**
-   * Get cosine similarity result default value
-   * V1: 0
-   * V2: null
-   * @return
-   */
-  protected abstract JsonNode getCosineSimilarityResultDefaultValue();
+  protected JsonNode getCosineSimilarityResultDefaultValue() {
+    return JsonNodeFactory.instance.nullNode();
+  }
 }

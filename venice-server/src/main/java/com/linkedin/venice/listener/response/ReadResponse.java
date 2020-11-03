@@ -26,6 +26,7 @@ public abstract class ReadResponse {
   private int dotProductCount = 0;
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
+  private int countOperatorCount = 0;
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
@@ -99,6 +100,10 @@ public abstract class ReadResponse {
     dotProductCount++;
   }
 
+  public void incrementCountOperatorCount() {
+    countOperatorCount++;
+  }
+
   public void incrementCosineSimilarityCount() {
     cosineSimilarityCount++;
   }
@@ -157,6 +162,10 @@ public abstract class ReadResponse {
 
   public int getHadamardProductCount() {
     return hadamardProductCount;
+  }
+
+  public int getCountOperatorCount() {
+    return countOperatorCount;
   }
 
   public abstract int getRecordCount();

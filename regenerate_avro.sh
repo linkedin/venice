@@ -81,8 +81,9 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[17]}/com/linkedin/venice/read/protocol/response/streaming/*.java"
   "${CODE_GEN_PATH[18]}/com/linkedin/venice/status/protocol/*.java"
   "${CODE_GEN_PATH[19]}/com/linkedin/venice/meta/systemstore/schemas/*.java"
-  "${CODE_GEN_PATH[20]}/com/linkedin/venice/systemstore/schemas/*.java"
+  "${CODE_GEN_PATH[20]}/com/linkedin/venice/meta/systemstore/schemas/*.java"
   "${CODE_GEN_PATH[21]}/com/linkedin/venice/systemstore/schemas/*.java"
+  "${CODE_GEN_PATH[22]}/com/linkedin/venice/systemstore/schemas/*.java"
 )
 
 if [[ $# < 1 ]]; then

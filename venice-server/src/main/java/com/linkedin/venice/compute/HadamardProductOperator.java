@@ -33,7 +33,8 @@ public class HadamardProductOperator implements ReadComputeOperator  {
       resultRecord.put(hadamardProduct.resultFieldName.toString(), hadamardProductResult);
     } catch (Exception e) {
       resultRecord.put(hadamardProduct.resultFieldName.toString(), null);
-      computationErrorMap.put(hadamardProduct.resultFieldName.toString(), e.getMessage());
+      String msg = e.getClass().getSimpleName() + " : " + (e.getMessage() == null ? "Failed to execute hadamard product operator." : e.getMessage());
+      computationErrorMap.put(hadamardProduct.resultFieldName.toString(), msg);
     }
   }
 

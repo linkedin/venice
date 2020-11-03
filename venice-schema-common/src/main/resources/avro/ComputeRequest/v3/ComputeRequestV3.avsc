@@ -100,7 +100,7 @@
                       {
                         "name": "field",
                         "type": "string",
-                        "doc": "The field name in the original value record of type array, which will used to execute count operation on"
+                        "doc": "The field name in the original value record of type array or map, which will used to execute count operation on"
                       },
                       {
                         "name": "resultFieldName",

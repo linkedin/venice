@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
+import com.linkedin.venice.compute.protocol.request.Count;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
@@ -54,6 +55,13 @@ public class ComputeUtils {
             throw new VeniceException("The field " + hadamardProduct.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(hadamardProduct.resultFieldName.toString(), Schema.Type.UNION));
+          break;
+        case COUNT:
+          Count count = (Count) operation.operation;
+          if (!valueFieldStrings.contains(count.field.toString())) {
+            throw new VeniceException("The field " + count.field.toString() + " being operated on is not in value schema");
+          }
+          operationResultFields.add(new Pair<>(count.resultFieldName.toString(), Schema.Type.UNION));
           break;
         default:
           throw new VeniceException("Compute operation type " + operation.operationType + " not supported");

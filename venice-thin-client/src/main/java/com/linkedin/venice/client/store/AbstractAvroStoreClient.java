@@ -80,9 +80,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private static final Map<String, String> MULTI_GET_HEADER_MAP = new HashMap<>();
   private static final Map<String, String> MULTI_GET_HEADER_MAP_FOR_STREAMING;
   private static final Map<String, String> COMPUTE_HEADER_MAP_V2 = new HashMap<>();
-  private static final Map<String, String> COMPUTE_HEADER_MAP_V1 = new HashMap<>();
+  private static final Map<String, String> COMPUTE_HEADER_MAP_V3 = new HashMap<>();
   protected static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
-  protected static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V1;
+  protected static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
   static {
     /**
@@ -99,11 +99,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY,
         Integer.toString(CompressionStrategy.GZIP.getValue()));
 
+    /**
+     * COMPUTE_REQUEST_V1 is deprecated.
+     */
     COMPUTE_HEADER_MAP_V2.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V2.getProtocolVersion()));
 
-    COMPUTE_HEADER_MAP_V1.put(HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getProtocolVersion()));
+    COMPUTE_HEADER_MAP_V3.put(HttpConstants.VENICE_API_VERSION,
+        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
 
     MULTI_GET_HEADER_MAP_FOR_STREAMING = new HashMap<>(MULTI_GET_HEADER_MAP);
     MULTI_GET_HEADER_MAP_FOR_STREAMING.put(HttpConstants.VENICE_STREAMING, "1");
@@ -111,8 +114,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     COMPUTE_HEADER_MAP_FOR_STREAMING_V2 = new HashMap<>(COMPUTE_HEADER_MAP_V2);
     COMPUTE_HEADER_MAP_FOR_STREAMING_V2.put(HttpConstants.VENICE_STREAMING, "1");
 
-    COMPUTE_HEADER_MAP_FOR_STREAMING_V1 = new HashMap<>(COMPUTE_HEADER_MAP_V1);
-    COMPUTE_HEADER_MAP_FOR_STREAMING_V1.put(HttpConstants.VENICE_STREAMING, "1");
+    COMPUTE_HEADER_MAP_FOR_STREAMING_V3 = new HashMap<>(COMPUTE_HEADER_MAP_V3);
+    COMPUTE_HEADER_MAP_FOR_STREAMING_V3.put(HttpConstants.VENICE_STREAMING, "1");
 
     AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
     logger.info("Detected: " + version.toString() + " on the classpath.");
@@ -587,8 +590,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] serializedComputeRequest = computeRequestWrapper.serialize();
     byte[] serializedFullComputeRequest = serializeComputeRequest(keyList, serializedComputeRequest);
     CompletableFuture<Map<K, GenericRecord>> valueFuture = new CompletableFuture();
-    final Map<String, String> headerMap = new HashMap<>(COMPUTE_HEADER_MAP_V2);
 
+    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
+        ? new HashMap<>(COMPUTE_HEADER_MAP_V2)
+        : new HashMap<>(COMPUTE_HEADER_MAP_V3);
     int schemaId = getSchemaReader().getValueSchemaId(computeRequestWrapper.getValueSchema());
     headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
     headerMap.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
@@ -1032,8 +1037,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         ? serializeComputeRequest(keyList, serializedComputeRequest, reusedEncoder, reusedOutputStream)
         : serializeComputeRequest(keyList, serializedComputeRequest);
 
-    final Map<String, String> headerMap = new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V2);
-
+    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
+        ? new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V2)
+        : new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
     int schemaId = getSchemaReader().getValueSchemaId(computeRequestWrapper.getValueSchema());
     headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
     headerMap.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));

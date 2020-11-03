@@ -46,6 +46,15 @@ public interface ComputeRequestBuilder<K> {
   ComputeRequestBuilder<K> cosineSimilarity(String inputFieldName, List<Float> cosSimilarityParam, String resultFieldName);
 
   /**
+   * Set up compute operation. It would return the number of records for array/map field.
+   * @param inputFieldName : top-level field in the value record as the input of count operation
+   * @param resultFieldName : result field name in the response record
+   * @return
+   */
+  ComputeRequestBuilder<K> count(String inputFieldName, String resultFieldName);
+
+
+  /**
    * Setup hadamard-product operation; if this api is invoked, use version 2 in the compute request version header.
    * @param inputFieldName : top-level field in the value record as the input of hadamard-product operation
    * @param hadamardProductParam : hadamard-product param
