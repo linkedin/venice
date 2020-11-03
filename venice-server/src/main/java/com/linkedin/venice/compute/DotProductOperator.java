@@ -7,8 +7,6 @@ import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.VeniceConstants.*;
-
 
 public class DotProductOperator implements ReadComputeOperator {
   @Override
@@ -40,7 +38,8 @@ public class DotProductOperator implements ReadComputeOperator {
       putResult(resultRecord, dotProduct.resultFieldName.toString(), dotProductResult);
     } catch (Exception e) {
       putResult(resultRecord, dotProduct.resultFieldName.toString(), 0.0f);
-      computationErrorMap.put(dotProduct.resultFieldName.toString(), e.getMessage());
+      String msg = e.getClass().getSimpleName() + " : " + (e.getMessage() == null ? "Failed to execute dot-product operator." : e.getMessage());
+      computationErrorMap.put(dotProduct.resultFieldName.toString(), msg);
     }
   }
 

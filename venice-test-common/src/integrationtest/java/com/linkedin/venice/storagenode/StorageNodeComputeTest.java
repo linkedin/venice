@@ -21,15 +21,13 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
-import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import io.tehuti.Metric;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -70,6 +68,7 @@ public class StorageNodeComputeTest {
       "  \"fields\": [        " +
       "         { \"name\": \"id\", \"type\": \"string\" },             " +
       "         { \"name\": \"name\", \"type\": \"string\" },           " +
+      "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           " +
       "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        " +
       "  ]       " +
       " }       ";
@@ -189,6 +188,8 @@ public class StorageNodeComputeTest {
             .dotProduct("member_feature", p, "member_score")
             .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
             .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
+//          .count("namemap", "namemap_count")
+//          .count("member_feature", "member_feature_count")
             .execute(keySet)
             /**
              * Added 2s timeout as a safety net as ideally each request should take sub-second.
@@ -209,6 +210,8 @@ public class StorageNodeComputeTest {
           float parameterVectorMagnitude = (float) Math.sqrt((float)(cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
           float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
           Assert.assertEquals((float) entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
+         // Assert.assertEquals((int) entry.getValue().get("member_feature_count"),  2);
+         // Assert.assertEquals((int) entry.getValue().get("namemap_count"),  0);
 
           // check hadamard product
           List<Float> hadamardProductResult = new ArrayList<>(2);
@@ -323,6 +326,7 @@ public class StorageNodeComputeTest {
         name = new String(chars);
       }
       value.put("name", name);
+      value.put("namemap", Collections.emptyMap());
 
       List<Float> features = new ArrayList<>();
       features.add(Float.valueOf((float)(i + 1)));

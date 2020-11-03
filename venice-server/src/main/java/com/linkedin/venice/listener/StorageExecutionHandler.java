@@ -4,6 +4,7 @@ import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.CosineSimilarityOperator;
+import com.linkedin.venice.compute.CountOperator;
 import com.linkedin.venice.compute.DotProductOperator;
 import com.linkedin.venice.compute.HadamardProductOperator;
 import com.linkedin.venice.compute.ReadComputeOperator;
@@ -133,6 +134,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       put(ComputeOperationType.DOT_PRODUCT.getValue(), new DotProductOperator());
       put(ComputeOperationType.COSINE_SIMILARITY.getValue(), new CosineSimilarityOperator());
       put(ComputeOperationType.HADAMARD_PRODUCT.getValue(), new HadamardProductOperator());
+      put(ComputeOperationType.COUNT.getValue(), new CountOperator());
     }
   };
 

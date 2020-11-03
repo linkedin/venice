@@ -126,6 +126,11 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     getStoreStats(storeName).recordHadamardProduct(count);
   }
 
+  public void recordCountOperatorCount(String storeName, int count) {
+    totalStats.recordCountOperator(count);
+    getStoreStats(storeName).recordCountOperator(count);
+  }
+
   public void recordEarlyTerminatedEarlyRequest(String storeName) {
     totalStats.recordEarlyTerminatedEarlyRequest();
     getStoreStats(storeName).recordEarlyTerminatedEarlyRequest();

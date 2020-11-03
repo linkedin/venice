@@ -2,6 +2,7 @@ package com.linkedin.venice.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -27,23 +28,27 @@ import org.apache.avro.specific.SpecificRecord;
  * schema.
  */
 public class ComputeRequestWrapper {
-  public static int LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST = 2;
+  public static int LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST = 3;
+
   private static final Map<Integer, Schema> SCHEMA_MAP = new HashMap<Integer, Schema>() {
     {
       put(1, ComputeRequestV1.SCHEMA$);
       put(2, ComputeRequestV2.SCHEMA$);
+      put(3, ComputeRequestV3.SCHEMA$);
     }
   };
   private static final Map<Integer, Class<? extends SpecificRecord>> CLASS_MAP = new HashMap<Integer, Class<? extends SpecificRecord>>() {
     {
       put(1, ComputeRequestV1.class);
       put(2, ComputeRequestV2.class);
+      put(3, ComputeRequestV3.class);
     }
   };
   private static final Map<Integer, RecordSerializer> SERIALIZER_MAP = new HashMap<Integer, RecordSerializer>() {
     {
       put(1, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.SCHEMA$));
       put(2, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV2.SCHEMA$));
+      put(3, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV3.SCHEMA$));
     }
   };
 
@@ -69,6 +74,9 @@ public class ComputeRequestWrapper {
         break;
       case 2:
         computeRequest = new ComputeRequestV2();
+        break;
+      case 3:
+        computeRequest = new ComputeRequestV3();
         break;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
@@ -102,6 +110,8 @@ public class ComputeRequestWrapper {
         return ((ComputeRequestV1)computeRequest).resultSchemaStr;
       case 2:
         return ((ComputeRequestV2)computeRequest).resultSchemaStr;
+      case 3:
+        return ((ComputeRequestV3)computeRequest).resultSchemaStr;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
@@ -123,6 +133,9 @@ public class ComputeRequestWrapper {
       case 2:
         ((ComputeRequestV2)computeRequest).resultSchemaStr = resultSchemaStr;
         break;
+      case 3:
+        ((ComputeRequestV3)computeRequest).resultSchemaStr = resultSchemaStr;
+        break;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
@@ -139,6 +152,8 @@ public class ComputeRequestWrapper {
         return ((ComputeRequestV1)computeRequest).operations;
       case 2:
         return ((ComputeRequestV2)computeRequest).operations;
+      case 3:
+        return ((ComputeRequestV3)computeRequest).operations;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
@@ -151,6 +166,9 @@ public class ComputeRequestWrapper {
         break;
       case 2:
         ((ComputeRequestV2)computeRequest).operations = operations;
+        break;
+      case 3:
+        ((ComputeRequestV3)computeRequest).operations = operations;
         break;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");

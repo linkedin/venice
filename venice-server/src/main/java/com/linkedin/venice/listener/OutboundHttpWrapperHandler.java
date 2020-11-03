@@ -56,6 +56,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         statsHandler.setDotProductCount(obj.getDotProductCount());
         statsHandler.setCosineSimilarityCount(obj.getCosineSimilarityCount());
         statsHandler.setHadamardProductCount(obj.getHadamardProductCount());
+        statsHandler.setCountOperatorCount(obj.getCountOperatorCount());
         statsHandler.setOptionalKeySizeList(obj.getOptionalKeySizeList());
         statsHandler.setOptionalValueSizeList(obj.getOptionalValueSizeList());
         compressionStrategy = obj.getCompressionStrategy();

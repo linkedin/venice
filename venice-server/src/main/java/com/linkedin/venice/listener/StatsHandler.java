@@ -34,6 +34,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   private int dotProductCount = 0;
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
+  private int countOperatorCount = 0;
   private boolean isRequestTerminatedEarly = false;
 
   private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
@@ -158,6 +159,10 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   public void setHadamardProductCount(int count) {
     this.hadamardProductCount = count;
+  }
+
+  public void setCountOperatorCount(int count) {
+    this.countOperatorCount = count;
   }
 
   public void setStorageExecutionHandlerSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
@@ -338,6 +343,9 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (hadamardProductCount > 0) {
         currentStats.recordHadamardProductCount(storeName, hadamardProductCount);
+      }
+      if (countOperatorCount > 0) {
+        currentStats.recordCountOperatorCount(storeName, countOperatorCount);
       }
       if (isRequestTerminatedEarly) {
         currentStats.recordEarlyTerminatedEarlyRequest(storeName);

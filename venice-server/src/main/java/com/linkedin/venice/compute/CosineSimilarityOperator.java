@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.compute.ComputeOperationUtils.*;
 
 
@@ -59,7 +58,8 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
       putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), (float)cosineSimilarityResult);
     } catch (Exception e) {
       putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), 0.0f);
-      computationErrorMap.put(cosineSimilarity.resultFieldName.toString(), e.getMessage());
+      String msg = e.getClass().getSimpleName() + " : " + (e.getMessage() == null ? "Failed to execute cosine similarity operator." : e.getMessage());
+      computationErrorMap.put(cosineSimilarity.resultFieldName.toString(), msg);
     }
   }
 

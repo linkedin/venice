@@ -61,9 +61,9 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
         ? serializeComputeRequest(keys, serializedComputeRequest, reusedEncoder, reusedOutputStream)
         : serializeComputeRequest(keys, serializedComputeRequest);
 
-    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V1)
-        ? COMPUTE_HEADER_MAP_FOR_STREAMING_V1
-        : COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
+    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
+        ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
+        : COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
     getTransportClient().streamPost(getComputeRequestPath(), headerMap, serializedFullComputeRequest, new BlackHoleStreamingCallback<>(keys.size(), callback), keys.size());
   }

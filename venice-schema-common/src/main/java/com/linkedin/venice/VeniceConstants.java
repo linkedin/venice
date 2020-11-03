@@ -10,6 +10,7 @@ public class VeniceConstants {
   public static final String SYSTEM_STORE_OWNER = "venice-internal";
 
   /**
+   * DEPRECATED!
    * legacy compute request V1 would expect "double" as result while
    * any other version of compute request would expect ["float", "null"]
    */
@@ -19,6 +20,11 @@ public class VeniceConstants {
    * Compute request version 2.
    */
   public static int COMPUTE_REQUEST_VERSION_V2 = 2;
+
+  /**
+   * V3 contains all V2 operator + new Count operator
+   */
+  public static int COMPUTE_REQUEST_VERSION_V3 = 3;
 
   /**
    * The default SSL factory class name; this class is mostly used in test cases; products that uses Venice lib

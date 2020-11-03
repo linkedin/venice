@@ -47,6 +47,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor dotProductCountSensor;
   private final Sensor cosineSimilaritySensor;
   private final Sensor hadamardProductSensor;
+  private final Sensor countOperatorSensor;
+
 
   private final Sensor earlyTerminatedEarlyRequestCountSensor;
 
@@ -157,6 +159,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     dotProductCountSensor = registerSensor("dot_product_count", new Total(), new Avg());
     cosineSimilaritySensor = registerSensor("cosine_similarity_count", new Total(), new Avg());
     hadamardProductSensor = registerSensor("hadamard_product_count", new Total(), new Avg());
+    countOperatorSensor = registerSensor("count_operator_count", new Total(), new Avg());
+
 
     earlyTerminatedEarlyRequestCountSensor = registerSensor("early_terminated_request_count", new OccurrenceRate());
 
@@ -272,6 +276,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
 
   public void recordHadamardProduct(int count) {
     hadamardProductSensor.record(count);
+  }
+
+  public void recordCountOperator(int count) {
+    countOperatorSensor.record(count);
   }
 
   public void recordEarlyTerminatedEarlyRequest() {
