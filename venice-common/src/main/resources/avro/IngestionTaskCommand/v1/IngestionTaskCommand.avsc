@@ -13,7 +13,7 @@
     },
     {
       "name": "commandType",
-      "doc": "0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming, 5 => DropStore",
+      "doc": "0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming, 5 => DropStore, 6 => Heartbeat",
       "type": "int"
     }
   ]

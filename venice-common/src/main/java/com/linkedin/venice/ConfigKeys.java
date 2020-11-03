@@ -437,6 +437,16 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT = "server.ingestion.isolation.application.port";
 
   /**
+   * Whether to enable storage engine to restore existing data partitions during creation.
+   */
+  public static final String SERVER_RESTORE_DATA_PARTITIONS_ENABLED = "server.restore.data.partitions.enabled";
+
+  /**
+   * Whether to enable storage engine to restore existing metadata partition during creation.
+   */
+  public static final String SERVER_RESTORE_METADATA_PARTITION_ENABLED = "server.restore.data.partition.enabled";
+
+  /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
    * keep a running checksum for all and only PUT kafka data message received in the ingestion task and periodically
    * verify it against the key/values saved in the database persistency layer.

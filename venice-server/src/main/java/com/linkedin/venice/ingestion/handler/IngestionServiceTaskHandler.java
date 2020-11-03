@@ -128,6 +128,16 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     // Put all configs in aggregated configs into the VeniceConfigLoader.
     PropertyBuilder propertyBuilder = new PropertyBuilder();
     initializationConfigs.aggregatedConfigs.forEach((key, value) -> propertyBuilder.put(key.toString(), value));
+    /**
+     * The reason of not to restore the data partitions during initialization of storage service is:
+     * 1. During first fresh start up with no data on disk, we don't need to restore anything
+     * 2. During fresh start up with data on disk (aka bootstrap), we will receive messages to subscribe to the partition
+     * and it will re-open the partition on demand.
+     * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
+     * should not try to open it. The remaining ingestion tasks will open the storage engines.
+     */
+    propertyBuilder.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, "false");
+
     VeniceProperties veniceProperties = propertyBuilder.build();
     VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties, veniceProperties);
     ingestionService.setConfigLoader(configLoader);
@@ -218,8 +228,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     report.errorMessage = "";
     report.topicName = topicName;
     report.partitionId = partitionId;
-    report.offsetRecord = ByteBuffer.allocate(1);
-    report.storeVersionState = ByteBuffer.allocate(1);
     try {
       if (!ingestionService.isInitiated()) {
         throw new VeniceException("IngestionService has not been initiated.");
@@ -230,7 +238,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
       switch (IngestionCommandType.valueOf(ingestionTaskCommand.commandType)) {
         case START_CONSUMPTION:
-          // TODO: Decide whether to move this check to initialization phase.
           IngestionIsolationMode isolationMode = ingestionService.getConfigLoader().getVeniceServerConfig().getIngestionIsolationMode();
           if (isolationMode.equals(IngestionIsolationMode.NO_OP)) {
             throw new VeniceException("Ingestion Isolation Mode is set as NO_OP(not enabled).");
@@ -240,7 +247,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           // Ingestion Service needs store repository to subscribe to the store.
           ingestionService.getStoreRepository().subscribe(storeName);
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
-          ingestionService.addIngestionPartition(topicName, partitionId);
           storageService.openStoreForNewPartition(storeConfig, partitionId);
           storeIngestionService.startConsumption(storeConfig, partitionId, false);
           break;
@@ -259,6 +265,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         case DROP_STORE:
           ingestionService.getStorageService().removeStorageEngine(ingestionTaskCommand.topicName.toString());
           logger.info("Remaining storage engines after dropping: " + ingestionService.getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().toString());
+          break;
+        case HEARTBEAT:
+          report.isPositive = true;
+          break;
         default:
           break;
       }
@@ -359,10 +369,22 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset) {
-      logger.info("Ingestion finished for topic: " + kafkaTopic + " partition id: " + partitionId + " offset: " + offset);
+      logger.info("Ingestion completed for topic: " + kafkaTopic + " partition id: " + partitionId + " offset: " + offset);
       VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(kafkaTopic);
       ingestionService.getStoreIngestionService().stopConsumption(storeConfig, partitionId);
-      ingestionService.removeIngestionPartition(kafkaTopic, partitionId, offset);
+      ingestionService.getStorageService().getStorageEngineRepository().getLocalStorageEngine(kafkaTopic).closePartition(partitionId);
+      logger.info("Closed partition " + partitionId + " of topic " + kafkaTopic);
+      ingestionService.reportIngestionCompletion(kafkaTopic, partitionId, offset);
+    }
+
+    @Override
+    public void error(String kafkaTopic, int partitionId, String message, Exception e) {
+      logger.info("Ingestion error for topic: " + kafkaTopic + " partition id: " + partitionId + " " + e.getMessage());
+      VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(kafkaTopic);
+      ingestionService.getStoreIngestionService().stopConsumption(storeConfig, partitionId);
+      ingestionService.getStorageService().getStorageEngineRepository().getLocalStorageEngine(kafkaTopic).closePartition(partitionId);
+      logger.info("Close error partition " + partitionId + " of topic " + kafkaTopic);
+      ingestionService.reportIngestionError(kafkaTopic, partitionId, e);
     }
   };
 }

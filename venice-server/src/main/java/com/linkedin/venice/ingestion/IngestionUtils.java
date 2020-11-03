@@ -4,15 +4,20 @@ import com.google.common.base.Charsets;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Utils;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
@@ -28,6 +33,7 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
@@ -36,6 +42,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
@@ -218,6 +225,55 @@ public class IngestionUtils {
       }
     } else {
       logger.info("No process is bind to target port.");
+    }
+  }
+
+  public static Process startForkedIngestionProcess(VeniceConfigLoader configLoader) {
+    int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
+    try (IngestionRequestClient ingestionRequestClient = new IngestionRequestClient(ingestionServicePort)) {
+      Process isolatedIngestionService = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(ingestionServicePort));
+      // Wait for server in forked child process to bind the listening port.
+      waitPortBinding(ingestionServicePort, 100);
+
+      InitializationConfigs initializationConfigs = new InitializationConfigs();
+      initializationConfigs.aggregatedConfigs = new HashMap<>();
+      configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
+      logger.info("Sending initialization aggregatedConfigs to child process: " + initializationConfigs.aggregatedConfigs);
+      byte[] content = serializeInitializationConfigs(initializationConfigs);
+      HttpRequest httpRequest = ingestionRequestClient.buildHttpRequest(IngestionAction.INIT, content);
+      FullHttpResponse response = ingestionRequestClient.sendRequest(httpRequest);
+      if (!response.status().equals(HttpResponseStatus.OK)) {
+        ByteBuf message = response.content();
+        String stringMessage = message.readCharSequence(message.readableBytes(), org.apache.commons.io.Charsets.UTF_8).toString();
+        throw new VeniceException("Isolated ingestion service initialization failed: " + stringMessage);
+      }
+      // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
+      response.release();
+      logger.info("Isolated ingestion service initialization finished.");
+      return isolatedIngestionService;
+    } catch (Exception e) {
+      throw new VeniceException("Exception caught during initialization of ingestion service.", e);
+    }
+  }
+
+  public static void subscribeTopicPartition(IngestionRequestClient client, String topicName, int partitionId) {
+    // Send ingestion request to ingestion service.
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.START_CONSUMPTION.getValue();
+    ingestionTaskCommand.topicName = topicName;
+    ingestionTaskCommand.partitionId = partitionId;
+    byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
+    try {
+      HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
+      FullHttpResponse response = client.sendRequest(httpRequest);
+      byte[] responseContent = new byte[response.content().readableBytes()];
+      response.content().readBytes(responseContent);
+      IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
+      logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
+      response.release();
+    } catch (Exception e) {
+      throw new VeniceException("Received exception in start consumption", e);
     }
   }
 

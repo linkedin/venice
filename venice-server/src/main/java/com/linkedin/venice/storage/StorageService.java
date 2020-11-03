@@ -100,6 +100,9 @@ public class StorageService extends AbstractVeniceService {
          * Setup store-level persistence type based on current database setup.
          */
         VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName, pType);
+        // Load the metadata & data restore settings from config loader.
+        storeConfig.setRestoreMetadataPartition(configLoader.getCombinedProperties().getBoolean(ConfigKeys.SERVER_RESTORE_METADATA_PARTITION_ENABLED, true));
+        storeConfig.setRestoreDataPartitions(configLoader.getCombinedProperties().getBoolean(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, true));
         AbstractStorageEngine storageEngine = openStore(storeConfig);
         Set<Integer> partitionIds = storageEngine.getPartitionIds();
 

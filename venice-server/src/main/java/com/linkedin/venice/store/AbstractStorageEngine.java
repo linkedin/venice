@@ -1,5 +1,6 @@
 package com.linkedin.venice.store;
 
+import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -77,7 +78,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * Load the existing storage partitions.
    * The implementation should decide when to call this function properly to restore partitions.
    */
-  protected synchronized void restoreStoragePartitions() {
+  protected synchronized void restoreStoragePartitions(boolean restoreMetadataPartition, boolean restoreDataPartitions) {
     Set<Integer> partitionIds = getPersistedPartitionIds();
 
     /**
@@ -87,11 +88,20 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
      */
     partitionIds.remove(METADATA_PARTITION_ID);
 
-    this.metadataPartition = createStoragePartition(new StoragePartitionConfig(storeName, METADATA_PARTITION_ID));
+    if (restoreMetadataPartition) {
+      logger.info("Metadata partition restore enabled. Restoring metadata partition.");
+      this.metadataPartition = createStoragePartition(new StoragePartitionConfig(storeName, METADATA_PARTITION_ID));
+    }
 
-    partitionIds.stream()
-        .sorted((o1, o2) -> Integer.compare(o2, o1)) // reverse order, to minimize array resizing in {@link SparseConcurrentList}
-        .forEach(this::addStoragePartition);
+    if (restoreDataPartitions) {
+      logger.info("Data partitions restore enabled. Restoring data partitions.");
+      partitionIds.stream().sorted((o1, o2) -> Integer.compare(o2, o1)) // reverse order, to minimize array resizing in {@link SparseConcurrentList}
+          .forEach(this::addStoragePartition);
+    }
+  }
+
+  protected synchronized void restoreStoragePartitions() {
+    restoreStoragePartitions(true, true);
   }
 
   public boolean isMetadataMigrationCompleted() {

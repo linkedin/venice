@@ -11,12 +11,10 @@ import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.ingestion.IngestionReportListener;
 import com.linkedin.venice.ingestion.IngestionRequestClient;
-import com.linkedin.venice.ingestion.IngestionService;
 import com.linkedin.venice.ingestion.IngestionStorageMetadataService;
-import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
+import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
-import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
@@ -35,14 +33,9 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ComplementSet;
-import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.netty.buffer.ByteBuf;
-import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Comparator;
@@ -53,12 +46,10 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.Charsets;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.client.store.ClientFactory.*;
-import static com.linkedin.venice.ingestion.IngestionUtils.*;
 import static java.lang.Thread.*;
 
 
@@ -148,46 +139,33 @@ public class DaVinciBackend implements Closeable {
       int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
       int ingestionListenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
       ingestionRequestClient = new IngestionRequestClient(ingestionServicePort);
-      try {
-        isolatedIngestionService = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(ingestionServicePort));
-        // Wait for server in forked child process to bind the listening port.
-        waitPortBinding(ingestionServicePort, 100);
 
-        // Isolated ingestion listener handles status report from isolated ingestion service.
-        isolatedIngestionListener = new VeniceNotifier() {
-          @Override
-          public void completed(String kafkaTopic, int partitionId, long offset) {
-            VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-            if (versionBackend != null) {
-              versionBackend.completeSubPartitionByIsolatedIngestionService(partitionId);
-            }
+      isolatedIngestionService = IngestionUtils.startForkedIngestionProcess(configLoader);
+
+      // Isolated ingestion listener handles status report from isolated ingestion service.
+      isolatedIngestionListener = new VeniceNotifier() {
+        @Override
+        public void completed(String kafkaTopic, int partitionId, long offset) {
+          VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+          if (versionBackend != null) {
+            versionBackend.completeSubPartitionByIsolatedIngestionService(partitionId);
           }
-        };
-
-        InitializationConfigs initializationConfigs = new InitializationConfigs();
-        initializationConfigs.aggregatedConfigs = new HashMap<>();
-        configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
-        logger.info("Sending initialization aggregatedConfigs to child process: " + initializationConfigs.aggregatedConfigs);
-        byte[] content = serializeInitializationConfigs(initializationConfigs);
-        HttpRequest httpRequest = ingestionRequestClient.buildHttpRequest(IngestionAction.INIT, content);
-        FullHttpResponse response = ingestionRequestClient.sendRequest(httpRequest);
-        if (response.status() != HttpResponseStatus.OK) {
-          ByteBuf message = response.content();
-          String stringMessage = message.readCharSequence(message.readableBytes(), Charsets.UTF_8).toString();
-          throw new VeniceException("Isolated ingestion service initialization failed: " + stringMessage);
         }
-        // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
-        response.release();
-        logger.info("Isolated ingestion service initialization finished.");
+      };
 
+
+      try {
         ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort);
         ingestionReportListener.setIngestionNotifier(isolatedIngestionListener);
         ingestionReportListener.setMetricsRepository(metricsRepository);
-        ingestionReportListener.setStorageMetadataService((IngestionStorageMetadataService)storageMetadataService);
+        ingestionReportListener.setStorageMetadataService((IngestionStorageMetadataService) storageMetadataService);
+        ingestionReportListener.setConfigLoader(configLoader);
         ingestionReportListener.startInner();
       } catch (Exception e) {
-        throw new VeniceException("Exception caught during initialization of ingestion service.", e);
+        throw new VeniceException("Unable to start ingestion report listener with exception.", e);
       }
+
+
       // Send out subscribe requests to child process to complete bootstrap process.
       bootstrapWithIngestionIsolation(bootstrapStoreNameToVersionPartitionsMap);
     } else {
@@ -252,6 +230,9 @@ public class DaVinciBackend implements Closeable {
     bootstrapStoreNameToVersionPartitionsMap.forEach((name, versionPartitionPair) -> {
       StoreBackend store = getStoreOrThrow(name);
       Version bootstrapVersion = versionPartitionPair.getFirst();
+      versionPartitionPair.getSecond().forEach(partitionId -> {
+        ingestionReportListener.addVersionPartitionToIngestionMap(bootstrapVersion.kafkaTopicName(), partitionId);
+      });
       logger.info("Bootstrap sending subscribe request to isolated ingestion service" + name + " " + bootstrapVersion + " " + versionPartitionPair.getSecond().toString());
       store.subscribe(ComplementSet.wrap(versionPartitionPair.getSecond()), Optional.of(bootstrapVersion));
     });
@@ -326,6 +307,10 @@ public class DaVinciBackend implements Closeable {
 
   StorageMetadataService getStorageMetadataService() {
     return storageMetadataService;
+  }
+
+  public IngestionReportListener getIngestionReportListener() {
+    return ingestionReportListener;
   }
 
   StoreIngestionService getIngestionService() {

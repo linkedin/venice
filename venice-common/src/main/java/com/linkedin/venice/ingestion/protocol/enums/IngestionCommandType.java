@@ -14,7 +14,8 @@ public enum IngestionCommandType {
   KILL_CONSUMPTION(2),
   RESET_CONSUMPTION(3),
   IS_PARTITION_CONSUMING(4),
-  DROP_STORE(5);
+  DROP_STORE(5),
+  HEARTBEAT(6);
 
 
   private final int value;

@@ -63,9 +63,11 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
         }
       }
     }
-    if (storeConfig.isRestoreStoragePartitions()) {
-      // restoreStoragePartitions will create metadata partition if not exist.
-      restoreStoragePartitions();
+
+    // restoreStoragePartitions will create metadata partition if not exist.
+    restoreStoragePartitions(storeConfig.isRestoreMetadataPartition(), storeConfig.isRestoreDataPartitions());
+
+    if (storeConfig.isRestoreMetadataPartition()) {
       // Persist RocksDB table format option used in building the storage engine.
       persistStoreEngineConfig();
     }
@@ -104,8 +106,8 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   public void drop() {
     super.drop();
 
-    // We only drop the storage engine folder when open in regular mode.
-    if (storeConfig.isRestoreStoragePartitions()) {
+    // Whoever is in control of the metadata partition should be responsible of dropping the storage engine folder.
+    if (storeConfig.isRestoreMetadataPartition()) {
       // Remove store db dir
       File storeDbDir = new File(storeDbPath);
       if (storeDbDir.exists()) {

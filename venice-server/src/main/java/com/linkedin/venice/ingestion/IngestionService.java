@@ -13,7 +13,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -24,12 +23,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.locks.ReentrantLock;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ingestion.IngestionUtils.*;
@@ -52,9 +46,6 @@ public class IngestionService extends AbstractVeniceService {
   private KafkaStoreIngestionService storeIngestionService = null;
   private StorageMetadataService storageMetadataService = null;
   private boolean isInitiated = false;
-  private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
-  private final Map<String, Map<Integer, Long>> readyToServePartitionMap = new VeniceConcurrentHashMap<>();
-  private final ReentrantLock updateLock = new ReentrantLock();
 
   private final int servicePort;
   private IngestionRequestClient reportClient;
@@ -114,28 +105,6 @@ public class IngestionService extends AbstractVeniceService {
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Ingestion Service", e);
     }
-  }
-
-  public void addIngestionPartition(String topicName, int partitionId) {
-    updateLock.lock();
-    Set<Integer> activePartitions = topicNameToPartitionSetMap.getOrDefault(topicName, new HashSet<>());
-    activePartitions.add(partitionId);
-    topicNameToPartitionSetMap.put(topicName, activePartitions);
-    updateLock.unlock();
-  }
-
-  public void removeIngestionPartition(String topicName, int partitionId, long offset) {
-    updateLock.lock();
-    Set<Integer> activePartitions = topicNameToPartitionSetMap.getOrDefault(topicName, new HashSet<>());
-    activePartitions.remove(partitionId);
-    topicNameToPartitionSetMap.put(topicName, activePartitions);
-    Map<Integer, Long> readyPartitions = readyToServePartitionMap.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
-    readyPartitions.put(partitionId, offset);
-    readyToServePartitionMap.put(topicName, readyPartitions);
-    updateLock.unlock();
-
-    logger.info("Close partition " + partitionId + " of topic " + topicName);
-    reportIngestionCompletion(topicName, partitionId, offset);
   }
 
   public void setConfigLoader(VeniceConfigLoader configLoader) {
@@ -202,17 +171,8 @@ public class IngestionService extends AbstractVeniceService {
     return metricsRepository;
   }
 
-  public static void main(String[] args) throws Exception {
-    logger.info("Capture arguments: " + Arrays.toString(args));
-    if (args.length != 1) {
-      throw new VeniceException("Expected one arguments: port. Got " + args.length);
-    }
-    int port = Integer.parseInt(args[0]);
-    IngestionService ingestionService = new IngestionService(port);
-    ingestionService.startInner();
-  }
 
-  private void reportIngestionCompletion(String topicName, int partitionId, long offset) {
+  public void reportIngestionCompletion(String topicName, int partitionId, long offset) {
     // Send ingestion status change report to report listener.
     IngestionTaskReport report = new IngestionTaskReport();
     report.isComplete = true;
@@ -232,12 +192,39 @@ public class IngestionService extends AbstractVeniceService {
       throw new VeniceException("StoreVersionState does not exist for version " + topicName);
     }
     byte[] serializedReport = serializeIngestionTaskReport(report);
-    storageService.getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
     try {
       logger.info("Sending ingestion completion report for version:  " + topicName + " partition id:" + partitionId + " offset:" + offset);
       reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));
     } catch (Exception e) {
       logger.warn("Failed to send report to application with exception: " + e.getMessage());
     }
+  }
+
+  public void reportIngestionError(String topicName, int partitionId, Exception e) {
+    // Send ingestion status change report to report listener.
+    IngestionTaskReport report = new IngestionTaskReport();
+    report.isComplete = false;
+    report.isEndOfPushReceived = false;
+    report.isError = true;
+    report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
+    report.topicName = topicName;
+    report.partitionId = partitionId;
+    byte[] serializedReport = serializeIngestionTaskReport(report);
+    try {
+      logger.info("Sending ingestion error report for version:  " + topicName + " partition id:" + partitionId);
+      reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));
+    } catch (Exception ex) {
+      logger.warn("Failed to send report to application with exception: " + ex.getMessage());
+    }
+  }
+
+  public static void main(String[] args) throws Exception {
+    logger.info("Capture arguments: " + Arrays.toString(args));
+    if (args.length != 1) {
+      throw new VeniceException("Expected one arguments: port. Got " + args.length);
+    }
+    int port = Integer.parseInt(args[0]);
+    IngestionService ingestionService = new IngestionService(port);
+    ingestionService.startInner();
   }
 }

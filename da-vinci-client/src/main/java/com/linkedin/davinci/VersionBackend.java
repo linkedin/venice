@@ -3,6 +3,7 @@ package com.linkedin.davinci;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.IngestionRequestClient;
+import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
@@ -49,8 +50,12 @@ public class VersionBackend {
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
     if (this.config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
-      // Explicitly disable the store restore.
-      this.config.setRestoreStoragePartitions(false);
+      /**
+       * Explicitly disable the store restore since we don't want to open other partitions that should be controlled by
+       * child process. All the finished partitions will be closed by child process and reopened in parent process.
+       */
+      this.config.setRestoreDataPartitions(false);
+      this.config.setRestoreMetadataPartition(false);
     }
     this.partitioner = PartitionUtils.getVenicePartitioner(version.getPartitionerConfig());
     this.subPartitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
@@ -209,26 +214,8 @@ public class VersionBackend {
     }
 
     if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
-      // Send ingestion request to ingestion service.
-      IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
-      ingestionTaskCommand.commandType = IngestionCommandType.START_CONSUMPTION.getValue();
-      ingestionTaskCommand.topicName = version.kafkaTopicName();
-      ingestionTaskCommand.partitionId = subPartition;
-      byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
-      try {
-        IngestionRequestClient client = backend.getIngestionRequestClient();
-        HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
-        FullHttpResponse response = client.sendRequest(httpRequest);
-        byte[] responseContent = new byte[response.content().readableBytes()];
-        response.content().readBytes(responseContent);
-        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
-        logger.info("Received ingestion task report response: " + ingestionTaskReport);
-        // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
-        response.release();
-      } catch (Exception e) {
-        logger.info("Received exception in start consumption: " + e);
-        throw new VeniceException(e.getMessage());
-      }
+      backend.getIngestionReportListener().addVersionPartitionToIngestionMap(version.kafkaTopicName(), subPartition);
+      IngestionUtils.subscribeTopicPartition(backend.getIngestionRequestClient(), version.kafkaTopicName(), subPartition);
     } else {
       // Create partition in storage engine for ingestion.
       storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
