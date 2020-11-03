@@ -29,6 +29,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -43,6 +44,7 @@ import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.io.FileUtils;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.log4j.Logger;
 import org.apache.samza.SamzaException;
@@ -54,7 +56,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 public class VeniceSystemProducer implements SystemProducer {
   private static final Logger LOGGER = Logger.getLogger(VeniceSystemProducer.class);
-  private static final String FSBASE_PATH = "/tmp/d2/systemproducer";
+  private static  String FSBASE_PATH;
 
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
   private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
@@ -81,6 +83,8 @@ public class VeniceSystemProducer implements SystemProducer {
   private final VeniceSystemFactory factory;
   private final Optional<String> partitioners;
   private final Time time;
+  private final String fsBasePath;
+
 
   // Mutable, lazily initialized, state
   private Schema keySchema;
@@ -123,6 +127,7 @@ public class VeniceSystemProducer implements SystemProducer {
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
     this.time = time;
+    this.fsBasePath = "./tmp/d2/" + storeName;
   }
 
   protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier) {
@@ -182,7 +187,8 @@ public class VeniceSystemProducer implements SystemProducer {
         .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
         .setIsSSLEnabled(sslFactory.isPresent())
         .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
-        .setEnableSaveUriDataOnDisk(false)
+        .setFsBasePath(fsBasePath)
+        .setEnableSaveUriDataOnDisk(true)
         .build();
     D2ClientUtils.startClient(d2Client);
     // Discover cluster
@@ -290,6 +296,12 @@ public class VeniceSystemProducer implements SystemProducer {
       controllerClient.close();
     }
     D2ClientUtils.shutdownClient(d2Client);
+    try {
+      FileUtils.deleteDirectory(new File(fsBasePath));
+    } catch (IOException e) {
+      LOGGER.info("Error in cleaning up: " + fsBasePath);
+    }
+
     if (hybridStoreQuotaMonitor.isPresent()) {
       hybridStoreQuotaMonitor.get().close();
     }
