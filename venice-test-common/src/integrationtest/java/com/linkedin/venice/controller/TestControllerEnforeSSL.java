@@ -24,7 +24,7 @@ public class TestControllerEnforeSSL {
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VALUE_SCHEMA = "\"string\"";
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND, invocationCount = 100)
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testInsecureRouteFailWhenEnforcingSSL() {
     /**
      * Once controller enforce SSL, all routes except cluster/master controller discovery in insecure port will fail.
