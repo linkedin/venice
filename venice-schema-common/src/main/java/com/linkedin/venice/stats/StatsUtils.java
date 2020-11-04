@@ -1,4 +1,4 @@
-package com.linkedin.venice.router.stats;
+package com.linkedin.venice.stats;
 
 public class StatsUtils {
 

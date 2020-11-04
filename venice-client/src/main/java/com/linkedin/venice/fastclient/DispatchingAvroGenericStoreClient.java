@@ -99,12 +99,14 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+    requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
+
     String uri = composeURIForSingleGet(requestContext, key);
     int currentVersion = requestContext.currentVersion;
     int partitionId = requestContext.partitionId;
 
     long timestampBeforeSendingRequest = System.nanoTime();
-    List<String> replicas = metadata.getReplicas(currentVersion, partitionId, requiredReplicaCount);
+    List<String> replicas = metadata.getReplicas(requestContext.requestId, currentVersion, partitionId, requiredReplicaCount);
     if (replicas.isEmpty()) {
       requestContext.noAvailableReplica = true;
       throw new VeniceClientException("No available replica for store: " + getStoreName() + ", version: "
@@ -118,20 +120,22 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
 
     List<CompletableFuture<TransportClientResponse>> transportFutures = new LinkedList<>();
+    requestContext.requestSentTimestampNS = System.nanoTime();
     for (String replica : replicas) {
+      CompletableFuture<HttpStatus> replicaRequestFuture = metadata.sendRequestToInstance(replica, currentVersion, partitionId);
+      requestContext.replicaRequestMap.put(replica, replicaRequestFuture);
       try {
-        metadata.sentRequestToInstance(replica, currentVersion, partitionId);
         String url = replica + uri;
         CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(url);
         transportFutures.add(transportFuture);
-        transportFuture.handleAsync((response, throwable) -> {
+        transportFuture.whenCompleteAsync((response, throwable) -> {
           if (throwable != null) {
             HttpStatus statusCode = (throwable instanceof VeniceClientHttpException) ?
                 HttpStatus.fromCode(((VeniceClientHttpException) throwable).getHttpStatus()) :
-                HttpStatus.S_500_INTERNAL_SERVER_ERROR;
-            metadata.receivedResponseFromInstance(replica, currentVersion, partitionId, statusCode);
+                HttpStatus.S_503_SERVICE_UNAVAILABLE;
+            replicaRequestFuture.complete(statusCode);
           } else if (null == response) {
-            metadata.receivedResponseFromInstance(replica, currentVersion, partitionId, HttpStatus.S_404_NOT_FOUND);
+            replicaRequestFuture.complete(HttpStatus.S_404_NOT_FOUND);
             if (!receivedSuccessfulResponse.getAndSet(true)) {
               requestContext.requestSubmissionToResponseHandlingTime = LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
 
@@ -139,7 +143,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             }
           } else {
             try {
-              metadata.receivedResponseFromInstance(replica, currentVersion, partitionId, HttpStatus.S_200_OK);
+              replicaRequestFuture.complete(HttpStatus.S_200_OK);
               if (!receivedSuccessfulResponse.getAndSet(true)) {
                 requestContext.requestSubmissionToResponseHandlingTime = LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
                 CompressionStrategy compressionStrategy = response.getCompressionStrategy();
@@ -159,11 +163,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
               }
             }
           }
-          return null;
         }, deserializationExecutor);
       } catch (Exception e) {
         LOGGER.error("Received exception while sending request to replica: " + replica, e);
-        metadata.receivedResponseFromInstance(replica, currentVersion, partitionId, HttpStatus.S_503_SERVICE_UNAVAILABLE);
+        replicaRequestFuture.complete(HttpStatus.S_503_SERVICE_UNAVAILABLE);
       }
     }
     if (transportFutures.isEmpty()) {

@@ -1,17 +1,13 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.r2.transport.common.Client;
-import com.linkedin.r2.transport.common.TransportClientFactory;
-import com.linkedin.r2.transport.common.bridge.client.TransportClientAdapter;
-import com.linkedin.r2.transport.http.client.HttpClientFactory;
-import com.linkedin.restli.common.HttpStatus;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
+import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -34,13 +30,11 @@ import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -124,19 +118,24 @@ public class AvroStoreClientEndToEndTest {
   @Test
   public void testSingleGetWithoutDualRead() throws Exception {
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-    StoreMetadata storeMetadata = new HelixBasedStoreMetadata(
-        routerWrapper.getMetaDataRepository(),
-        routerWrapper.getSchemaRepository(),
-        routerWrapper.getOnlineInstanceFinder(),
-        storeName
-    );
+
     // Test generic store client
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
     clientConfigBuilder.setStoreName(storeName);
     clientConfigBuilder.setR2Client(r2Client);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient = ClientFactory.getGenericStoreClient(storeMetadata, clientConfigBuilder.build());
+
+
+    ClientConfig clientConfig = clientConfigBuilder.build();
+    StoreMetadata storeMetadata = new HelixBasedStoreMetadata(
+        routerWrapper.getMetaDataRepository(),
+        routerWrapper.getSchemaRepository(),
+        routerWrapper.getOnlineInstanceFinder(),
+        storeName,
+        clientConfig
+    );
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient = ClientFactory.getGenericStoreClient(storeMetadata, clientConfig);
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = genericFastClient.get(key).get();
@@ -160,8 +159,7 @@ public class AvroStoreClientEndToEndTest {
   @Test
   public void testSingleGetWithDualRead() throws Exception {
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-    StoreMetadata storeMetadata = new HelixBasedStoreMetadata(routerWrapper.getMetaDataRepository(), routerWrapper.getSchemaRepository(),
-        routerWrapper.getOnlineInstanceFinder(), storeName);
+
     // Test generic store client
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
     clientConfigBuilder.setStoreName(storeName);
@@ -171,7 +169,10 @@ public class AvroStoreClientEndToEndTest {
     clientConfigBuilder.setDualReadEnabled(true);
     clientConfigBuilder.setGenericThinClient(getGenericThinClient());
 
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient = ClientFactory.getGenericStoreClient(storeMetadata, clientConfigBuilder.build());
+    ClientConfig clientConfig = clientConfigBuilder.build();
+    StoreMetadata storeMetadata = new HelixBasedStoreMetadata(routerWrapper.getMetaDataRepository(), routerWrapper.getSchemaRepository(),
+        routerWrapper.getOnlineInstanceFinder(), storeName, clientConfig);
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient = ClientFactory.getGenericStoreClient(storeMetadata, clientConfig);
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = genericFastClient.get(key).get();
@@ -187,7 +188,7 @@ public class AvroStoreClientEndToEndTest {
     );
   }
 
-  private static class HelixBasedStoreMetadata implements StoreMetadata {
+  private static class HelixBasedStoreMetadata extends AbstractStoreMetadata {
     private final HelixReadOnlyStoreRepository storeRepository;
     private final HelixReadOnlySchemaRepository schemaRepository;
     private final OnlineInstanceFinder onlineInstanceFinder;
@@ -196,7 +197,9 @@ public class AvroStoreClientEndToEndTest {
     public HelixBasedStoreMetadata(HelixReadOnlyStoreRepository storeRepository,
         HelixReadOnlySchemaRepository schemaRepository,
         OnlineInstanceFinder onlineInstanceFinder,
-        String storeName) {
+        String storeName,
+        ClientConfig clientConfig) {
+      super(clientConfig);
       this.storeRepository = storeRepository;
       this.schemaRepository = schemaRepository;
       this.onlineInstanceFinder = onlineInstanceFinder;
@@ -232,29 +235,10 @@ public class AvroStoreClientEndToEndTest {
     }
 
     @Override
-    public List<String> getReplicas(int version, int partitionId, int requiredReplicaCount) {
+    public List<String> getReplicas(int version, int partitionId) {
       String resource = Version.composeKafkaTopic(storeName, version);
       List<Instance> instances = onlineInstanceFinder.getReadyToServeInstances(resource, partitionId);
-      List<String> replicas = new ArrayList<>();
-      int cnt = 0;
-      for (Instance instance : instances) {
-        String url = instance.getUrl(true);
-        replicas.add(url);
-        if (++cnt == requiredReplicaCount) {
-          break;
-        }
-      }
-      return replicas;
-    }
-
-    @Override
-    public void sentRequestToInstance(String instance, int version, int partitionId) {
-      // do nothing
-    }
-
-    @Override
-    public void receivedResponseFromInstance(String instance, int version, int partitionId, HttpStatus statusCode) {
-      // do nothing
+      return instances.stream().map(instance -> instance.getUrl(true)).collect(Collectors.toList());
     }
 
     @Override
