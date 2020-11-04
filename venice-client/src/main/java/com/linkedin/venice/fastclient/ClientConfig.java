@@ -5,11 +5,13 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.stats.ClientStats;
+import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -21,6 +23,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final Class<T> specificValueClass;
   private final String storeName;
   private final Map<RequestType, ClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
+  private final ClusterStats clusterStats;
   private final Executor deserializationExecutor;
   /**
    * For dual-read support.
@@ -28,6 +31,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final boolean dualReadEnabled;
   private final AvroGenericStoreClient<K, V> genericThinClient;
   private final AvroSpecificStoreClient<K, T> specificThinClient;
+
+  /**
+   * For Client Routing.
+   * Please check {@link com.linkedin.venice.fastclient.meta.InstanceHealthMonitor} to find more details.
+   */
+  private final long routingLeakedRequestCleanupThresholdMS;
+  private final long routingQuotaExceededRequestCounterResetDelayMS;
+  private final long routingErrorRequestCounterResetDelayMS;
+  private final long routingUnavailableRequestCounterResetDelayMS;
+  private final int routingPendingRequestCounterInstanceBlockThreshold;
 
   private ClientConfig(String storeName,
       Client r2Client,
@@ -38,7 +51,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       Executor deserializationExecutor,
       boolean dualReadEnabled,
       AvroGenericStoreClient<K, V> genericThinClient,
-      AvroSpecificStoreClient<K, T> specificThinClient) {
+      AvroSpecificStoreClient<K, T> specificThinClient,
+      long routingLeakedRequestCleanupThresholdMS,
+      long routingQuotaExceededRequestCounterResetDelayMS,
+      long routingErrorRequestCounterResetDelayMS,
+      long routingUnavailableRequestCounterResetDelayMS,
+      int routingPendingRequestCounterInstanceBlockThreshold) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -52,6 +70,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     for (RequestType requestType : RequestType.values()) {
       clientStatsMap.put(requestType, ClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
     }
+    this.clusterStats = new ClusterStats(metricsRepository, storeName);
     this.speculativeQueryEnabled = speculativeQueryEnabled;
     this.specificValueClass = specificValueClass;
     this.deserializationExecutor = deserializationExecutor;
@@ -62,10 +81,25 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       throw new VeniceClientException("Either param: specificThinClient or param: genericThinClient"
           + " should be specified when dual read is enabled");
     }
+
+    this.routingLeakedRequestCleanupThresholdMS = routingLeakedRequestCleanupThresholdMS > 0 ?
+        routingLeakedRequestCleanupThresholdMS : TimeUnit.SECONDS.toMillis(30); // 30 seconds by default
+    this.routingQuotaExceededRequestCounterResetDelayMS = routingQuotaExceededRequestCounterResetDelayMS > 0 ?
+        routingQuotaExceededRequestCounterResetDelayMS : 50; // 50 ms by default
+    this.routingErrorRequestCounterResetDelayMS = routingErrorRequestCounterResetDelayMS > 0 ?
+        routingErrorRequestCounterResetDelayMS : TimeUnit.SECONDS.toMillis(10); // 10 seconds
+    this.routingUnavailableRequestCounterResetDelayMS = routingUnavailableRequestCounterResetDelayMS > 0 ?
+        routingUnavailableRequestCounterResetDelayMS : TimeUnit.MINUTES.toMicros(1); // 1 min
+    this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold > 0 ?
+        routingPendingRequestCounterInstanceBlockThreshold : 50;
   }
 
   public String getStoreName() {
     return storeName;
+  }
+
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
   }
 
   public Client getR2Client() {
@@ -74,6 +108,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public ClientStats getStats(RequestType requestType) {
     return clientStatsMap.get(requestType);
+  }
+
+  public ClusterStats getClusterStats() {
+    return clusterStats;
   }
 
   public boolean isSpeculativeQueryEnabled() {
@@ -100,6 +138,26 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return specificThinClient;
   }
 
+  public long getRoutingLeakedRequestCleanupThresholdMS() {
+    return routingLeakedRequestCleanupThresholdMS;
+  }
+
+  public long getRoutingQuotaExceededRequestCounterResetDelayMS() {
+    return routingQuotaExceededRequestCounterResetDelayMS;
+  }
+
+  public long getRoutingErrorRequestCounterResetDelayMS() {
+    return routingErrorRequestCounterResetDelayMS;
+  }
+
+  public long getRoutingUnavailableRequestCounterResetDelayMS() {
+    return routingUnavailableRequestCounterResetDelayMS;
+  }
+
+  public int getRoutingPendingRequestCounterInstanceBlockThreshold() {
+    return routingPendingRequestCounterInstanceBlockThreshold;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -111,6 +169,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean dualReadEnabled = false;
     private AvroGenericStoreClient<K, V> genericThinClient;
     private AvroSpecificStoreClient<K, T> specificThinClient;
+
+    private long routingLeakedRequestCleanupThresholdMS = -1;
+    private long routingQuotaExceededRequestCounterResetDelayMS = -1;
+    private long routingErrorRequestCounterResetDelayMS = -1;
+    private long routingUnavailableRequestCounterResetDelayMS = -1;
+    private int routingPendingRequestCounterInstanceBlockThreshold = -1;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -162,6 +226,32 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setRoutingLeakedRequestCleanupThresholdMS(long routingLeakedRequestCleanupThresholdMS) {
+      this.routingLeakedRequestCleanupThresholdMS = routingLeakedRequestCleanupThresholdMS;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setRoutingQuotaExceededRequestCounterResetDelayMS(long routingQuotaExceededRequestCounterResetDelayMS) {
+      this.routingQuotaExceededRequestCounterResetDelayMS = routingQuotaExceededRequestCounterResetDelayMS;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setRoutingErrorRequestCounterResetDelayMS(long routingErrorRequestCounterResetDelayMS) {
+      this.routingErrorRequestCounterResetDelayMS = routingErrorRequestCounterResetDelayMS;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setRoutingUnavailableRequestCounterResetDelayMS(long routingUnavailableRequestCounterResetDelayMS) {
+      this.routingUnavailableRequestCounterResetDelayMS = routingUnavailableRequestCounterResetDelayMS;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setRoutingPendingRequestCounterInstanceBlockThreshold(
+        int routingPendingRequestCounterInstanceBlockThreshold) {
+      this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold;
+      return this;
+    }
+
     public ClientConfig<K, V, T> build() {
       return new ClientConfig<>(storeName,
           r2Client,
@@ -172,7 +262,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           deserializationExecutor,
           dualReadEnabled,
           genericThinClient,
-          specificThinClient);
+          specificThinClient,
+          routingLeakedRequestCleanupThresholdMS,
+          routingQuotaExceededRequestCounterResetDelayMS,
+          routingErrorRequestCounterResetDelayMS,
+          routingUnavailableRequestCounterResetDelayMS,
+          routingPendingRequestCounterInstanceBlockThreshold);
     }
   }
 }

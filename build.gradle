@@ -53,6 +53,7 @@ ext.libraries = [ // Groovy map literal
                   routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
                   routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
                   netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:' + ddsStorageCoreVersion,
+                  ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
                   oss: 'org.sonatype.oss:oss-parent:7',
                   asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
                   scalaLogging: 'com.typesafe.scala-logging:scala-logging_2.11:3.9.0',

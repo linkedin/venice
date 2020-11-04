@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
+import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;

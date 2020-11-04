@@ -20,6 +20,8 @@ dependencies {
 
   implementation libraries.r2Client
 
+  implementation libraries.ddsStorageCommonBase
+
   testImplementation project(':venice-common')
   testImplementation project(':venice-test-common')
   testImplementation libraries.kafkaClients

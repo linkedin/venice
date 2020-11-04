@@ -2,6 +2,7 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
+import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;

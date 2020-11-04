@@ -61,11 +61,10 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       }
       return response;
     });
-    requestFuture.handle((response, throwable) -> {
+    requestFuture.whenComplete((response, throwable) -> {
       if (throwable == null) {
         valueFuture.complete(response);
       }
-      return null;
     });
 
     /**
@@ -89,7 +88,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     CompletableFuture<V> thinClientFuture = sendRequest(() -> thinClient.get(key),
         startTimeNS, thinClientError, thinClientLatency, valueFuture);
 
-    CompletableFuture.allOf(fastClientFuture, thinClientFuture).handle( (response, throwable) -> {
+    CompletableFuture.allOf(fastClientFuture, thinClientFuture).whenComplete( (response, throwable) -> {
       /**
        * Throw exception only if both fast-client and thin-client return error.
        */
@@ -109,8 +108,6 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
           clientStatsForSingleGet.recordFastClientSlowerRequest();
         }
       }
-
-      return null;
     });
 
     return valueFuture;
