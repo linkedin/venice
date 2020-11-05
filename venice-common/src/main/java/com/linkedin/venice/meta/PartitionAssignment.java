@@ -24,8 +24,8 @@ public class PartitionAssignment {
   public PartitionAssignment(String topic, int numberOfPartition) {
     this.topic = topic;
     if (numberOfPartition <= 0) {
-      throw new VeniceException(
-          "Expected number of partition should be larger than 0. Current value:" + numberOfPartition);
+      throw new VeniceException("Expected number of partition should be larger than 0 for resource '" + topic
+          + "'. Current value:" + numberOfPartition);
     }
     this.expectedNumberOfPartitions = numberOfPartition;
     idToPartitionMap = new HashMap<>();
