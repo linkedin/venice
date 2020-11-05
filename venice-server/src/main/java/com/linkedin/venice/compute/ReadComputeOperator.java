@@ -23,4 +23,12 @@ public interface ReadComputeOperator {
       record.put(field, result);
     }
   }
+
+  default void putDefaultResult(GenericRecord record, String field, boolean useV1) {
+    putResult(record, field, useV1, 0.0d, 0.0f);
+  }
+
+  String getResultFieldName(ComputeOperation op);
+
+  String getOperatorFieldName(ComputeOperation op);
 }

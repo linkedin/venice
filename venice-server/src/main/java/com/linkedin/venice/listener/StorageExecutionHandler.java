@@ -76,6 +76,9 @@ import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
+
 /***
  * {@link StorageExecutionHandler} will take the incoming {@link RouterRequest}, and delegate the lookup request to
  * a thread pool {@link #executor}, which is being shared by all the requests.
@@ -588,7 +591,15 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     // go through all operation
     for (Object operation : operations) {
       ComputeOperation op = (ComputeOperation) operation;
-      computeOperators.get(op.operationType).compute(computeRequestVersion, op, reuseValueRecord, reuseResultRecord, computationErrorMap, globalContext, response);
+      ReadComputeOperator operator = computeOperators.get(op.operationType);
+      String fieldName = operator.getOperatorFieldName(op);
+      if (reuseValueRecord.get(fieldName) == null) {
+        String msg = "Failed to execute compute request as the field " + fieldName + " does not exist.";
+        operator.putDefaultResult(reuseResultRecord, operator.getResultFieldName(op), computeRequestVersion == COMPUTE_REQUEST_VERSION_V1);
+        computationErrorMap.put(operator.getResultFieldName(op), msg);
+        continue;
+      }
+      operator.compute(computeRequestVersion, op, reuseValueRecord, reuseResultRecord, computationErrorMap, globalContext, response);
     }
 
     // fill the empty field in result schema
