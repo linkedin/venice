@@ -36,4 +36,14 @@ public class HadamardProductOperator implements ReadComputeOperator  {
       computationErrorMap.put(hadamardProduct.resultFieldName.toString(), e.getMessage());
     }
   }
+
+  public String getOperatorFieldName(ComputeOperation op) {
+    HadamardProduct operation = (HadamardProduct) op.operation;
+    return operation.field.toString();
+  }
+
+  public String getResultFieldName(ComputeOperation op) {
+    HadamardProduct operation = (HadamardProduct) op.operation;
+    return operation.resultFieldName.toString();
+  }
 }

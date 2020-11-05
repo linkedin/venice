@@ -63,4 +63,14 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
       computationErrorMap.put(cosineSimilarity.resultFieldName.toString(), e.getMessage());
     }
   }
+
+  public String getOperatorFieldName(ComputeOperation op) {
+    CosineSimilarity operation = (CosineSimilarity) op.operation;
+    return operation.field.toString();
+  }
+
+  public String getResultFieldName(ComputeOperation op) {
+    CosineSimilarity operation = (CosineSimilarity) op.operation;
+    return operation.resultFieldName.toString();
+  }
 }

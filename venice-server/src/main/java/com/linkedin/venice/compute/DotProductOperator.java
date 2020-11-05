@@ -44,4 +44,15 @@ public class DotProductOperator implements ReadComputeOperator {
       computationErrorMap.put(dotProduct.resultFieldName.toString(), e.getMessage());
     }
   }
+
+  public String getOperatorFieldName(ComputeOperation op) {
+    DotProduct operation = (DotProduct) op.operation;
+    return operation.field.toString();
+  }
+
+  public String getResultFieldName(ComputeOperation op) {
+    DotProduct operation = (DotProduct) op.operation;
+    return operation.resultFieldName.toString();
+  }
+
 }
