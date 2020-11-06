@@ -414,8 +414,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return readOnlyForBatchOnlyStoreEnabled;
   }
 
-  public boolean isQuotaEnforcementDisabled() {
-    return !quotaEnforcementEnabled;
+  public boolean isQuotaEnforcementEnabled() {
+    return quotaEnforcementEnabled;
   }
 
   public long getNodeCapacityInRcu(){
