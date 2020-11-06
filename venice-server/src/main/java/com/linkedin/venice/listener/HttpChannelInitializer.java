@@ -65,18 +65,26 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerPort());
     this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
-    this.quotaEnforcer = new ReadQuotaEnforcementHandler(
-        serverConfig.getNodeCapacityInRcu(), storeMetadataRepository, routingRepository, nodeId, quotaUsageStats);
-    if (serverConfig.isQuotaEnforcementDisabled()) {
-      this.quotaEnforcer.disableEnforcement();
-    }
+    if (serverConfig.isQuotaEnforcementEnabled()) {
+      this.quotaEnforcer = new ReadQuotaEnforcementHandler(serverConfig.getNodeCapacityInRcu(), storeMetadataRepository,
+          routingRepository, nodeId, quotaUsageStats);
 
-    //Token Bucket Stats for a store must be initialized when that store is created
-    this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);
-    storeMetadataRepository.registerStoreDataChangedListener(quotaTokenBucketStats);
-    for (Store store : storeMetadataRepository.getAllStores()) {
-      this.quotaTokenBucketStats.initializeStatsForStore(store.getName());
+      //Token Bucket Stats for a store must be initialized when that store is created
+      this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);
+      storeMetadataRepository.registerStoreDataChangedListener(quotaTokenBucketStats);
+      for (Store store : storeMetadataRepository.getAllStores()) {
+        this.quotaTokenBucketStats.initializeStatsForStore(store.getName());
+      }
+    } else {
+      this.quotaEnforcer = null;
     }
+  }
+
+  /*
+    Test only
+   */
+  protected ReadQuotaEnforcementHandler getQuotaEnforcer() {
+    return quotaEnforcer;
   }
 
   @Override
@@ -102,8 +110,15 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
 
     ch.pipeline()
-        .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.isComputeFastAvroEnabled(), serverConfig.getStoreToEarlyTerminationThresholdMSMap()))
-        .addLast(quotaEnforcer)
+        .addLast(new RouterRequestHttpHandler(statsHandler,
+            serverConfig.isComputeFastAvroEnabled(),
+            serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
+
+    if (quotaEnforcer != null) {
+      ch.pipeline().addLast(quotaEnforcer);
+    }
+
+    ch.pipeline()
         .addLast(requestHandler)
         .addLast(new ErrorCatchingHandler());
   }
