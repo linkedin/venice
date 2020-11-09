@@ -22,7 +22,7 @@ apply plugin: 'idea'
 def internalKafkaGroup = 'com.linkedin.kafka'
 def internalKafkaVersion = '2.3.0.21'
 
-def ddsStorageCoreVersion = '5.4.74'
+def ddsStorageCoreVersion = '9.0.0'
 def gobblinVersion = '0.15.0-dev-9467'
 
 ext.libraries = [ // Groovy map literal
