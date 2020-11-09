@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -71,8 +72,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     Properties properties = getKafkaPropertiesFromVeniceProps(props);
 
     // TODO : For sending control message, this is not required. Move this higher in the stack.
-    validateProp(properties, strictConfigs, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
-    validateProp(properties, strictConfigs, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
+    validateClassProp(properties, strictConfigs, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
+    validateClassProp(properties, strictConfigs, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
 
     // This is to guarantee ordering, even in the face of failures.
     validateProp(properties, strictConfigs, ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1");
@@ -141,6 +142,28 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
           "requiredConfigKey: '" + requiredConfigKey +
           "', requiredConfigValue: '" + requiredConfigValue +
           "', actualConfigValue: '" + actualConfigValue + "'.");
+    }
+  }
+
+  /**
+   * Validate and load Class properties.
+   */
+  private void validateClassProp(Properties properties, boolean strictConfigs, String requiredConfigKey, String requiredConfigValue) {
+    validateProp(properties, strictConfigs, requiredConfigKey, requiredConfigValue);
+    String className = properties.getProperty(requiredConfigKey);
+    if (className != null) {
+      try {
+        /**
+         * The following code is trying to fix ClassNotFoundException while using JDK11.
+         * Instead of letting Kafka lib loads the specified class, application will load it on its own.
+         * The difference is that Kafka lib is trying to load the specified class by `Thread.currentThread().getContextClassLoader()`,
+         * which seems to be problematic with JDK11.
+         */
+        properties.put(requiredConfigKey, Class.forName(className));
+      } catch (ClassNotFoundException e) {
+        throw new VeniceClientException("Failed to load the specified class: " +  className
+            + " for key: " + requiredConfigKey, e);
+      }
     }
   }
 
