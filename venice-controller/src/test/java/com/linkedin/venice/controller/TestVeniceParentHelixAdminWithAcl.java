@@ -8,8 +8,11 @@ import com.linkedin.venice.authorization.Principal;
 import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collection;
 import java.util.Optional;
@@ -28,6 +31,7 @@ import static org.mockito.Mockito.*;
  * Creating a new class as we need to pass MockAuthorizer during cluster setup.
  */
 public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentHelixAdmin {
+  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   MockVeniceAuthorizer authorizerService;
 
@@ -152,7 +156,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin)
         .checkPreConditionForAclOp(clusterName, storeName);
 
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord())
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     Assert.assertThrows(VeniceNoStoreException.class,
@@ -169,7 +173,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin)
         .checkPreConditionForAclOp(clusterName, storeName);
 
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord())
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.getAclForStore(clusterName, storeName));
@@ -184,7 +188,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin)
         .checkPreConditionForAclOp(clusterName, storeName);
 
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord())
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.deleteAclForStore(clusterName, storeName));
