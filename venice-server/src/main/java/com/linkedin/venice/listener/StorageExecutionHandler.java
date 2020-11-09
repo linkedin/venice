@@ -595,7 +595,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       String fieldName = operator.getOperatorFieldName(op);
       if (reuseValueRecord.get(fieldName) == null) {
         String msg = "Failed to execute compute request as the field " + fieldName + " does not exist.";
-        operator.putDefaultResult(reuseResultRecord, operator.getResultFieldName(op), computeRequestVersion == COMPUTE_REQUEST_VERSION_V1);
+        operator.putDefaultResult(reuseResultRecord, operator.getResultFieldName(op));
         computationErrorMap.put(operator.getResultFieldName(op), msg);
         continue;
       }

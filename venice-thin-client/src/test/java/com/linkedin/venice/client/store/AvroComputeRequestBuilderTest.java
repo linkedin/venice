@@ -61,8 +61,8 @@ public class AvroComputeRequestBuilderTest {
     long preRequestTimeInNS = 1234;
     doReturn(preRequestTimeInNS).when(mockTime).nanoseconds();
 
-    AvroComputeRequestBuilderV1<String> computeRequestBuilder = new AvroComputeRequestBuilderV1(VALID_RECORD_SCHEMA,
-        mockClient, Optional.empty(), Optional.empty(), mockTime);
+    AvroComputeRequestBuilderV2<String> computeRequestBuilder = new AvroComputeRequestBuilderV2(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), Optional.empty(), mockTime, false, null, null);
     computeRequestBuilder.project("float_field", "record_field")
         .project("int_field")
         .dotProduct("float_array_field1", dotProductParam, "float_array_field1_dot_product_result")
@@ -75,7 +75,7 @@ public class AvroComputeRequestBuilderTest {
 
     verify(mockClient).compute(computeRequestCaptor.capture(), keysCaptor.capture(), resultSchemaCaptor.capture(),
         statsCaptor.capture(), preRequestTimeCaptor.capture());
-    String expectedSchema = "{\"type\":\"record\",\"name\":\"testStore_VeniceComputeResult\",\"doc\":\"\",\"fields\":[{\"name\":\"float_field\",\"type\":\"float\",\"doc\":\"\"},{\"name\":\"record_field\",\"type\":{\"type\":\"record\",\"name\":\"Record1\",\"fields\":[{\"name\":\"nested_field1\",\"type\":\"double\",\"doc\":\"doc for nested field\"}]},\"doc\":\"\"},{\"name\":\"int_field\",\"type\":\"int\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_another_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_cosine_similarity_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_cosine_similarity_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_another_cosine_similarity_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"__veniceComputationError__\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"\",\"default\":{}}]}";
+    String expectedSchema = "{\"type\":\"record\",\"name\":\"testStore_VeniceComputeResult\",\"doc\":\"\",\"fields\":[{\"name\":\"float_field\",\"type\":\"float\",\"doc\":\"\"},{\"name\":\"record_field\",\"type\":{\"type\":\"record\",\"name\":\"Record1\",\"fields\":[{\"name\":\"nested_field1\",\"type\":\"double\",\"doc\":\"doc for nested field\"}]},\"doc\":\"\"},{\"name\":\"int_field\",\"type\":\"int\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_dot_product_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_dot_product_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_another_dot_product_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field1_cosine_similarity_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_cosine_similarity_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"float_array_field2_another_cosine_similarity_result\",\"type\":[\"null\",\"float\"],\"doc\":\"\",\"default\":null},{\"name\":\"__veniceComputationError__\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"\",\"default\":{}}]}";
     Assert.assertEquals(resultSchemaCaptor.getValue().toString(), expectedSchema);
     Assert.assertEquals(keysCaptor.getValue(), keys);
     Assert.assertFalse(statsCaptor.getValue().isPresent());
@@ -84,7 +84,7 @@ public class AvroComputeRequestBuilderTest {
     Assert.assertNotNull(capturedComputeRequest);
     Assert.assertEquals(capturedComputeRequest.getResultSchemaStr().toString(), expectedSchema);
     Assert.assertEquals(capturedComputeRequest.getOperations().size(), 6);
-    Assert.assertEquals(capturedComputeRequest.getComputeRequestVersion(), COMPUTE_REQUEST_VERSION_V1);
+    Assert.assertEquals(capturedComputeRequest.getComputeRequestVersion(), COMPUTE_REQUEST_VERSION_V2);
 
     List<Float> expectedDotProductParam = new ArrayList<>();
     for (Float f : dotProductParam) {

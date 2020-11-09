@@ -26,7 +26,6 @@ public class ComputeUtils {
     if (resultSchema.getType() != Schema.Type.RECORD || valueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceException("Compute result schema and value schema must be RECORD type");
     }
-    boolean useV1 = version == COMPUTE_REQUEST_VERSION_V1;
 
     Set<Schema.Field> valueFields = new HashSet<>(valueSchema.getFields());
     Set<String> valueFieldStrings = new HashSet<>();
@@ -40,14 +39,14 @@ public class ComputeUtils {
           if (!valueFieldStrings.contains(dotProduct.field.toString())) {
             throw new VeniceException("The field " + dotProduct.field.toString() + " being operated on is not in value schema");
           }
-          operationResultFields.add(new Pair<>(dotProduct.resultFieldName.toString(), useV1 ? Schema.Type.DOUBLE : Schema.Type.UNION));
+          operationResultFields.add(new Pair<>(dotProduct.resultFieldName.toString(), Schema.Type.UNION));
           break;
         case COSINE_SIMILARITY:
           CosineSimilarity cosineSimilarity = (CosineSimilarity)operation.operation;
           if (!valueFieldStrings.contains(cosineSimilarity.field.toString())) {
             throw new VeniceException("The field " + cosineSimilarity.field.toString() + " being operated on is not in value schema");
           }
-          operationResultFields.add(new Pair<>(cosineSimilarity.resultFieldName.toString(), useV1 ? Schema.Type.DOUBLE : Schema.Type.UNION));
+          operationResultFields.add(new Pair<>(cosineSimilarity.resultFieldName.toString(),  Schema.Type.UNION));
           break;
         case HADAMARD_PRODUCT:
           HadamardProduct hadamardProduct = (HadamardProduct)operation.operation;

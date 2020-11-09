@@ -16,16 +16,15 @@ public class DotProductOperator implements ReadComputeOperator {
       Map<String, String> computationErrorMap, Map<String, Object> context, ComputeResponseWrapper responseWrapper) {
     responseWrapper.incrementDotProductCount();
     DotProduct dotProduct = (DotProduct) op.operation;
-    boolean useV1 = computeRequestVersion == COMPUTE_REQUEST_VERSION_V1;
     try {
       List<Float> valueVector =  (List<Float>)valueRecord.get(dotProduct.field.toString());
       List<Float> dotProductParam = dotProduct.dotProductParam;
 
       if (valueVector.size() == 0 || dotProductParam.size() == 0) {
-        putResult(resultRecord, dotProduct.resultFieldName.toString(), useV1, 0.0d, null);
+        putResult(resultRecord, dotProduct.resultFieldName.toString(), null);
         return;
       } else if (valueVector.size() != dotProductParam.size()) {
-        putResult(resultRecord, dotProduct.resultFieldName.toString(), useV1, 0.0d, 0.0f);
+        putResult(resultRecord, dotProduct.resultFieldName.toString(), 0.0f);
         computationErrorMap.put(dotProduct.resultFieldName.toString(),
             "Failed to compute because size of dot product parameter is: " + dotProduct.dotProductParam.size() +
                 " while the size of value vector(" + dotProduct.field.toString() + ") is: " + valueVector.size());
@@ -38,9 +37,9 @@ public class DotProductOperator implements ReadComputeOperator {
        * V1 users don't require the extra precision in double and it's on purpose that
        * backend only generates float result.
        */
-      putResult(resultRecord, dotProduct.resultFieldName.toString(), useV1, (double)dotProductResult, dotProductResult);
+      putResult(resultRecord, dotProduct.resultFieldName.toString(), dotProductResult);
     } catch (Exception e) {
-      putResult(resultRecord, dotProduct.resultFieldName.toString(), useV1, 0.0d, 0.0f);
+      putResult(resultRecord, dotProduct.resultFieldName.toString(), 0.0f);
       computationErrorMap.put(dotProduct.resultFieldName.toString(), e.getMessage());
     }
   }
