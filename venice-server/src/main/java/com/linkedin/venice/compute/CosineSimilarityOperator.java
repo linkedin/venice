@@ -18,16 +18,15 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
       Map<String, String> computationErrorMap, Map<String, Object> context, ComputeResponseWrapper responseWrapper) {
     responseWrapper.incrementCosineSimilarityCount();
     CosineSimilarity cosineSimilarity = (CosineSimilarity) op.operation;
-    boolean useV1 = computeRequestVersion == COMPUTE_REQUEST_VERSION_V1;
     try {
       List<Float> valueVector = (List<Float>) valueRecord.get(cosineSimilarity.field.toString());
       List<Float> cosSimilarityParam = cosineSimilarity.cosSimilarityParam;
 
       if (valueVector.size() == 0 || cosSimilarityParam.size() == 0) {
-        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), useV1, 0.0d, null);
+        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), null);
         return;
       } else if (valueVector.size() != cosSimilarityParam.size()) {
-        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), useV1, 0.0d, 0.0f);
+        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), 0.0f);
         computationErrorMap.put(cosineSimilarity.resultFieldName.toString(),
             "Failed to compute because size of dot product parameter is: " + cosineSimilarity.cosSimilarityParam.size() +
                 " while the size of value vector(" + cosineSimilarity.field.toString() + ") is: " + valueVector.size());
@@ -57,9 +56,9 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
 
       // write to result record
       double cosineSimilarityResult = dotProductResult / Math.sqrt(valueVectorSquaredL2Norm * cosSimilarityParamSquaredL2Norm);
-      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), useV1, cosineSimilarityResult, (float)cosineSimilarityResult);
+      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), (float)cosineSimilarityResult);
     } catch (Exception e) {
-      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), useV1, 0.0d, 0.0f);
+      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), 0.0f);
       computationErrorMap.put(cosineSimilarity.resultFieldName.toString(), e.getMessage());
     }
   }
