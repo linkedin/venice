@@ -4,10 +4,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.channel.IngestionServiceChannelInitializer;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageMetadataService;
@@ -24,7 +26,9 @@ import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Optional;
+import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.apache.logging.log4j.core.config.Configurator;
 
 import static com.linkedin.venice.ingestion.IngestionUtils.*;
 
@@ -45,6 +49,9 @@ public class IngestionService extends AbstractVeniceService {
   private StorageService storageService = null;
   private KafkaStoreIngestionService storeIngestionService = null;
   private StorageMetadataService storageMetadataService = null;
+  // PartitionState and StoreVersionState serializers are lazily constructed after receiving the init configs
+  private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+  private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private boolean isInitiated = false;
 
   private final int servicePort;
@@ -135,6 +142,15 @@ public class IngestionService extends AbstractVeniceService {
     this.metricsRepository = metricsRepository;
   }
 
+  public void setPartitionStateSerializer(InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+    this.partitionStateSerializer = partitionStateSerializer;
+  }
+
+  public void setStoreVersionStateSerializer(
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer) {
+    this.storeVersionStateSerializer = storeVersionStateSerializer;
+  }
+
   public IngestionRequestClient getReportClient() {
     return reportClient;
   }
@@ -171,6 +187,13 @@ public class IngestionService extends AbstractVeniceService {
     return metricsRepository;
   }
 
+  public InternalAvroSpecificSerializer<PartitionState> getPartitionStateSerializer() {
+    return partitionStateSerializer;
+  }
+
+  public InternalAvroSpecificSerializer<StoreVersionState> getStoreVersionStateSerializer() {
+    return storeVersionStateSerializer;
+  }
 
   public void reportIngestionCompletion(String topicName, int partitionId, long offset) {
     // Send ingestion status change report to report listener.
@@ -196,7 +219,7 @@ public class IngestionService extends AbstractVeniceService {
       logger.info("Sending ingestion completion report for version:  " + topicName + " partition id:" + partitionId + " offset:" + offset);
       reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));
     } catch (Exception e) {
-      logger.warn("Failed to send report to application with exception: " + e.getMessage());
+      logger.warn("Failed to send report with exception for topic: " + topicName + ", partition: " + partitionId , e);
     }
   }
 
@@ -214,11 +237,13 @@ public class IngestionService extends AbstractVeniceService {
       logger.info("Sending ingestion error report for version:  " + topicName + " partition id:" + partitionId);
       reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));
     } catch (Exception ex) {
-      logger.warn("Failed to send report to application with exception: " + ex.getMessage());
+      logger.warn("Failed to send report with exception for topic: " + topicName + ", partition: " + partitionId , ex);
     }
   }
 
   public static void main(String[] args) throws Exception {
+    // Setting root logger level to INFO so forked process logs will be captured.
+    Configurator.setAllLevels(LogManager.getRootLogger().getName(), org.apache.logging.log4j.Level.INFO);
     logger.info("Capture arguments: " + Arrays.toString(args));
     if (args.length != 1) {
       throw new VeniceException("Expected one arguments: port. Got " + args.length);

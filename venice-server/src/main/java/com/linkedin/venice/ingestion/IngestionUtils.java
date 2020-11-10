@@ -213,12 +213,12 @@ public class IngestionUtils {
    * the port, which is created from previous deployment and was not killed due to failures.
    */
   public static void releaseTargetPortBinding(int port) {
-    String processId = constructStringFromInputStream(executeShellCommand(new String[]{"lsof", "-t", "-i", ":" + port}));
+    String processId = constructStringFromInputStream(executeShellCommand(new String[]{"/bin/sh", "-c", "'", "lsof", "-t", "-i", ":" + port, "'"}));
     if (!processId.equals("")) {
       logger.info("Target port: " + port + " is bind to process id: " + processId);
-      String fullProcessName = constructStringFromInputStream(executeShellCommand(new String[]{"ps", "-p", processId, "-o", "command"}));
+      String fullProcessName = constructStringFromInputStream(executeShellCommand(new String[]{"/bin/sh", "-c", "'", "ps", "-p", processId, "-o", "command", "'"}));
       if (fullProcessName.contains(IngestionService.class.getName())) {
-        executeShellCommand(new String[]{"kill", processId});
+        executeShellCommand(new String[]{"/bin/sh", "-c", "'", "kill", processId, "'"});
         logger.info("Killed IngestionService process on pid " + processId);
       } else {
         logger.info("Target port is bind to unknown process: " + fullProcessName);
@@ -266,10 +266,14 @@ public class IngestionUtils {
     try {
       HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
       FullHttpResponse response = client.sendRequest(httpRequest);
-      byte[] responseContent = new byte[response.content().readableBytes()];
-      response.content().readBytes(responseContent);
-      IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
-      logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      if (response.status().equals(HttpResponseStatus.OK)) {
+        byte[] responseContent = new byte[response.content().readableBytes()];
+        response.content().readBytes(responseContent);
+        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
+        logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      } else {
+        logger.warn("Received bad ingestion task report response: " + response.status() + " for topic: " + topicName + ", partition: " + partitionId);
+      }
       // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
       response.release();
     } catch (Exception e) {
@@ -282,19 +286,22 @@ public class IngestionUtils {
    * the inputStream of the exec process for user to consume.
    */
   static InputStream executeShellCommand(String[] command) {
-    Process p = null;
     try {
-      p = Runtime.getRuntime().exec(command);
-    } catch (Exception err) {
-      logger.info("Encounter err when executing shell command" + Arrays.toString(command) + " " + err);
+      Process p = Runtime.getRuntime().exec(command);
+      return p.getInputStream();
+    } catch (Exception e) {
+      logger.info("Encounter exception when executing shell command: " + Arrays.toString(command), e);
+      return null;
     }
-    return p.getInputStream();
   }
 
   /**
    *  constructStringFromInputStream will read from provided inputStream and construct it as a String.
    */
   static String constructStringFromInputStream(InputStream inputStream) {
+    if (inputStream == null) {
+      return "";
+    }
     StringBuilder stringBuilder = new StringBuilder();
     String line;
     BufferedReader input = new BufferedReader(new InputStreamReader(inputStream));
@@ -308,5 +315,4 @@ public class IngestionUtils {
     }
     return stringBuilder.toString();
   }
-
 }

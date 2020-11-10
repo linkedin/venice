@@ -1,6 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import clojure.lang.Obj;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -27,7 +26,6 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
