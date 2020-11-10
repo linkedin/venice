@@ -95,7 +95,8 @@ public enum Arg {
   FABRIC("fabric", "fa", true, "Which fabric to complete store migration."),
   DEFAULT_CONFIGS("default-configs", "dc", false, "Use default store configs (intended for system stores)"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
-  NATIVE_REPLICATION_SOURCE_FABRIC("native-replication-source-fabric", "nrsf", true, "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric.");
+  NATIVE_REPLICATION_SOURCE_FABRIC("native-replication-source-fabric", "nrsf", true, "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."),
+  PRINCIPAL("principal", "p", true, "Principal to add/modify/delete ACLs");
 
   private final String argName;
   private final String first;

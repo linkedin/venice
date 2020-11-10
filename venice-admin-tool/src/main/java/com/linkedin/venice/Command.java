@@ -182,7 +182,11 @@ public enum Command {
   GET_STORE_ACL("get-store-acl", "Get ACL's for an existing store",
       new Arg[] {URL, CLUSTER, STORE}),
   DELETE_STORE_ACL("delete-store-acl", "Delete ACL's for an existing store",
-      new Arg[] {URL, CLUSTER, STORE});
+      new Arg[] {URL, CLUSTER, STORE}),
+  ADD_TO_STORE_ACL("add-to-store-acl", "Add a principal to ACL's for an existing store",
+      new Arg[] {URL, CLUSTER, STORE, PRINCIPAL}, new Arg[] {READABILITY, WRITEABILITY}),
+  REMOVE_FROM_STORE_ACL("remove-from-store-acl", "Remove a principal from ACL's for an existing store",
+      new Arg[] {URL, CLUSTER, STORE, PRINCIPAL}, new Arg[] {READABILITY, WRITEABILITY});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;

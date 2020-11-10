@@ -62,6 +62,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -84,8 +85,12 @@ import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectWriter;
+import org.codehaus.jackson.node.ArrayNode;
+import org.codehaus.jackson.node.JsonNodeFactory;
+import org.codehaus.jackson.node.ObjectNode;
 import org.codehaus.jackson.type.TypeReference;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
@@ -379,6 +384,12 @@ public class AdminTool {
           break;
         case DELETE_STORE_ACL:
           deleteAclForStore(cmd);
+          break;
+        case ADD_TO_STORE_ACL:
+          addToStoreAcl(cmd);
+          break;
+        case REMOVE_FROM_STORE_ACL:
+          removeFromStoreAcl(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -1583,6 +1594,169 @@ public class AdminTool {
     verifyStoreExistence(store, true);
     AclResponse response = controllerClient.deleteAclForStore(store);
     printObject(response);
+  }
+
+  private static void addToStoreAcl(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
+    String principal = getRequiredArgument(cmd, Arg.PRINCIPAL, Command.ADD_TO_STORE_ACL);
+    boolean addReadPermissions = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.READABILITY, "false"));
+    boolean addWritePermissions = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.WRITEABILITY, "false"));
+
+    if (!addReadPermissions && !addWritePermissions) {
+      printErrAndExit("Both Readabilty and Writeabilty can not be false or empty.");
+    }
+
+    verifyStoreExistence(store, true);
+
+    AclResponse storeAclResponse = controllerClient.getAclForStore(store);
+    if (storeAclResponse == null) {
+      printErrAndExit("Failed to get existing ACLs.");
+    } else if (storeAclResponse.isError()) {
+      printErrAndExit(storeAclResponse.getError());
+    }
+
+    String oldAcls = storeAclResponse.getAccessPermissions();
+
+    JsonNodeFactory factory = JsonNodeFactory.instance;
+    ObjectNode newRoot = factory.objectNode();
+    ObjectNode newPerms = factory.objectNode();
+    ArrayNode newReadP = factory.arrayNode();
+    ArrayNode newWriteP = factory.arrayNode();
+
+    Iterator<JsonNode> readPermissions = null;
+    Iterator<JsonNode> writePermissions = null;
+    ObjectMapper mapper = new ObjectMapper();
+    try {
+      JsonNode root = mapper.readTree(oldAcls);
+      JsonNode perms = root.path("AccessPermissions");
+      if (perms.has("Read")) {
+        readPermissions = perms.path("Read").getElements();
+      }
+      if (perms.has("Write")) {
+        writePermissions = perms.path("Write").getElements();
+      }
+    } catch (Exception e) {
+      printErrAndThrow(e,"ACLProvisioning: invalid accessPermission schema for store:" + store, null);
+    }
+
+    if (readPermissions != null) {
+      while (readPermissions.hasNext()) {
+        String existingPrincipal = readPermissions.next().getTextValue();
+        if (existingPrincipal.equals(principal)) {
+          addReadPermissions = false;
+        }
+        newReadP.add(existingPrincipal);
+      }
+    }
+
+    if (writePermissions != null) {
+      while (writePermissions.hasNext()) {
+        String existingPrincipal = writePermissions.next().getTextValue();
+        if (existingPrincipal.equals(principal)) {
+          addWritePermissions = false;
+        }
+        newWriteP.add(existingPrincipal);
+      }
+    }
+
+    if (addReadPermissions) {
+      newReadP.add(principal);
+    }
+
+    if (addWritePermissions) {
+      newWriteP.add(principal);
+    }
+
+    if (addReadPermissions || addWritePermissions) {
+      newPerms.put("Read", newReadP);
+      newPerms.put("Write", newWriteP);
+      newRoot.put("AccessPermissions", newPerms);
+
+      String newAcls = mapper.writeValueAsString(newRoot);
+      AclResponse response = controllerClient.updateAclForStore(store, newAcls);
+      printObject(response);
+    } else {
+      System.out.println("No change in ACLs");
+    }
+  }
+
+  private static void removeFromStoreAcl(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE_ACL);
+    String principal = getRequiredArgument(cmd, Arg.PRINCIPAL, Command.ADD_TO_STORE_ACL);
+    boolean removeReadPermissions = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.READABILITY, "false"));
+    boolean removeWritePermissions = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.WRITEABILITY, "false"));
+
+    if (!removeReadPermissions && !removeWritePermissions) {
+      printErrAndExit("Both Readabilty and Writeabilty can not be false or empty.");
+    }
+
+    verifyStoreExistence(store, true);
+
+    AclResponse storeAclResponse = controllerClient.getAclForStore(store);
+    if (storeAclResponse == null) {
+      printErrAndExit("Failed to get existing ACLs.");
+    } else if (storeAclResponse.isError()) {
+      printErrAndExit(storeAclResponse.getError());
+    }
+
+    String oldAcls = storeAclResponse.getAccessPermissions();
+
+    JsonNodeFactory factory = JsonNodeFactory.instance;
+    ObjectNode newRoot = factory.objectNode();
+    ObjectNode newPerms = factory.objectNode();
+    ArrayNode newReadP = factory.arrayNode();
+    ArrayNode newWriteP = factory.arrayNode();
+
+    Iterator<JsonNode> readPermissions = null;
+    Iterator<JsonNode> writePermissions = null;
+    ObjectMapper mapper = new ObjectMapper();
+    try {
+      JsonNode root = mapper.readTree(oldAcls);
+      JsonNode perms = root.path("AccessPermissions");
+      if (perms.has("Read")) {
+        readPermissions = perms.path("Read").getElements();
+      }
+      if (perms.has("Write")) {
+        writePermissions = perms.path("Write").getElements();
+      }
+    } catch (Exception e) {
+      printErrAndThrow(e,"ACLProvisioning: invalid accessPermission schema for store:" + store, null);
+    }
+
+    boolean changed = false;
+    if (readPermissions != null) {
+      while (readPermissions.hasNext()) {
+        String existingPrincipal = readPermissions.next().getTextValue();
+        if (removeReadPermissions && existingPrincipal.equals(principal)) {
+          changed = true;
+          continue;
+        }
+        newReadP.add(existingPrincipal);
+      }
+    }
+
+    if (writePermissions != null) {
+      while (writePermissions.hasNext()) {
+        String existingPrincipal = writePermissions.next().getTextValue();
+        if (removeWritePermissions && existingPrincipal.equals(principal)) {
+          changed = true;
+          continue;
+        }
+        newWriteP.add(existingPrincipal);
+      }
+    }
+
+    if (changed) {
+      newPerms.put("Read", newReadP);
+      newPerms.put("Write", newWriteP);
+      newRoot.put("AccessPermissions", newPerms);
+
+      String newAcls = mapper.writeValueAsString(newRoot);
+      AclResponse response = controllerClient.updateAclForStore(store, newAcls);
+      printObject(response);
+    } else {
+      System.out.println("No change in ACLs");
+    }
   }
 
   private static void printErrAndExit(String err) {
