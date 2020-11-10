@@ -71,8 +71,8 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    logger.error("Encounter exception " + cause.getMessage());
-    ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage()));
+    logger.error("Encounter exception during ingestion task report handling.", cause);
+    ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getClass().getSimpleName() + "_" + cause.getMessage()));
     ctx.close();
   }
 }

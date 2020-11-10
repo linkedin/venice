@@ -14,6 +14,7 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
@@ -146,15 +147,22 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
     try {
       HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.UPDATE_METADATA, content);
       FullHttpResponse response = client.sendRequest(httpRequest);
-      logger.info("Received ingestion task report response.");
-      byte[] responseContent = new byte[response.content().readableBytes()];
-      response.content().readBytes(responseContent);
-      IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
-      logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      if (response.status().equals(HttpResponseStatus.OK)) {
+        byte[] responseContent = new byte[response.content().readableBytes()];
+        response.content().readBytes(responseContent);
+        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
+        logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      } else {
+        logger.warn("Received bad ingestion task report response: " + response.status() + " for topic: " + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId);
+      }
       // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
       response.release();
     } catch (Exception e) {
-      throw new VeniceException("Encounter exception when sending metadata update to child process", e);
+      /**
+       * We only log the exception when failing to persist metadata updates into child process.
+       * Child process might crashed, but it will be respawned and will be able to receive future updates.
+       */
+      logger.warn("Encounter exception when sending metadata updates to child process for topic: " + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId, e);
     }
   }
 }

@@ -53,7 +53,6 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Optional;
@@ -67,10 +66,6 @@ import static com.linkedin.venice.ingestion.IngestionUtils.*;
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionServiceTaskHandler.class);
   private final IngestionService ingestionService;
-
-  // PartitionState and StoreVersionState serializers are lazily constructed after receiving the init configs
-  private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
-  private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
 
   public IngestionServiceTaskHandler(IngestionService ingestionService) {
     super();
@@ -191,10 +186,12 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
     SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
-    partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
-    storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    ingestionService.setPartitionStateSerializer(partitionStateSerializer);
+    InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
+    ingestionService.setStoreVersionStateSerializer(storeVersionStateSerializer);
 
     // Create RocksDBMemoryStats
     RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
@@ -294,9 +291,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           break;
       }
     } catch (Exception e) {
-      logger.error("Encounter exception while handling ingestion command: " + e.getMessage());
+      logger.error("Encounter exception while handling ingestion command", e);
       report.isPositive = false;
-      report.errorMessage = e.getMessage();
+      report.isError = true;
+      report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
   }
@@ -334,7 +332,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
         case PUT_OFFSET_RECORD:
           logger.info("Put OffsetRecord");
-          ingestionService.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array(), partitionStateSerializer));
+          ingestionService.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array(), ingestionService.getPartitionStateSerializer()));
           break;
         case CLEAR_OFFSET_RECORD:
           logger.info("Clear OffsetRecord");
@@ -352,9 +350,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           break;
       }
     } catch (Exception e) {
-      logger.error("Encounter exception while updating storage metadata: " + e.getMessage());
+      logger.error("Encounter exception while updating storage metadata", e);
       report.isPositive = false;
-      report.errorMessage = e.getMessage();
+      report.isError = true;
+      report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
   }
@@ -390,21 +389,21 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset) {
-      logger.info("Ingestion completed for topic: " + kafkaTopic + " partition id: " + partitionId + " offset: " + offset);
+      logger.info("Ingestion completed for topic: " + kafkaTopic + ", partition id: " + partitionId + ", offset: " + offset);
       VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(kafkaTopic);
       ingestionService.getStoreIngestionService().stopConsumption(storeConfig, partitionId);
       ingestionService.getStorageService().getStorageEngineRepository().getLocalStorageEngine(kafkaTopic).closePartition(partitionId);
-      logger.info("Closed partition " + partitionId + " of topic " + kafkaTopic);
+      logger.info("Closed partition: " + partitionId + " of topic: " + kafkaTopic);
       ingestionService.reportIngestionCompletion(kafkaTopic, partitionId, offset);
     }
 
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
-      logger.info("Ingestion error for topic: " + kafkaTopic + " partition id: " + partitionId + " " + e.getMessage());
+      logger.info("Ingestion error for topic: " + kafkaTopic + ", partition id: " + partitionId, e);
       VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(kafkaTopic);
       ingestionService.getStoreIngestionService().stopConsumption(storeConfig, partitionId);
       ingestionService.getStorageService().getStorageEngineRepository().getLocalStorageEngine(kafkaTopic).closePartition(partitionId);
-      logger.info("Close error partition " + partitionId + " of topic " + kafkaTopic);
+      logger.info("Close error partition: " + partitionId + " of topic: " + kafkaTopic);
       ingestionService.reportIngestionError(kafkaTopic, partitionId, e);
     }
   };
