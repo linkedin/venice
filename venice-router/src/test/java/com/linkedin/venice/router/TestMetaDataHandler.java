@@ -398,14 +398,13 @@ public class TestMetaDataHandler {
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
     OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
-    Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
-        .when(storeConfigRepository).getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
+    Mockito.doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     Mockito.doReturn(2).when(mockOnlineInstanceFinder).getNumberOfPartitions(resourceName);
 
     // Router returns QUOTA_NOT_VIOLATED state
     Mockito.doReturn(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED).when(hybridStoreQuotaRepository).getHybridStoreQuotaStatus(resourceName);
     FullHttpResponse response =
-        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_HYBRID_STORE_QUOTA
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_STREAM_HYBRID_STORE_QUOTA
                 + "/" + storeName, null, null, storeConfigRepository, Collections.emptyMap(),
             mockOnlineInstanceFinder);
     Assert.assertEquals(response.status().code(), 200);
@@ -415,8 +414,39 @@ public class TestMetaDataHandler {
     // Router returns QUOTA_VIOLATED state
     Mockito.doReturn(HybridStoreQuotaStatus.QUOTA_VIOLATED).when(hybridStoreQuotaRepository).getHybridStoreQuotaStatus(resourceName);
     response =
-        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_HYBRID_STORE_QUOTA
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_STREAM_HYBRID_STORE_QUOTA
                 + "/" + storeName, null, null, storeConfigRepository, Collections.emptyMap(),
+            mockOnlineInstanceFinder);
+    Assert.assertEquals(response.status().code(), 200);
+    pushStatusResponse = mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
+    Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_VIOLATED);
+  }
+
+  @Test
+  public void testStreamReprocessingHybridQuotaInRouter() throws IOException {
+    String resourceName = "test-store_v3";
+    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+    OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    Mockito.doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
+    Mockito.doReturn(2).when(mockOnlineInstanceFinder).getNumberOfPartitions(resourceName);
+
+    // Router returns QUOTA_NOT_VIOLATED state
+    Mockito.doReturn(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED).when(hybridStoreQuotaRepository).getHybridStoreQuotaStatus(resourceName);
+    FullHttpResponse response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA
+                + "/" + resourceName, null, null, storeConfigRepository, Collections.emptyMap(),
+            mockOnlineInstanceFinder);
+    System.out.println(response);
+    Assert.assertEquals(response.status().code(), 200);
+    HybridStoreQuotaStatusResponse pushStatusResponse = mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
+    Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
+
+    // Router returns QUOTA_VIOLATED state
+    Mockito.doReturn(HybridStoreQuotaStatus.QUOTA_VIOLATED).when(hybridStoreQuotaRepository).getHybridStoreQuotaStatus(resourceName);
+    response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA
+                + "/" + resourceName, null, null, storeConfigRepository, Collections.emptyMap(),
             mockOnlineInstanceFinder);
     Assert.assertEquals(response.status().code(), 200);
     pushStatusResponse = mapper.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);

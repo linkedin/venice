@@ -151,27 +151,19 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
      */
     if (isStorageQuotaExceeded(partition, shouldLogQuotaExceeded)) {
       storeIngestionTask.reportQuotaViolated(partition);
-      if (isRTJob()) {
-        /**
-         * Pause the partition for RT job.
-         */
+      /**
+       * For GF job or real-time job of a hybrid store.
+       *
+       * TODO: Do a force-refresh of store metadata to get latest state before kill the job
+       * We might have potential race condition: The store version is updated to be ONLINE and become CURRENT in Controller,
+       * but the notification to storage node gets delayed, the quota exceeding issue will put this partition of current version to be ERROR,
+       * which will break the production.
+       */
+      if (Version.isRealTimeTopic(versionTopic) || Version.isStreamReprocessingTopic(versionTopic)) {
         pausePartition(partition, consumingTopic);
-        if (shouldLogQuotaExceeded) {
-          logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition.");
-        }
-      } else {
-        /**
-         * GF job or hadoop push for a hybrid store, directly throw exception
-         *
-         * TODO: Do a force-refresh of store metadata to get latest state before kill the job
-         * We might have potential race condition: The store version is updated to be ONLINE and become CURRENT in Controller,
-         * but the notification to storage node gets delayed, the quota exceeding issue will put this partition of current version to be ERROR,
-         * which will break the production.
-         */
-        throw new StorageQuotaExceededException(storeName,
-                                                partition,
-                                                partitionConsumptionSizeMap.get(partition).getUsage(),
-                                                diskQuotaPerPartition);
+      }
+      if (shouldLogQuotaExceeded) {
+        logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition.");
       }
     } else { /** we have free space for this partition */
       /**

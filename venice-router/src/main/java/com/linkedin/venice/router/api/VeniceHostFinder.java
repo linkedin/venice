@@ -6,7 +6,6 @@ import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;

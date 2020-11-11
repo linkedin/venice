@@ -605,28 +605,29 @@ public class TestHybrid {
   }
 
   /**
-   * N.B.: Non-L/F does not support chunking, so this permutation is skipped.
+   * N.B.: Non-L/F does not support chunking and querying push status from router, so this permutation is skipped.
    */
   @DataProvider(name = "testHybridQuotaPermutations")
   public static Object[][] testHybridQuotaPermutations() {
     return new Object[][]{
-        {false, false},
-        {true, false},
-        {true, true}
+        {false, false, false},
+        {true, false, true},
+        {true, false, false},
+        {true, true, true},
+        {true, true, false}
     };
   }
 
-  @Test(dataProvider = "testHybridQuotaPermutations", timeOut = 60 * Time.MS_PER_SECOND)
-  public void testHybridStoreQuota(boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled) throws Exception {
+  @Test(dataProvider = "testHybridQuotaPermutations", timeOut = 80 * Time.MS_PER_SECOND)
+  public void testHybridStoreQuota(boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled, boolean isStreamReprocessing) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();
     SystemProducer veniceProducer = null;
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     // N.B.: RF 2 with 3 servers is important, in order to test both the leader and follower code paths
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,0,0,
-        2, 1000000, false, false, extraProperties)) {
-
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1, 0, 0, 2,
+        1000000, false, false, extraProperties)) {
       Properties routerProperties = new Properties();
       routerProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
       venice.addVeniceRouter(routerProperties);
@@ -654,10 +655,7 @@ public class TestHybrid {
       try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          TopicManager topicManager = new TopicManager(
-              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-              100,
-              0l,
+          TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l,
               TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
 
         // Setting the hybrid store quota here will cause the H2V push failed.
@@ -666,8 +664,7 @@ public class TestHybrid {
             .setHybridOffsetLagThreshold(streamingMessageLag)
             .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
             .setChunkingEnabled(chunkingEnabled)
-            .setHybridStoreDiskQuotaEnabled(true)
-        );
+            .setHybridStoreDiskQuotaEnabled(true));
 
         HelixAdmin helixAdmin = new ZKHelixAdmin(venice.getZk().getAddress());
         helixAdmin.addCluster(venice.getClusterName());
@@ -713,26 +710,34 @@ public class TestHybrid {
         long storageQuotaInByte = 60000; // A small quota, easily violated.
 
         //  Need to update store with quota here.
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-            .setPartitionCount(2)
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionCount(2)
             .setHybridRewindSeconds(streamingRewindSeconds)
             .setHybridOffsetLagThreshold(streamingMessageLag)
             .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
             .setChunkingEnabled(chunkingEnabled)
             .setHybridStoreDiskQuotaEnabled(true)
-            .setStorageQuotaInByte(storageQuotaInByte)
-        );
-
-        veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM); // new producer, new DIV segment.
-        for (int i=1; i<=20; i++) {
+            .setStorageQuotaInByte(storageQuotaInByte));
+        if (isStreamReprocessing) {
+          veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM_REPROCESSING); // new producer, new DIV segment.
+        } else {
+          veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM); // new producer, new DIV segment.
+        }
+        for (int i = 1; i <= 20; i++) {
           sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
         }
         long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(15);
-        logger.info("normalTimeForConsuming:" + normalTimeForConsuming );
+        logger.info("normalTimeForConsuming:" + normalTimeForConsuming);
         Utils.sleep(normalTimeForConsuming);
-        assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion3),
-            HybridStoreQuotaStatus.QUOTA_VIOLATED);
-        assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion3));
+        if (isStreamReprocessing) {
+          String topicForStoreVersion4 = Version.composeKafkaTopic(storeName, 4);
+          assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion4),
+              HybridStoreQuotaStatus.QUOTA_VIOLATED);
+          assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion4));
+        } else {
+          assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion3),
+              HybridStoreQuotaStatus.QUOTA_VIOLATED);
+          assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion3));
+        }
         sendStreamingRecord(veniceProducer, storeName, 21);
         Assert.fail("Exception should be thrown because quota violation happens.");
       } catch (VeniceException e) {

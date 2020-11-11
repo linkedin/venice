@@ -12,7 +12,6 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;

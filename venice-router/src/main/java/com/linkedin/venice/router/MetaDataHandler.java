@@ -126,8 +126,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } else if (TYPE_PUSH_STATUS.equals(resourceType)) {
       // URI: /push_status
       handlePushStatusLookUp(ctx, helper);
-    } else if (TYPE_HYBRID_STORE_QUOTA.equals(resourceType)){
-      handleHybridStoreQuotaLookup(ctx, helper);
+    } else if (TYPE_STREAM_HYBRID_STORE_QUOTA.equals(resourceType)) {
+      handleStreamHybridStoreQuotaStatusLookup(ctx, helper);
+    } else if (TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA.equals(resourceType)){
+      handleStreamReprocessingHybridStoreQuotaStatusLookup(ctx, helper);
     } else {
       // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
       // since we're passing it on to the next handler, we need to retain an extra reference.
@@ -322,29 +324,48 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   }
 
   /**
-   * Get hybrid store quota status from {@link HelixHybridStoreQuotaRepository} for stores..
+   * Get hybrid store quota status from {@link HelixHybridStoreQuotaRepository} for stores.
    */
-  private void handleHybridStoreQuotaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+  private void handleStreamHybridStoreQuotaStatusLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + TYPE_HYBRID_STORE_QUOTA + "/${storeName}");
+    checkResourceName(storeName, "/" + TYPE_STREAM_HYBRID_STORE_QUOTA + "/${storeName}");
     if (!storeConfigRepo.getStoreConfig(storeName).isPresent()) {
       byte[] errBody =
-          ("Cannot fetch the hybrid store quota status for resource: " + storeName + " because the store: "
-              + Version.parseStoreFromKafkaTopicName(storeName) + " cannot be found").getBytes();
+          ("Cannot fetch the hybrid store quota status for store: " + storeName + " because the store: "
+              + storeName + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
     String topicName = Version.composeKafkaTopic(storeName, storeRepository.getStore(storeName).getCurrentVersion());
+    prepareHybridStoreQuotaStatusResponse(topicName, ctx);
+  }
+
+  /**
+   * Get hybrid store quota status from {@link HelixHybridStoreQuotaRepository} for stores.
+   */
+  private void handleStreamReprocessingHybridStoreQuotaStatusLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String resourceName = helper.getResourceName();
+    checkResourceName(resourceName, "/" + TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA + "/${resourceName}");
+    if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
+      byte[] errBody =
+          ("Cannot fetch the hybrid store quota status for resource: " + resourceName + " because the store: "
+              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+    prepareHybridStoreQuotaStatusResponse(resourceName, ctx);
+  }
+
+  private void prepareHybridStoreQuotaStatusResponse(String resourceName, ChannelHandlerContext ctx) throws IOException{
     HybridStoreQuotaStatusResponse hybridStoreQuotaStatusResponse = new HybridStoreQuotaStatusResponse();
-    hybridStoreQuotaStatusResponse.setName(topicName);
+    hybridStoreQuotaStatusResponse.setName(resourceName);
     if (hybridStoreQuotaRepository.isPresent()) {
-      hybridStoreQuotaStatusResponse.setQuotaStatus(hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(topicName));
+      hybridStoreQuotaStatusResponse.setQuotaStatus(hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(resourceName));
     } else {
       hybridStoreQuotaStatusResponse.setQuotaStatus(HybridStoreQuotaStatus.UNKNOWN);
     }
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(hybridStoreQuotaStatusResponse), true, ctx);
   }
-
 
   private String getD2ServiceByClusterName(String clusterName) {
     return clusterToD2Map.get(clusterName);

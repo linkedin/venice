@@ -249,7 +249,9 @@ public class VeniceSystemProducer implements SystemProducer {
 
     if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      pushMonitor = Optional.of(new RouterBasedPushMonitor(new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), versionTopic, factory, this));
+      pushMonitor = Optional.of(new RouterBasedPushMonitor(
+              new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), versionTopic, factory, this)
+      );
       pushMonitor.get().start();
     }
 
@@ -266,7 +268,15 @@ public class VeniceSystemProducer implements SystemProducer {
     }
 
     if (pushType.equals(Version.PushType.STREAM) && hybridStoreDiskQuotaEnabled) {
-      hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), storeName));
+      hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(
+          new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), storeName));
+      hybridStoreQuotaMonitor.get().start();
+    }
+
+    if(pushType.equals(Version.PushType.STREAM_REPROCESSING) && hybridStoreDiskQuotaEnabled) {
+      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
+      hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(
+          new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), versionTopic));
       hybridStoreQuotaMonitor.get().start();
     }
   }
@@ -347,7 +357,8 @@ public class VeniceSystemProducer implements SystemProducer {
           // no-op
       }
     }
-    if (hybridStoreQuotaMonitor.isPresent() && Version.PushType.STREAM.equals(pushType)) {
+    if (hybridStoreQuotaMonitor.isPresent() &&
+        (Version.PushType.STREAM.equals(pushType) || Version.PushType.STREAM_REPROCESSING.equals(pushType))) {
       HybridStoreQuotaStatus currentStatus = hybridStoreQuotaMonitor.get().getCurrentStatus();
       switch (currentStatus) {
         case QUOTA_VIOLATED:
