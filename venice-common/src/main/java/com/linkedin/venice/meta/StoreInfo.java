@@ -52,6 +52,7 @@ public class StoreInfo {
     storeInfo.setIncrementalPushPolicy(store.getIncrementalPushPolicy());
     storeInfo.setReplicationFactor(store.getReplicationFactor());
     storeInfo.setMigrationDuplicateStore(store.isMigrationDuplicateStore());
+    storeInfo.setNativeReplicationSourceFabric(store.getNativeReplicationSourceFabric());
     storeInfo.setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
     return storeInfo;
   }
@@ -250,6 +251,11 @@ public class StoreInfo {
    */
   private boolean migrationDuplicateStore = false;
 
+  /**
+   * The source fabric name to be uses in native replication. Remote consumption will happen from kafka in this fabric.
+   */
+  private String nativeReplicationSourceFabric = "";
+  
   /**
    * Whether or not metadata system store is enabled for this Venice store.
    */
@@ -608,6 +614,14 @@ public class StoreInfo {
 
   public void setMigrationDuplicateStore(boolean migrationDuplicateStore) {
     this.migrationDuplicateStore = migrationDuplicateStore;
+  }
+
+  public String getNativeReplicationSourceFabric() {
+    return this.nativeReplicationSourceFabric;
+  }
+
+  public void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
+    this.nativeReplicationSourceFabric = nativeReplicationSourceFabric;
   }
 
   public boolean isStoreMetadataSystemStoreEnabled() {

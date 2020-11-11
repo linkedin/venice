@@ -1384,4 +1384,19 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // A hybrid and incremental push enabled store can disable incremental push without changing the policy since there'll be no more incremental pushes
     veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(incrementalAndHybridEnabledStore, newIncrementalPushDisabled, newIncrementalPushPolicyNotDefined, Optional.empty());
   }
+
+  @Test
+  public void testNativeReplicationSourceFabric() {
+    String storeName = TestUtils.getUniqueString("test_store_nr");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getNativeReplicationSourceFabric().isEmpty());
+
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setNativeReplicationSourceFabric("dc1"));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertEquals(store.getNativeReplicationSourceFabric(), "dc1");
+  }
+
 }

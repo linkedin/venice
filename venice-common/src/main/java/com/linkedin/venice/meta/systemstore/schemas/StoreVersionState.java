@@ -7,7 +7,7 @@ package com.linkedin.venice.meta.systemstore.schemas;
 
 @SuppressWarnings("all")
 public class StoreVersionState extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreVersionState\",\"namespace\":\"com.linkedin.venice.meta.systemstore.schemas\",\"fields\":[{\"name\":\"versionNumber\",\"type\":\"int\"},{\"name\":\"pushJobId\",\"type\":\"string\"},{\"name\":\"partitionCount\",\"type\":\"int\"},{\"name\":\"creationTime\",\"type\":\"long\"},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\"},{\"name\":\"compressionStrategy\",\"type\":\"string\"},{\"name\":\"leaderFollowerModelEnabled\",\"type\":\"boolean\"},{\"name\":\"bufferReplayEnabledForHybrid\",\"type\":\"boolean\"},{\"name\":\"pushType\",\"type\":\"string\"},{\"name\":\"nativeReplicationEnabled\",\"type\":\"boolean\"},{\"name\":\"status\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"pushStreamSourceAddress\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfig\",\"fields\":[{\"name\":\"amplificationFactor\",\"type\":\"int\"},{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}}]}],\"default\":null}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreVersionState\",\"namespace\":\"com.linkedin.venice.meta.systemstore.schemas\",\"fields\":[{\"name\":\"versionNumber\",\"type\":\"int\"},{\"name\":\"pushJobId\",\"type\":\"string\"},{\"name\":\"partitionCount\",\"type\":\"int\"},{\"name\":\"creationTime\",\"type\":\"long\"},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\"},{\"name\":\"compressionStrategy\",\"type\":\"string\"},{\"name\":\"leaderFollowerModelEnabled\",\"type\":\"boolean\"},{\"name\":\"bufferReplayEnabledForHybrid\",\"type\":\"boolean\"},{\"name\":\"pushType\",\"type\":\"string\"},{\"name\":\"nativeReplicationEnabled\",\"type\":\"boolean\"},{\"name\":\"status\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"pushStreamSourceAddress\",\"type\":[\"null\",\"string\"],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfig\",\"fields\":[{\"name\":\"amplificationFactor\",\"type\":\"int\"},{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}}]}],\"default\":null},{\"name\":\"nativeReplicationSourceFabric\",\"type\":[\"null\",\"string\"],\"default\":null}]}");
   public int versionNumber;
   public java.lang.CharSequence pushJobId;
   public int partitionCount;
@@ -21,6 +21,7 @@ public class StoreVersionState extends org.apache.avro.specific.SpecificRecordBa
   public java.lang.CharSequence status;
   public java.lang.CharSequence pushStreamSourceAddress;
   public com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig partitionerConfig;
+  public java.lang.CharSequence nativeReplicationSourceFabric;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -38,6 +39,7 @@ public class StoreVersionState extends org.apache.avro.specific.SpecificRecordBa
     case 10: return status;
     case 11: return pushStreamSourceAddress;
     case 12: return partitionerConfig;
+    case 13: return nativeReplicationSourceFabric;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -58,6 +60,7 @@ public class StoreVersionState extends org.apache.avro.specific.SpecificRecordBa
     case 10: status = (java.lang.CharSequence)value$; break;
     case 11: pushStreamSourceAddress = (java.lang.CharSequence)value$; break;
     case 12: partitionerConfig = (com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig)value$; break;
+    case 13: nativeReplicationSourceFabric = (java.lang.CharSequence)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

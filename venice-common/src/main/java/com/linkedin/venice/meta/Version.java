@@ -130,6 +130,11 @@ public class Version implements Comparable<Version> {
   private int replicationFactor = Store.DEFAULT_REPLICATION_FACTOR;
 
   /**
+   * The source fabric name to be uses in native replication. Remote consumption will happen from kafka in this fabric.
+   */
+  private String nativeReplicationSourceFabric = "";
+
+  /**
    * Use the constructor that specifies a pushJobId instead
    */
   @Deprecated
@@ -277,6 +282,15 @@ public class Version implements Comparable<Version> {
     return replicationFactor - 1;
   }
 
+  public String getNativeReplicationSourceFabric() {
+    return this.nativeReplicationSourceFabric;
+  }
+
+  public void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
+    this.nativeReplicationSourceFabric = nativeReplicationSourceFabric;
+  }
+
+
   @Override
   public String toString() {
     return "Version{" +
@@ -294,6 +308,7 @@ public class Version implements Comparable<Version> {
         ", nativeReplicationEnabled=" + nativeReplicationEnabled +
         ", pushStreamSourceAddress=" + pushStreamSourceAddress +
         ", replicationFactor=" + replicationFactor +
+        ", nativeReplicationSourceFabric=" + nativeReplicationSourceFabric +
         '}';
   }
 
@@ -375,6 +390,10 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
+    if(!nativeReplicationSourceFabric.equals(version.nativeReplicationSourceFabric)) {
+      return false;
+    }
+
     return pushJobId.equals(version.pushJobId);
   }
 
@@ -393,6 +412,7 @@ public class Version implements Comparable<Version> {
     result = 31 * result + partitionCount;
     result = 31 * result + incrementalPushPolicy.hashCode();
     result = 31 * result + replicationFactor;
+    result = 31 * result + nativeReplicationSourceFabric.hashCode();
     return result;
   }
 
@@ -416,6 +436,7 @@ public class Version implements Comparable<Version> {
     clonedVersion.setPushStreamSourceAddress(pushStreamSourceAddress);
     clonedVersion.setIncrementalPushPolicy(incrementalPushPolicy);
     clonedVersion.setReplicationFactor(replicationFactor);
+    clonedVersion.setNativeReplicationSourceFabric(nativeReplicationSourceFabric);
     return clonedVersion;
   }
 
