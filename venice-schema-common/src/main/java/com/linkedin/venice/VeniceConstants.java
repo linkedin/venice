@@ -53,8 +53,11 @@ public class VeniceConstants {
   // URI: /push_status/storeName
   public static final String TYPE_PUSH_STATUS = "push_status";
 
-  // URI: /hybrid_store_quota/storeName
-  public static final String TYPE_HYBRID_STORE_QUOTA = "hybrid_store_quota";
+  // URI: /stream_hybrid_store_quota/storeName
+  public static final String TYPE_STREAM_HYBRID_STORE_QUOTA = "stream_hybrid_store_quota";
+
+  // URI: /stream_reprocessing_hybrid_store_quota/storeName
+  public static final String TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA = "stream_reprocessing_hybrid_store_quota";
   // End of router request path
 
   public static final String NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC = "prod-lva1";

@@ -1,8 +1,8 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
@@ -16,8 +16,6 @@ import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
-import static com.linkedin.venice.client.store.ClientConfig.*;
-
 
 /**
  * This push monitor is able to query hybrid store quota status from routers; it will be built for STREAM job.
@@ -28,16 +26,16 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
   private static final int POLL_CYCLE_DELAY_MS = 10000;
   private static final long POLL_TIMEOUT_MS = 10000l;
 
-  private final String topicName;
+  private final String resourceName;
   private final ExecutorService executor;
 
   private HybridQuotaMonitorTask hybridQuotaMonitorTask;
   private HybridStoreQuotaStatus currentStatus = HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED;
 
   public RouterBasedHybridStoreQuotaMonitor(D2TransportClient transportClient, String resourceName) {
-    this.topicName = resourceName;
+    this.resourceName = resourceName;
     executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("RouterBasedHybridQuotaMonitor"));
-    hybridQuotaMonitorTask = new HybridQuotaMonitorTask(transportClient, topicName, this);
+    hybridQuotaMonitorTask = new HybridQuotaMonitorTask(transportClient, resourceName, this);
   }
 
   public void start() {
@@ -66,11 +64,17 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
     private final String requestPath;
     private final RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService;
 
-    public HybridQuotaMonitorTask(D2TransportClient transportClient, String storeName,
+    public HybridQuotaMonitorTask(D2TransportClient transportClient, String resourceName,
         RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService) {
       this.transportClient = transportClient;
-      this.storeName = storeName;
-      this.requestPath = buildPushStatusRequestPath(storeName);
+      if (Version.isVersionTopic(resourceName)) {
+        this.storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+        this.requestPath = buildStreamReprocessingHybridStoreQuotaRequestPath(resourceName);
+      } else {
+        this.storeName = resourceName;
+        this.requestPath = buildStreamHybridStoreQuotaRequestPath(storeName);
+      }
+
       this.hybridStoreQuotaMonitorService = hybridStoreQuotaMonitorService;
       this.isRunning = new AtomicBoolean(true);
     }
@@ -109,8 +113,11 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
       isRunning.getAndSet(false);
     }
 
-    private static String buildPushStatusRequestPath(String topicName) {
-      return "hybrid_store_quota" + "/" + topicName;
+    private static String buildStreamHybridStoreQuotaRequestPath(String storeName) {
+      return "stream_hybrid_store_quota" + "/" + storeName;
+    }
+    private static String buildStreamReprocessingHybridStoreQuotaRequestPath(String topicName) {
+      return "stream_reprocessing_hybrid_store_quota" + "/" + topicName;
     }
   }
 }
