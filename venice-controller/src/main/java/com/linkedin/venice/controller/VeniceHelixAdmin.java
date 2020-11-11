@@ -1289,7 +1289,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                              * AddVersion is invoked by directly querying controllers; the fabric where the controllers
                              * are located at is the source fabric.
                              */
-                            String sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServer(clusterName);
+                            String sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServer(clusterName, store);
                             if (sourceKafkaBootstrapServers == null) {
                                 sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
                             }
@@ -2431,6 +2431,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setNativeReplicationSourceFabric(String clusterName, String storeName, String nativeReplicationSourceFabric) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setNativeReplicationSourceFabric(nativeReplicationSourceFabric);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a store can not have the specified
      * hybrid store and incremental push configs.
@@ -2521,6 +2528,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
         Optional<Integer> replicationFactor = params.getReplicationFactor();
         Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
+        Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
 
         Optional<HybridStoreConfig> hybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
@@ -2710,6 +2718,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (backupVersionRetentionMs.isPresent()) {
                 setBackupVersionRetentionMs(clusterName, storeName, backupVersionRetentionMs.get());
             }
+
+            if(nativeReplicationSourceFabric.isPresent()) {
+                setNativeReplicationSourceFabric(clusterName, storeName, nativeReplicationSourceFabric.get());
+            }
+
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {
             logger.error("Caught exception during update to store '" + storeName + "' in cluster: '" + clusterName
@@ -3334,8 +3347,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public String getNativeReplicationKafkaBootstrapServer(String clusterName) {
-        String sourceFabric = multiClusterConfigs.getConfigForCluster(clusterName).getNativeReplicationSourceFabric();
+    public String getNativeReplicationKafkaBootstrapServer(String clusterName, Store store) {
+        //Store level source fabric config has higher priority over cluster level source fabric config.
+        String sourceFabric = store.getNativeReplicationSourceFabric();
+        if (sourceFabric == null || sourceFabric.isEmpty()) {
+            sourceFabric = multiClusterConfigs.getConfigForCluster(clusterName).getNativeReplicationSourceFabric();
+        }
         return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterKafkaUrlMap().get(sourceFabric);
     }
 

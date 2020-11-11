@@ -420,6 +420,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setIncrementalPushPolicy(IncrementalPushPolicy.valueOf(message.incrementalPushPolicy))
         .setBackupVersionRetentionMs(message.backupVersionRetentionMs);
 
+    params.setNativeReplicationSourceFabric(message.nativeReplicationSourceFabric == null ? null : message.nativeReplicationSourceFabric.toString());
+
     if (checkPreConditionForReplicateUpdateStore(clusterName, storeName,
         message.isMigrating, message.enableReads, message.enableWrites, message.migrationDuplicateStore)) {
       admin.replicateUpdateStore(clusterName, storeName, params);

@@ -113,4 +113,7 @@ public class ControllerApiConstants {
   public static final String IS_WRITE_COMPUTE_ENABLED = "is_write_compute_enabled";
 
   public static final String MIGRATION_DUPLICATE_STORE = "migration_duplicate_store";
+
+  public static final String NATIVE_REPLICATION_SOURCE_FABRIC = "native_replication_source_fabric";
+
 }

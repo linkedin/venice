@@ -239,6 +239,7 @@ public class MetadataStoreWriter {
       storeVersionState.bufferReplayEnabledForHybrid = version.isBufferReplayEnabledForHybrid();
       storeVersionState.nativeReplicationEnabled = version.isNativeReplicationEnabled();
       storeVersionState.pushStreamSourceAddress = version.getPushStreamSourceAddress();
+      storeVersionState.nativeReplicationSourceFabric = version.getNativeReplicationSourceFabric();
       return storeVersionState;
     }).collect(Collectors.toList());
   }

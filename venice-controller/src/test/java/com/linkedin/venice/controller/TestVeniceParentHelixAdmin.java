@@ -1182,13 +1182,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testUpdateStore() {
     String storeName = TestUtils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-    doReturn(store).when(internalAdmin).getStore(clusterName,storeName);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
-        .when(veniceWriter).put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))).when(
+        veniceWriter).put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null)
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.start(clusterName);
@@ -1237,20 +1236,21 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
     Assert.assertEquals(updateStore.storeName.toString(), storeName);
-    Assert.assertEquals(updateStore.readQuotaInCU, readQuota,
-        "New read quota should be written into kafka message.");
+    Assert.assertEquals(updateStore.readQuotaInCU, readQuota, "New read quota should be written into kafka message.");
     Assert.assertEquals(updateStore.enableReads, readability,
         "New read readability should be written into kafka message.");
     Assert.assertEquals(updateStore.currentVersion, AdminConsumptionTask.IGNORED_CURRENT_VERSION,
         "As we don't pass any current version into updateStore, a magic version number should be used to prevent current version being overrided in prod colo.");
-    Assert.assertNotNull(updateStore.hybridStoreConfig, "Hybrid store config should result in something not null in the avro object");
+    Assert.assertNotNull(updateStore.hybridStoreConfig,
+        "Hybrid store config should result in something not null in the avro object");
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
     Assert.assertEquals(updateStore.bootstrapToOnlineTimeoutInHours, 48);
     Assert.assertEquals(updateStore.partitionerConfig.amplificationFactor, 1);
     Assert.assertEquals(updateStore.partitionerConfig.partitionerParams.toString(), testPartitionerParams.toString());
-    Assert.assertEquals(updateStore.partitionerConfig.partitionerClass.toString(), "com.linkedin.venice.partitioner.DaVinciPartitioner");
+    Assert.assertEquals(updateStore.partitionerConfig.partitionerClass.toString(),
+        "com.linkedin.venice.partitioner.DaVinciPartitioner");
     Assert.assertEquals(updateStore.replicationFactor, 2);
     // Disable Access Control
     accessControlled = false;
@@ -1289,7 +1289,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     schemaId = schemaCaptor.getValue();
     adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertTrue(updateStore.nativeReplicationEnabled, "Native replication was not set to true after updating the store!");
+    Assert.assertTrue(updateStore.nativeReplicationEnabled,
+        "Native replication was not set to true after updating the store!");
+  }
+
+  @Test
+  public void testUpdateStoreNativeReplicationSourceFabric() {
+    String storeName = TestUtils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))).when(
+        veniceWriter).put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+
+    parentAdmin.start(clusterName);
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc1"));
+
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+
+    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+
+    valueBytes = valueCaptor.getValue();
+    schemaId = schemaCaptor.getValue();
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertTrue("dc1".equals(updateStore.nativeReplicationSourceFabric.toString()), "Native replication source fabric does not match after updating the store!");
   }
 
   @Test

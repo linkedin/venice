@@ -273,6 +273,11 @@ public class Store {
    */
   private boolean migrationDuplicateStore = false;
 
+  /**
+   * The source fabric name to be uses in native replication. Remote consumption will happen from kafka in this fabric.
+   */
+  private String nativeReplicationSourceFabric = "";
+
 
   public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
       RoutingStrategy routingStrategy, ReadStrategy readStrategy,
@@ -719,6 +724,15 @@ public class Store {
     this.migrationDuplicateStore = migrationDuplicateStore;
   }
 
+  public String getNativeReplicationSourceFabric() {
+    return this.nativeReplicationSourceFabric;
+  }
+
+  public void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
+    this.nativeReplicationSourceFabric = nativeReplicationSourceFabric;
+  }
+
+
   /**
    * Add a version into store.
    *
@@ -774,6 +788,8 @@ public class Store {
       version.setIncrementalPushPolicy(incrementalPushPolicy);
 
       version.setReplicationFactor(replicationFactor);
+
+      version.setNativeReplicationSourceFabric(nativeReplicationSourceFabric);
     }
 
     versions.add(index, version);
@@ -976,6 +992,7 @@ public class Store {
     result = 31 * result + (int) (backupVersionRetentionMs ^ (backupVersionRetentionMs >>> 32));
     result = 31 * result + replicationFactor;
     result = 31 * result + (migrationDuplicateStore ? 1 : 0);
+    result = 31 * result + nativeReplicationSourceFabric.hashCode();
 
     return result;
   }
@@ -1025,6 +1042,7 @@ public class Store {
     if (backupVersionRetentionMs != store.backupVersionRetentionMs) return false;
     if (replicationFactor != store.replicationFactor) return false;
     if (migrationDuplicateStore != store.migrationDuplicateStore) return false;
+    if (!nativeReplicationSourceFabric.equals(store.nativeReplicationSourceFabric)) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
         && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
   }
@@ -1075,6 +1093,7 @@ public class Store {
     clonedStore.setBackupVersionRetentionMs(backupVersionRetentionMs);
     clonedStore.setReplicationFactor(replicationFactor);
     clonedStore.setMigrationDuplicateStore(migrationDuplicateStore);
+    clonedStore.setNativeReplicationSourceFabric(nativeReplicationSourceFabric);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion(), true);
     }

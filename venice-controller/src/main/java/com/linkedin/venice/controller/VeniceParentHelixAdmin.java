@@ -1194,6 +1194,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
       Optional<Integer> replicationFactor = params.getReplicationFactor();
       Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
+      Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
 
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
       if (null == store) {
@@ -1339,6 +1340,8 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.backupVersionRetentionMs = backupVersionRetentionMs.orElseGet(store::getBackupVersionRetentionMs);
       setStore.replicationFactor = replicationFactor.orElseGet(store::getReplicationFactor);
       setStore.migrationDuplicateStore = migrationDuplicateStore.orElseGet(store::isMigrationDuplicateStore);
+      setStore.nativeReplicationSourceFabric = nativeReplicationSourceFabric.orElseGet((store::getNativeReplicationSourceFabric));
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
@@ -1746,8 +1749,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public String getNativeReplicationKafkaBootstrapServer(String clusterName) {
-    return veniceHelixAdmin.getNativeReplicationKafkaBootstrapServer(clusterName);
+  public String getNativeReplicationKafkaBootstrapServer(String clusterName, Store store) {
+    return veniceHelixAdmin.getNativeReplicationKafkaBootstrapServer(clusterName, store);
   }
 
   @Override

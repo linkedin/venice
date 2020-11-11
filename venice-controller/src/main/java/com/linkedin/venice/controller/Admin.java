@@ -269,7 +269,7 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     String getKafkaBootstrapServers(boolean isSSL);
 
-    String getNativeReplicationKafkaBootstrapServer(String clusterName);
+    String getNativeReplicationKafkaBootstrapServer(String clusterName, Store store);
 
     /**
      * Return whether ssl is enabled for the given store for push.

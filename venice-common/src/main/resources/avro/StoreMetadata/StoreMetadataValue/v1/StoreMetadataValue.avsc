@@ -474,6 +474,11 @@
                         "com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig"
                       ],
                       "default": null
+                    },
+                    {
+                      "name": "nativeReplicationSourceFabric",
+                      "type": ["null", "string"],
+                      "default": null
                     }
                   ]
                 }

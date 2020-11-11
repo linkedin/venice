@@ -61,7 +61,9 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress())
             .setIncrementalPushPolicy(srcStore.getIncrementalPushPolicy())
             .setBackupVersionRetentionMs(srcStore.getBackupVersionRetentionMs())
-            .setReplicationFactor(srcStore.getReplicationFactor());
+            .setReplicationFactor(srcStore.getReplicationFactor())
+            .setNativeReplicationSourceFabric(srcStore.getNativeReplicationSourceFabric());
+
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -374,6 +376,14 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<Boolean> getMigrationDuplicateStore() {
     return getBoolean(MIGRATION_DUPLICATE_STORE);
+  }
+
+  public UpdateStoreQueryParams setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
+    return putString(NATIVE_REPLICATION_SOURCE_FABRIC, nativeReplicationSourceFabric);
+  }
+
+  public Optional<String> getNativeReplicationSourceFabric() {
+    return getString(NATIVE_REPLICATION_SOURCE_FABRIC);
   }
 
   //***************** above this line are getters and setters *****************
