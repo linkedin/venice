@@ -57,9 +57,6 @@ public class PartitionStatusOnlineInstanceFinder
 
   @Override
   public synchronized void onPartitionStatusChange(String kafkaTopic, ReadOnlyPartitionStatus partitionStatus) {
-    //temporary debugging info. TODO:remove when the bug is found
-    logger.info(String.format("Received partition status change. kafka: %s, partition id: %d."
-        , kafkaTopic, partitionStatus.getPartitionId()));
     partitionStatus.getReplicaStatuses().forEach(replicaStatus ->
         logger.info(String.format("instance: %s, status: %s. \n", replicaStatus.getInstanceId(), replicaStatus.getCurrentStatus())));
 
