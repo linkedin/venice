@@ -95,7 +95,10 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       directValueBuffer = ByteBuffer.allocateDirect(1024 * 1024 + 128); // Adding another 128 bytes considering potential overhead of metadata
     }
   }
-  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
+  /**
+   * TODO: uncomment this once L/F model refactoring is committed, which will guarantee the total number of writers will be limited.
+   */
+  //private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
 
   /**
    * The passed in {@link Options} instance.
@@ -406,23 +409,28 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
           throw new VeniceException("currentSSTFileWriter is null for store: " + storeName + ", partition id: "
               + partitionId + ", 'beginBatchWrite' should be invoked before any write");
         }
-        ReusableObjects reusableObjects = threadLocalReusableObjects.get();
-        reusableObjects.directKeyBuffer.clear();
-        if (key.length > reusableObjects.directKeyBuffer.capacity()) {
-          reusableObjects.directKeyBuffer = ByteBuffer.allocateDirect(key.length);
-        }
-        reusableObjects.directKeyBuffer.put(key);
-        reusableObjects.directKeyBuffer.flip();
-        reusableObjects.directValueBuffer.clear();
-        if (valueBuffer.remaining() > reusableObjects.directValueBuffer.capacity()) {
-          reusableObjects.directValueBuffer = ByteBuffer.allocateDirect(valueBuffer.remaining());
-        }
-        valueBuffer.mark();
-        reusableObjects.directValueBuffer.put(valueBuffer);
-        valueBuffer.reset();
-        reusableObjects.directValueBuffer.flip();
+        /**
+         * TODO: uncomment this once L/F model refactoring is committed, which will guarantee the total number of writers will be limited.
+         */
+//        ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+//        reusableObjects.directKeyBuffer.clear();
+//        if (key.length > reusableObjects.directKeyBuffer.capacity()) {
+//          reusableObjects.directKeyBuffer = ByteBuffer.allocateDirect(key.length);
+//        }
+//        reusableObjects.directKeyBuffer.put(key);
+//        reusableObjects.directKeyBuffer.flip();
+//        reusableObjects.directValueBuffer.clear();
+//        if (valueBuffer.remaining() > reusableObjects.directValueBuffer.capacity()) {
+//          reusableObjects.directValueBuffer = ByteBuffer.allocateDirect(valueBuffer.remaining());
+//        }
+//        valueBuffer.mark();
+//        reusableObjects.directValueBuffer.put(valueBuffer);
+//        valueBuffer.reset();
+//        reusableObjects.directValueBuffer.flip();
+//
+//        currentSSTFileWriter.put(reusableObjects.directKeyBuffer, reusableObjects.directValueBuffer);
 
-        currentSSTFileWriter.put(reusableObjects.directKeyBuffer, reusableObjects.directValueBuffer);
+        currentSSTFileWriter.put(key, ByteUtils.extractByteArray(valueBuffer));
         ++recordNumInCurrentSSTFile;
       } else {
         rocksDB.put(writeOptions, key, 0, key.length, valueBuffer.array(), valueBuffer.position(), valueBuffer.remaining());
