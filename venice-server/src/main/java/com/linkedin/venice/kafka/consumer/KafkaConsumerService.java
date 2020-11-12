@@ -223,10 +223,6 @@ public class KafkaConsumerService extends AbstractVeniceService {
 
       while (! stopped) {
         try {
-          if (!consumer.hasSubscription()) {
-            Thread.sleep(readCycleDelayMs);
-            continue;
-          }
           if (addSomeDelay) {
             Thread.sleep(readCycleDelayMs);
             addSomeDelay = false;
