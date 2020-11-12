@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
@@ -16,6 +17,13 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest {
+  @Override
+  protected AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner) {
+    return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
+        storeCleaner, getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
+        false, Optional.of(mock(TopicReplicator.class)), getMetricsRepository(), getMockMetadataStoreWriter());
+  }
+
   @Override
   protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator) {
     return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
