@@ -183,11 +183,27 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public synchronized ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout) {
-    //notify any waiter who might be waiting for a invocation of poll to happen
+    /**
+     * Always invoke this method no matter whether the consumer have subscription or not. Therefore we could notify any
+     * waiter who might be waiting for a invocation of poll to happen even if the consumer does not have subscription
+     * after calling {@link SharedKafkaConsumer#unSubscribe(String, int)}.
+     */
     pollTimes++;
     if (waitingForPoll.get()) {
       waitingForPoll.set(false);
       notifyAll();
+    }
+
+    /**
+     * If the consumer does not have subscription, sleep the specified timeout and return.
+     */
+    try {
+      if (!hasSubscription()) {
+        Thread.sleep(timeout);
+        return ConsumerRecords.empty();
+      }
+    } catch (InterruptedException e) {
+      throw new VeniceException("Shared Consumer poll sleep got interrupted", e);
     }
 
     if (++pollTimesSinceLastSanitization == sanitizeTopicSubscriptionAfterPollTimes) {
