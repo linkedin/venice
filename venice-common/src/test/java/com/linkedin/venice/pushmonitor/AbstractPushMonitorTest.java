@@ -2,8 +2,12 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -12,10 +16,17 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -45,6 +56,8 @@ public abstract class AbstractPushMonitorTest {
   protected AbstractPushMonitor getPushMonitor() {
     return getPushMonitor(false, mock(TopicReplicator.class));
   }
+
+  protected abstract AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner);
 
   protected abstract AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator);
 
@@ -456,6 +469,73 @@ public abstract class AbstractPushMonitorTest {
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }
 
+  private class MockStoreCleaner implements StoreCleaner {
+    private final VeniceReentrantReadWriteLock mockVeniceHelixResourceLock;
+
+    public MockStoreCleaner(VeniceReentrantReadWriteLock lock) {
+      this.mockVeniceHelixResourceLock = lock;
+    }
+
+    @Override
+    public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
+      mockVeniceHelixResourceLock.readLock().lock();
+      mockVeniceHelixResourceLock.readLock().unlock();
+    }
+
+    @Override
+    public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush) {
+      System.out.println("T2 taking lock 1");
+      mockVeniceHelixResourceLock.readLock().lock();
+      mockVeniceHelixResourceLock.readLock().unlock();
+    }
+
+    @Override
+    public void topicCleanupWhenPushComplete(String clusterName, String storeName, int versionNumber) {
+      // no-op
+    }
+  }
+
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
+  public void testOnExternalViewChangeDeadlock() throws InterruptedException {
+    ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
+    final VeniceReentrantReadWriteLock lock = new VeniceReentrantReadWriteLock();
+    final StoreCleaner mockStoreCleanerWithLock = new MockStoreCleaner(lock);
+    final AbstractPushMonitor pushMonitor = getPushMonitor(mockStoreCleanerWithLock);
+    final String topic = "test-lock_v1";
+    final String instanceId = "test_instance";
+    prepareMockStore(topic);
+    Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
+    onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+    // Craft a PartitionAssignment that will trigger the StoreCleaner methods as part of handleCompletedPush.
+    PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
+    completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+    ReplicaStatus status = new ReplicaStatus(instanceId);
+    status.updateStatus(ExecutionStatus.COMPLETED);
+    ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
+    pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+    pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
+    // The async thread will take some time before calling stopMonitorOfflinePush, take the pushMonitorWriteLock lock and
+    // finally release the shutdown lock.
+    asyncExecutor.submit(() -> {
+      // Simulate the start of LEADER -> STANDBY controller transition where the write (shutdown) lock is taken.
+      System.out.println("T1 taking lock 1");
+      lock.writeLock().lock();
+      try {
+        Thread.sleep(5000);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      System.out.println("T1 taking lock 2");
+      pushMonitor.stopAllMonitoring();
+      lock.writeLock().unlock();
+    });
+    // Give some time for the other thread to take the write lock.
+    Thread.sleep(1000);
+    // If there is a deadlock then it should hang here
+    System.out.println("T2 taking lock 2");
+    pushMonitor.onExternalViewChange(completedPartitionAssignment);
+    asyncExecutor.shutdownNow();
+  }
 
 
   protected Store prepareMockStore(String topic) {
