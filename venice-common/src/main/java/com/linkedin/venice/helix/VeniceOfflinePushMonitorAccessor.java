@@ -216,9 +216,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public void subscribePartitionStatusChange(OfflinePushStatus pushStatus, PartitionStatusListener listener) {
     listenerManager.subscribe(pushStatus.getKafkaTopic(), listener);
     for (int partitionId = 0; partitionId < pushStatus.getNumberOfPartition(); partitionId++) {
-      //temporary debugging info. TODO:remove when the bug is found
-      logger.info(String.format("subscribe partition status changes. topic: %s, partition id: %d",
-          pushStatus.getKafkaTopic(), partitionId));
       partitionStatusAccessor.subscribeDataChanges(getPartitionStatusPath(pushStatus.getKafkaTopic(), partitionId),
           partitionStatusZkListener);
     }
@@ -233,9 +230,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public void unsubscribePartitionsStatusChange(String topicName, int partitionCount, PartitionStatusListener listener) {
     listenerManager.unsubscribe(topicName, listener);
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-      //temporary debugging info. TODO:remove when the bug is found
-      logger.info(String.format("unsubscribe partition status changes. topic: %s, partition id: %d",
-          topicName, partitionId));
       partitionStatusAccessor.unsubscribeDataChanges(getPartitionStatusPath(topicName, partitionId), partitionStatusZkListener);
     }
   }
