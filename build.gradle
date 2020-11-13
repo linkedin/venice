@@ -172,10 +172,14 @@ subprojects {
     useTestNG() {
       excludeGroups 'flaky'
     }
-
     // Tests should run in parallel (this controls the number of parallel tests within a single module)
     maxParallelForks = 5
     maxHeapSize = '4g'
+
+    def alt_tmp =  System.getProperty('alt_temp', '/tmp')
+    if ( alt_tmp != '/tmp') {
+      environment 'JAVA_TOOL_OPTIONS', "-Djava.io.tmpdir=${alt_tmp}"
+    }
 
     testLogging {
       events 'started', 'failed', 'passed', 'skipped'
@@ -189,6 +193,12 @@ subprojects {
       includeGroups 'flaky'
     }
     mustRunAfter test
+
+    def alt_tmp =  System.getProperty('alt_temp', '/tmp')
+    if ( alt_tmp != '/tmp') {
+      environment 'JAVA_TOOL_OPTIONS', "-Djava.io.tmpdir=${alt_tmp}"
+    }
+
   }
 }
 
