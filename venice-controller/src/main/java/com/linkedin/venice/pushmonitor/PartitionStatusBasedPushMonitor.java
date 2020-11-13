@@ -64,6 +64,6 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   @Override
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     return PushStatusDecider.getReadyToServeInstances(
-        getOfflinePush(partitionAssignment.getTopic()).getPartitionStatus(partitionId), partitionAssignment, partitionId);
+        getOfflinePushOrThrow(partitionAssignment.getTopic()).getPartitionStatus(partitionId), partitionAssignment, partitionId);
   }
 }

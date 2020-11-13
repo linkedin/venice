@@ -56,9 +56,10 @@ public interface PushMonitor {
   void cleanupStoreStatus(String storeName);
 
   /**
-   * return a push's status (push status contains the history statuses and current status)
+   * Return a push's status (push status contains the history statuses and current status) and throw exception if it
+   * doesn't exist
    */
-  OfflinePushStatus getOfflinePush(String topic);
+  OfflinePushStatus getOfflinePushOrThrow(String topic);
 
   /**
    *

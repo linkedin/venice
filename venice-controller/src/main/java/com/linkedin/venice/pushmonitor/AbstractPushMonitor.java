@@ -235,7 +235,7 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public OfflinePushStatus getOfflinePush(String topic) {
+  public OfflinePushStatus getOfflinePushOrThrow(String topic) {
     pushMonitorReadLock.lock();
     try {
       if (topicToPushMap.containsKey(topic)) {
@@ -243,6 +243,15 @@ public abstract class AbstractPushMonitor
       } else {
         throw new VeniceException("Can not find offline push status for topic:" + topic);
       }
+    } finally {
+      pushMonitorReadLock.unlock();
+    }
+  }
+
+  protected OfflinePushStatus getOfflinePush(String topic) {
+    pushMonitorReadLock.lock();
+    try {
+      return topicToPushMap.get(topic);
     } finally {
       pushMonitorReadLock.unlock();
     }
@@ -380,7 +389,7 @@ public abstract class AbstractPushMonitor
   public abstract List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 
   public void refreshAndUpdatePushStatus(String kafkaTopic, ExecutionStatus newStatus, Optional<String> newStatusDetails) {
-    final OfflinePushStatus refreshedPushStatus = getOfflinePush(kafkaTopic);
+    final OfflinePushStatus refreshedPushStatus = getOfflinePushOrThrow(kafkaTopic);
     if (refreshedPushStatus.validatePushStatusTransition(newStatus)) {
       updatePushStatus(refreshedPushStatus, newStatus, newStatusDetails);
     } else {

@@ -62,7 +62,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce())
         .retireOldStoreVersions(anyString(), anyString(), eq(false));
-    Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
+    Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     // After offline push completed, bump up the current version of this store.
     Assert.assertEquals(store.getCurrentVersion(), 1);
 
@@ -105,7 +105,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce())
         .deleteOneStoreVersion(anyString(), anyString(), anyInt());
-    Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
+    Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.ERROR);
 
     //set the push status decider back
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
@@ -125,13 +125,13 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     getMonitor().startMonitorOfflinePush(topic, getNumberOfPartition(), getReplicationFactor(),
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     PartitionAssignment partitionAssignment = new PartitionAssignment(topic, getNumberOfPartition());
-    OfflinePushStatus pushStatus = getMonitor().getOfflinePush(topic);
+    OfflinePushStatus pushStatus = getMonitor().getOfflinePushOrThrow(topic);
     PushStatusDecider decider = mock(PushStatusDecider.class);
     Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(expectedStatus, Optional.empty());
     doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
     ((OfflinePushMonitor) getMonitor()).onExternalViewChange(partitionAssignment);
-    Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), expectedStatus);
+    Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), expectedStatus);
     if (expectedStatus.equals(ExecutionStatus.COMPLETED)) {
       verify(getMockPushHealthStats(), times(1)).recordSuccessfulPush(eq(getStoreName()), anyLong());
     } else if (expectedStatus.equals(ExecutionStatus.ERROR)) {

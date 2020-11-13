@@ -80,7 +80,7 @@ public abstract class AbstractPushMonitorTest {
   public void testStartMonitorOfflinePush() {
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
+    OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
     Assert.assertEquals(pushStatus.getKafkaTopic(), topic);
     Assert.assertEquals(pushStatus.getNumberOfPartition(), numberOfPartition);
@@ -100,7 +100,7 @@ public abstract class AbstractPushMonitorTest {
   public void testStartMonitorOfflinePushWhenThereIsAnExistingErrorPush() {
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
+    OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
     Assert.assertEquals(pushStatus.getKafkaTopic(), topic);
     Assert.assertEquals(pushStatus.getNumberOfPartition(), numberOfPartition);
@@ -120,14 +120,14 @@ public abstract class AbstractPushMonitorTest {
   public void testStopMonitorOfflinePush() {
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
+    OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     monitor.stopMonitorOfflinePush(topic, true);
     verify(mockAccessor, atLeastOnce()).deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus);
     verify(mockAccessor, atLeastOnce()).unsubscribePartitionsStatusChange(pushStatus, monitor);
     verify(mockRoutingDataRepo, atLeastOnce()).unSubscribeRoutingDataChange(getTopic(), monitor);
 
     try {
-      monitor.getOfflinePush(topic);
+      monitor.getOfflinePushOrThrow(topic);
       Assert.fail("Push status should be deleted by stopMonitorOfflinePush method");
     } catch (VeniceException e) {
     }
@@ -140,28 +140,28 @@ public abstract class AbstractPushMonitorTest {
       String topic = Version.composeKafkaTopic(store, i);
       monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-      OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
+      OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
       pushStatus.updateStatus(ExecutionStatus.ERROR);
       monitor.stopMonitorOfflinePush(topic, true);
     }
     // We should keep MAX_ERROR_PUSH_TO_KEEP error push for debug.
     for (int i = 0; i < OfflinePushMonitor.MAX_PUSH_TO_KEEP; i++) {
-      Assert.assertNotNull(monitor.getOfflinePush(Version.composeKafkaTopic(store, i)));
+      Assert.assertNotNull(monitor.getOfflinePushOrThrow(Version.composeKafkaTopic(store, i)));
     }
     // Add a new error push, the oldest one should be collected.
     String topic = Version.composeKafkaTopic(store, OfflinePushMonitor.MAX_PUSH_TO_KEEP + 1);
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
+    OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     pushStatus.updateStatus(ExecutionStatus.ERROR);
     monitor.stopMonitorOfflinePush(topic, true);
     try {
-      monitor.getOfflinePush(Version.composeKafkaTopic(store, 0));
+      monitor.getOfflinePushOrThrow(Version.composeKafkaTopic(store, 0));
       Assert.fail("Oldest error push should be collected.");
     } catch (VeniceException e) {
       //expected
     }
-    Assert.assertNotNull(monitor.getOfflinePush(topic));
+    Assert.assertNotNull(monitor.getOfflinePushOrThrow(topic));
   }
 
   @Test
@@ -188,7 +188,7 @@ public abstract class AbstractPushMonitorTest {
     });
     monitor.loadAllPushes();
     for (int i = 0; i < statusCount; i++) {
-      Assert.assertEquals(monitor.getOfflinePush("testLoadAllPushes_v" + i).getCurrentStatus(),
+      Assert.assertEquals(monitor.getOfflinePushOrThrow("testLoadAllPushes_v" + i).getCurrentStatus(),
           ExecutionStatus.COMPLETED);
     }
   }
@@ -235,7 +235,7 @@ public abstract class AbstractPushMonitorTest {
 
     for (i = 1; i <= OfflinePushMonitor.MAX_PUSH_TO_KEEP; i++) {
       try {
-        monitor.getOfflinePush("testLoadAllPushes_v" + i);
+        monitor.getOfflinePushOrThrow("testLoadAllPushes_v" + i);
         Assert.fail("Old error pushes should be collected after loading.");
       } catch (VeniceException e) {
         //expected
@@ -257,13 +257,13 @@ public abstract class AbstractPushMonitorTest {
     doReturn(true).when(mockRoutingDataRepo).doesResourcesExistInIdealState(topic);
     monitor.onRoutingDataDeleted(topic);
     // Job should keep running.
-    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED);
+    Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.STARTED);
 
     // Resource has been deleted from both external view and ideal state.
     doReturn(false).when(mockRoutingDataRepo).doesResourcesExistInIdealState(topic);
     monitor.onRoutingDataDeleted(topic);
     // Job should be terminated in error status.
-    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
+    Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.ERROR);
     verify(mockPushHealthStats, times(1)).recordFailedPush(eq(getStoreName()), anyLong());
   }
 
@@ -353,7 +353,7 @@ public abstract class AbstractPushMonitorTest {
     testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
     verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
-    Assert.assertEquals(testMonitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED,
+    Assert.assertEquals(testMonitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.STARTED,
         "Hybrid push is not ready to send SOBR.");
 
     // One replica received end of push
@@ -362,7 +362,7 @@ public abstract class AbstractPushMonitorTest {
     // no buffer replay should be sent
     verify(mockReplicator, never())
         .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
-    Assert.assertEquals(testMonitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
+    Assert.assertEquals(testMonitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
 
     // Another replica received end of push
@@ -403,7 +403,7 @@ public abstract class AbstractPushMonitorTest {
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
     verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
-    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED,
+    Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.STARTED,
         "Hybrid push is not ready to send SOBR.");
 
     // One replica received end of push
@@ -411,7 +411,7 @@ public abstract class AbstractPushMonitorTest {
     monitor.onPartitionStatusChange(topic, partitionStatus);
     verify(mockReplicator,times(1))
         .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
-    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
+    Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
 
     // Another replica received end of push
@@ -465,7 +465,7 @@ public abstract class AbstractPushMonitorTest {
     // Only send one SOBR
     verify(mockReplicator, only())
         .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
-    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
+    Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }
 

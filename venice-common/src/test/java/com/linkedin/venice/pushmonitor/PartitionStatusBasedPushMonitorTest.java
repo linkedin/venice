@@ -61,7 +61,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce())
         .retireOldStoreVersions(anyString(), anyString(), eq(false));
-    Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
+    Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     // After offline push completed, bump up the current version of this store.
     Assert.assertEquals(store.getCurrentVersion(), 1);
 
@@ -102,7 +102,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce())
         .deleteOneStoreVersion(anyString(), anyString(), anyInt());
-    Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
+    Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.ERROR);
 
     //set the push status decider back
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
