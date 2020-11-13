@@ -1,5 +1,6 @@
 package com.linkedin.venice.server;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.schema.SchemaReader;
@@ -47,7 +48,6 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 
 import io.tehuti.metrics.MetricsRepository;
 
-import java.util.HashSet;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -67,7 +67,8 @@ public class VeniceServer {
 
   private final VeniceConfigLoader veniceConfigLoader;
   private final Optional<SSLEngineComponentFactory> sslFactory;
-  private final Optional<StaticAccessController> accessController;
+  private final Optional<StaticAccessController> routerAccessController;
+  private final Optional<DynamicAccessController> storeAccessController;
   private final Optional<ClientConfig> clientConfigForConsumer;
   private final AtomicBoolean isStarted;
   private final List<AbstractVeniceService> services;
@@ -98,7 +99,17 @@ public class VeniceServer {
       VeniceConfigLoader veniceConfigLoader,
       MetricsRepository metricsRepository,
       Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
-      Optional<StaticAccessController> accessController,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<ClientConfig> clientConfigForConsumer) {
+    this(veniceConfigLoader, metricsRepository, sslFactory, routerAccessController, Optional.empty(), clientConfigForConsumer);
+  }
+
+  public VeniceServer(
+      VeniceConfigLoader veniceConfigLoader,
+      MetricsRepository metricsRepository,
+      Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
       Optional<ClientConfig> clientConfigForConsumer) {
 
     // force out any potential config errors using a wildcard store name
@@ -116,7 +127,8 @@ public class VeniceServer {
     this.veniceConfigLoader = veniceConfigLoader;
     this.metricsRepository = metricsRepository;
     this.sslFactory = sslFactory;
-    this.accessController = accessController;
+    this.routerAccessController = routerAccessController;
+    this.storeAccessController = storeAccessController;
     this.clientConfigForConsumer = clientConfigForConsumer;
     this.services = createServices();
   }
@@ -219,7 +231,8 @@ public class VeniceServer {
 
     // create and add ListenerServer for handling GET requests
     ListenerService listenerService = createListenerService(storageService.getStorageEngineRepository(), metadataRepo, storeValueSchemasCacheService,
-        routingRepositoryFuture, kafkaStoreIngestionService, serverConfig, metricsRepository, sslFactory, accessController, diskHealthCheckService);
+        routingRepositoryFuture, kafkaStoreIngestionService, serverConfig, metricsRepository, sslFactory,
+        routerAccessController, storeAccessController, diskHealthCheckService);
     services.add(listenerService);
 
     /**
@@ -411,11 +424,12 @@ public class VeniceServer {
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       Optional<SSLEngineComponentFactory> sslFactory,
-      Optional<StaticAccessController> accessController,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService) {
     return new ListenerService(
         storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
-        metricsRepository, sslFactory, accessController, diskHealthService);
+        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService);
   }
 
   public static void main(String args[]) throws Exception {

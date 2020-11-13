@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -55,7 +56,8 @@ public class ListenerService extends AbstractVeniceService {
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       Optional<SSLEngineComponentFactory> sslFactory,
-      Optional<StaticAccessController> accessController,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService) {
 
     this.serverConfig = serverConfig;
@@ -72,7 +74,8 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.isComputeFastAvroEnabled(), serverConfig.isEnableParallelBatchGet(), serverConfig.getParallelBatchGetChunkSize());
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
-        storeMetadataRepository, routingRepository, metricsRepository, sslFactory, serverConfig, accessController, requestHandler);
+        storeMetadataRepository, routingRepository, metricsRepository, sslFactory, serverConfig, routerAccessController,
+        storeAccessController, requestHandler);
 
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     boolean epollEnabled = serverConfig.isRestServiceEpollEnabled();

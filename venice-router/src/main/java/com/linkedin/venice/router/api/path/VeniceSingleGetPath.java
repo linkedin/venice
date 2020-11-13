@@ -2,7 +2,6 @@ package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.base.misc.QueryStringDecoder;
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.Version;
@@ -26,6 +25,7 @@ import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpUriRequest;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
@@ -112,7 +112,7 @@ public class VeniceSingleGetPath extends VenicePath {
   public String getLocation() {
     String sep = VenicePathParser.SEP;
     StringBuilder sb = new StringBuilder();
-    sb.append(VenicePathParser.TYPE_STORAGE).append(sep)
+    sb.append(TYPE_STORAGE).append(sep)
         .append(getResourceName()).append(sep)
         .append(partition).append(sep)
         .append(getPartitionKey().base64Encoded()).append("?")

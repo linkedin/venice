@@ -23,6 +23,7 @@ import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKeyV1> {
@@ -91,7 +92,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   @Override
   public String getLocation() {
     StringBuilder sb = new StringBuilder();
-    sb.append(VenicePathParser.TYPE_COMPUTE)
+    sb.append(TYPE_COMPUTE)
         .append(VenicePathParser.SEP)
         .append(getResourceName());
     return sb.toString();

@@ -9,6 +9,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.Attribute;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
@@ -26,6 +27,7 @@ public class ServerAclHandlerTest {
   private ChannelHandlerContext ctx;
   private HttpRequest req;
   private ServerAclHandler aclHandler;
+  protected Attribute<Boolean> serverAclApprovedAttr;
 
   @BeforeMethod
   public void setup() throws Exception {
@@ -52,6 +54,8 @@ public class ServerAclHandlerTest {
     when(ctx.channel()).thenReturn(channel);
     SocketAddress address = mock(SocketAddress.class);
     when(channel.remoteAddress()).thenReturn(address);
+    serverAclApprovedAttr = mock(Attribute.class);
+    doReturn(serverAclApprovedAttr).when(channel).attr(ServerAclHandler.SERVER_ACL_APPROVED_ATTRIBUTE_KEY);
 
     when(req.method()).thenReturn(HttpMethod.GET);
   }
@@ -62,6 +66,7 @@ public class ServerAclHandlerTest {
     aclHandler.channelRead0(ctx, req);
     verify(ctx).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    verify(serverAclApprovedAttr).set(true);
   }
 
   @Test
@@ -70,6 +75,17 @@ public class ServerAclHandlerTest {
     aclHandler.channelRead0(ctx, req);
     verify(ctx, never()).fireChannelRead(req);
     verify(ctx).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    verify(serverAclApprovedAttr).set(false);
+  }
+
+  @Test
+  public void testDenyWithDisabledFailOnAccessRejection() throws Exception {
+    when(accessController.hasAccess(any(), any(), any())).thenReturn(false);
+    aclHandler  = spy(new ServerAclHandler(accessController, false));
+    aclHandler.channelRead0(ctx, req);
+    verify(ctx).fireChannelRead(req);
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    verify(serverAclApprovedAttr).set(false);
   }
 
   public class ContextMatcher implements ArgumentMatcher<FullHttpResponse> {

@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
@@ -54,12 +55,13 @@ public class TestVeniceServer extends VeniceServer {
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       Optional<SSLEngineComponentFactory> sslFactory,
-      Optional<StaticAccessController> accessController,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService) {
 
     return new ListenerService(
         storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
-        metricsRepository, sslFactory, accessController, diskHealthService) {
+        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService) {
 
       @Override
       protected StorageExecutionHandler createRequestHandler(
