@@ -1,13 +1,12 @@
-package com.linkedin.venice.router.acl;
+package com.linkedin.venice.acl.handler;
 
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.router.api.VenicePathParser;
-import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -16,20 +15,25 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
+import java.net.URI;
 import java.security.cert.X509Certificate;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.log4j.Logger;
 
+
+/**
+ * Store-level access control handler, which is being used by both Router and Server.
+ */
 @ChannelHandler.Sharable
-public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(RouterAclHandler.class);
-  private HelixReadOnlyStoreRepository metadataRepository;
-  private DynamicAccessController accessController;
+public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
+  private static final Logger logger = Logger.getLogger(StoreAclHandler.class);
 
-  public RouterAclHandler(DynamicAccessController accessController,
-      HelixReadOnlyStoreRepository metadataRepository) {
+  private final ReadOnlyStoreRepository metadataRepository;
+  private final DynamicAccessController accessController;
 
+  public StoreAclHandler(DynamicAccessController accessController,
+      ReadOnlyStoreRepository metadataRepository) {
     this.metadataRepository = metadataRepository;
     this.accessController = accessController.init(
         metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
@@ -47,16 +51,17 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
     X509Certificate clientCert = (X509Certificate) ctx.pipeline().get(SslHandler.class).engine().getSession().getPeerCertificates()[0];
-    VenicePathParserHelper helper = new VenicePathParserHelper(req.uri());
-    String storeName = helper.getResourceName();
-    String method = req.method().name();
 
-    if (VenicePathParser.TYPE_RESOURCE_STATE.equals(helper.getResourceType())) {
-      // White list acl or ignore permission for /resource_state requests
-      ReferenceCountUtil.retain(req);
-      ctx.fireChannelRead(req);
+    String uri = req.uri();
+    // Parse resource type and store name
+    String[] requestParts = URI.create(uri).getPath().split("/");
+    if (requestParts.length < 3) {
+      NettyUtils.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, ("Invalid request  uri: " + uri).getBytes(), false, ctx);
       return;
     }
+    String storeName = requestParts[2];
+
+    String method = req.method().name();
     try {
       Store store = metadataRepository.getStoreOrThrow(storeName);
       if (store.isSystemStore()) {

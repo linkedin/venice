@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -22,6 +23,7 @@ public class HttpChannelInitializerTest {
   private Optional<SSLEngineComponentFactory> sslFactory;
   private VeniceServerConfig serverConfig;
   private Optional<StaticAccessController> accessController;
+  private Optional<DynamicAccessController> storeAccessController;
   private StorageExecutionHandler requestHandler;
 
   @BeforeMethod
@@ -30,6 +32,7 @@ public class HttpChannelInitializerTest {
     metricsRepository = new MetricsRepository();
     sslFactory = Optional.of(mock(SSLEngineComponentFactory.class));
     accessController = Optional.of(mock(StaticAccessController.class));
+    storeAccessController = Optional.of(mock(DynamicAccessController.class));
     requestHandler = mock(StorageExecutionHandler.class);
     serverConfig = mock(VeniceServerConfig.class);
     routingRepository = new CompletableFuture<>();
@@ -44,6 +47,7 @@ public class HttpChannelInitializerTest {
         metricsRepository,
         sslFactory,  serverConfig,
         accessController,
+        storeAccessController,
         requestHandler);
     Assert.assertNotNull(initializer.getQuotaEnforcer());
     }
@@ -57,6 +61,7 @@ public class HttpChannelInitializerTest {
         metricsRepository,
         sslFactory,  serverConfig,
         accessController,
+        storeAccessController,
         requestHandler);
     Assert.assertNull(initializer.getQuotaEnforcer());
   }

@@ -1,6 +1,6 @@
-package com.linkedin.venice.router.acl;
+package com.linkedin.venice.acl;
 
-import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -24,12 +24,13 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 
-public class RouterAclHandlerTest {
+public class StoreAclHandlerTest {
   private DynamicAccessController accessController;
   private HelixReadOnlyStoreRepository metadataRepo;
   private ChannelHandlerContext ctx;
+  private Channel channel;
   private HttpRequest req;
-  private RouterAclHandler aclHandler;
+  private StoreAclHandler aclHandler;
   private Store store;
 
   private boolean[] hasAccess = {false};
@@ -60,7 +61,7 @@ public class RouterAclHandlerTest {
     when(sslSession.getPeerCertificates()).thenReturn(new Certificate[]{cert});
 
     // Host
-    Channel channel = mock(Channel.class);
+    channel = mock(Channel.class);
     when(ctx.channel()).thenReturn(channel);
     SocketAddress address = mock(SocketAddress.class);
     when(channel.remoteAddress()).thenReturn(address);
@@ -145,7 +146,7 @@ public class RouterAclHandlerTest {
 
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
-    // One of the cases is impossible in reality. See RouterAclHandler.java comments
+    // One of the cases is impossible in reality. See StoreAclHandler.java comments
     verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
   }
 
@@ -181,7 +182,7 @@ public class RouterAclHandlerTest {
       }
       // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
       metadataRepo = mock(HelixReadOnlyStoreRepository.class);
-      aclHandler = spy(new RouterAclHandler(accessController, metadataRepo));
+      aclHandler = spy(new StoreAclHandler(accessController, metadataRepo));
       update();
       aclHandler.channelRead0(ctx, req);
     }

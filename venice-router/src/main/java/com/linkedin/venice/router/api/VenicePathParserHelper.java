@@ -5,6 +5,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+
 
 /**
  * Created by mwise on 4/25/16.
@@ -54,7 +56,7 @@ public class VenicePathParserHelper {
 
   public boolean isInvalidStorageRequest(){
     return Utils.isNullOrEmpty(resourceType)
-        || (!resourceType.equals(VenicePathParser.TYPE_STORAGE))
+        || (!resourceType.equals(TYPE_STORAGE))
         || Utils.isNullOrEmpty(resourceName);
   }
 }

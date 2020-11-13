@@ -9,19 +9,38 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.log4j.Logger;
 
-
+/**
+ * Together with {@link ServerStoreAclHandler}, Server will allow two kinds of access pattern:
+ * 1. Access from Router, and Router request will be validated in {@link ServerAclHandler}, and {@link ServerStoreAclHandler} will be a quick pass-through.
+ * 2. Access from Client directly, and {@link ServerAclHandler} will deny the request, and {@link ServerStoreAclHandler} will
+ *    validate the request in store-level, which is exactly same as the access control behavior in Router.
+ *
+ * If both of them fail, the request will be rejected.
+ */
 @ChannelHandler.Sharable
 public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger logger = Logger.getLogger(ServerAclHandler.class);
+
+  public static final AttributeKey<Boolean> SERVER_ACL_APPROVED_ATTRIBUTE_KEY =
+      AttributeKey.valueOf("SERVER_ACL_APPROVED_ATTRIBUTE_KEY");
+
   private final StaticAccessController accessController;
+  private final boolean failOnAccessRejection;
 
   public ServerAclHandler(StaticAccessController accessController) {
+    this(accessController, true);
+  }
+
+
+  public ServerAclHandler(StaticAccessController accessController, boolean failOnAccessRejection) {
     this.accessController = accessController;
+    this.failOnAccessRejection = failOnAccessRejection;
   }
 
   /**
@@ -36,7 +55,9 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     X509Certificate clientCert = (X509Certificate) ctx.pipeline().get(SslHandler.class).engine().getSession().getPeerCertificates()[0];
     String method = req.method().name();
 
-    if (accessController.hasAccess(clientCert, VeniceComponent.SERVER, method)) {
+    boolean accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
+    ctx.channel().attr(SERVER_ACL_APPROVED_ATTRIBUTE_KEY).set(accessApproved);
+    if (accessApproved || !failOnAccessRejection) {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
     } else {

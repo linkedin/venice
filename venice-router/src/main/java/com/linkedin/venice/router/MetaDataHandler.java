@@ -18,7 +18,6 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
-import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
@@ -48,6 +47,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -105,22 +105,22 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
     VenicePathParserHelper helper = new VenicePathParserHelper(req.uri());
     String resourceType = helper.getResourceType(); //may be null
-    if (VenicePathParser.TYPE_MASTER_CONTROLLER.equals(resourceType)){
+    if (TYPE_MASTER_CONTROLLER.equals(resourceType)){
       // URI: /master_controller
       handleControllerLookup(ctx);
-    } else if (VenicePathParser.TYPE_KEY_SCHEMA.equals(resourceType)) {
+    } else if (TYPE_KEY_SCHEMA.equals(resourceType)) {
       // URI: /key_schema/${storeName}
       // For key schema lookup, we only consider storeName
       handleKeySchemaLookup(ctx, helper);
-    } else if (VenicePathParser.TYPE_VALUE_SCHEMA.equals(resourceType)) {
+    } else if (TYPE_VALUE_SCHEMA.equals(resourceType)) {
       // The request could fetch one value schema by id or all the value schema for the given store
       // URI: /value_schema/{$storeName} - Get all the value schema
       // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
       handleValueSchemaLookup(ctx, helper);
-    } else if (VenicePathParser.TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
+    } else if (TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
       // URI: /discover_cluster/${storeName}
       hanldeD2ServiceLookup(ctx, helper, req.headers());
-    } else if (VenicePathParser.TYPE_RESOURCE_STATE.equals(resourceType)) {
+    } else if (TYPE_RESOURCE_STATE.equals(resourceType)) {
       // URI: /resource_state
       handleResourceStateLookup(ctx, helper);
     } else if (TYPE_PUSH_STATUS.equals(resourceType)) {
@@ -148,7 +148,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleKeySchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + VenicePathParser.TYPE_KEY_SCHEMA + "/${storeName}");
+    checkResourceName(storeName, "/" + TYPE_KEY_SCHEMA + "/${storeName}");
     SchemaEntry keySchema = schemaRepo.getKeySchema(storeName);
     if (null == keySchema) {
       byte[] errBody = new String("Key schema for store: " + storeName + " doesn't exist").getBytes();
@@ -166,7 +166,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void handleValueSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
     checkResourceName(storeName,
-        "/" + VenicePathParser.TYPE_VALUE_SCHEMA + "/${storeName} or /" + VenicePathParser.TYPE_VALUE_SCHEMA
+        "/" + TYPE_VALUE_SCHEMA + "/${storeName} or /" + TYPE_VALUE_SCHEMA
             + "/${storeName}/${valueSchemaId}");
     String id = helper.getKey();
     if (null == id || id.isEmpty()) {
@@ -213,7 +213,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
       throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + VenicePathParser.TYPE_CLUSTER_DISCOVERY + "/${storeName}");
+    checkResourceName(storeName, "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName}");
     Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
     if (!config.isPresent() || Utils.isNullOrEmpty(config.get().getCluster())) {
       byte[] errBody = new String("Cluster for store: " + storeName + " doesn't exist").getBytes();
@@ -249,7 +249,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String resourceName = helper.getResourceName();
     boolean isResourceReadyToServe = true;
-    checkResourceName(resourceName, "/" + VenicePathParser.TYPE_RESOURCE_STATE + "/${resourceName}");
+    checkResourceName(resourceName, "/" + TYPE_RESOURCE_STATE + "/${resourceName}");
     if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
       byte[] errBody =
           ("Cannot fetch the state for resource: " + resourceName + " because the store: "

@@ -2,6 +2,7 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -20,7 +21,6 @@ import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.acl.RouterAclHandler;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
@@ -519,7 +519,7 @@ public class RouterServer extends AbstractVeniceService {
     }
 
     VerifySslHandler verifySslHandler = new VerifySslHandler(securityStats);
-    RouterAclHandler aclHandler = accessController.isPresent() ? new RouterAclHandler(accessController.get(), metadataRepository) : null;
+    StoreAclHandler aclHandler = accessController.isPresent() ? new StoreAclHandler(accessController.get(), metadataRepository) : null;
     SSLInitializer sslInitializer = sslFactory.isPresent() ? new SSLInitializer(sslFactory.get()) : null;
     Consumer<ChannelPipeline> noop = pipeline -> {};
     Consumer<ChannelPipeline> addSslInitializer = pipeline -> {pipeline.addFirst("SSL Initializer", sslInitializer);};
@@ -535,7 +535,7 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
-      pipeline.addLast("RouterAclHandler", aclHandler);
+      pipeline.addLast("StoreAclHandler", aclHandler);
       addStreamingHandler(pipeline);
     };
 

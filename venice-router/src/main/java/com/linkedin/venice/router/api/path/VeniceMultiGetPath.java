@@ -23,6 +23,7 @@ import java.util.Set;
 import javax.annotation.Nonnull;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
@@ -103,7 +104,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   @Override
   public String getLocation() {
     StringBuilder sb = new StringBuilder();
-    sb.append(VenicePathParser.TYPE_STORAGE)
+    sb.append(TYPE_STORAGE)
         .append(VenicePathParser.SEP)
         .append(getResourceName());
     return sb.toString();

@@ -3,6 +3,8 @@ package com.linkedin.venice.router.api;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+
 
 /**
  * Created by mwise on 4/25/16.
@@ -10,13 +12,13 @@ import org.testng.annotations.Test;
 public class TestVenicePathParserHelper {
   @Test
   public void parsesResourceTypes(){
-    String controllerUri = "http://myhost:1234/" + VenicePathParser.TYPE_MASTER_CONTROLLER;
-    Assert.assertEquals(new VenicePathParserHelper(controllerUri).getResourceType(), VenicePathParser.TYPE_MASTER_CONTROLLER);
+    String controllerUri = "http://myhost:1234/" + TYPE_MASTER_CONTROLLER;
+    Assert.assertEquals(new VenicePathParserHelper(controllerUri).getResourceType(), TYPE_MASTER_CONTROLLER);
     Assert.assertTrue(new VenicePathParserHelper(controllerUri).isInvalidStorageRequest());
 
-    String storageUri = "http://myhost:1234/" + VenicePathParser.TYPE_STORAGE + "/storename/key?f=b64";
+    String storageUri = "http://myhost:1234/" + TYPE_STORAGE + "/storename/key?f=b64";
     VenicePathParserHelper storageHelper = new VenicePathParserHelper(storageUri);
-    Assert.assertEquals(storageHelper.getResourceType(), VenicePathParser.TYPE_STORAGE);
+    Assert.assertEquals(storageHelper.getResourceType(), TYPE_STORAGE);
     Assert.assertEquals(storageHelper.getResourceName(), "storename");
     Assert.assertEquals(storageHelper.getKey(), "key");
     Assert.assertFalse(storageHelper.isInvalidStorageRequest());
@@ -35,21 +37,21 @@ public class TestVenicePathParserHelper {
     String host = "http://myhost:1234/";
     String storeName = "test_store";
     String valueSchemaId = "1";
-    String keySchemaUri = host + VenicePathParser.TYPE_KEY_SCHEMA + "/" + storeName;
+    String keySchemaUri = host + TYPE_KEY_SCHEMA + "/" + storeName;
     VenicePathParserHelper helper = new VenicePathParserHelper(keySchemaUri);
-    Assert.assertEquals(helper.getResourceType(), VenicePathParser.TYPE_KEY_SCHEMA);
+    Assert.assertEquals(helper.getResourceType(), TYPE_KEY_SCHEMA);
     Assert.assertEquals(helper.getResourceName(), storeName);
     Assert.assertNull(helper.getKey());
 
-    String valueSchemaUriForSingleSchema = host + VenicePathParser.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
+    String valueSchemaUriForSingleSchema = host + TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     helper = new VenicePathParserHelper(valueSchemaUriForSingleSchema);
-    Assert.assertEquals(helper.getResourceType(), VenicePathParser.TYPE_VALUE_SCHEMA);
+    Assert.assertEquals(helper.getResourceType(), TYPE_VALUE_SCHEMA);
     Assert.assertEquals(helper.getResourceName(), storeName);
     Assert.assertEquals(helper.getKey(), valueSchemaId);
 
-    String valueSchemaUriForAllSchema = host + VenicePathParser.TYPE_VALUE_SCHEMA + "/" + storeName;
+    String valueSchemaUriForAllSchema = host + TYPE_VALUE_SCHEMA + "/" + storeName;
     helper = new VenicePathParserHelper(valueSchemaUriForAllSchema);
-    Assert.assertEquals(helper.getResourceType(), VenicePathParser.TYPE_VALUE_SCHEMA);
+    Assert.assertEquals(helper.getResourceType(), TYPE_VALUE_SCHEMA);
     Assert.assertEquals(helper.getResourceName(), storeName);
     Assert.assertNull(helper.getKey());
 
@@ -61,16 +63,16 @@ public class TestVenicePathParserHelper {
     Assert.assertNull(helper.getKey());
 
     // Path without resource name, but the extra slash
-    String schemaWithResourceType = host + VenicePathParser.TYPE_KEY_SCHEMA + "/";
+    String schemaWithResourceType = host + TYPE_KEY_SCHEMA + "/";
     helper = new VenicePathParserHelper(schemaWithResourceType);
-    Assert.assertEquals(helper.getResourceType(), VenicePathParser.TYPE_KEY_SCHEMA);
+    Assert.assertEquals(helper.getResourceType(), TYPE_KEY_SCHEMA);
     Assert.assertNull(helper.getResourceName());
     Assert.assertNull(helper.getKey());
 
     // Path without key, but the extra slash
-    String schemaWithResourceName = host + VenicePathParser.TYPE_KEY_SCHEMA + "/" + storeName + "/";
+    String schemaWithResourceName = host + TYPE_KEY_SCHEMA + "/" + storeName + "/";
     helper = new VenicePathParserHelper(schemaWithResourceName);
-    Assert.assertEquals(helper.getResourceType(), VenicePathParser.TYPE_KEY_SCHEMA);
+    Assert.assertEquals(helper.getResourceType(), TYPE_KEY_SCHEMA);
     Assert.assertEquals(helper.getResourceName(), storeName);
     Assert.assertNull(helper.getKey());
   }
