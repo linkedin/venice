@@ -2879,7 +2879,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> notReadyReason = Optional.of("unknown");
     long startTime = System.currentTimeMillis();
     for (long elapsedTime = 0; elapsedTime <= maxWaitTimeMs; elapsedTime = System.currentTimeMillis() - startTime) {
-      if (pushMonitor.getOfflinePush(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
+      if (pushMonitor.getOfflinePushOrThrow(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
         throw new VeniceException("Push " + topic + " has already failed.");
       }
 

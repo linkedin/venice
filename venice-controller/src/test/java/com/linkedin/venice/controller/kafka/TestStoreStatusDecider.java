@@ -36,7 +36,7 @@ public class TestStoreStatusDecider {
     resourceAssignment = new ResourceAssignment();
 
     OfflinePushStatus mockPushStatus = Mockito.mock(OfflinePushStatus.class);
-    Mockito.doReturn(mockPushStatus).when(mockPushMonitor).getOfflinePush(Mockito.any());
+    Mockito.doReturn(mockPushStatus).when(mockPushMonitor).getOfflinePushOrThrow(Mockito.any());
   }
 
   @Test

@@ -183,8 +183,8 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public OfflinePushStatus getOfflinePush(String topic) {
-    return getPushMonitor(topic).getOfflinePush(topic);
+  public OfflinePushStatus getOfflinePushOrThrow(String topic) {
+    return getPushMonitor(topic).getOfflinePushOrThrow(topic);
   }
 
   @Override
