@@ -13,6 +13,7 @@ import java.net.URLClassLoader;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -51,14 +52,13 @@ public final class ForkedJavaProcess extends Process {
     StringBuilder classpath = new StringBuilder(originalClassPath);
     // Using set to remove duplicate classpath folders to avoid argument list too long error.
     Set<String> classPathDirs = new HashSet<>();
-    // Adding classpath from current classloader.
-    for (URL url : ((URLClassLoader) (Thread.currentThread().getContextClassLoader())).getURLs()) {
-      String extractedJarPath = Paths.get(url.getPath()).toString();
-      if (!addedJarPaths.contains(extractedJarPath)) {
-        // Only include jars that are not in the classpath
-        classPathDirs.add(Paths.get(url.getPath()).getParent().toString());
-      }
+    // Adding classpath from current context classloader.
+    Enumeration<URL> roots = Thread.currentThread().getContextClassLoader().getResources("");
+    while (roots.hasMoreElements()) {
+      String classPathRootDir = roots.nextElement().getPath();
+      classPathDirs.add(classPathRootDir);
     }
+
     for (String classPathDir : classPathDirs) {
       classLogger.info("Adding class path dir: " + classPathDir);
       classpath.append(":").append(classPathDir).append("/*");
