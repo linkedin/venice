@@ -1325,10 +1325,13 @@ public class VeniceParentHelixAdmin implements Admin {
               (hybridOffsetLagThreshold.isPresent() && hybridOffsetLagThreshold.get() < 0)) {
             setStore.storageQuotaInByte = Math.round(setStoreQuota / RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
             // user updates storage quota for hybrid store
-          } else if (storageQuotaInByte.isPresent()) {
+          } else if (storageQuotaInByte.isPresent() && storageQuotaInByte.get() != store.getStorageQuotaInByte()) {
+            // Nuage UI may auto-fill the origin store quota value into the form, we check whether it is same with
+            // the original store quota. If they are not same, we know users are sending request to update
+            //  storage quota. Otherwise, we just inherit old value here.
             setStore.storageQuotaInByte = Math.round(setStoreQuota * RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
           } else { // inherit old value
-            setStore.storageQuotaInByte = setStoreQuota;
+            setStore.storageQuotaInByte = store.getStorageQuotaInByte();
           }
         }
       }
