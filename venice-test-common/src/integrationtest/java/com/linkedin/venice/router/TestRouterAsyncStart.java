@@ -24,6 +24,8 @@ public class TestRouterAsyncStart {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws VeniceClientException {
     Utils.thisIsLocalhost();
+    ServiceFactory.setMaxAttempt(1);
+    ServiceFactory.setMaxAttemptPerPort(2);
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, true, false);
   }
 
@@ -33,13 +35,12 @@ public class TestRouterAsyncStart {
   }
 
   /**
-   * TODO: this test will take a couple of mins to finish:
-   * 1. Internally {@link ServiceFactory#getService} would retry for 5 times in failure scenario;
-   * 2. The client warming timeout is 1 min;
+   *   This test will take around 2 mins to finish:
+   * 1. The client warming timeout is 1 min;
+   * 2. Reduced the retry limit to 2 in {@link ServiceFactory#getService } so that it finishes faster.
    *
-   * If this runtime of this test is not acceptable, w e could tune the above behavior.
    */
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  @Test(timeOut = 140 * Time.MS_PER_SECOND)
   public void testConnectionWarmingFailureDuringSyncStart() {
     // Setup Venice server in a way that it will take a very long time to response
     List<VeniceServerWrapper> servers = veniceCluster.getVeniceServers();
