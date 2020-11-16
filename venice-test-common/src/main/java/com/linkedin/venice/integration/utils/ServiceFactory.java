@@ -37,7 +37,8 @@ public class ServiceFactory {
   private static final VeniceProperties EMPTY_VENICE_PROPS = new VeniceProperties(new Properties());
 
   // Test config
-  private static final int MAX_ATTEMPT = 5;
+  private static  int MAX_ATTEMPT = 5;
+  private static  int MAX_ATTEMPT_PER_PORT = 5;
   private static final int DEFAULT_REPLICATION_FACTOR =1;
   private static final int DEFAULT_PARTITION_SIZE_BYTES = 100;
   private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for testing.
@@ -54,6 +55,14 @@ public class ServiceFactory {
    */
   public static ZkServerWrapper getZkServer()  {
     return getStatefulService(ZkServerWrapper.SERVICE_NAME, ZkServerWrapper.generateService());
+  }
+
+  public static void setMaxAttempt(int maxAttempt) {
+    MAX_ATTEMPT = maxAttempt;
+  }
+
+  public static void setMaxAttemptPerPort(int maxAttempt) {
+    MAX_ATTEMPT_PER_PORT = maxAttempt;
   }
 
   public static ZkServerWrapper getZkServer(int port)  {
@@ -543,7 +552,7 @@ public class ServiceFactory {
     Exception lastException = new VeniceException("There is no spoon.");
     String errorMessage = "If you see this message, something went horribly wrong.";
 
-    for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
+    for (int attempt = 1; attempt <= MAX_ATTEMPT_PER_PORT; attempt++) {
       S wrapper = null;
       try {
         wrapper = serviceProvider.get(serviceName, port);
