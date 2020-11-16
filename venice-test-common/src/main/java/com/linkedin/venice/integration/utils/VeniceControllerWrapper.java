@@ -137,9 +137,22 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             }
             builder.put(CHILD_CLUSTER_URL_PREFIX + "." + childDataCenterName, childController.getControllerUrl());
             builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childDataCenterName, childController.getKafkaBootstrapServers(sslToKafka));
-            logger.info("ControllerConfg: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childDataCenterName + " KafkaUrl: " +  childController.getKafkaBootstrapServers(sslToKafka));
+            builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + childDataCenterName, childController.getKafkaZkAddress());
+            logger.info("ControllerConfig: " + CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + childDataCenterName
+                + " KafkaUrl: " +  childController.getKafkaBootstrapServers(sslToKafka) + " kafkaZk: " + childController.getKafkaZkAddress());
           }
           builder.put(CHILD_CLUSTER_WHITELIST, clusterWhiteList);
+          /**
+           * In native replication, source fabric can be child fabrics as well as parent fabric;
+           * and in parent fabric, there can be more than one Kafka clusters, so we might need more
+           * than one parent fabric name even though logically there is only one parent fabric.
+           */
+          String parentDataCenterName1 = "dc-parent-0";
+          String nativeReplicationSourceFabricWhitelist = clusterWhiteList + "," + parentDataCenterName1;
+          builder.put(NATIVE_REPLICATION_FABRIC_WHITELIST, nativeReplicationSourceFabricWhitelist);
+          builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentDataCenterName1, sslToKafka ? kafkaBrokerWrapper.getSSLAddress() : kafkaBrokerWrapper.getAddress());
+          builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentDataCenterName1, kafkaBrokerWrapper.getZkAddress());
+          builder.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentDataCenterName1);
           builder.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
         }
 
@@ -212,6 +225,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       return configs.get(0).getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
     }
     return configs.get(0).getString(KAFKA_BOOTSTRAP_SERVERS);
+  }
+
+  public String getKafkaZkAddress() {
+    return configs.get(0).getString(KAFKA_ZK_ADDRESS);
   }
 
   @Override

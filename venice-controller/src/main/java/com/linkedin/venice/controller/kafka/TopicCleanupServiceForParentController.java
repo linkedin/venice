@@ -2,10 +2,12 @@ package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 
@@ -23,20 +25,34 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
 
   @Override
   protected void cleanupVeniceTopics() {
-    Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopics();
+    Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
+    if (!parentFabrics.isEmpty()) {
+      for (String parentFabric : parentFabrics) {
+        String kafkaBootstrapServers = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(parentFabric);
+        String kafkaZkAddress = multiClusterConfigs.getChildDataCenterKafkaZkMap().get(parentFabric);
+        cleanupVeniceTopics(getTopicManager(Pair.create(kafkaBootstrapServers, kafkaZkAddress)));
+      }
+    } else {
+      cleanupVeniceTopics(getTopicManager());
+    }
+  }
+
+  protected void cleanupVeniceTopics(TopicManager topicManager) {
+    Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopics(topicManager);
     allStoreTopics.forEach((storeName, topics) -> {
       topics.forEach((topic, retention) -> {
         if (getAdmin().isTopicTruncatedBasedOnRetention(retention)) {
           // Topic may be deleted after delay
-          int remainingFactor = storeToCountdownForDeletion.merge(topic, delayFactor, (oldVal, givenVal) -> oldVal - 1);
+          int remainingFactor = storeToCountdownForDeletion.merge(topic + "_" + topicManager.getKafkaBootstrapServers(),
+              delayFactor, (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
             LOGGER.info("Retention policy for topic: " + topic + " is: " + retention + " ms, and it is deprecated, will delete it"
                 + " after " + remainingFactor * sleepIntervalBetweenTopicListFetchMs + " milliseconds.");
           } else {
             LOGGER.info("Retention policy for topic: " + topic + " is: " + retention + " ms, and it is deprecated, will delete it now.");
-            storeToCountdownForDeletion.remove(topic);
+            storeToCountdownForDeletion.remove(topic + "_" + topicManager.getKafkaBootstrapServers());
             try {
-              getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+              topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);
             } catch (ExecutionException e) {
               // No op, will try again in the next cleanup cycle
             }

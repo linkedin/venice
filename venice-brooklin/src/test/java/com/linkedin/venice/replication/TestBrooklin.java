@@ -30,6 +30,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 
 import static com.linkedin.venice.kafka.TopicManager.*;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 import org.apache.log4j.Logger;
@@ -81,8 +82,7 @@ public class TestBrooklin {
 
       Properties properties = new Properties();
       properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
-      try (TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-          100, 0l, TestUtils.getVeniceConsumerFactory(kafka))) {
+      try (TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka))) {
         String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
         TopicReplicator replicator =
             new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
@@ -182,7 +182,10 @@ public class TestBrooklin {
 
   @Test
   public void testReflectiveInstantiation() throws IOException {
-    try (TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(null))) {
+    KafkaBrokerWrapper kafka = mock(KafkaBrokerWrapper.class);
+    doReturn("kafka_url").when(kafka).getAddress();
+    doReturn("kafka_zk").when(kafka).getZkAddress();
+    try (TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka))) {
       // Main case: trying to instantiate the BrooklinTopicReplicator
       String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();
       VeniceProperties props = new PropertyBuilder()

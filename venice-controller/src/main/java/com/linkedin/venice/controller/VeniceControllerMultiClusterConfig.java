@@ -197,4 +197,16 @@ public class VeniceControllerMultiClusterConfig {
   public long getTerminalStateTopicCheckerDelayMs() {
     return getCommonConfig().getTerminalStateTopicCheckerDelayMs();
   }
+
+  public Map<String, String> getChildDataCenterKafkaUrlMap() {
+    return getCommonConfig().getChildDataCenterKafkaUrlMap();
+  }
+
+  public Map<String, String> getChildDataCenterKafkaZkMap() {
+    return getCommonConfig().getChildDataCenterKafkaZkMap();
+  }
+
+  public Set<String> getParentFabrics() {
+    return getCommonConfig().getParentFabrics();
+  }
 }

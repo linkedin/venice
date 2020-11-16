@@ -882,6 +882,12 @@ public class ConfigKeys {
    */
   public static final String CHILD_DATA_CENTER_KAFKA_URL_PREFIX = "child.data.center.kafka.url";
 
+  /**
+   * Config prefix for Kafka zk address in all child fabrics; parent controllers need to know the
+   * Kafka zk in all fabrics for native replication.
+   */
+  public static final String CHILD_DATA_CENTER_KAFKA_ZK_PREFIX = "child.data.center.kafka.zk";
+
   public static final String CHILD_CLUSTER_D2_SERVICE_NAME = "child.cluster.d2.service.name";
 
   /**
@@ -909,6 +915,23 @@ public class ConfigKeys {
    *
    */
   public static final String CHILD_CLUSTER_WHITELIST = "child.cluster.whitelist";
+
+  /**
+   * Previously {@link #CHILD_CLUSTER_WHITELIST} is used to also represent the white list of source fabrics
+   * for native replication; however, the final migration plan decides that a Kafka cluster in parent fabric
+   * can also be the source fabric, so the below config is introduced to represent all potential source
+   * fabrics for native replication.
+   */
+  public static final String NATIVE_REPLICATION_FABRIC_WHITELIST = "native.replication.fabric.whitelist";
+
+  /**
+   * A list of potential parent fabrics. Logically, there is only one parent fabric; during native replication
+   * migration, there will be two Kafka clusters in parent fabric, so we need two fabric names to represent
+   * the two different Kafka cluster url.
+   *
+   * TODO: deprecate this config after native replication migration is complete.
+   */
+  public static final String PARENT_KAFKA_CLUSTER_FABRIC_LIST = "parent.kafka.cluster.fabric.list";
 
   /**
    * When the parent controller receives an admin write operation, it replicates that message to the admin kafka stream.

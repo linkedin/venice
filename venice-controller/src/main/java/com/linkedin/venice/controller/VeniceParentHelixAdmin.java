@@ -1749,8 +1749,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public String getNativeReplicationKafkaBootstrapServer(String clusterName, Store store) {
-    return veniceHelixAdmin.getNativeReplicationKafkaBootstrapServer(clusterName, store);
+  public Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric) {
+    return veniceHelixAdmin.getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
+  }
+
+  @Override
+  public String getNativeReplicationSourceFabric(String clusterName, Store store) {
+    return veniceHelixAdmin.getNativeReplicationSourceFabric(clusterName, store);
   }
 
   @Override
@@ -1766,6 +1771,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public TopicManager getTopicManager() {
     return veniceHelixAdmin.getTopicManager();
+  }
+
+  @Override
+  public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
+    return veniceHelixAdmin.getTopicManager(kafkaBootstrapServersAndZkAddress);
   }
 
   @Override

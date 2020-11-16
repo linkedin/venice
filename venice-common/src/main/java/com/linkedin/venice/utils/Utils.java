@@ -10,8 +10,11 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 
 import java.nio.file.Files;
 import java.util.AbstractList;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.RandomAccess;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -513,6 +516,14 @@ public class Utils {
       throw new VeniceException("Invalid input: " + rawString);
     }
     return Arrays.asList(strArray);
+  }
+
+  public static Set<String> parseCommaSeparatedStringToSet(String rawString) {
+    if (rawString == null || rawString.length() == 0) {
+      return Collections.emptySet();
+    }
+    String[] strArray = rawString.split(",\\s*");
+    return Arrays.stream(strArray).collect(Collectors.toSet());
   }
 
   /**

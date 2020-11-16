@@ -10,6 +10,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
@@ -51,28 +52,16 @@ import static com.linkedin.venice.offsets.OffsetRecord.*;
  * use the same consumer: KafkaConsumer is not safe for multi-threaded access.
  */
 public class TopicManager implements Closeable {
-
-  public static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = 5 * Time.MS_PER_DAY;
-
-  // Immutable state
-  private final int kafkaOperationTimeoutMs;
-  private final int topicDeletionStatusPollIntervalMs;
-  private final long topicMinLogCompactionLagMs;
-  private final KafkaClientFactory kafkaClientFactory;
-  private final boolean isConcurrentTopicDeleteRequestsEnabled;
-
-  // Mutable, lazily initialized, state
-  private KafkaAdminWrapper kafkaAdmin;
-  private KafkaConsumer<byte[], byte[]> kafkaRawBytesConsumer;
-  private KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaRecordConsumer;
-
   private static final Logger logger = Logger.getLogger(TopicManager.class);
-  public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
-  public static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
-  protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
   private static final int KAFKA_POLLING_RETRY_ATTEMPT = 3;
+  protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
+
+  public static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = 5 * Time.MS_PER_DAY;
+  public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+  public static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   public static final int MAX_TOPIC_DELETE_RETRIES = 3;
   /**
    * Default setting is that no log compaction should happen for hybrid store version topics
@@ -86,18 +75,35 @@ public class TopicManager implements Closeable {
   public static final boolean DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
 
 
+  // Immutable state
+  private final String kafkaBootstrapServers;
+  private final String kafkaZkAddress;
+  private final int kafkaOperationTimeoutMs;
+  private final int topicDeletionStatusPollIntervalMs;
+  private final long topicMinLogCompactionLagMs;
+  private final KafkaClientFactory kafkaClientFactory;
+  private final boolean isConcurrentTopicDeleteRequestsEnabled;
+
+  // Mutable, lazily initialized or populated, state
+  private KafkaAdminWrapper kafkaAdmin;
+  private KafkaConsumer<byte[], byte[]> kafkaRawBytesConsumer;
+  private KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaRecordConsumer;
+
+
   //TODO: Consider adding a builder for this class as the number of constructors is getting high.
   public TopicManager(
       int kafkaOperationTimeoutMs,
       int topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
-      KafkaClientFactory kafkaClientFactory,
-      boolean isConcurrentTopicDeleteRequestsEnabled) {
+      boolean isConcurrentTopicDeleteRequestsEnabled,
+      KafkaClientFactory kafkaClientFactory) {
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
-    this.kafkaClientFactory = kafkaClientFactory;
     this.isConcurrentTopicDeleteRequestsEnabled = isConcurrentTopicDeleteRequestsEnabled;
+    this.kafkaClientFactory = kafkaClientFactory;
+    this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
+    this.kafkaZkAddress = kafkaClientFactory.getKafkaZkAddress();
   }
 
   public TopicManager(
@@ -105,19 +111,18 @@ public class TopicManager implements Closeable {
       int topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       KafkaClientFactory kafkaClientFactory) {
-    this(kafkaOperationTimeoutMs,
+    this(
+        kafkaOperationTimeoutMs,
         topicDeletionStatusPollIntervalMs,
         topicMinLogCompactionLagMs,
-        kafkaClientFactory,
-        DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY);
+        DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY,
+        kafkaClientFactory);
   }
 
   /**
    * This constructor is used in server only; server doesn't have access to controller config like
    * topic.deletion.status.poll.interval.ms, so we use default config defined in this class; besides, TopicManager
    * in server doesn't use the config mentioned above.
-   *
-   * @param kafkaClientFactory
    */
   public TopicManager(KafkaClientFactory kafkaClientFactory) {
     this(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
@@ -288,7 +293,7 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * Update rentention for the given topic given a {@link Properties}.
+   * Update retention for the given topic given a {@link Properties}.
    * @param topicName
    * @param retentionInMS
    * @param topicProperties
@@ -300,6 +305,7 @@ public class TopicManager implements Closeable {
         !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
       getKafkaAdmin().setTopicConfig(topicName, topicProperties);
+      logger.info("Updated topic: " + topicName + " with retention.ms: " + retentionInMS + " in cluster [" + this.kafkaBootstrapServers + "]");
       return true;
     }
     // Retention time has already been updated for this topic before
@@ -1019,6 +1025,10 @@ public class TopicManager implements Closeable {
       logger.info(this.getClass().getSimpleName() + " is using kafka admin client: " + kafkaAdminName);
     }
     return kafkaAdmin;
+  }
+
+  public String getKafkaBootstrapServers() {
+    return this.kafkaBootstrapServers;
   }
 
   @Override

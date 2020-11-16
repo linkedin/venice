@@ -22,13 +22,13 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final VeniceControllerMultiClusterConfig mutliClusterConfigs;
   private final Map<String, AdminConsumerService> consumerServices;
 
-  public VeniceControllerService(VeniceControllerMultiClusterConfig mutliClusterConfigs,
+  public VeniceControllerService(VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository, boolean sslEnabled, Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController, Optional<AuthorizerService> authorizerService) {
-    this.mutliClusterConfigs = mutliClusterConfigs;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(mutliClusterConfigs, metricsRepository, sslEnabled, sslConfig, accessController);
-    if (mutliClusterConfigs.isParent()) {
-      this.admin = new VeniceParentHelixAdmin(internalAdmin, mutliClusterConfigs, sslEnabled, sslConfig, authorizerService);
+    this.mutliClusterConfigs = multiClusterConfigs;
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, sslConfig, accessController);
+    if (multiClusterConfigs.isParent()) {
+      this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig, authorizerService);
       logger.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
@@ -36,9 +36,9 @@ public class VeniceControllerService extends AbstractVeniceService {
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServices = new HashMap<>();
-    for (String cluster : mutliClusterConfigs.getClusters()) {
+    for (String cluster : multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService =
-          new AdminConsumerService(internalAdmin, mutliClusterConfigs.getConfigForCluster(cluster), metricsRepository);
+          new AdminConsumerService(internalAdmin, multiClusterConfigs.getConfigForCluster(cluster), metricsRepository);
       this.consumerServices.put(cluster, adminConsumerService);
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);
