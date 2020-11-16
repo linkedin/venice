@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -61,6 +62,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private AtomicBoolean stop = new AtomicBoolean(false);
   private boolean isMasterControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
+  protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
 
   public TopicCleanupService(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.admin = admin;
@@ -68,6 +70,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     this.delayFactor = multiClusterConfigs.getTopicCleanupDelayFactor();
     this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
     this.cleanupThread = new Thread(new TopicCleanupTask(), "TopicCleanupTask");
+    this.multiClusterConfigs = multiClusterConfigs;
   }
 
   @Override
@@ -84,6 +87,10 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   public TopicManager getTopicManager() {
     return admin.getTopicManager();
+  }
+
+  public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
+    return admin.getTopicManager(kafkaBootstrapServersAndZkAddress);
   }
 
   private class TopicCleanupTask implements Runnable {
@@ -129,7 +136,11 @@ public class TopicCleanupService extends AbstractVeniceService {
   }
 
   protected Map<String, Map<String, Long>> getAllVeniceStoreTopics() {
-    Map<String, Long> topicRetentions = getTopicManager().getAllTopicRetentions();
+    return getAllVeniceStoreTopics(getTopicManager());
+  }
+
+  protected Map<String, Map<String, Long>> getAllVeniceStoreTopics(TopicManager topicManager) {
+    Map<String, Long> topicRetentions = topicManager.getAllTopicRetentions();
     Map<String, Map<String, Long>> allStoreTopics = new HashMap<>();
 
     for (Map.Entry<String, Long> entry : topicRetentions.entrySet()) {

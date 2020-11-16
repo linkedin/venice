@@ -44,6 +44,7 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
@@ -187,7 +188,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Client/wrapper used for performing Helix operations in Venice.
      */
     private final HelixAdminClient helixAdminClient;
-    private TopicManager topicManager;
+    private TopicManagerRepository topicManagerRepository;
     private final ZkClient zkClient;
     private final HelixAdapterSerializer adapterSerializer;
     private final ZkWhitelistAccessor whitelistAccessor;
@@ -299,10 +300,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.adapterSerializer = new HelixAdapterSerializer();
         veniceConsumerFactory = new VeniceControllerConsumerFactory(commonConfig);
 
-        this.topicManager = new TopicManager(multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
-                                             multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
-                                             multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
-                                             veniceConsumerFactory);
+        this.topicManagerRepository = new TopicManagerRepository(getKafkaBootstrapServers(isSslToKafka()),
+                                                                 multiClusterConfigs.getKafkaZkAddress(),
+                                                                 multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
+                                                                 multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
+                                                                 multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
+                                                                 veniceConsumerFactory);
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
         this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
@@ -311,16 +314,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
         veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
         this.onlineOfflineTopicReplicator =
-            TopicReplicator.getTopicReplicator(topicManager, commonConfig.getProps(), veniceWriterFactory);
+            TopicReplicator.getTopicReplicator(topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
         this.leaderFollowerTopicReplicator = TopicReplicator.getTopicReplicator(
-            LeaderStorageNodeReplicator.class.getName(), topicManager, commonConfig.getProps(), veniceWriterFactory);
+            LeaderStorageNodeReplicator.class.getName(), topicManagerRepository.getTopicManager(), commonConfig.getProps(), veniceWriterFactory);
         this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
         this.veniceHelixAdminStats = new VeniceHelixAdminStats(metricsRepository, "venice_helix_admin");
         isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
         coloMasterClusterName = commonConfig.getClusterName();
         pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
-        metadataStoreWriter = new MetadataStoreWriter(topicManager, veniceWriterFactory, this);
+        metadataStoreWriter = new MetadataStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, this);
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -382,8 +385,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     // For testing purpose.
-    void setTopicManager(TopicManager topicManager) {
-        this.topicManager = topicManager;
+    void setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
+        this.topicManagerRepository = topicManagerRepository;
     }
 
     @Override
@@ -679,7 +682,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (int attempt = 0; attempt < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS; attempt ++) {
                 if (attempt > 0)
                     Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
-                if (topicManager.containsTopicAndAllPartitionsAreOnline(expectedRTTopic)) {
+                if (getTopicManager().containsTopicAndAllPartitionsAreOnline(expectedRTTopic)) {
                     pushJobDetailsRTTopic = expectedRTTopic;
                     logger.info("Topic " + expectedRTTopic
                         + " exists and is configured to receive push job details events");
@@ -1226,14 +1229,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 } finally {
                     repository.unLock();
                 }
-                /**
-                 * TODO: if native replication is enabled and it's in parent controller, directly create the topic in
-                 *       the source child fabric, which requires a map of {@link TopicManager} (Kafka url to TM);
-                 *       with this optimization, broadcasting SOP will not retry until KMM create the topic but instead
-                 *       succeed immediately.
-                 */
+
                 // Topic created by Venice Controller is always without Kafka compaction.
-                topicManager.createTopic(
+                getTopicManager().createTopic(
                     version.kafkaTopicName(),
                     numberOfPartitions * amplificationFactor,
                     clusterConfig.getKafkaReplicationFactor(),
@@ -1243,7 +1241,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     useFastKafkaOperationTimeout
                 );
                 if (pushType.isStreamReprocessing()) {
-                    topicManager.createTopic(
+                    getTopicManager().createTopic(
                         Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
                         numberOfPartitions,
                         clusterConfig.getKafkaReplicationFactor(),
@@ -1258,6 +1256,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (compressionDictionary != null) {
                     compressionDictionaryBuffer = ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
                 }
+
+                Pair<String, String> sourceKafkaBootstrapServersAndZk = null;
 
                 repository.lock();
                 try {
@@ -1286,14 +1286,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
                         } else {
                             /**
-                             * AddVersion is invoked by directly querying controllers; the fabric where the controllers
-                             * are located at is the source fabric.
+                             * AddVersion is invoked by directly querying controllers; there are 3 different configs that
+                             * can determine where the source fabric is:
+                             * 1. Cluster level config
+                             * 2. Push job config which can identify where the push starts from, which has a higher
+                             *    priority than cluster level config
+                             * 3. Store level config which has the highest priority; by default, it's not used unless
+                             *    specified. Store level config has the highest priority because it can be used to fail
+                             *    over a push.
                              */
-                            String sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServer(clusterName, store);
+                            String sourceFabric = getNativeReplicationSourceFabric(clusterName, store);
+                            sourceKafkaBootstrapServersAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
+                            String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
                             if (sourceKafkaBootstrapServers == null) {
                                 sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
                             }
                             version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
+                            version.setNativeReplicationSourceFabric(sourceFabric);
                         }
                     }
                     store.setPersistenceType(PersistenceType.ROCKS_DB);
@@ -1311,6 +1320,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
                 } finally {
                     repository.unLock();
+                }
+
+                /**
+                 *  When native replication is enabled and it's in parent controller, directly create the topic in
+                 *  the specified source fabric if the source fabric is not the local fabric; the above topic creation
+                 *  is still required since child controllers need to create a topic locally, and parent controller uses
+                 *  local VT to determine whether there is any ongoing offline push.
+                 */
+                if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()
+                        && !version.getPushStreamSourceAddress().equals(getKafkaBootstrapServers(isSslToKafka()))) {
+                    if (sourceKafkaBootstrapServersAndZk == null || sourceKafkaBootstrapServersAndZk.getFirst() == null
+                        || sourceKafkaBootstrapServersAndZk.getSecond() == null) {
+                        throw new VeniceException("Parent controller should know the source Kafka bootstrap server url "
+                            + "and source Kafka ZK address for store: " + storeName + " and version: " + version.getNumber()
+                            + " in cluster: " + clusterName);
+                    }
+                    getTopicManager(sourceKafkaBootstrapServersAndZk).createTopic(
+                        version.kafkaTopicName(),
+                        numberOfPartitions * amplificationFactor,
+                        clusterConfig.getKafkaReplicationFactor(),
+                        true,
+                        false,
+                        clusterConfig.getMinIsr(),
+                        useFastKafkaOperationTimeout
+                    );
+                    if (pushType.isStreamReprocessing()) {
+                        getTopicManager(sourceKafkaBootstrapServersAndZk).createTopic(
+                            Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
+                            numberOfPartitions,
+                            clusterConfig.getKafkaReplicationFactor(),
+                            true,
+                            false,
+                            clusterConfig.getMinIsr(),
+                            useFastKafkaOperationTimeout
+                        );
+                    }
                 }
 
                 if (sendStartOfPush) {
@@ -1418,7 +1463,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (clusterName.equals(destCluster)) {
             String versionTopic = Version.composeKafkaTopic(storeName, versionNumber);
             // If the topic doesn't exist, we don't know whether it's not created or already deleted, so we don't skip
-            return topicManager.containsTopic(versionTopic) && isTopicTruncated(versionTopic);
+            return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic);
         }
         return false;
     }
@@ -1514,7 +1559,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized String getRealTimeTopic(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        Set<String> currentTopics = topicManager.listTopics();
+        Set<String> currentTopics = getTopicManager().listTopics();
         String realTimeTopic = Version.composeRealTimeTopic(storeName);
         if (currentTopics.contains(realTimeTopic)){
             return realTimeTopic;
@@ -1548,7 +1593,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
 
                 checkControllerMastership(clusterName);
-                topicManager.createTopic(
+                getTopicManager().createTopic(
                     realTimeTopic,
                     partitionCount,
                     clusterConfig.getKafkaReplicationFactor(),
@@ -1597,7 +1642,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     + "Version: " + version.getNumber() + " Store:" + storeName);
             }
             String versionTopic = Version.composeKafkaTopic(storeName, version.getNumber());
-            if (!topicManager.containsTopicAndAllPartitionsAreOnline(versionTopic) || isTopicTruncated(versionTopic)) {
+            if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(versionTopic) || isTopicTruncated(versionTopic)) {
                 veniceHelixAdminStats.recordUnexpectedTopicAbsenceCount();
                 throw new VeniceException("Incremental push cannot be started for store: " + storeName + " in cluster: "
                     + clusterName + " because the version topic: " + versionTopic
@@ -1845,7 +1890,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Store store = storeRepository.getStore(storeName);
         if ((store.isHybrid() && clusterConfig.isKafkaLogCompactionForHybridStoresEnabled())
             || (store.isIncrementalPushEnabled() && clusterConfig.isKafkaLogCompactionForIncrementalPushStoresEnabled())) {
-            topicManager.updateTopicCompactionPolicy(Version.composeKafkaTopic(storeName, versionNumber), true);
+            getTopicManager().updateTopicCompactionPolicy(Version.composeKafkaTopic(storeName, versionNumber), true);
         }
     }
 
@@ -1913,32 +1958,57 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * This logic is used to avoid the scenario that the topic exists in Kafka Zookeeper, but not fully ready in
          * Kafka Broker yet.
          */
-        if (getTopicManager().containsTopic(kafkaTopicName)) {
-            try {
-                if (getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs)) {
-                    // Retention time is updated to "deprecatedJobTopicRetentionMs"; log this topic config changes
-                    logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
-                    return true;
-                } // otherwise, the retention time config for this topic has already been updated before
-            } catch (TopicDoesNotExistException e) {
-                // Since topic deletion is asynchronous, it's possible that the topic gets deleted as we update its
-                // retention.
-                logger.info("Unable to update the retention for topic: " + kafkaTopicName
-                    + " because the topic doesn't exist in Kafka Zookeeper anymore, will skip the truncation");
-            }
+        if (multiClusterConfigs.isParent()) {
+            return truncateKafkaTopicInParent(kafkaTopicName);
         } else {
-            logger.info("Topic: " + kafkaTopicName + " doesn't exist in Kafka Zookeeper, will skip the truncation");
+            return truncateKafkaTopic(getTopicManager(), kafkaTopicName);
         }
-        // return false to indicate the retention config has already been updated before
-        return false;
     }
 
     private boolean truncateKafkaTopic(String kafkaTopicName, Map<String, Properties> topicConfigs) {
+        if (multiClusterConfigs.isParent()) {
+            /**
+             * topicConfigs is ignored on purpose, since we couldn't guarantee configs are in sync in
+             * different Kafka clusters.
+             */
+            return truncateKafkaTopicInParent(kafkaTopicName);
+        } else {
+            return truncateKafkaTopic(getTopicManager(), kafkaTopicName, topicConfigs);
+        }
+    }
+
+    /**
+     * Iterate through all Kafka clusters in parent fabric to truncate the same topic name
+     */
+    private boolean truncateKafkaTopicInParent(String kafkaTopicName) {
+        boolean allTopicsAreDeleted = true;
+        Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
+        for (String parentFabric : parentFabrics) {
+            Pair<String, String> kafkaUrlAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(parentFabric);
+            allTopicsAreDeleted &= truncateKafkaTopic(getTopicManager(kafkaUrlAndZk), kafkaTopicName);
+        }
+        return allTopicsAreDeleted;
+    }
+
+    private boolean truncateKafkaTopic(TopicManager topicManager, String kafkaTopicName) {
+        if (topicManager.containsTopic(kafkaTopicName)) {
+            try {
+                if (topicManager.updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs)) {
+                    return true;
+                }
+            } catch (TopicDoesNotExistException e) {
+                logger.info("Unable to update the retention for topic: " + kafkaTopicName + " in cluster "
+                    + "because the topic doesn't exist in Kafka anymore, will skip the truncation");
+            }
+        } else {
+            logger.info("Topic: " + kafkaTopicName + " doesn't exist, will skip the truncation");
+        }
+        return false;
+    }
+
+    private boolean truncateKafkaTopic(TopicManager topicManager, String kafkaTopicName, Map<String, Properties> topicConfigs) {
         if (topicConfigs.containsKey(kafkaTopicName)) {
-            if (getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs,
-                topicConfigs.get(kafkaTopicName))) {
-                // retention is updated.
-                logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
+            if (topicManager.updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs, topicConfigs.get(kafkaTopicName))) {
                 return true;
             }
         } else {
@@ -1971,7 +2041,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .map(version -> version.getNumber())
             .collect(Collectors.toSet());
 
-        Set<String> allTopics = topicManager.listTopics();
+        Set<String> allTopics = getTopicManager().listTopics();
         List<String> allTopicsRelatedToThisStore = allTopics.stream()
             /** Exclude RT buffer topics, admin topics and all other special topics */
             .filter(t -> Version.isVersionTopicOrStreamReprocessingTopic(t))
@@ -2483,7 +2553,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (originalStore.isHybrid()) {
             // If this is a hybrid store, always try to disable compaction if RT topic exists.
             try {
-                topicManager.updateTopicCompactionPolicy(Version.composeRealTimeTopic(storeName), false);
+                getTopicManager().updateTopicCompactionPolicy(Version.composeRealTimeTopic(storeName), false);
             } catch (TopicDoesNotExistException e) {
                 logger.error(String.format("Could not find realtime topic for hybrid store %s", storeName));
             }
@@ -2609,9 +2679,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             store.setLeaderFollowerModelEnabled(true);
                         }
                         store.setHybridStoreConfig(finalHybridConfig);
-                        if (topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
+                        if (getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
                             // RT already exists, ensure the retention is correct
-                            topicManager.updateTopicRetention(Version.composeRealTimeTopic(storeName),
+                            getTopicManager().updateTopicRetention(Version.composeRealTimeTopic(storeName),
                                 finalHybridConfig.getRetentionTimeInMs());
                         }
                     }
@@ -2730,9 +2800,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             //rollback to original store
             storeMetadataUpdate(clusterName, storeName, store -> originalStore);
             if (originalStore.isHybrid() && hybridStoreConfig.isPresent()
-                && topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
+                && getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
                 // Ensure the topic retention is rolled back too
-                topicManager.updateTopicRetention(Version.composeRealTimeTopic(storeName),
+                getTopicManager().updateTopicRetention(Version.composeRealTimeTopic(storeName),
                     originalStore.getHybridStoreConfig().getRetentionTimeInMs());
             }
             logger.error("Successfully rolled back changes to store '" + storeName + "' in cluster: '" + clusterName
@@ -3130,7 +3200,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void stopVeniceController() {
         try {
             manager.disconnect();
-            topicManager.close();
+            topicManagerRepository.close();
             zkClient.close();
             admin.close();
             helixAdminClient.close();
@@ -3350,15 +3420,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public String getNativeReplicationKafkaBootstrapServer(String clusterName, Store store) {
+    public Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric) {
+        return Pair.create(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(sourceFabric),
+                           multiClusterConfigs.getChildDataCenterKafkaZkMap().get(sourceFabric));
+    }
+
+    @Override
+    public String getNativeReplicationSourceFabric(String clusterName, Store store) {
         //Store level source fabric config has higher priority over cluster level source fabric config.
         String sourceFabric = store.getNativeReplicationSourceFabric();
         if (sourceFabric == null || sourceFabric.isEmpty()) {
             sourceFabric = multiClusterConfigs.getConfigForCluster(clusterName).getNativeReplicationSourceFabric();
         }
-        return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterKafkaUrlMap().get(sourceFabric);
+        return sourceFabric;
     }
-
     @Override
     public boolean isSSLEnabledForPush(String clusterName, String storeName) {
         if (isSslToKafka()) {
@@ -3391,9 +3466,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return this.multiClusterConfigs.isSslToKafka();
     }
 
+    public TopicManagerRepository getTopicManagerRepository() {
+        return this.topicManagerRepository;
+    }
+
     @Override
     public TopicManager getTopicManager() {
-        return this.topicManager;
+        return this.topicManagerRepository.getTopicManager();
+    }
+
+    @Override
+    public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
+        return this.topicManagerRepository.getTopicManager(kafkaBootstrapServersAndZkAddress);
     }
 
     @Override
@@ -3642,7 +3726,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     boolean verified = false;
                     String topic = participantMessageStoreRTTMap.get(clusterName);
                     while (attempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
-                        if (topicManager.containsTopicAndAllPartitionsAreOnline(topic)) {
+                        if (getTopicManager().containsTopicAndAllPartitionsAreOnline(topic)) {
                             verified = true;
                             logger.info("Participant message store RTT topic set to " + topic + " for cluster "
                                 + clusterName);
@@ -3921,7 +4005,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         jobTrackingVeniceWriterMap.clear();
         participantMessageWriterMap.forEach( (k, v) -> IOUtils.closeQuietly(v));
         participantMessageWriterMap.clear();
-        IOUtils.closeQuietly(topicManager);
+        IOUtils.closeQuietly(topicManagerRepository);
     }
 
     /**
@@ -4100,7 +4184,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         int replicationFactor = resources.getMetadataRepository().getStore(storeName).getReplicationFactor();
         resources.lockForMetadataOperation();
         try {
-            topicManager.createTopic(
+            getTopicManager().createTopic(
                 metadataStoreTopicName,
                 version.getPartitionCount(),
                 clusterConfig.getKafkaReplicationFactor(),

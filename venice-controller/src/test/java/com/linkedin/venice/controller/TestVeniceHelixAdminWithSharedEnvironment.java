@@ -12,6 +12,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -58,7 +59,7 @@ import static org.mockito.Mockito.*;
 /**
  * Helix Admin test cases which share the same Venice cluster. Please make sure to have the proper
  * clean-up and set cluster back to its default settings after finishing the tests.
- *
+ *implements Closeable
  * If it's hard to set cluster back, please move the tests to {@link TestVeniceHelixAdminWithIsolatedEnvironment}
  */
 public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
@@ -397,13 +398,16 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @Test
   public void testAddVersionAndStartIngestionTopicCreationTimeout() {
-    TopicManager originalTopicManager = veniceAdmin.getTopicManager();
+    TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
     doThrow(new VeniceOperationAgainstKafkaTimedOut("mock timeout"))
         .when(mockedTopicManager)
         .createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true));
-    veniceAdmin.setTopicManager(mockedTopicManager);
+    TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any());
+    veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = "test-store";
     String pushJobId = "test-push-job-id";
     veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
@@ -421,7 +425,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         "There should only be exactly one version added to the test-store");
 
     //set topic original topic manager back
-    veniceAdmin.setTopicManager(originalTopicManager);
+    veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
   @Test
@@ -1237,10 +1241,13 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @Test
   public void testAddVersionWithRemoteKafkaBootstrapServers() {
-    TopicManager originalTopicManager = veniceAdmin.getTopicManager();
+    TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
-    veniceAdmin.setTopicManager(mockedTopicManager);
+    TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any());
+    veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = TestUtils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";
     veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
@@ -1267,7 +1274,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(2).get().getPushStreamSourceAddress(), remoteKafkaBootstrapServers);
 
     //set topic original topic manager back
-    veniceAdmin.setTopicManager(originalTopicManager);
+    veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
   }
 
   @Test

@@ -269,7 +269,9 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     String getKafkaBootstrapServers(boolean isSSL);
 
-    String getNativeReplicationKafkaBootstrapServer(String clusterName, Store store);
+    Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric);
+
+    String getNativeReplicationSourceFabric(String clusterName, Store store);
 
     /**
      * Return whether ssl is enabled for the given store for push.
@@ -279,6 +281,8 @@ public interface Admin extends AutoCloseable, Closeable {
     boolean isSslToKafka();
 
     TopicManager getTopicManager();
+
+    TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress);
 
     /**
      * Check if this controller itself is the master controller of given cluster or not.

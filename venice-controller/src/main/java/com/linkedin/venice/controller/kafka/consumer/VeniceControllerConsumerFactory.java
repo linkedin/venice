@@ -5,9 +5,12 @@ import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
+
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class VeniceControllerConsumerFactory extends KafkaClientFactory {
@@ -39,5 +42,23 @@ public class VeniceControllerConsumerFactory extends KafkaClientFactory {
   @Override
   protected String getKafkaZkAddress() {
     return controllerConfig.getKafkaZkAddress();
+  }
+
+  @Override
+  protected String getKafkaBootstrapServers() {
+    return controllerConfig.isSslToKafka() ? controllerConfig.getSslKafkaBootStrapServers() : controllerConfig.getKafkaBootstrapServers();
+  }
+
+  @Override
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress) {
+    VeniceProperties originalPros = this.controllerConfig.getProps();
+    Properties clonedProperties = originalPros.toProperties();
+    if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
+      clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
+    } else {
+      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
+    }
+    clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
+    return new VeniceControllerConsumerFactory(new VeniceControllerConfig(new VeniceProperties(clonedProperties)));
   }
 }

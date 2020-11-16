@@ -315,23 +315,42 @@ public class TestUtils {
   }
 
   public static KafkaClientFactory getVeniceConsumerFactory(KafkaBrokerWrapper kafka) {
-    return new KafkaClientFactory() {
-      @Override
-      public Properties setupSSL(Properties properties) {
-        properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
-        return properties;
-      }
+    return new TestKafkaClientFactory(kafka.getAddress(), kafka.getZkAddress());
+  }
 
-      @Override
-      protected String getKafkaAdminClass() {
-        return KafkaAdminClient.class.getName();
-      }
+  private static class TestKafkaClientFactory extends KafkaClientFactory {
+    private final String kafkaBootstrapServers;
+    private final String kafkaZkAddress;
+    public TestKafkaClientFactory(String kafkaBootstrapServers, String kafkaZkAddress) {
+      this.kafkaBootstrapServers = kafkaBootstrapServers;
+      this.kafkaZkAddress = kafkaZkAddress;
+    }
 
-      @Override
-      protected String getKafkaZkAddress() {
-        return kafka.getZkAddress();
-      }
-    };
+    @Override
+    public Properties setupSSL(Properties properties) {
+      properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
+      return properties;
+    }
+
+    @Override
+    protected String getKafkaAdminClass() {
+      return KafkaAdminClient.class.getName();
+    }
+
+    @Override
+    protected String getKafkaZkAddress() {
+      return kafkaZkAddress;
+    }
+
+    @Override
+    protected String getKafkaBootstrapServers() {
+      return kafkaBootstrapServers;
+    }
+
+    @Override
+    protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress) {
+      return new TestKafkaClientFactory(kafkaBootstrapServers, kafkaZkAddress);
+    }
   }
 
   public static Store getRandomStore() {

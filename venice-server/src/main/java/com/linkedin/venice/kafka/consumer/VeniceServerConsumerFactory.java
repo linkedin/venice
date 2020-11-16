@@ -5,11 +5,13 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 
 import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.apache.kafka.common.config.SslConfigs.*;
 
 
@@ -52,5 +54,18 @@ public class VeniceServerConsumerFactory extends KafkaClientFactory {
   @Override
   protected String getKafkaZkAddress() {
     return serverConfig.getKafkaZkAddress();
+  }
+
+  @Override
+  protected String getKafkaBootstrapServers() {
+    return serverConfig.getKafkaBootstrapServers();
+  }
+
+  @Override
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress) {
+    Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
+    clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
+    clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
+    return new VeniceServerConsumerFactory(new VeniceServerConfig(new VeniceProperties(clonedProperties)));
   }
 }

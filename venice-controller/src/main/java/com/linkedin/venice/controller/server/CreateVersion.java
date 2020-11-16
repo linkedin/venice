@@ -209,7 +209,7 @@ public class CreateVersion extends AbstractRoute {
             responseObject.setKafkaTopic(responseTopic);
             responseObject.setCompressionStrategy(version.getCompressionStrategy());
             if (version.isNativeReplicationEnabled()) {
-              String childDataCenterKafkaBootstrapServer = admin.getNativeReplicationKafkaBootstrapServer(clusterName, store);
+              String childDataCenterKafkaBootstrapServer = version.getPushStreamSourceAddress();
               if (childDataCenterKafkaBootstrapServer != null) {
                 responseObject.setKafkaBootstrapServers(childDataCenterKafkaBootstrapServer);
               }

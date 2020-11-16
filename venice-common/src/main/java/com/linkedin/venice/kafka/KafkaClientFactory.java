@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.utils.ReflectUtils;
 import java.util.Properties;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 
 
@@ -38,4 +39,8 @@ public abstract class KafkaClientFactory {
   abstract protected String getKafkaAdminClass();
 
   abstract protected String getKafkaZkAddress();
+
+  abstract protected String getKafkaBootstrapServers();
+
+  abstract protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress);
 }

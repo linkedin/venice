@@ -39,4 +39,17 @@ public class VeniceKafkaConsumerFactory extends KafkaClientFactory {
   protected String getKafkaZkAddress() {
     return veniceProperties.getString(ConfigKeys.KAFKA_ZK_ADDRESS);
   }
+
+  @Override
+  protected String getKafkaBootstrapServers() {
+    return veniceProperties.getString(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+  }
+
+  @Override
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress) {
+    Properties clonedProperties = this.veniceProperties.toProperties();
+    clonedProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
+    clonedProperties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress);
+    return new VeniceKafkaConsumerFactory(new VeniceProperties(clonedProperties));
+  }
 }
