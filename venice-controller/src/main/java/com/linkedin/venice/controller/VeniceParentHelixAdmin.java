@@ -2202,6 +2202,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * This parses the input accessPermission string to create ACL's and provision them using the authorizerService interface.
+   *
+   * The json interface to acl API always accepts a list of "principal" which are "ALLOWED" to perform "method"
+   * "read" or "write" on the "resource". We assume a failclose implementation here where only explicitly listed
+   * "principals" are "ALLOWED" to perform "method" on "resource".
+   * So we always pass acls with "ALLOW" permission to underlying implementation.
+   *
    * @param storeName store being provisioned.
    * @param accessPermissions json string respresenting the accesspermissions.
    */
@@ -2254,6 +2260,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * This fetches currently provisioned ACL's using authorizerService interface and converts them to output json.
+   *
+   * The json interface to acl API always return a list of "principal" which are "ALLOWED" to perform "method"
+   * "read" or "write" on the "resource". We assume a failclose implementation here where only explicitly listed
+   * "principals" are "ALLOWED" to perform "method" on "resource"
+   * So even if the underlying implementation return "DENY" acls, filter them out here.
+   *
    * @param storeName store name
    * @return a json string represnting currently provisioned ACL's or empty string if co ACL's are present currently.
    */
@@ -2279,6 +2291,9 @@ public class VeniceParentHelixAdmin implements Admin {
       ArrayNode readP = factory.arrayNode();
       ArrayNode writeP = factory.arrayNode();
       for (AceEntry aceEntry : aclBinding.getAceEntries()) {
+        if (aceEntry.getPermission() != Permission.ALLOW) {
+          continue;
+        }
         if (aceEntry.getMethod() == Method.Read) {
           readP.add(aceEntry.getPrincipal().getName());
         } else if (aceEntry.getMethod() == Method.Write) {
