@@ -136,6 +136,11 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     String curPerm = parentAdmin.getAclForStore(clusterName, storeName);
     Assert.assertEquals(expectedPerm, curPerm);
 
+    //add a DENY ace, this will verify getAclForStore always returns ALLOW acls.
+    authorizerService.addAce(new Resource(storeName), new AceEntry(new Principal("urn:li:corpuser:denyuser1"), Method.Read, Permission.DENY));
+    curPerm = parentAdmin.getAclForStore(clusterName, storeName);
+    Assert.assertEquals(expectedPerm, curPerm);
+
     parentAdmin.deleteAclForStore(clusterName, storeName);
     Assert.assertEquals(1, authorizerService.clearAclCounter);
     AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));

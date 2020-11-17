@@ -39,6 +39,10 @@ public class MockVeniceAuthorizer implements AuthorizerService {
   }
 
   public void addAce(Resource resource, AceEntry aceEntry) {
+    if (this.aclBinding == null) {
+      this.aclBinding = new AclBinding(resource);
+    }
+    this.aclBinding.addAceEntry(aceEntry);
   }
 
   public void removeAce(Resource resource, AceEntry aceEntry) {
