@@ -1119,7 +1119,9 @@ public class TestHybrid {
         for (VeniceServerWrapper server : servers) {
           venice.stopAndRestartVeniceServer(server.getPort());
         }
-
+        // Without waiting after bouncing servers, it may cause this test flaky. It takes for a while for this
+        // partition from BOOTSTRAP to ONLINE.
+        Utils.sleep(5000);
         if (!isRealTimeTopicEmpty) {
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             try {
