@@ -1,0 +1,12 @@
+{
+  "name": "ProcessShutdownCommand",
+  "namespace": "com.linkedin.venice.ingestion.protocol",
+  "type": "record",
+  "fields": [
+    {
+      "name": "componentType",
+      "doc": "0 => KafkaIngestionService, 1 => StorageService",
+      "type": "int"
+    }
+  ]
+}

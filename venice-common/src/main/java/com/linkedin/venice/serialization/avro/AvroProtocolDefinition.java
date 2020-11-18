@@ -7,6 +7,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
+import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -113,6 +114,11 @@ public enum AvroProtocolDefinition {
    * Used to encode storage metadata updates that are reported backed from Storage Node / Da Vinci backend to child process.
    */
   INGESTION_STORAGE_METADATA(31, 1, IngestionStorageMetadata.class),
+
+  /**
+   * Used to encode various kinds of ingestion task commands, which are used to control ingestion task in child process.
+   */
+  PROCESS_SHUTDOWN_COMMAND(32, 1, ProcessShutdownCommand.class),
 
   /**
    * Key schema for metadata system store.

@@ -4,14 +4,15 @@ import com.google.common.base.Charsets;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
+import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -67,6 +68,8 @@ public class IngestionUtils {
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   public static final InternalAvroSpecificSerializer<IngestionStorageMetadata> ingestionStorageMetadataSerializer =
       AvroProtocolDefinition.INGESTION_STORAGE_METADATA.getSerializer();
+  public static final InternalAvroSpecificSerializer<ProcessShutdownCommand> processShutdownCommandSerializer =
+      AvroProtocolDefinition.PROCESS_SHUTDOWN_COMMAND.getSerializer();
 
   public static byte[] serializeInitializationConfigs(InitializationConfigs initializationConfigs) {
     return initializationConfigSerializer.serialize(null, initializationConfigs);
@@ -92,6 +95,10 @@ public class IngestionUtils {
     return ingestionStorageMetadataSerializer.serialize(null, ingestionStorageMetadata);
   }
 
+  public static byte[] serializeProcessShutdownCommand(ProcessShutdownCommand processShutdownCommand) {
+    return processShutdownCommandSerializer.serialize(null, processShutdownCommand);
+  }
+
   public static IngestionTaskReport deserializeIngestionTaskReport(byte[] content) {
     return ingestionTaskReportSerializer.deserialize(null, content);
   }
@@ -114,6 +121,10 @@ public class IngestionUtils {
 
   public static IngestionStorageMetadata deserializeIngestionStorageMetadata(byte[] content) {
     return ingestionStorageMetadataSerializer.deserialize(null, content);
+  }
+
+  public static ProcessShutdownCommand deserializeProcessShutdownCommand(byte[] content) {
+    return processShutdownCommandSerializer.deserialize(null, content);
   }
 
   public static HttpResponse buildHttpResponse(HttpResponseStatus status, String msg) {
@@ -278,6 +289,30 @@ public class IngestionUtils {
       response.release();
     } catch (Exception e) {
       throw new VeniceException("Received exception in start consumption", e);
+    }
+  }
+
+  public static void shutdownForkedProcessComponent(IngestionRequestClient client, IngestionComponentType ingestionComponentType) {
+    // Send ingestion request to ingestion service.
+    ProcessShutdownCommand processShutdownCommand = new ProcessShutdownCommand();
+    processShutdownCommand.componentType = ingestionComponentType.getValue();
+
+    byte[] content = serializeProcessShutdownCommand(processShutdownCommand);
+    try {
+      HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.SHUTDOWN_COMPONENT, content);
+      FullHttpResponse response = client.sendRequest(httpRequest);
+      if (response.status().equals(HttpResponseStatus.OK)) {
+        byte[] responseContent = new byte[response.content().readableBytes()];
+        response.content().readBytes(responseContent);
+        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
+        logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      } else {
+        logger.warn("Received bad ingestion task report response: " + response.status() + " for shutting down component" + ingestionComponentType);
+      }
+      // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
+      response.release();
+    } catch (Exception e) {
+      throw new VeniceException("Received exception in component shutdown", e);
     }
   }
 
