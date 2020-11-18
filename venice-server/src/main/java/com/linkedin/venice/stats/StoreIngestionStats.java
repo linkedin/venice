@@ -84,7 +84,7 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     this.storeIngestionTask = null;
 
     bytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
-    bytesReadFromKafkaAsUncompressedSizeSensor = registerSensor("bytes_read_from_kafka_as_uncompressed_size", new Total());
+    bytesReadFromKafkaAsUncompressedSizeSensor = registerSensor("bytes_read_from_kafka_as_uncompressed_size", new Rate(), new Total());
     recordsConsumedSensor = registerSensor("records_consumed", new Rate());
     diskQuotaSensor = registerSensor("global_store_disk_quota_allowed",
                                       new Gauge(() -> diskQuotaAllowedGauge), new Max());
