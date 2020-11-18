@@ -10,7 +10,6 @@ import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -19,12 +18,11 @@ import java.util.function.Supplier;
 import org.apache.commons.lang.RandomStringUtils;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
+import org.rocksdb.Slice;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static org.testng.FileAssert.*;
 
 
 public class RocksDBStoragePartitionTest {
@@ -38,9 +36,9 @@ public class RocksDBStoragePartitionTest {
     if (sorted) {
       BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
       records = new TreeMap<>((o1, o2) -> {
-        ByteBuffer b1 = ByteBuffer.wrap(o1.getBytes());
-        ByteBuffer b2 = ByteBuffer.wrap(o2.getBytes());
-        return comparator.compare(b1, b2);
+        Slice s1 = new Slice(o1.getBytes());
+        Slice s2 = new Slice(o2.getBytes());
+        return comparator.compare(s1, s2);
       });
     } else {
       records = new HashMap<>();
