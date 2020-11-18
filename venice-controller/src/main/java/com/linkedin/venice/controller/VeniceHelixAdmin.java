@@ -3246,9 +3246,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Map<String, String> helixClusterProperties = new HashMap<>();
         helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
         long delayRebalanceTimeMs = multiClusterConfigs.getConfigForCluster(clusterName).getDelayToRebalanceMS();
-        if (delayRebalanceTimeMs > 0)
+        if (delayRebalanceTimeMs > 0) {
+            helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_ENABLED.name(), String.valueOf(true));
             helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(),
                 String.valueOf(delayRebalanceTimeMs));
+        }
+        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name(), String.valueOf(true));
         // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
         helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
         helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
