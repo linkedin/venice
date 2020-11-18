@@ -10,6 +10,8 @@ public interface SchemaRetriever extends Closeable {
 
   Schema getValueSchema(int id);
 
+  int getValueSchemaId(Schema schema);
+
   Schema getLatestValueSchema();
 
   Integer getLatestValueSchemaId();

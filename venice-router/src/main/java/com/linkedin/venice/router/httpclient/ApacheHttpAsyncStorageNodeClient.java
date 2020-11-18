@@ -492,6 +492,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     //  http(s)://host:port/path
     String address = scheme + host.getHost() + ":" + host.getPort() + "/";
     final HttpUriRequest routerRequest = path.composeRouterRequest(address);
+    // set up header to pass map required by the Venice server
+    path.setupVeniceHeaders((k, v) -> routerRequest.addHeader(k, v));
     CloseableHttpAsyncClient selectedClient;
     if (perNodeClientEnabled) {
       // If all the pool are used up by the set of live instances, spawn new client

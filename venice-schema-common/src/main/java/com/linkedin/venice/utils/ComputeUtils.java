@@ -69,7 +69,7 @@ public class ComputeUtils {
       Pair<String, Schema.Type> resultFieldPair = new Pair<>(resultField.name(), resultField.schema().getType());
       if (!operationResultFields.contains(resultFieldPair)) {
         throw new VeniceException("The result field " + resultField.name() +
-            " is not a filed in value schema or an operation result schema.");
+            " is not a field in value schema or an operation result schema.");
       }
     }
   }

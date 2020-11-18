@@ -15,7 +15,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public abstract class InternalTransportClient extends TransportClient {
   public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
-      byte[] requestBody, int keyCount) {
+      byte[] requestBody) {
     throw new VeniceClientException("'post' is not supported.");
   }
 

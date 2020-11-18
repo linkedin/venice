@@ -99,8 +99,8 @@ public class D2TransportClient extends TransportClient {
 
   @Override
   public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
-      byte[] requestBody, int keyCount) {
-    RestRequest request = getRestPostRequest(requestPath, headers, requestBody, keyCount);
+      byte[] requestBody) {
+    RestRequest request = getRestPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
 
     restRequest(request, getRequestContextForPost(), new D2TransportClientCallback(valueFuture));
@@ -222,9 +222,9 @@ public class D2TransportClient extends TransportClient {
     return D2ClientUtils.createD2GetRequest(requestUrl, headers);
   }
 
-  private RestRequest getRestPostRequest(String requestPath, Map<String, String> headers, byte[] body, int keyCount) {
+  private RestRequest getRestPostRequest(String requestPath, Map<String, String> headers, byte[] body) {
     String requestUrl = getD2RequestUrl(requestPath);
-    return D2ClientUtils.createD2PostRequest(requestUrl, headers, body, keyCount);
+    return D2ClientUtils.createD2PostRequest(requestUrl, headers, body);
   }
 
   private void restRequest(RestRequest request, RequestContext requestContext, Callback<RestResponse> callback) {

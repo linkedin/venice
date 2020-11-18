@@ -55,6 +55,7 @@ public class ReadComputeValidationTest {
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
   private VeniceKafkaSerializer valueSerializer2;
+  private VeniceKafkaSerializer valueSerializerSwapped;
 
   private static final List<Float> mfEmbedding = generateRandomFloatList(100);
   private static final List<Float> companiesEmbedding = generateRandomFloatList(100);
@@ -67,9 +68,7 @@ public class ReadComputeValidationTest {
       "  \"fields\": [        " +
       "         { \"name\": \"id\", \"type\": \"string\" },             " +
       "         { \"name\": \"name\", \"type\": \"string\" },           " +
-      "         {   \"default\": [], \"doc\": \"The member companies embedding\",\n" +
-      "          \"name\": \"companiesEmbedding\",  \"type\": {\n" +
-      "           \"items\": \"float\",  \"type\": \"array\"\n   }\n  }, " +
+      "         {   \"default\": [], \n  \"name\": \"companiesEmbedding\",  \"type\": {  \"items\": \"float\",  \"type\": \"array\"   }  }, " +
       "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        " +
       "  ]       " +
       " }       ";
@@ -82,6 +81,18 @@ public class ReadComputeValidationTest {
       "         { \"name\": \"id\", \"type\": \"string\" },             " +
       "         { \"name\": \"name\", \"type\": \"string\" },           " +
       "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } }        " +
+      "  ]       " +
+      " }       ";
+
+  private static final String valueSchemaForComputeSwapped = "{" +
+      "  \"namespace\": \"example.compute\",    " +
+      "  \"type\": \"record\",        " +
+      "  \"name\": \"MemberFeature\",       " +
+      "  \"fields\": [        " +
+      "         { \"name\": \"id\", \"type\": \"string\" },             " +
+      "         { \"name\": \"name\", \"type\": \"string\" },           " +
+      "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" } },        " +
+      "         {   \"default\": [], \n  \"name\": \"companiesEmbedding\",  \"type\": {  \"items\": \"float\",  \"type\": \"array\"   }  } " +
       "  ]       " +
       " }       ";
 
@@ -111,6 +122,7 @@ public class ReadComputeValidationTest {
     keySerializer = new VeniceAvroKafkaSerializer(keySchema);
     valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaForCompute);
     valueSerializer2 = new VeniceAvroKafkaSerializer(valueSchemaForCompute2);
+    valueSerializerSwapped = new VeniceAvroKafkaSerializer(valueSchemaForComputeSwapped);
   }
 
   @AfterClass(alwaysRun = true)
@@ -121,7 +133,7 @@ public class ReadComputeValidationTest {
   }
 
   @Test
-  public void testCompute() throws Exception {
+  public void testComputeMissingField() throws Exception {
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
     AvroGenericDeserializer.IterableImpl iterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
@@ -148,12 +160,11 @@ public class ReadComputeValidationTest {
                 .setMultiGetEnvelopeIterableImpl(iterableImpl)
                 .setUseFastAvro(fastAvro))) {
 
-      pushSyntheticDataToStore(topic, 100, veniceCluster,
-          veniceWriter, pushVersion, compressionStrategy, valueLargerThan1MB);
+      pushSyntheticDataToStore(topic, 100, veniceWriter, pushVersion, valueSchemaForCompute, valueSerializer, false, 1);
 
       Set<Integer> keySet = new HashSet<>();
-      keySet.add(Integer.valueOf(1));
-      keySet.add(Integer.valueOf(2));
+      keySet.add(1);
+      keySet.add(2);
       storeClient.compute()
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
@@ -166,8 +177,8 @@ public class ReadComputeValidationTest {
       final int pushVersion2 = newVersion2.getVersion();
       String topic2 = newVersion2.getKafkaTopic();
       VeniceWriter<Object, byte[], byte[]> veniceWriter2 = vwFactory.createVeniceWriter(topic2, keySerializer, new DefaultSerializer(), valueLargerThan1MB);
-      pushSyntheticData2ToStore(topic2, 100, veniceCluster,
-          veniceWriter2, pushVersion2, compressionStrategy, valueLargerThan1MB);
+      pushSyntheticDataToStore(topic2, 100,
+          veniceWriter2, pushVersion2, valueSchemaForCompute2, valueSerializer2, true, 2);
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
       Map<Integer, GenericRecord> computeResult = storeClient.compute()
@@ -181,57 +192,81 @@ public class ReadComputeValidationTest {
     }
   }
 
-  private void pushSyntheticDataToStore(String topic, int numOfRecords,
-      VeniceClusterWrapper veniceCluster, VeniceWriter<Object, byte[], byte[]> veniceWriter,
-      int pushVersion, CompressionStrategy compressionStrategy, boolean valueLargerThan1MB) throws Exception {
-    veniceWriter.broadcastStartOfPush(false, valueLargerThan1MB, compressionStrategy, new HashMap<>());
-    Schema valueSchema = Schema.parse(valueSchemaForCompute);
-    // Insert test record and wait synchronously for it to succeed
-    for (int i = 0; i < numOfRecords; ++i) {
-      GenericRecord value = new GenericData.Record(valueSchema);
-      value.put("id", valuePrefix + i);
-      value.put("name", "companiesEmbedding");
-      value.put("companiesEmbedding", companiesEmbedding);
-      value.put("member_feature", mfEmbedding);
-      byte[] compressedValue = CompressorFactory.getCompressor(compressionStrategy).compress(valueSerializer.serialize(topic, value));
-      veniceWriter.put(Integer.valueOf(i), compressedValue, valueSchemaId).get();
-    }
-    // Write end of push message to make node become ONLINE from BOOTSTRAP
-    veniceWriter.broadcastEndOfPush(new HashMap<>());
+  @Test
+  public void testComputeSwappedFields() throws Exception {
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+    BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
+    AvroGenericDeserializer.IterableImpl iterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
+    boolean fastAvro = true;
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setCompressionStrategy(compressionStrategy);
+    params.setReadComputationEnabled(true);
+    params.setChunkingEnabled(false);
+    veniceCluster.updateStore(storeName, params);
 
-    // Wait for storage node to finish consuming, and new version to be activated
-    String controllerUrl = veniceCluster.getAllControllersURLs();
-    try (ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), controllerUrl)) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        String status = controllerClient.queryJobStatus(topic).getStatus();
-        if (status.equals(ExecutionStatus.ERROR.name())) {
-          // Not recoverable (at least not without re-pushing), so not worth spinning our wheels until the timeout.
-          throw new VeniceException("Push failed.");
-        }
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
+    final int pushVersion = newVersion.getVersion();
+    String topic = newVersion.getKafkaTopic();
 
-        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
-        // Refresh router metadata once new version is pushed, so that the router sees the latest store version.
-        if (currentVersion == pushVersion) {
-          veniceCluster.refreshAllRouterMetaData();
-        }
-        Assert.assertEquals(currentVersion, pushVersion, "New version not online yet.");
-      });
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress());
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
+        vwFactory.createVeniceWriter(topic, keySerializer, new DefaultSerializer(), false);
+        AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(routerAddr)
+                .setBatchDeserializerType(batchDeserializerType)
+                .setMultiGetEnvelopeIterableImpl(iterableImpl)
+                .setUseFastAvro(fastAvro))) {
+
+      pushSyntheticDataToStore(topic, 100,
+          veniceWriter, pushVersion, valueSchemaForComputeSwapped, valueSerializer, false, 1);
+
+      Set<Integer> keySet = new HashSet<>();
+      keySet.add(1);
+      keySet.add(2);
+      storeClient.compute()
+          .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
+          .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
+          .execute(keySet).get();
+      ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandmonVeniceController().getControllerUrl());
+      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, valueSchemaForCompute2);
+      veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
+
+      VersionCreationResponse newVersion2 = veniceCluster.getNewVersion(storeName, 1024);
+      final int pushVersion2 = newVersion2.getVersion();
+      String topic2 = newVersion2.getKafkaTopic();
+      VeniceWriter<Object, byte[], byte[]> veniceWriter2 = vwFactory.createVeniceWriter(topic2, keySerializer, new DefaultSerializer(), false);
+      pushSyntheticDataToStore(topic2, 100,
+          veniceWriter2, pushVersion2, valueSchemaForComputeSwapped, valueSerializerSwapped, false, 2);
+      veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
+
+      Map<Integer, GenericRecord> computeResult = storeClient.compute()
+          .project("member_feature")
+          .execute(keySet).get();
+
+      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
+        Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
+      }
     }
   }
 
-  private void pushSyntheticData2ToStore(String topic, int numOfRecords,
-      VeniceClusterWrapper veniceCluster, VeniceWriter<Object, byte[], byte[]> veniceWriter,
-      int pushVersion, CompressionStrategy compressionStrategy, boolean valueLargerThan1MB) throws Exception {
-    veniceWriter.broadcastStartOfPush(false, valueLargerThan1MB, compressionStrategy, new HashMap<>());
-    Schema valueSchema = Schema.parse(valueSchemaForCompute2);
+  private void pushSyntheticDataToStore(String topic, int numOfRecords,
+       VeniceWriter<Object, byte[], byte[]> veniceWriter,
+      int pushVersion, String schema, VeniceKafkaSerializer serializer, boolean skip, int valueSchemaId) throws Exception {
+    veniceWriter.broadcastStartOfPush(false, false, CompressionStrategy.NO_OP, new HashMap<>());
+    Schema valueSchema = Schema.parse(schema);
     // Insert test record and wait synchronously for it to succeed
     for (int i = 0; i < numOfRecords; ++i) {
       GenericRecord value = new GenericData.Record(valueSchema);
       value.put("id", valuePrefix + i);
       value.put("name", "companiesEmbedding");
+      if (!skip) {
+        value.put("companiesEmbedding", companiesEmbedding);
+      }
       value.put("member_feature", mfEmbedding);
-      byte[] compressedValue = CompressorFactory.getCompressor(compressionStrategy).compress(valueSerializer2.serialize(topic, value));
-      veniceWriter.put(Integer.valueOf(i), compressedValue, 2).get();
+      byte[] compressedValue = CompressorFactory.getCompressor(CompressionStrategy.NO_OP).compress(serializer.serialize(topic, value));
+      veniceWriter.put(i, compressedValue, valueSchemaId).get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -260,7 +295,7 @@ public class ReadComputeValidationTest {
     ThreadLocalRandom rand = ThreadLocalRandom.current();
     List<Float> feature = new ArrayList<>(listSize);
     for (int i = 0; i < listSize; i++) {
-      feature.add(Float.valueOf(rand.nextFloat()));
+      feature.add(rand.nextFloat());
     }
     return feature;
   }
