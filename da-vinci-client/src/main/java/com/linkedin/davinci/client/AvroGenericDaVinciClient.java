@@ -265,6 +265,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     if (kafkaBootstrapServers == null) {
       kafkaBootstrapServers = backendConfig.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
     }
+    boolean liveUpdateSuppressionEnabled = backendConfig.getBoolean(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, false)
+                                           || daVinciConfig.isLiveUpdatesSuppressionEnabled();
     VeniceProperties config = new PropertyBuilder()
             /** Allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
             .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
@@ -276,6 +278,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
             .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
             .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
                 daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
+            .put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, liveUpdateSuppressionEnabled)
             .build();
     logger.info("backendConfig=" + config.toString(true));
     return new VeniceConfigLoader(config, config);

@@ -209,6 +209,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
   private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
 
+  private final boolean freezeIngestionIfReadyToServeOrLocalDataExists;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
@@ -314,6 +316,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaConsumerConfigsForRemoteConsumption = serverProperties.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
 
     rocksDbStorageEngineConfigCheckEnabled = serverProperties.getBoolean(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true);
+
+    freezeIngestionIfReadyToServeOrLocalDataExists = serverProperties.getBoolean(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, false);
   }
 
   public int getListenerPort() {
@@ -585,5 +589,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isRocksDbStorageEngineConfigCheckEnabled() {
     return rocksDbStorageEngineConfigCheckEnabled;
+  }
+
+  public boolean freezeIngestionIfReadyToServeOrLocalDataExists() {
+    return freezeIngestionIfReadyToServeOrLocalDataExists;
   }
 }

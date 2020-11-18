@@ -44,6 +44,7 @@ public class VersionBackend {
   private final int subPartitionCount;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
   private final Map<Integer, CompletableFuture> subPartitionFutures = new VeniceConcurrentHashMap<>();
+  private final boolean suppressLiveUpdates;
 
   VersionBackend(DaVinciBackend backend, Version version) {
     this.backend = backend;
@@ -59,6 +60,7 @@ public class VersionBackend {
     }
     this.partitioner = PartitionUtils.getVenicePartitioner(version.getPartitionerConfig());
     this.subPartitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
+    this.suppressLiveUpdates = this.config.freezeIngestionIfReadyToServeOrLocalDataExists();
     storageEngine.set(backend.getStorageService().getStorageEngineRepository().getLocalStorageEngine(version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
   }
@@ -193,6 +195,15 @@ public class VersionBackend {
       return partitionFuture;
     }
 
+    /**
+     * If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
+     */
+    if (suppressLiveUpdates && storageEngine.get() != null) {
+      AbstractStorageEngine engine = storageEngine.get();
+      if (engine.containsPartition(subPartition)) {
+        return subPartitionFutures.computeIfAbsent(subPartition, k -> CompletableFuture.completedFuture(null));
+      }
+    }
     if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
       backend.getIngestionReportListener().addVersionPartitionToIngestionMap(version.kafkaTopicName(), subPartition);
       IngestionUtils.subscribeTopicPartition(backend.getIngestionRequestClient(), version.kafkaTopicName(), subPartition);
