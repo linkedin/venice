@@ -477,6 +477,13 @@ public class ConfigKeys {
    */
   public static final String SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED = "server.rocksdb.storage.config.check.enabled";
 
+  /**
+   * This config will determine whether live update will be suppressed. When the feature is turned on, ingestion will stop
+   * once a partition is ready to serve; after Da Vinci client restarts or server restarts, if local data exists, ingestion
+   * will not start in Da Vinci or report ready-to-serve immediately without ingesting new data in Venice.
+   */
+  public static final String FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS = "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

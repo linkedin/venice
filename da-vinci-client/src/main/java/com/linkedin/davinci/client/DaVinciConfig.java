@@ -5,6 +5,11 @@ public class DaVinciConfig {
   private StorageClass storageClass = StorageClass.DISK_BACKED_MEMORY;
   private RemoteReadPolicy remoteReadPolicy = RemoteReadPolicy.FAIL_FAST;
   private long rocksDBMemoryLimit = 0; // 0 means unlimited memory
+  /**
+   * If true, ingestion will freeze once the partition is ready to serve,
+   * or ingestion will not start if local data exists.
+   */
+  private boolean suppressLiveUpdates = false;
 
   public DaVinciConfig() {
   }
@@ -46,5 +51,16 @@ public class DaVinciConfig {
 
   public void setRocksDBMemoryLimit(long rocksDBMemoryLimit) {
     this.rocksDBMemoryLimit = rocksDBMemoryLimit;
+  }
+
+  public boolean isLiveUpdatesSuppressionEnabled() {
+    return suppressLiveUpdates;
+  }
+
+  /**
+   * Freeze ingestion if ready to serve or local data exists
+   */
+  public void setLiveUpdatesSuppressionEnabled(boolean enabled) {
+    suppressLiveUpdates = enabled;
   }
 }

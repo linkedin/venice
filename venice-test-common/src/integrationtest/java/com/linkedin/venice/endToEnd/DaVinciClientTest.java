@@ -578,6 +578,133 @@ public class DaVinciClientTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDaVinciWithLiveUpdatesSuppression() throws Exception {
+    final String storeName = TestUtils.getUniqueString("store");
+    cluster.useControllerClient(client -> {
+      NewStoreResponse response = client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
+      // Update to hybrid store
+      client.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10));
+    });
+
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    final int pushVersion = newVersion.getVersion();
+    String topic = newVersion.getKafkaTopic();
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceTestWriterFactory(cluster.getKafka().getAddress());
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
+
+    D2Client d2Client = new D2ClientBuilder()
+        .setZkHosts(cluster.getZk().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client);
+
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+
+    // Enable live update suppression
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, "true")
+        .build();
+
+    VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+    int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+    batchProducer.broadcastStartOfPush(Collections.emptyMap());
+    for (int i = 0; i < KEY_COUNT; i++) {
+      batchProducer.put(i, i, valueSchemaId).get();
+    }
+    batchProducer.broadcastEndOfPush(Collections.emptyMap());
+
+    CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig);
+    DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+    client.subscribeAll().get();
+    for (int i = 0; i < KEY_COUNT; i++) {
+      int result = client.get(i).get();
+      assertEquals(result, i);
+    }
+
+    VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(Version.composeRealTimeTopic(storeName),
+        keySerializer, valueSerializer, false);
+    for (int i = 0; i < KEY_COUNT; i++) {
+      realTimeProducer.put(i, i * 1000, valueSchemaId).get();
+    }
+
+    /**
+     * Since live update suppression is enabled, once the partition is ready to serve, da vinci client will stop ingesting
+     * new messages and also ignore any new message
+     */
+    try {
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true,
+          () -> {
+            /**
+             * Try to read the new value from real-time producer; assertion should fail
+             */
+            for (int i = 0; i < KEY_COUNT; i++) {
+              int result = client.get(i).get();
+              assertEquals(result, i * 1000);
+            }
+          });
+      // It's wrong if new value can be read from da-vinci client
+      throw new VeniceException("Should not be able to read live updates.");
+    } catch (AssertionError e) {
+      // expected
+    }
+    client.close();
+    factory.close();
+
+    /**
+     * After restarting da-vinci client, since live update suppression is enabled and there is local data, ingestion
+     * will not start.
+     *
+     * da-vinci client restart is done by building a new factory and a new client
+     */
+    D2Client d2Client2 = new D2ClientBuilder()
+        .setZkHosts(cluster.getZk().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client2);
+    CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(d2Client2, new MetricsRepository(), backendConfig);
+    DaVinciClient<Integer, Integer> client2 = factory2.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+    client2.subscribeAll().get();
+    for (int i = 0; i < KEY_COUNT; i++) {
+      int result = client2.get(i).get();
+      assertEquals(result, i);
+    }
+    try {
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true,
+          () -> {
+            /**
+             * Try to read the new value from real-time producer; assertion should fail
+             */
+            for (int i = 0; i < KEY_COUNT; i++) {
+              int result = client2.get(i).get();
+              assertEquals(result, i * 1000);
+            }
+          });
+      // It's wrong if new value can be read from da-vinci client
+      throw new VeniceException("Should not be able to read live updates.");
+    } catch (AssertionError e) {
+      // expected
+    }
+    /**
+     * The Da Vinci client must be closed in order to release the {@link com.linkedin.davinci.client.AvroGenericDaVinciClient#daVinciBackend}
+     * reference because it's a singleton; if we don't do this, other test cases will reuse the same singleton and have
+     * live updates suppressed.
+     */
+    client2.close();
+    factory2.close();
+
+    batchProducer.close();
+    realTimeProducer.close();
+  }
+
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {
     setupHybridStore(storeName, paramsConsumer, KEY_COUNT);
   }

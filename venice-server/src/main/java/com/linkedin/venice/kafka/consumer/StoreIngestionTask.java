@@ -255,6 +255,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   //as needed in integration test.
   private boolean purgeTransientRecordCache = true;
 
+  /**
+   * Freeze ingestion if ready to serve or local data exists
+   */
+  private final boolean suppressLiveUpdates;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -370,6 +375,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     buildRocksDBMemoryEnforcer();
 
     this.partitionStateSerializer = partitionStateSerializer;
+
+    this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
   }
 
   protected void validateState() {
@@ -1183,6 +1190,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionId = record.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
 
+    if (null == partitionConsumptionState) {
+      logger.info("Topic " + kafkaVersionTopic + " Partition " + partitionId + " has been unsubscribed, skip this record that has offset " + record.offset());
+      return false;
+    }
+
     if (partitionConsumptionState.isErrorReported()) {
       logger.info("Topic " + kafkaVersionTopic + " Partition " + partitionId + " is already errored, skip this record that has offset " + record.offset());
       return false;
@@ -1223,6 +1235,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return true;
   }
 
+  protected boolean shouldPersistRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record,
+      PartitionConsumptionState partitionConsumptionState) {
+    int partitionId = record.partition();
+    String msg;
+    if (null == partitionConsumptionState) {
+      msg = "Topic " + kafkaVersionTopic + " Partition " + partitionId + " has been unsubscribed, skip this record";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        logger.info(msg + " that has offset " + record.offset());
+      }
+      return false;
+    }
+
+    if (partitionConsumptionState.isErrorReported()) {
+      msg = "Topic " + kafkaVersionTopic + " Partition " + partitionId + " is already errored, skip this record";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        logger.info(msg + " that has offset " + record.offset());
+      }
+      return false;
+    }
+
+    if (this.suppressLiveUpdates && partitionConsumptionState.isCompletionReported()) {
+      msg = "Skipping message as live update suppression is enabled and store: " + kafkaVersionTopic
+          + " partition " + partitionId + " is already ready to serve, these are buffered records in the queue.";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        logger.info(msg);
+      }
+      return false;
+    }
+
+    return true;
+  }
+
   /**
    * This function will be invoked in {@link StoreBufferService} to process buffered {@link ConsumerRecord}.
    * @param record
@@ -1233,12 +1277,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
     // reference to all downstream methods so that all offset persistence operations use the same partitionConsumptionState
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
-    if (null == partitionConsumptionState) {
-      logger.info("Topic " + kafkaVersionTopic + " Partition " + partition + " has been unsubscribed, skip this record that has offset " + record.offset());
-      return;
-    }
-    if (partitionConsumptionState.isErrorReported()) {
-      logger.info("Topic " + kafkaVersionTopic + " Partition " + partition + " is already errored, skip this record that has offset " + record.offset());
+    if (!shouldPersistRecord(record, partitionConsumptionState)) {
       return;
     }
 
@@ -2334,6 +2373,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               notificationDispatcher.reportCompleted(partitionConsumptionState);
               logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
             }
+          }
+
+          if (suppressLiveUpdates) {
+            /**
+             * If live updates suppression is enabled, stop consuming any new messages once the partition is ready to serve.
+             */
+            String msg = consumerTaskId + " Live update suppression is enabled. Stop consumption for partition " + partition;
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+              logger.info(msg);
+            }
+            unSubscribePartition(kafkaVersionTopic, partition);
           }
         } else {
           notificationDispatcher.reportProgress(partitionConsumptionState);

@@ -140,6 +140,14 @@ public class TestUtils {
                                                       TimeUnit timeoutUnits,
                                                       boolean exponentialBackOff,
                                                       NonDeterministicAssertion assertionToWaitFor) throws AssertionError {
+    waitForNonDeterministicAssertion(timeout, timeoutUnits, exponentialBackOff, false, assertionToWaitFor);
+  }
+
+  public static void waitForNonDeterministicAssertion(long timeout,
+                                                      TimeUnit timeoutUnits,
+                                                      boolean exponentialBackOff,
+                                                      boolean retryForThrowable,
+                                                      NonDeterministicAssertion assertionToWaitFor) throws AssertionError {
     long timeoutTime = System.currentTimeMillis() + timeoutUnits.toMillis(timeout);
     long waitTime = WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS;
     while (true) {
@@ -153,12 +161,18 @@ public class TestUtils {
           LOGGER.info("waitForNonDeterministicAssertion caught an AssertionError. Will retry again in: " + waitTime
               + " ms. Assertion message: " + e.getMessage());
         }
+      } catch (Throwable e) {
+        if (!retryForThrowable || System.currentTimeMillis() > timeoutTime) {
+          throw new AssertionError(e);
+        } else {
+          LOGGER.info("waitForNonDeterministicAssertion caught a Throwable. Will retry again in: " + waitTime
+              + " ms. Assertion message: " + e.getMessage());
+        }
+      } finally {
         Utils.sleep(waitTime);
         if (exponentialBackOff) {
           waitTime = Math.min(waitTime * 2, MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
         }
-      } catch (Exception e) {
-        throw new AssertionError(e);
       }
     }
   }
