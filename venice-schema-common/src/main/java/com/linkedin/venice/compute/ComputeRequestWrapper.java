@@ -1,6 +1,5 @@
 package com.linkedin.venice.compute;
 
-import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -29,7 +28,6 @@ import org.apache.avro.specific.SpecificRecord;
  */
 public class ComputeRequestWrapper {
   public static int LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST = 2;
-
   private static final Map<Integer, Schema> SCHEMA_MAP = new HashMap<Integer, Schema>() {
     {
       put(1, ComputeRequestV1.SCHEMA$);
@@ -61,6 +59,7 @@ public class ComputeRequestWrapper {
 
   private int version;
   private Object computeRequest;
+  private Schema valueSchema;
 
   public ComputeRequestWrapper(int version) {
     this.version = version;
@@ -106,6 +105,14 @@ public class ComputeRequestWrapper {
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
+  }
+
+  public void setValueSchema(Schema schema) {
+    this.valueSchema = schema;
+  }
+
+  public Schema getValueSchema() {
+    return this.valueSchema;
   }
 
   public void setResultSchemaStr(String resultSchemaStr) {

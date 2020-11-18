@@ -124,7 +124,7 @@ public class D2ClientUtils {
      return response;
    }
 
-  public static RestRequest createD2PostRequest(String requestPath, Map<String, String> headers, byte[] body, int keyCount) {
+  public static RestRequest createD2PostRequest(String requestPath, Map<String, String> headers, byte[] body) {
     URI requestUri;
     try {
       requestUri = new URI(requestPath);
@@ -133,10 +133,6 @@ public class D2ClientUtils {
     }
 
     RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod("POST").setHeaders(headers).setEntity(body);
-    if (keyCount != 0) {
-      builder.setHeader(VENICE_KEY_COUNT, Integer.toString(keyCount));
-    }
-
     return builder.build();
   }
 }

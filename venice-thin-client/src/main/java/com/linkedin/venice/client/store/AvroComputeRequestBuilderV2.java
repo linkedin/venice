@@ -117,6 +117,7 @@ class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K
   protected ComputeRequestWrapper generateComputeRequest(String resultSchemaStr) {
     // Generate ComputeRequestWrapper object
     ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
+    computeRequestWrapper.setValueSchema(latestValueSchema);
     computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
     List<ComputeOperation> operations = getCommonComputeOperations();
     hadamardProducts.forEach( hadamardProduct -> {

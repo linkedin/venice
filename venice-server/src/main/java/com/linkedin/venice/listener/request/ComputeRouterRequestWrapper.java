@@ -18,11 +18,15 @@ import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
 
 public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1>{
   private final ComputeRequestWrapper computeRequestWrapper;
+  private int valueSchemaId = -1;
 
   private ComputeRouterRequestWrapper(String resourceName, ComputeRequestWrapper computeRequestWrapper,
-                                      Iterable<ComputeRouterRequestKeyV1> keys, HttpRequest request) {
+                                      Iterable<ComputeRouterRequestKeyV1> keys, HttpRequest request, String schemaId) {
     super(resourceName, keys, request);
     this.computeRequestWrapper = computeRequestWrapper;
+    if (schemaId != null) {
+      this.valueSchemaId = Integer.parseInt(schemaId);
+    }
   }
 
   public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest, boolean useFastAvro) {
@@ -55,8 +59,8 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     computeRequestWrapper.deserialize(decoder, useFastAvro, !useFastAvro);
 
     Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);
-
-    return new ComputeRouterRequestWrapper(resourceName, computeRequestWrapper, keys, httpRequest);
+    String schemaId = httpRequest.headers().get(HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID);
+    return new ComputeRouterRequestWrapper(resourceName, computeRequestWrapper, keys, httpRequest, schemaId);
   }
 
   private static Iterable<ComputeRouterRequestKeyV1> parseKeys(BinaryDecoder decoder) {
@@ -68,6 +72,10 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
 
   public ComputeRequestWrapper getComputeRequest() {
     return computeRequestWrapper;
+  }
+
+  public int getValueSchemaId() {
+    return valueSchemaId;
   }
 
   public String toString() {

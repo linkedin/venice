@@ -111,7 +111,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return size[0];
   }
 
-  public int getVersionNumber(){
+  public int getVersionNumber() {
     return this.versionNumber;
   }
 
@@ -205,7 +205,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   }
 
   public void recordOriginalRequestStartTimestamp() {
-    if (! isRetryRequest()) {
+    if (!isRetryRequest()) {
       setOriginalRequestStartTs(time.getMilliseconds());
     }
   }
@@ -244,10 +244,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   }
 
   public HttpUriRequest composeRouterRequest(String storageNodeUri) {
-    HttpUriRequest request = composeRouterRequestInternal(storageNodeUri);
-    setupVeniceHeaders( (k, v) -> request.setHeader(k, v));
-
-    return request;
+    return composeRouterRequestInternal(storageNodeUri);
   }
 
   public void setChunkedWriteHandler(ChannelHandlerContext ctx, VeniceChunkedWriteHandler chunkedWriteHandler,
@@ -260,17 +257,17 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   }
 
   public void setResponseDecompressor(VeniceResponseDecompressor decompressor) {
-     if (responseDecompressor.isPresent()) {
-       throw new VeniceException("VeniceResponseDecompressor has already been setup");
-     }
-     this.responseDecompressor = Optional.of(decompressor);
+    if (responseDecompressor.isPresent()) {
+      throw new VeniceException("VeniceResponseDecompressor has already been setup");
+    }
+    this.responseDecompressor = Optional.of(decompressor);
   }
 
   public VeniceResponseDecompressor getResponseDecompressor() {
     if (!responseDecompressor.isPresent()) {
       // Defensive code
-      throw new IllegalStateException("VeniceResponseDecompressor is not available for current request, and there must be a bug"
-          + " when this exception happens.");
+      throw new IllegalStateException(
+          "VeniceResponseDecompressor is not available for current request, and there must be a bug" + " when this exception happens.");
     }
     return responseDecompressor.get();
   }

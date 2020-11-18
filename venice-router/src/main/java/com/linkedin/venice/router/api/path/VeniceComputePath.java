@@ -18,10 +18,12 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
+import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
@@ -31,6 +33,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   private final ComputeRequestWrapper computeRequestWrapper;
   private final byte[] requestContent;
   private final int computeRequestLengthInBytes;
+  private int valueSchemaId;
 
   private final int computeRequestVersion;
 
@@ -42,6 +45,9 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
 
     // Get API version
     computeRequestVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
+    Optional<CharSequence> schemaHeader = request.getRequestHeaders().get(VENICE_COMPUTE_VALUE_SCHEMA_ID);
+    valueSchemaId = schemaHeader.map(charSequence -> Integer.parseInt((String) charSequence)).orElse(-1);
+
     if (computeRequestVersion <= 0 || computeRequestVersion > LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()), BAD_REQUEST,
           "Compute API version " + computeRequestVersion + " is invalid. Latest version is " + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
@@ -118,6 +124,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
         this.computeRequestWrapper, this.requestContent, this.computeRequestLengthInBytes, this.computeRequestVersion,
         isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs(), getLongTailRetryMaxRouteForMultiKeyReq());
     subPath.setupRetryRelatedInfo(this);
+    subPath.setValueSchemaId(this.getValueSchemaId());
     return subPath;
   }
 
@@ -144,6 +151,20 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
         routerKeyMap.values(),
         ByteBuffer.wrap(requestContent, 0, computeRequestLengthInBytes)
     );
+  }
+
+  public int getValueSchemaId() {
+    return valueSchemaId;
+  }
+
+  public void setValueSchemaId(int id) {
+    this.valueSchemaId = id;
+  }
+
+  @Override
+  public void setupVeniceHeaders(BiConsumer<String, String> setupHeaderFunc) {
+    super.setupVeniceHeaders(setupHeaderFunc);
+    setupHeaderFunc.accept(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(getValueSchemaId()));
   }
 
   @Override

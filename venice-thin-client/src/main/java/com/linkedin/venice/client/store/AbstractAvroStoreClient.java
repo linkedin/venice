@@ -373,11 +373,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     LongAdder decompressionTime = new LongAdder();
     byte[] multiGetBody = serializeMultiGetRequest(keyList);
     CompletableFuture<Map<K, V>> valueFuture = new CompletableFuture();
+    final Map<String, String> headerMap = new HashMap<>(MULTI_GET_HEADER_MAP);
+    headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
+
     requestSubmissionWithStatsHandling(
         stats,
         preRequestTimeInNS,
         true,
-        () -> transportClient.post(getStorageRequestPath(), MULTI_GET_HEADER_MAP, multiGetBody, keyList.size()),
+        () -> transportClient.post(getStorageRequestPath(), headerMap, multiGetBody),
         (response, throwable, responseDeserializationComplete) -> {
           try {
             if (null != throwable) {
@@ -584,15 +587,17 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] serializedComputeRequest = computeRequestWrapper.serialize();
     byte[] serializedFullComputeRequest = serializeComputeRequest(keyList, serializedComputeRequest);
     CompletableFuture<Map<K, GenericRecord>> valueFuture = new CompletableFuture();
-    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V1)
-        ? COMPUTE_HEADER_MAP_V1
-        : COMPUTE_HEADER_MAP_V2;
+    final Map<String, String> headerMap = new HashMap<>(COMPUTE_HEADER_MAP_V2);
+
+    int schemaId = getSchemaReader().getValueSchemaId(computeRequestWrapper.getValueSchema());
+    headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
+    headerMap.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
 
     requestSubmissionWithStatsHandling(
         stats,
         preRequestTimeInNS,
         true,
-        () -> transportClient.post(getComputeRequestPath(), headerMap, serializedFullComputeRequest, keyList.size()),
+        () -> transportClient.post(getComputeRequestPath(), headerMap, serializedFullComputeRequest),
         (clientResponse, throwable, responseDeserializationComplete) -> {
           try {
             if (null != throwable) {
@@ -976,7 +981,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] multiGetBody = serializeMultiGetRequest(keyList);
     Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
 
-    transportClient.streamPost(getStorageRequestPath(), MULTI_GET_HEADER_MAP_FOR_STREAMING, multiGetBody,
+    final Map<String, String> headerMap = new HashMap<>(MULTI_GET_HEADER_MAP_FOR_STREAMING);
+    headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
+
+    transportClient.streamPost(getStorageRequestPath(), headerMap, multiGetBody,
         new StoreClientStreamingCallback<>(
             keyList,
             callback,
@@ -1023,9 +1031,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] serializedFullComputeRequest = reuseObjects
         ? serializeComputeRequest(keyList, serializedComputeRequest, reusedEncoder, reusedOutputStream)
         : serializeComputeRequest(keyList, serializedComputeRequest);
-    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V1)
-        ? COMPUTE_HEADER_MAP_FOR_STREAMING_V1
-        : COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
+
+    final Map<String, String> headerMap = new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V2);
+
+    int schemaId = getSchemaReader().getValueSchemaId(computeRequestWrapper.getValueSchema());
+    headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
+    headerMap.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer = getComputeResultRecordDeserializer(resultSchema);
 

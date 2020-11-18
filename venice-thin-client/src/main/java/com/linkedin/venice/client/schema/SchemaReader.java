@@ -40,6 +40,7 @@ public class SchemaReader implements SchemaRetriever {
   private final Optional<Schema> readerSchema;
   private Schema keySchema;
   private Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
+  private Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
   private AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
 
   private final AbstractAvroStoreClient storeClient;
@@ -111,6 +112,23 @@ public class SchemaReader implements SchemaRetriever {
   @Override
   public Integer getLatestValueSchemaId() throws VeniceClientException {
     return ensureLatestValueSchemaIsFetched(SCHEMA_ID_EXTRACTOR);
+  }
+
+  @Override
+  public int getValueSchemaId(Schema schema) {
+    if (valueSchemaMapR.containsKey(schema)) {
+      return valueSchemaMapR.get(schema);
+    } else {
+      synchronized (this) {
+        if (!valueSchemaMapR.containsKey(schema)) {
+          refreshAllValueSchema();
+        }
+      }
+    }
+    if (!valueSchemaMapR.containsKey(schema)) {
+      throw new VeniceClientException("Could not find schema: " + schema + ". for store " + storeName);
+    }
+    return valueSchemaMapR.get(schema);
   }
 
   private <T> T ensureLatestValueSchemaIsFetched(Function<SchemaEntry, T> schemaEntryConsumer) {
@@ -186,6 +204,7 @@ public class SchemaReader implements SchemaRetriever {
           Schema writerSchema =
               preemptiveSchemaVerification(Schema.parse(schema.getSchemaStr()), schema.getSchemaStr(), schema.getId());
           valueSchemaMap.put(schema.getId(), writerSchema);
+          valueSchemaMapR.put(writerSchema, schema.getId());
         }
         if (schemaResponse.getSuperSetSchemaId() != -1) {
           latestSchemaId = schemaResponse.getSuperSetSchemaId();

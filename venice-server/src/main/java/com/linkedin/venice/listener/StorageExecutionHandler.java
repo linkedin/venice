@@ -76,8 +76,6 @@ import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.VeniceConstants.*;
-
 
 /***
  * {@link StorageExecutionHandler} will take the incoming {@link RouterRequest}, and delegate the lookup request to
@@ -434,8 +432,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
     AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
 
-    // deserialize all value to the latest schema
-    Schema latestValueSchema = this.schemaRepo.getLatestValueSchema(storeName).getSchema();
+    Schema valueSchema;
+    if (request.getValueSchemaId() != -1) {
+      valueSchema = this.schemaRepo.getValueSchema(storeName, request.getValueSchemaId()).getSchema();
+    } else {
+      valueSchema = this.schemaRepo.getLatestValueSchema(storeName).getSchema();
+    }
     ComputeRequestWrapper computeRequestWrapper = request.getComputeRequest();
 
     // try to get the result schema from the cache
@@ -444,7 +446,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     if (computeResultSchema == null) {
       computeResultSchema = Schema.parse(computeResultSchemaStr.toString());
       // sanity check on the result schema
-      ComputeUtils.checkResultSchema(computeResultSchema, latestValueSchema, computeRequestWrapper.getComputeRequestVersion(), (List) computeRequestWrapper.getOperations());
+      ComputeUtils.checkResultSchema(computeResultSchema, valueSchema, computeRequestWrapper.getComputeRequestVersion(), (List) computeRequestWrapper.getOperations());
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }
 
@@ -462,7 +464,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     ReusableObjects reusableObjects = threadLocalReusableObjects.get();
 
-    GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(latestValueSchema, k -> new GenericData.Record(latestValueSchema));
+    GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
     Schema finalComputeResultSchema1 = computeResultSchema;
     GenericRecord reuseResultRecord =  reusableObjects.reuseResultRecordMap.computeIfAbsent(computeResultSchema, k -> new GenericData.Record(finalComputeResultSchema1));
 

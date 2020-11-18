@@ -29,6 +29,8 @@ public class HttpConstants {
 
   public static final String VENICE_KEY_COUNT = "X-VENICE-KEY-COUNT";
 
+  public static final String VENICE_COMPUTE_VALUE_SCHEMA_ID = "X-VENICE-COMPUTE-VALUE-SCHEMA-ID";
+
   public static final String VENICE_ALLOW_REDIRECT = "X-VENICE-ALLOW-REDIRECT";
 
   public static final int SC_MISDIRECTED_REQUEST = 421;

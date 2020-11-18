@@ -56,9 +56,8 @@ public class HttpTransportClient extends TransportClient {
 
   @Override
   public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
-      byte[] requestBody, int keyCount) {
+      byte[] requestBody) {
     HttpPost request = getHttpPostRequest(requestPath, headers, requestBody);
-    request.addHeader(VENICE_KEY_COUNT, Integer.toString(keyCount));
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     httpClient.execute(request, new HttpTransportClientCallback(valueFuture));
     return valueFuture;

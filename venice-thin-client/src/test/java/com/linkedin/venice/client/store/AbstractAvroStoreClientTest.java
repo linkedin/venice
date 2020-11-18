@@ -143,7 +143,7 @@ public class AbstractAvroStoreClientTest {
     CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
     transportFuture.complete(clientResponse);
 
-    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any(), anyInt());
+    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
@@ -214,7 +214,7 @@ public class AbstractAvroStoreClientTest {
     CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
     transportFuture.complete(clientResponse);
 
-    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any(), anyInt());
+    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
@@ -261,7 +261,7 @@ public class AbstractAvroStoreClientTest {
     CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
     transportFuture.completeExceptionally(new VeniceClientException("mock_exception"));
 
-    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any(), anyInt());
+    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());

@@ -18,13 +18,13 @@ public abstract class TransportClient implements Closeable {
   }
 
   public CompletableFuture<TransportClientResponse> post(String requestPath, byte[] requestBody) {
-    return post(requestPath, Collections.EMPTY_MAP, requestBody, 0);
+    return post(requestPath, Collections.EMPTY_MAP, requestBody);
   }
 
   public abstract CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers);
 
   public abstract CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
-      byte[] requestBody, int keyCount);
+      byte[] requestBody);
 
   public abstract void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
       TransportClientStreamingCallback callback, int keyCount);
