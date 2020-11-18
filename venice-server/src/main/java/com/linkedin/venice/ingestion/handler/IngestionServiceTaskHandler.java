@@ -21,7 +21,9 @@ import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
+import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -45,7 +47,6 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandlerContext;
@@ -56,7 +57,6 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -68,7 +68,6 @@ import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.client.store.ClientFactory.*;
 import static com.linkedin.venice.ingestion.IngestionUtils.*;
-import static java.lang.Thread.*;
 
 
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
@@ -127,6 +126,13 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           IngestionTaskReport metadataUpdateReport = handleIngestionStorageMetadataUpdate(ingestionStorageMetadata);
           byte[] serializedMetadataUpdateReport = serializeIngestionTaskReport(metadataUpdateReport);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetadataUpdateReport));
+          break;
+        case SHUTDOWN_COMPONENT:
+          logger.info("Received SHUTDOWN_COMPONENT message.");
+          ProcessShutdownCommand processShutdownCommand = parseProcessShutdownCommand(msg);
+          IngestionTaskReport shutdownTaskReport = handleProcessShutdownCommand(processShutdownCommand);
+          byte[] serializedShutdownTaskReport = serializeIngestionTaskReport(shutdownTaskReport);
+          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedShutdownTaskReport));
           break;
         default:
           throw new UnsupportedOperationException("Unrecognized ingestion action: " + action);
@@ -404,6 +410,34 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     return report;
   }
 
+  private IngestionTaskReport handleProcessShutdownCommand(ProcessShutdownCommand processShutdownCommand) {
+    IngestionTaskReport report = new IngestionTaskReport();
+    report.isPositive = true;
+    report.errorMessage = "";
+    report.topicName = "";
+    try {
+      if (!ingestionService.isInitiated()) {
+        throw new VeniceException("IngestionService has not been initiated.");
+      }
+      switch (IngestionComponentType.valueOf(processShutdownCommand.componentType)) {
+        case KAFKA_INGESTION_SERVICE:
+          ingestionService.getStoreIngestionService().stop();
+          break;
+        case STORAGE_SERVICE:
+          ingestionService.getStorageService().stop();
+          break;
+        default:
+          break;
+      }
+    } catch (Exception e) {
+      logger.error("Encounter exception while shutting down ingestion components in forked process", e);
+      report.isPositive = false;
+      report.isError = true;
+      report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
+    }
+    return report;
+  }
+
   private IngestionAction getIngestionActionFromRequest(HttpRequest req){
     // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
     // Generating a URI lets us always take just the path.
@@ -430,6 +464,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
   private IngestionStorageMetadata parseIngestionStorageMetadataUpdate(FullHttpRequest httpRequest) {
     return deserializeIngestionStorageMetadata(readHttpRequestContent(httpRequest));
+  }
+
+  private ProcessShutdownCommand parseProcessShutdownCommand(FullHttpRequest httpRequest) {
+    return deserializeProcessShutdownCommand(readHttpRequestContent(httpRequest));
   }
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {

@@ -14,6 +14,7 @@ import com.linkedin.venice.ingestion.IngestionReportListener;
 import com.linkedin.venice.ingestion.IngestionRequestClient;
 import com.linkedin.venice.ingestion.IngestionStorageMetadataService;
 import com.linkedin.venice.ingestion.IngestionUtils;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -283,17 +284,20 @@ public class DaVinciBackend implements Closeable {
       if (ingestionReportListener != null) {
         ingestionReportListener.stopInner();
       }
-      if (ingestionRequestClient != null) {
-        ingestionRequestClient.close();
+      if (isolatedIngestionService != null) {
+        IngestionUtils.shutdownForkedProcessComponent(ingestionRequestClient, IngestionComponentType.KAFKA_INGESTION_SERVICE);
+        ingestionService.stop();
+        IngestionUtils.shutdownForkedProcessComponent(ingestionRequestClient, IngestionComponentType.STORAGE_SERVICE);
+        isolatedIngestionService.destroy();
+        if (ingestionRequestClient != null) {
+          ingestionRequestClient.close();
+        }
+      } else {
+        ingestionService.stop();
       }
-      ingestionService.stop();
       storageService.stop();
       zkClient.close();
       metricsRepository.close();
-
-      if (isolatedIngestionService != null) {
-        isolatedIngestionService.destroy();
-      }
       storeRepository.clear();
       schemaRepository.clear();
     } catch (Throwable e) {

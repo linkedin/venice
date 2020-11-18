@@ -5,5 +5,6 @@ public enum IngestionAction {
   COMMAND,
   REPORT,
   METRIC,
-  UPDATE_METADATA
+  UPDATE_METADATA,
+  SHUTDOWN_COMPONENT
 }
