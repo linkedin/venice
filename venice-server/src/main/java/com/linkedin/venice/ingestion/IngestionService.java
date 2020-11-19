@@ -242,8 +242,6 @@ public class IngestionService extends AbstractVeniceService {
   }
 
   public static void main(String[] args) throws Exception {
-    // Setting root logger level to INFO so forked process logs will be captured.
-    Configurator.setAllLevels(LogManager.getRootLogger().getName(), org.apache.logging.log4j.Level.INFO);
     logger.info("Capture arguments: " + Arrays.toString(args));
     if (args.length != 1) {
       throw new VeniceException("Expected one arguments: port. Got " + args.length);

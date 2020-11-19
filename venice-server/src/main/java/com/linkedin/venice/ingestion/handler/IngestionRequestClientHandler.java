@@ -20,7 +20,6 @@ public class IngestionRequestClientHandler extends SimpleChannelInboundHandler<F
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, FullHttpResponse msg) {
-    logger.info("Receive response " + msg + " from remote host.");
     // Keep a deep copy of the response msg, the original msg will be release once channelRead is finished.
     result = msg.copy();
     ctx.close();
@@ -28,7 +27,7 @@ public class IngestionRequestClientHandler extends SimpleChannelInboundHandler<F
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    logger.info("Caught exception: " + cause.getMessage());
+    logger.error("Caught exception: " + cause.getMessage());
     ctx.close();
   }
 

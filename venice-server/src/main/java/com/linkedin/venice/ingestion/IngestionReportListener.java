@@ -10,6 +10,7 @@ import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -46,6 +47,7 @@ public class IngestionReportListener extends AbstractVeniceService {
   private final int ingestionServicePort;
   private final ScheduledExecutorService metricsRequestScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
+
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository;
@@ -189,7 +191,9 @@ public class IngestionReportListener extends AbstractVeniceService {
   }
 
   private void collectIngestionServiceMetrics() {
-    logger.info("Sending metrics collection request to isolated ingestion service.");
+    if (logger.isDebugEnabled()) {
+      logger.debug("Sending metrics collection request to isolated ingestion service.");
+    }
     byte[] content = new byte[0];
     HttpRequest httpRequest = metricsClient.buildHttpRequest(IngestionAction.METRIC, content);
     try {
@@ -197,7 +201,9 @@ public class IngestionReportListener extends AbstractVeniceService {
       byte[] responseContent = new byte[response.content().readableBytes()];
       response.content().readBytes(responseContent);
       IngestionMetricsReport metricsReport = deserializeIngestionMetricsReport(responseContent);
-      logger.info("Collecting " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
+      if (logger.isDebugEnabled()) {
+        logger.debug("Collecting " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
+      }
       ingestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
       // Update heartbeat time.
       heartbeatTime = System.currentTimeMillis();
@@ -210,7 +216,9 @@ public class IngestionReportListener extends AbstractVeniceService {
 
   private void checkHeartbeatTimeout() {
     long currentTimeMillis = System.currentTimeMillis();
-    logger.info("Checking heartbeat timeout at " + currentTimeMillis + ", current heartbeat: " + heartbeatTime);
+    if (logger.isDebugEnabled()) {
+      logger.info("Checking heartbeat timeout at " + currentTimeMillis + ", current heartbeat: " + heartbeatTime);
+    }
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.HEARTBEAT.getValue();
     ingestionTaskCommand.topicName = "";
