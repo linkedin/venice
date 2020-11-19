@@ -252,6 +252,11 @@ public class AvroStoreClientEndToEndTest {
     }
 
     @Override
+    public int getValueSchemaId(Schema schema) {
+      return schemaRepository.getValueSchemaId(storeName, schema.toString());
+    }
+
+    @Override
     public Schema getLatestValueSchema() {
       return schemaRepository.getLatestValueSchema(storeName).getSchema();
     }
