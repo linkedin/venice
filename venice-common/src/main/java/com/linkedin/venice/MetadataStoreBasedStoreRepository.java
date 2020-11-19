@@ -463,7 +463,6 @@ public class MetadataStoreBasedStoreRepository implements SubscriptionBasedReadO
       version.setBufferReplayEnabledForHybrid(storeVersionState.bufferReplayEnabledForHybrid);
       version.setPushStreamSourceAddress(storeVersionState.pushStreamSourceAddress.toString());
       version.setNativeReplicationEnabled(storeVersionState.nativeReplicationEnabled);
-      version.setNativeReplicationSourceFabric(storeVersionState.nativeReplicationSourceFabric.toString());
       versionList.add(version);
     }
     return versionList;
