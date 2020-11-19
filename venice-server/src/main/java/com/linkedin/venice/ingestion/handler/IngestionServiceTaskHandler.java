@@ -44,6 +44,7 @@ import com.linkedin.venice.storage.StorageEngineMetadataService;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -56,6 +57,7 @@ import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -65,12 +67,15 @@ import static com.linkedin.venice.ingestion.IngestionUtils.*;
 
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionServiceTaskHandler.class);
+  private static final RedundantExceptionFilter redundantExceptionFilter = RedundantExceptionFilter.getRedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private final IngestionService ingestionService;
 
   public IngestionServiceTaskHandler(IngestionService ingestionService) {
     super();
     this.ingestionService = ingestionService;
-    logger.info("IngestionServiceTaskHandler created for listener service.");
+    if (logger.isDebugEnabled()) {
+      logger.debug("IngestionServiceTaskHandler created for listener service.");
+    }
   }
 
   @Override
@@ -84,26 +89,34 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       IngestionAction action = getIngestionActionFromRequest(msg);
       switch (action) {
         case INIT:
-          logger.info("Received INIT message: " + msg.toString());
+          if (logger.isDebugEnabled()) {
+            logger.debug("Received INIT message: " + msg.toString());
+          }
           InitializationConfigs initializationConfigs = parseIngestionInitialization(msg);
           handleIngestionInitialization(initializationConfigs);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, "OK!"));
           break;
         case COMMAND:
-          logger.info("Received COMMAND message " + msg.toString());
+          if (logger.isDebugEnabled()) {
+            logger.debug("Received COMMAND message " + msg.toString());
+          }
           IngestionTaskCommand ingestionTaskCommand = parseIngestionTaskCommand(msg);
           IngestionTaskReport report = handleIngestionTaskCommand(ingestionTaskCommand);
           byte[] serializedReport = serializeIngestionTaskReport(report);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedReport));
           break;
         case METRIC:
-          logger.info("Received METRIC message.");
+          if (logger.isDebugEnabled()) {
+            logger.debug("Received METRIC message.");
+          }
           IngestionMetricsReport metricsReport = handleMetricsRequest();
           byte[] serializedMetricsReport = serializeIngestionMetricsReport(metricsReport);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetricsReport));
           break;
         case UPDATE_METADATA:
-          logger.info("Received UPDATE_METADATA message.");
+          if (logger.isDebugEnabled()) {
+            logger.debug("Received UPDATE_METADATA message.");
+          }
           IngestionStorageMetadata ingestionStorageMetadata = parseIngestionStorageMetadataUpdate(msg);
           IngestionTaskReport metadataUpdateReport = handleIngestionStorageMetadataUpdate(ingestionStorageMetadata);
           byte[] serializedMetadataUpdateReport = serializeIngestionTaskReport(metadataUpdateReport);
@@ -308,7 +321,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           try {
             report.aggregatedMetrics.put(name, metric.value());
           } catch (Exception e) {
-            logger.info("Encounter exception when retrieving value of metric: " + name);
+            String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
+            if (!redundantExceptionFilter.isRedundantException(exceptionLogMessage)) {
+              logger.error(exceptionLogMessage);
+            }
           }
         }
       });
@@ -331,19 +347,27 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       }
       switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
         case PUT_OFFSET_RECORD:
-          logger.info("Put OffsetRecord");
+          if (logger.isDebugEnabled()) {
+            logger.debug("Put OffsetRecord");
+          }
           ingestionService.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array(), ingestionService.getPartitionStateSerializer()));
           break;
         case CLEAR_OFFSET_RECORD:
-          logger.info("Clear OffsetRecord");
+          if (logger.isDebugEnabled()) {
+            logger.debug("Clear OffsetRecord");
+          }
           ingestionService.getStorageMetadataService().clearOffset(topicName, partitionId);
           break;
         case PUT_STORE_VERSION_STATE:
-          logger.info("Put StoreVersionState");
+          if (logger.isDebugEnabled()) {
+            logger.debug("Put StoreVersionState");
+          }
           ingestionService.getStorageMetadataService().put(topicName, IngestionUtils.deserializeStoreVersionState(topicName, ingestionStorageMetadata.payload.array()));
           break;
         case CLEAR_STORE_VERSION_STATE:
-          logger.info("Clear StoreVersionState");
+          if (logger.isDebugEnabled()) {
+            logger.debug("Clear StoreVersionState");
+          }
           ingestionService.getStorageMetadataService().clearStoreVersionState(topicName);
           break;
         default:

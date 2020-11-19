@@ -65,7 +65,9 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
 
   @Override
   public void clearStoreVersionState(String topicName) {
-    logger.info("Clearing StoreVersionState for " + topicName);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Clearing StoreVersionState for " + topicName);
+    }
     topicStoreVersionStateMap.remove(topicName);
     // Sync update with metadata partition opened by ingestion process.
     IngestionStorageMetadata ingestionStorageMetadata = new IngestionStorageMetadata();
@@ -77,7 +79,9 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
 
   @Override
   public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
-    logger.info("Getting StoreVersionState for " + topicName);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Getting StoreVersionState for " + topicName);
+    }
     if (topicStoreVersionStateMap.containsKey(topicName)) {
       return Optional.of(topicStoreVersionStateMap.get(topicName));
     } else {
@@ -99,7 +103,9 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    logger.info("Clearing OffsetRecord for " + topicName + " " + partitionId);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Clearing OffsetRecord for " + topicName + " " + partitionId);
+    }
     if (topicPartitionOffsetRecordMap.containsKey(topicName)) {
       Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
       partitionOffsetRecordMap.remove(partitionId);
@@ -116,7 +122,9 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
 
   @Override
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
-    logger.info("Getting OffsetRecord for " + topicName + " " + partitionId);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Getting OffsetRecord for " + topicName + " " + partitionId);
+    }
     if (topicPartitionOffsetRecordMap.containsKey(topicName)) {
       Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
       return partitionOffsetRecordMap.getOrDefault(partitionId, new OffsetRecord(partitionStateSerializer));
@@ -128,7 +136,9 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
    * putOffsetRecord will only put OffsetRecord into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putOffsetRecord(String topicName, int partitionId, OffsetRecord record) {
-    logger.info("Updating OffsetRecord for " + topicName + " " + partitionId);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Updating OffsetRecord for " + topicName + " " + partitionId);
+    }
     Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
     partitionOffsetRecordMap.put(partitionId, record);
     topicPartitionOffsetRecordMap.put(topicName, partitionOffsetRecordMap);
@@ -138,7 +148,9 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
    * putStoreVersionState will only put StoreVersionState into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putStoreVersionState(String topicName, StoreVersionState record) {
-    logger.info("Updating StoreVersionState for " + topicName);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Updating StoreVersionState for " + topicName);
+    }
     topicStoreVersionStateMap.put(topicName, record);
   }
 
@@ -151,7 +163,9 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
         byte[] responseContent = new byte[response.content().readableBytes()];
         response.content().readBytes(responseContent);
         IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
-        logger.info("Received ingestion task report response: " + ingestionTaskReport);
+        if (logger.isDebugEnabled()) {
+          logger.debug("Received ingestion task report response: " + ingestionTaskReport);
+        }
       } else {
         logger.warn("Received bad ingestion task report response: " + response.status() + " for topic: " + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId);
       }

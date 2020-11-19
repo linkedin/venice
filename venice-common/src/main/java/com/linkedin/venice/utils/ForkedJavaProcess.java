@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.net.ServerSocket;
 import java.net.URL;
@@ -69,6 +70,17 @@ public final class ForkedJavaProcess extends Process {
     String className = klass.getCanonicalName();
     List<String> args = new ArrayList<>();
     args.addAll(Arrays.asList(javaBin, "-cp", classpath.toString(), "-Djava.io.tmpdir=" + tempFolder));
+
+    /**
+     * Add log4j2 configuration file. This config will inherit the log4j2 config file from parent process and set up correct logging level.
+     */
+    for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+      if (arg.contains("log4j2.configuration")) {
+        String log4jConfigFilePath = arg.split("=")[1];
+        args.add("-Dlog4j2.configuration=" + log4jConfigFilePath);
+        args.add("-Dlog4j2.configurationFile=" + log4jConfigFilePath);
+      }
+    }
     int debugPort = -1;
     if (debug) {
       debugPort = getFreePort();
