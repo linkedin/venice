@@ -28,6 +28,16 @@ public interface StoreIngestionService {
   void stopConsumption(VeniceStoreConfig veniceStore, int partitionId);
 
   /**
+   * Stops consuming messages from Kafka Partition corresponding to Venice Partition and wait up to
+   * (sleepSeconds * numRetires) to make sure partition consumption is stopped.
+   * @param veniceStore Venice Store for the partition.
+   * @param partitionId Venice partition's id.
+   * @param sleepSeconds
+   * @param numRetries
+   */
+  void stopConsumptionAndWait(VeniceStoreConfig veniceStore, int partitionId, int sleepSeconds, int numRetries);
+
+  /**
    * Resets Offset to beginning for Kafka Partition corresponding to Venice Partition.
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.

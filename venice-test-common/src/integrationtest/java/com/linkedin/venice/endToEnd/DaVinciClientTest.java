@@ -235,7 +235,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT * 3)
   public void testDaVinciWithIngestionIsolation() throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
@@ -248,7 +248,7 @@ public class DaVinciClientTest {
                     .setPartitionerParams(
                             Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
                     );
-    setupHybridStore(storeName, paramsConsumer);
+    setupHybridStore(storeName, paramsConsumer, 1000);
 
     D2Client d2Client = new D2ClientBuilder()
             .setZkHosts(cluster.getZk().getAddress())
@@ -275,7 +275,7 @@ public class DaVinciClientTest {
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
       client.subscribe(Collections.singleton(emptyPartition)).get();
-      Utils.sleep(1000);
+      //Utils.sleep(1000);
       for (int i = 0; i < KEY_COUNT; i++) {
         final int key = i;
         assertThrows(VeniceException.class, () -> client.get(key).get());
@@ -290,7 +290,7 @@ public class DaVinciClientTest {
         }
       });
     }
-    Utils.sleep(1000);
+    //Utils.sleep(1000);
     // Restart Da Vinci client to test bootstrap logic.
     d2Client = new D2ClientBuilder()
         .setZkHosts(cluster.getZk().getAddress())
@@ -579,6 +579,10 @@ public class DaVinciClientTest {
   }
 
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {
+    setupHybridStore(storeName, paramsConsumer, KEY_COUNT);
+  }
+
+  private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer, int keyCount) throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams()
         .setHybridRewindSeconds(10)
         .setHybridOffsetLagThreshold(10);

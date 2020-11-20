@@ -45,7 +45,9 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -54,15 +56,19 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.client.store.ClientFactory.*;
 import static com.linkedin.venice.ingestion.IngestionUtils.*;
+import static java.lang.Thread.*;
 
 
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
@@ -278,6 +284,22 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           // Ingestion Service needs store repository to subscribe to the store.
           ingestionService.getStoreRepository().subscribe(storeName);
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
+
+          Map<Integer, CompletableFuture<IngestionTaskReport>> partitionFutureMap = ingestionService.topicPartitionIngestionFuture.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
+          CompletableFuture<IngestionTaskReport> future = new CompletableFuture<>();
+          // Use async to avoid deadlock waiting in StoreBufferDrainer
+          future.whenCompleteAsync(
+              (result, exception) -> {
+                if (!result.isError) {
+                  ingestionService.reportIngestionCompletion(result);
+                } else {
+                  ingestionService.reportIngestionError(result);
+                }
+              }
+          );
+          partitionFutureMap.put(partitionId, future);
+          ingestionService.topicPartitionIngestionFuture.putIfAbsent(topicName, partitionFutureMap);
+
           storageService.openStoreForNewPartition(storeConfig, partitionId);
           storeIngestionService.startConsumption(storeConfig, partitionId, false);
           break;
@@ -413,22 +435,39 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset) {
-      logger.info("Ingestion completed for topic: " + kafkaTopic + ", partition id: " + partitionId + ", offset: " + offset);
-      VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(kafkaTopic);
-      ingestionService.getStoreIngestionService().stopConsumption(storeConfig, partitionId);
-      ingestionService.getStorageService().getStorageEngineRepository().getLocalStorageEngine(kafkaTopic).closePartition(partitionId);
-      logger.info("Closed partition: " + partitionId + " of topic: " + kafkaTopic);
-      ingestionService.reportIngestionCompletion(kafkaTopic, partitionId, offset);
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isComplete = true;
+      report.isEndOfPushReceived = true;
+      report.isError = false;
+      report.errorMessage = "";
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      report.offset = offset;
+
+      // Complete and remove corresponding topic partition's future.
+      CompletableFuture<IngestionTaskReport> future = ingestionService.topicPartitionIngestionFuture.get(kafkaTopic).remove(partitionId);
+      future.complete(report);
+      if (ingestionService.topicPartitionIngestionFuture.get(kafkaTopic).size() == 0) {
+        ingestionService.topicPartitionIngestionFuture.remove(kafkaTopic);
+      }
     }
 
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
-      logger.info("Ingestion error for topic: " + kafkaTopic + ", partition id: " + partitionId, e);
-      VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(kafkaTopic);
-      ingestionService.getStoreIngestionService().stopConsumption(storeConfig, partitionId);
-      ingestionService.getStorageService().getStorageEngineRepository().getLocalStorageEngine(kafkaTopic).closePartition(partitionId);
-      logger.info("Close error partition: " + partitionId + " of topic: " + kafkaTopic);
-      ingestionService.reportIngestionError(kafkaTopic, partitionId, e);
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isComplete = false;
+      report.isEndOfPushReceived = false;
+      report.isError = true;
+      report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+
+      // Complete and remove corresponding topic partition's future.
+      CompletableFuture<IngestionTaskReport> future = ingestionService.topicPartitionIngestionFuture.get(kafkaTopic).remove(partitionId);
+      future.complete(report);
+      if (ingestionService.topicPartitionIngestionFuture.get(kafkaTopic).size() == 0) {
+        ingestionService.topicPartitionIngestionFuture.remove(kafkaTopic);
+      }
     }
   };
 }

@@ -66,18 +66,8 @@ public class VersionBackend {
   synchronized void close() {
     backend.getVersionByTopicMap().remove(version.kafkaTopicName());
     for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
-      backend.getIngestionService().stopConsumption(config, entry.getKey());
+      backend.getIngestionService().stopConsumptionAndWait(config, entry.getKey(), 1, 30);
       entry.getValue().cancel(true);
-    }
-
-    for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
-      try {
-        makeSureSubPartitionIsNotConsuming(entry.getKey());
-      } catch (InterruptedException e) {
-        logger.warn("Waiting for partition to stop consumption was interrupted", e);
-        currentThread().interrupt();
-        break;
-      }
     }
   }
 
@@ -171,16 +161,6 @@ public class VersionBackend {
     logger.info("Unsubscribing to sub-partitions, storeName=" + this + ", subPartitions=" + subPartitions);
     for (Integer id : subPartitions) {
       unsubscribeSubPartition(id);
-    }
-
-    for (Integer id : subPartitions) {
-      try {
-        makeSureSubPartitionIsNotConsuming(id);
-      } catch (InterruptedException e) {
-        logger.warn("Waiting for partition to stop consumption was interrupted", e);
-        currentThread().interrupt();
-        return;
-      }
       backend.getStorageService().dropStorePartition(config, id);
     }
   }
@@ -230,7 +210,7 @@ public class VersionBackend {
           + "ignore the duplicate unsubscribe request");
       return;
     }
-    backend.getIngestionService().stopConsumption(config, subPartition);
+    backend.getIngestionService().stopConsumptionAndWait(config, subPartition, 1, 30);
     CompletableFuture future = subPartitionFutures.remove(subPartition);
     if (future != null) {
       future.cancel(true);
@@ -253,18 +233,5 @@ public class VersionBackend {
     // The consumption task should be re-started on DaVinci side to receive future updates for hybrid stores and consumer
     // action messages for all stores. The partition and its corresponding future will be completed by the main ingestion task.
     backend.getIngestionService().startConsumption(config, subPartition, false);
-  }
-
-  private void makeSureSubPartitionIsNotConsuming(int subPartition) throws InterruptedException {
-    final int SLEEP_SECONDS = 3;
-    final int RETRY_NUM = 100; // 5 min
-    for (int i = 0; i < RETRY_NUM; i++) {
-      if (!backend.getIngestionService().isPartitionConsuming(config, subPartition)) {
-        return;
-      }
-      sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
-    }
-    throw new VeniceException("Partition: " + subPartition + " of store: " + config.getStoreName()
-                                  + " is still consuming after waiting for it to stop for " + RETRY_NUM * SLEEP_SECONDS + " seconds.");
   }
 }

@@ -35,6 +35,7 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
@@ -61,6 +62,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 import static com.linkedin.venice.ConfigConstants.*;
+import static java.lang.Thread.*;
 import static org.apache.kafka.common.config.SslConfigs.*;
 
 
@@ -564,6 +566,33 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       consumerTask.unSubscribePartition(topic, partitionId);
     } else {
       logger.warn("Ignoring stop consumption message for Topic " + topic + " Partition " + partitionId);
+    }
+  }
+
+  /**
+   * Stops consuming messages from Kafka Partition corresponding to Venice Partition and wait up to
+   * (sleepSeconds * numRetires) to make sure partition consumption is stopped.
+   * @param veniceStore Venice Store for the partition.
+   * @param partitionId Venice partition's id.
+   * @param sleepSeconds
+   * @param numRetries
+   */
+  @Override
+  public synchronized void stopConsumptionAndWait(VeniceStoreConfig veniceStore, int partitionId, int sleepSeconds, int numRetries) {
+    stopConsumption(veniceStore, partitionId);
+    try {
+      for (int i = 0; i < numRetries; i++) {
+        if (!isPartitionConsuming(veniceStore, partitionId)) {
+          logger.info("Partition: " + partitionId + " of store: " + veniceStore.getStoreName() + " has stopped consumption.");
+          return;
+        }
+        sleep(sleepSeconds * Time.MS_PER_SECOND);
+      }
+      logger.error("Partition: " + partitionId + " of store: " + veniceStore.getStoreName()
+          + " is still consuming after waiting for it to stop for " + numRetries * sleepSeconds + " seconds.");
+    } catch (InterruptedException e) {
+      logger.warn("Waiting for partition to stop consumption was interrupted", e);
+      currentThread().interrupt();
     }
   }
 
