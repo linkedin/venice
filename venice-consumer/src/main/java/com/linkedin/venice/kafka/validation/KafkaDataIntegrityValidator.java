@@ -65,11 +65,11 @@ public class KafkaDataIntegrityValidator {
    */
   public OffsetRecordTransformer validateMessageAndGetOffsetRecordTransformer(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean tolerateDIVError,
-      Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
+      boolean endOfPushReceived,
+      boolean tolerateMissingMsgs) throws DataValidationException {
     final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
     ProducerTracker producerTracker = registerProducer(producerGUID);
-    return producerTracker.validateMessageAndGetOffsetRecordTransformer(consumerRecord, tolerateDIVError, errorMetricCallback);
+    return producerTracker.validateMessageAndGetOffsetRecordTransformer(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
   }
 
   /**
@@ -79,11 +79,10 @@ public class KafkaDataIntegrityValidator {
    */
   public Segment validateMessage(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean tolerateDIVError,
-      Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
+      boolean endOfPushReceived, boolean tolerateMissingMsgs) throws DataValidationException {
     final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
     ProducerTracker producerTracker = registerProducer(producerGUID);
-    return producerTracker.validateMessage(consumerRecord, tolerateDIVError, errorMetricCallback);
+    return producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
   }
 
   /**

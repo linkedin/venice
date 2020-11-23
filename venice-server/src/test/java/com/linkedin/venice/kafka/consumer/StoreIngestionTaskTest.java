@@ -454,6 +454,10 @@ public class StoreIngestionTaskTest {
     return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), recordMetadata.offset());
   }
 
+  private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(String topic, int partition, long offset) {
+    return new Pair<>(new TopicPartition(topic, partition), offset);
+  }
+
   private <STUFF> Set<STUFF> getSet(STUFF... stuffs) {
     Set<STUFF> set = new HashSet<>();
     for (STUFF stuff: stuffs) {
@@ -513,12 +517,17 @@ public class StoreIngestionTaskTest {
     RecordMetadata putMetadata3 = (RecordMetadata) veniceWriter.put(putKeyFoo2, putValueToCorrupt, SCHEMA_ID).get();
     RecordMetadata putMetadata4 = (RecordMetadata) veniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID).get();
 
-    // We will only deliver the unique entries after compaction: putMetadata2 and putMetadata4
     Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
     /**
-     * The reason to put "putMetadata1" and "putMetadata3" in the deliveryOrder queue is that {@link AbstractPollStrategy#poll(InMemoryKafkaBroker, Map, long)}
-     * is always trying to return the next message.
-     * If it is not expected, we need to change it.
+     * The reason to put offset -1 and offset 0 in the deliveryOrder queue is that the SOS and SOP need to be polled.
+     */
+    pollDeliveryOrder.add(getTopicPartitionOffsetPair(topic, PARTITION_FOO, -1));
+    pollDeliveryOrder.add(getTopicPartitionOffsetPair(topic, PARTITION_FOO, 0));
+    /**
+     * The reason to put "putMetadata1" and "putMetadata3" in the deliveryOrder queue is that
+     * {@link AbstractPollStrategy#poll(InMemoryKafkaBroker, Map, long)} is always trying to return the next message
+     * after whats in the queue. One at a time. Here we want to only deliver the unique entries after compaction:
+     * putMetadata2 and putMetadata4
      */
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata1));
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata3));

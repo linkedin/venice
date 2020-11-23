@@ -22,6 +22,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -32,6 +33,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
@@ -112,6 +114,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final long DEFAULT_UPSTREAM_OFFSET = ProducerMetadata.SCHEMA$.getField("upstreamOffset").defaultValue().asLong();
 
+  private static final long MAX_ELAPSED_TIME_FOR_SEGMENT = TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES);
+
   // Immutable state
   private final VeniceKafkaSerializer<K> keySerializer;
   private final VeniceKafkaSerializer<V> valueSerializer;
@@ -128,6 +132,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final long sleepTimeMsWhenTopicMissing;
   /** Map of partition to {@link Segment}, which keeps track of all segment-related state. */
   private final Map<Integer, Segment> segmentsMap = new HashMap<>();
+  /** Map of partition to its segment creation time in milliseconds. */
+  private final Map<Integer, Long> segmentsCreationTimeMap = new HashMap<>();
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
   private final Map<CharSequence, CharSequence> defaultDebugInfo;
@@ -1023,6 +1029,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Segment currentSegment = segmentsMap.get(partition);
     if (null == currentSegment || currentSegment.isEnded()) {
       currentSegment = startSegment(partition);
+    } else if (LatencyUtils.getElapsedTimeInMs(segmentsCreationTimeMap.get(partition)) > MAX_ELAPSED_TIME_FOR_SEGMENT) {
+      endSegment(partition, true);
+      currentSegment = startSegment(partition);
     }
     return currentSegment;
   }
@@ -1050,7 +1059,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       currentSegment = new Segment(partition, newSegmentNumber, checkSumType);
       segmentsMap.put(partition, currentSegment);
     }
-
+    segmentsCreationTimeMap.put(partition, System.currentTimeMillis());
     if (!currentSegment.isStarted()) {
       sendStartOfSegment(partition, null);
 
@@ -1067,7 +1076,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * @param partition in which to end the current segment
    */
-  private synchronized void endSegment(int partition, boolean finalSegment) {
+  public synchronized void endSegment(int partition, boolean finalSegment) {
     Segment currentSegment = segmentsMap.get(partition);
     if (null == currentSegment) {
       logger.warn("endSegment(partition " + partition + ") called but currentSegment == null. Ignoring.");

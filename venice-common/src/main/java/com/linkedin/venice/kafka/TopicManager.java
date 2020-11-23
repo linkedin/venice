@@ -349,9 +349,6 @@ public class TopicManager implements Closeable {
         topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG).equals(TopicConfig.CLEANUP_POLICY_COMPACT);
   }
 
-  /**
-   * This API is for testing only at this moment.
-   */
   public long getTopicMinLogCompactionLagMs(String topicName) {
     Properties topicProperties = getTopicConfig(topicName);
     return topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)

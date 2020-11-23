@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.validation;
 
+import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -17,9 +18,8 @@ import java.util.Optional;
 import org.apache.avro.specific.FixedSize;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.record.TimestampType;
+import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import static org.mockito.Mockito.*;
 
 
 public class TestProducerTracker {
@@ -83,7 +83,7 @@ public class TestProducerTracker {
   }
 
   @Test
-  public void testAddMessagesWithGap() {
+  public void testSequenceNumber() {
     String testGuid = "test_guid";
     int partitionId = 0;
     GUID guid = new GUID();
@@ -92,10 +92,8 @@ public class TestProducerTracker {
     ProducerTracker producerTracker = new ProducerTracker(guid, topic);
     Segment currentSegment = new Segment(partitionId, 0, CheckSumType.NONE);
 
-    ProducerTracker.DIVErrorMetricCallback mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
-
+    // Send Start_Of_Segment control msg.
     ControlMessage startOfSegment = getStartOfSegment();
-
     KafkaMessageEnvelope startOfSegmentMessage = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE,
         guid, currentSegment, Optional.empty(), startOfSegment);
     long offset = 10;
@@ -103,41 +101,46 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
         getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, Optional.of(mockCallback));
-    verify(mockCallback, never()).execute(any());
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, false, false);
 
-    mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
     Put firstPut = getPutMessage("first_message".getBytes());
     KafkaMessageEnvelope firstMessage = getKafkaMessageEnvelope(MessageType.PUT,
-        guid, currentSegment, Optional.empty(), firstPut);
+        guid, currentSegment, Optional.empty(), firstPut); // sequence number is 1
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, Optional.of(mockCallback));
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, false, false);
 
     // Message with gap
-    mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
     Put secondPut = getPutMessage("second_message".getBytes());
     KafkaMessageEnvelope secondMessage = getKafkaMessageEnvelope(MessageType.PUT,
-        guid, currentSegment, Optional.of(100), secondPut);
+        guid, currentSegment, Optional.of(100), secondPut); // sequence number is 100
     KafkaKey secondMessageKey = getPutMessageKey("second_key".getBytes());
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> secondConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, secondMessageKey, secondMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(secondConsumerRecord, true, Optional.of(mockCallback));
-    verify(mockCallback, times(1)).execute(any());
+    Assert.assertThrows(MissingDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(secondConsumerRecord, false, false));
 
-    // third message without gap
-    mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
+    // Message without gap
     Put thirdPut = getPutMessage("third_message".getBytes());
     KafkaMessageEnvelope thirdMessage = getKafkaMessageEnvelope(MessageType.PUT,
-        guid, currentSegment, Optional.of(101), thirdPut);
+        guid, currentSegment, Optional.of(2), thirdPut); // sequence number is 2
     KafkaKey thirdMessageKey = getPutMessageKey("third_key".getBytes());
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> thirdConsumerRecord = new ConsumerRecord<>(
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, thirdMessageKey, thirdMessage);
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(thirdConsumerRecord, true, Optional.of(mockCallback));
-    verify(mockCallback, never()).execute(any());
+    // It doesn't matter whether EOP is true/false. The result is same.
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(thirdConsumerRecord, false, false);
+
+    // Message with gap but tolerate messages is allowed
+    Put fourthPut = getPutMessage("fourth_message".getBytes());
+    KafkaMessageEnvelope fourthMessage = getKafkaMessageEnvelope(MessageType.PUT,
+        guid, currentSegment, Optional.of(100), fourthPut); // sequence number is 100
+    KafkaKey fourthMessageKey = getPutMessageKey("fourth_key".getBytes());
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fourthConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, fourthMessageKey, fourthMessage);
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(fourthConsumerRecord, false, true);
   }
 }
