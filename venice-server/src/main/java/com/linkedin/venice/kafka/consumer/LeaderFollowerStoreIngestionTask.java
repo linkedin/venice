@@ -5,7 +5,6 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
-import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.KafkaClientFactory;
@@ -291,6 +290,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           logger.info(consumerTaskId + " demoted to standby for partition " + partition + "\n" + offsetRecord.toDetailedString());
         }
         partitionConsumptionStateMap.get(partition).setLeaderState(STANDBY);
+        /**
+         * Close the writer to make sure the current segment is closed after the leader is demoted to standby.
+         */
+        getVeniceWriter().endSegment(partition, true);
         break;
       default:
         processCommonConsumerAction(operation, topic, partition);
@@ -1029,22 +1032,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        */
       if (Version.isRealTimeTopic(consumerRecord.topic())) {
         try {
-          boolean endOfPushReceived = true;
+          /**
+           * validate messages after EOP is received. It shouldn't be able to catch any fatal exceptions.
+           * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
+           */
           Optional<OffsetRecordTransformer> offsetRecordTransformer =
-              validateMessage(consumerRecord, endOfPushReceived);
+              validateMessage(consumerRecord, true);
           versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
           if (offsetRecordTransformer.isPresent()) {
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
             offsetRecord.addOffsetRecordTransformer(kafkaValue.producerMetadata.producerGUID,
                 offsetRecordTransformer.get());
           }
-        } catch (FatalDataValidationException fatalException) {
-          divErrorMetricCallback.get().execute(fatalException);
-          String errorMessage =
-              "Fatal data validation problem with  Topic: " + consumerRecord.topic() + " partition " + partition
-                  + ", offset " + consumerRecord.offset();
-          logger.info(errorMessage + " versionTopic: " + kafkaVersionTopic
-              + ", however since EOP is already received so consumption will continue.");
         } catch (DuplicateDataException e) {
           /**
            * Skip duplicated messages; leader must not produce duplicated messages from RT to VT, because leader will

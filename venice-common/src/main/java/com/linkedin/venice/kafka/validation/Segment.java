@@ -11,14 +11,13 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
-
-import static com.linkedin.venice.kafka.validation.SegmentStatus.*;
-
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.linkedin.venice.kafka.validation.SegmentStatus.*;
 
 /**
  * A segment is a sequence of messages sent by a single producer into a single partition.
@@ -46,6 +45,7 @@ public class Segment {
   private final Map<CharSequence, Long> aggregates;
 
   // Mutable state
+  private boolean registered;
   private boolean started;
   private boolean ended;
   private boolean finalSegment;
@@ -87,6 +87,7 @@ public class Segment {
     this.finalSegment = segmentStatus == END_OF_FINAL_SEGMENT;
     this.debugInfo = state.debugInfo;
     this.aggregates = state.aggregates;
+    this.registered = state.isRegistered;
   }
 
   public int getSegmentNumber() {
@@ -146,6 +147,10 @@ public class Segment {
     return this.ended;
   }
 
+  public boolean isRegistered() {
+    return this.registered;
+  }
+
   public long getLastSuccessfulOffset() {
     return lastSuccessfulOffset;
   }
@@ -169,6 +174,10 @@ public class Segment {
   public void end(boolean finalSegment) {
     this.ended = true;
     this.finalSegment = finalSegment;
+  }
+
+  public void registeredSegment() {
+    this.registered = true;
   }
 
   /**

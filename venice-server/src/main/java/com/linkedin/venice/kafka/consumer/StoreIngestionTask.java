@@ -15,6 +15,7 @@ import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
@@ -80,7 +81,6 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -211,12 +211,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** this is used to handle hybrid write quota */
   protected Optional<HybridStoreQuotaEnforcement> hybridQuotaEnforcer;
   protected Optional<Map<Integer, Integer>> subscribedPartitionToSize;
-
-  /**
-   * Track all the topics with Kafka log-compaction enabled.
-   * The expectation is that the compaction strategy is immutable once Kafka log compaction is enabled.
-   */
-  private final Set<String> topicWithLogCompaction = new ConcurrentSkipListSet<>();
 
   protected IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -1311,14 +1305,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int faultyPartition = record.partition();
       String errorMessage = "Fatal data validation problem with partition " + faultyPartition + ", offset " + record.offset();
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore) during re-balancing
-      boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
+      boolean needToUnsub = !(isCurrentVersion.getAsBoolean()) || partitionConsumptionState.isEndOfPushReceived();
       if (needToUnsub) {
         errorMessage +=  ". Consumption will be halted.";
         notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(kafkaVersionTopic, faultyPartition);
       } else {
         logger.warn(errorMessage + ". However, " + kafkaVersionTopic
-            + " is the current version or EOP is already received so consumption will continue.", e);
+            + " is the current version or EOP is already received so consumption will continue." + e.getMessage());
       }
     } catch (VeniceMessageException | UnsupportedOperationException excp) {
       throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "
@@ -1669,7 +1663,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Assumes the timestamp on the ConsumerRecord is the broker's timestamp when it received the message.
       recordWriterStats(kafkaValue.producerMetadata.messageTimestamp, consumerRecord.timestamp(),
           System.currentTimeMillis(), partitionConsumptionState);
-      FatalDataValidationException e = null;
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
 
       /**
@@ -1693,17 +1686,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer calllback like pass through mode.
        */
       if (producedRecord == null || !Version.isRealTimeTopic(consumerRecord.topic())) {
-        try {
-          offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
-          versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
-        } catch (FatalDataValidationException fatalException) {
-          divErrorMetricCallback.get().execute(fatalException);
-          if (endOfPushReceived) {
-            e = fatalException;
-          } else {
-            throw fatalException;
-          }
-        }
+        offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
+        versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       }
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (producedRecord == null ? (ControlMessage) kafkaValue.payloadUnion : (ControlMessage) producedRecord.getValueUnion());
@@ -1742,12 +1726,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         sizeOfPersistedData = keySize + valueSize;
       }
-
-      if (e != null) {
-        throw e;
-      }
     } catch (DuplicateDataException e) {
       versionedDIVStats.recordDuplicateMsg(storeName, versionNumber);
+      divErrorMetricCallback.get().execute(e);
       if (logger.isDebugEnabled()) {
         logger.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
       }
@@ -1815,60 +1796,48 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * The {@param topicName} maybe different from the store version topic, since in {@link LeaderFollowerStoreIngestionTask},
-   * the topic could be other topics, such as RT topic or stream reprocessing topic.
+   * Message validation using DIV.
+   * 1. If valid DIV errors happen after EOP is received, no fatal exceptions will be thrown.
+   *    But the errors will be recorded into the DIV metrics.
+   * 2. For any DIV errors happened to unregistered producers && after EOP, the errors will be ignored.
+   * 3. For any DIV errors happened to records which is after logCompactionDelayInMs, the errors will be ignored.
    **/
   protected Optional<OffsetRecordTransformer> validateMessage(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean endOfPushReceived) {
-    Optional<ProducerTracker.DIVErrorMetricCallback> errorCallback = divErrorMetricCallback;
+
+    TopicManager topicManager = topicManagerRepository.getTopicManager();
+    String topic = consumerRecord.topic();
+    boolean tolerateMissingMsgs =
+        topicManager.isTopicCompactionEnabled(topic) &&
+        LatencyUtils.getElapsedTimeInMs(consumerRecord.timestamp()) >= topicManager.getTopicMinLogCompactionLagMs(topic);
+
     try {
-      boolean tolerateMissingMessage = endOfPushReceived;
-      if (topicWithLogCompaction.contains(consumerRecord.topic())) {
-        /**
-         * For log-compacted topic, no need to report error metric when message missing issue happens.
-         */
-        errorCallback = Optional.empty();
-        tolerateMissingMessage = true;
-      }
-      return Optional.of(kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, tolerateMissingMessage, errorCallback));
-    } catch (FatalDataValidationException e) {
+        return Optional.of(
+            kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, endOfPushReceived, tolerateMissingMsgs));
+    } catch (FatalDataValidationException fatalException) {
+      divErrorMetricCallback.get().execute(fatalException);
       /**
-       * Check whether Kafka compaction is enabled in current topic.
-       * This function shouldn't be invoked very frequently since {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)}
-       * will update the sequence id if it could tolerate the missing messages.
-       *
-       * If it is not this case, we need to revisit this logic since this operation is expensive.
+       * If DIV errors happens after EOP is received, we will not error out the replica.
        */
-      if (!topicManagerRepository.getTopicManager().isTopicCompactionEnabled(consumerRecord.topic())) {
-        /**
-         * Not enabled, then bubble up the exception.
-         * We couldn't cache this in {@link topicWithLogCompaction} since the log compaction could be enabled in the same topic later.
-         */
-        logger.error("Encountered DIV error when topic: " + consumerRecord.topic() + " doesn't enable log compaction");
-        throw e;
+      if (!endOfPushReceived) {
+        throw fatalException;
       }
-      topicWithLogCompaction.add(consumerRecord.topic());
-      /**
-       * Since Kafka compaction is enabled, DIV will start tolerating missing messages.
-       */
-      logger.info("Encountered DIV exception when consuming from topic: " + consumerRecord.topic(), e);
-      logger.info("Kafka compaction is enabled in topic: " + consumerRecord.topic() + ", so DIV will tolerate missing message in the future");
-      if (e instanceof ImproperlyStartedSegmentException) {
-        /**
-         * ImproperlyStartedSegmentException is not retriable since internally it has already updated the sequence id of current
-         * segment. Retry will throw {@link DuplicateDataException}.
-         * So, this function will return empty here, which is being handled properly by the caller {@link #internalProcessConsumerRecord}.
-         */
+
+      String errorMessage =
+            "Fatal data validation problem with Topic: " + consumerRecord.topic() + " partition " + consumerRecord.partition()
+                + ", offset " + consumerRecord.offset();
+      logger.warn(errorMessage + " versionTopic: " + kafkaVersionTopic
+          + ", however since EOP is already received so consumption will continue." + fatalException.getMessage());
+
+      if (fatalException instanceof ImproperlyStartedSegmentException) {
         return Optional.empty();
       } else {
         /**
-         * Verify the message again.
-         * The assumption here is that {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)}
-         * won't update the sequence id of the current segment if it couldn't tolerate missing messages.
-         * In this case, no need to report error metric.
+         * Run a dummy validation to update DIV metadata.
          */
-        return Optional.of(kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, true, Optional.empty()));
+        return Optional.of(
+            kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, true, true));
       }
     }
   }

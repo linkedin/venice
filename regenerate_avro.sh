@@ -13,7 +13,7 @@ DEFAULT_AVRO_TOOLS_JAR="avro_tools/$avro_tools"
 AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v8/*"
   "venice-common/src/main/resources/avro/PushJobStatusRecord/PushJobStatusRecordKey/v1/*"
-  "venice-common/src/main/resources/avro/PartitionState/v7/*"
+  "venice-common/src/main/resources/avro/PartitionState/v8/*"
   "venice-common/src/main/resources/avro/StoreVersionState/v5/*"
   "venice-common/src/main/resources/avro/ChunkedValueManifest/v-20/*"
   "venice-common/src/main/resources/avro/ChunkedKeySuffix/*"

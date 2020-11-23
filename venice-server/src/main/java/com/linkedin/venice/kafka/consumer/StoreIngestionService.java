@@ -51,8 +51,6 @@ public interface StoreIngestionService {
    */
   boolean killConsumptionTask(String topicName);
 
-//  void promoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, long sessionId);
-
   void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
 
   void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
