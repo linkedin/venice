@@ -56,6 +56,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
@@ -131,6 +132,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
   private static final long SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS = 3000;
   private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 10;
+  private static final int PER_ROUTER_READ_QUOTA = 20_000_000;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
@@ -1260,7 +1262,16 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.enableReads = readability.orElseGet(store::isEnableReads);
       setStore.enableWrites = writeability.orElseGet(store::isEnableWrites);
 
-      setStore.readQuotaInCU = readQuotaInCU.orElseGet(store::getReadQuotaInCU);
+      if (readQuotaInCU.isPresent()) {
+        VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+        ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
+        int routerCount = routersClusterManager.getLiveRoutersCount();
+        if (Math.max(PER_ROUTER_READ_QUOTA, routerCount * PER_ROUTER_READ_QUOTA) < readQuotaInCU.get()) {
+          throw new VeniceException("Cannot update read quota for store " + storeName + " in cluster "
+              + clusterName + ". Read quota " + readQuotaInCU.get() + " requested is more than the cluster quota.");
+        }
+        setStore.readQuotaInCU = readQuotaInCU.get();
+      }
       //We need to to be careful when handling currentVersion.
       //Since it is not synced between parent and local controller,
       //It is very likely to override local values unintentionally.
