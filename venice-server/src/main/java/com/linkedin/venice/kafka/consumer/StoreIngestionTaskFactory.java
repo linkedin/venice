@@ -47,7 +47,8 @@ public class StoreIngestionTaskFactory {
       boolean bufferReplayEnabledForHybrid,
       boolean isNativeReplicationEnabled,
       String nativeReplicationSourceAddress,
-      int partitionId
+      int partitionId,
+      boolean isWriteComputationEnabled
   ) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(
@@ -82,7 +83,8 @@ public class StoreIngestionTaskFactory {
           partitionId,
           builder.cacheWarmingThreadPool,
           builder.startReportingReadyToServeTimestamp,
-          builder.partitionStateSerializer);
+          builder.partitionStateSerializer,
+          isWriteComputationEnabled);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.veniceWriterFactory,

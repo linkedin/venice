@@ -67,6 +67,26 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   }
 
   @Override
+  public T constructValue(
+      int schemaId,
+      byte[] valueOnlyBytes,
+      int offset,
+      int bytesLength,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName) {
+    return byteArrayDecoderValueOnly.decode(
+        null,
+        valueOnlyBytes,
+        offset,
+        bytesLength,
+        null,
+        null,
+        getDeserializer(storeName, schemaId, schemaRepo, fastAvroEnabled),
+        null);
+  }
+
+  @Override
   public void addChunkIntoContainer(ChunkedValueInputStream chunkedValueInputStream, int chunkIndex, byte[] valueChunk) {
     chunkedValueInputStream.setChunk(chunkIndex, valueChunk);
   }
@@ -136,6 +156,14 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
   }
 
+  /**
+   * This api does not expect the value to be compressed.
+   */
+  private final DecoderWrapperValueOnly<byte[], T> byteArrayDecoderValueOnly =
+      (reusedDecoder, bytes, offset, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) -> deserializer
+          .deserialize(reusedValue,
+              DecoderFactory.defaultFactory().createBinaryDecoder(bytes, offset, inputBytesLength, reusedDecoder));
+
   private final DecoderWrapper<byte[], T> byteArrayDecoder =
       (reusedDecoder, bytes, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) ->
           deserializer.deserialize(
@@ -199,6 +227,18 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     OUTPUT decode(
         BinaryDecoder reusedDecoder,
         INPUT input,
+        int inputBytesLength,
+        OUTPUT reusedValue,
+        CompressionStrategy compressionStrategy,
+        RecordDeserializer<OUTPUT> deserializer,
+        ReadResponse response);
+  }
+
+  private interface DecoderWrapperValueOnly<INPUT, OUTPUT> {
+    OUTPUT decode(
+        BinaryDecoder reusedDecoder,
+        INPUT input,
+        int offset,
         int inputBytesLength,
         OUTPUT reusedValue,
         CompressionStrategy compressionStrategy,

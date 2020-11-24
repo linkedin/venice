@@ -353,7 +353,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String nativeReplicationSourceAddress = version.get().getPushStreamSourceAddress();
     return ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModel, kafkaProperties, isStoreVersionCurrent,
         hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStoreConfig, bufferReplayEnabledForHybrid,
-        nativeReplicationEnabled, nativeReplicationSourceAddress, partitionId);
+        nativeReplicationEnabled, nativeReplicationSourceAddress, partitionId, store.isWriteComputationEnabled());
   }
 
   private void shutdownExecutorService(ExecutorService executorService, boolean force) {

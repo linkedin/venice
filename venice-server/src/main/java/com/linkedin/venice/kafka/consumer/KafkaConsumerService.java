@@ -282,7 +282,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
                  * all the buffered messages for the paused partitions, but just slightly more complicate.
                  *
                  */
-                ingestionTask.produceToStoreBufferService(topicRecords, false);
+                ingestionTask.produceToStoreBufferServiceOrKafka(topicRecords, false);
               } catch (Exception e) {
                 LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topic, e);
                 ingestionTask.setLastConsumerException(e);

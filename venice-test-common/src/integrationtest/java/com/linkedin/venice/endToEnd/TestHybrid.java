@@ -917,8 +917,8 @@ public class TestHybrid {
        * All messages in TS1 should not be replayed into VT and should not be queryable;
        * but messages in TS2 should be replayed and queryable.
        */
-      String tmpTopic1 = storeName + "_tmp1";
-      String tmpTopic2 = storeName + "_tmp2";
+      String tmpTopic1 = storeName + "_tmp1_rt";
+      String tmpTopic2 = storeName + "_tmp2_rt";
       TopicManager topicManager = venice.getMasterVeniceController().getVeniceAdmin().getTopicManager();
       topicManager.createTopic(tmpTopic1, partitionCnt, 1, true);
       topicManager.createTopic(tmpTopic2, partitionCnt, 1, true);

@@ -115,4 +115,20 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     totalStats.recordProduceToDrainQueueRecordNum(recordNum);
     getStoreStats(storeName).recordProduceToDrainQueueRecordNum(recordNum);
   }
+
+  public void recordProduceToKafkaRecordNum(String storeName, int recordNum) {
+    totalStats.recordProduceToKafkaRecordNum(recordNum);
+    getStoreStats(storeName).recordProduceToKafkaRecordNum(recordNum);
+  }
+
+  public void recordProduceToKafkaLatency(String storeName, double latency) {
+    totalStats.recordProduceToKafkaLatency(latency);
+    getStoreStats(storeName).recordProduceToKafkaLatency(latency);
+  }
+
+  public void recordWriteComputeCacheHitCount(String storeName) {
+    totalStats.recordWriteComputeCacheHitCount();
+    getStoreStats(storeName).recordWriteComputeCacheHitCount();
+  }
+
 }

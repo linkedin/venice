@@ -42,6 +42,21 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
   }
 
   /**
+   * This is a simplified version which decodes only the value bytes and assumes the value is not compressed.
+   * @param schemaId
+   * @param valueOnlyBytes
+   * @param bytesLength
+   * @param fastAvroEnabled
+   * @param schemaRepo
+   * @param storeName
+   * @return
+   */
+  default VALUE constructValue(int schemaId, byte[] valueOnlyBytes, int offset, int bytesLength, boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo, String storeName) {
+    throw new VeniceException("Not implemented.");
+  }
+
+  /**
    * This function can be implemented by the adapters which need fewer parameters.
    *
    * @see #constructValue(int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)

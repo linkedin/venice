@@ -6,10 +6,12 @@ import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
-import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -38,7 +40,10 @@ class PartitionConsumptionState {
    */
   private boolean isLatchReleased = false;
 
-  private volatile Future<RecordMetadata> lastLeaderProduceCallback = null;
+  /**
+   * This future is completed in drainer thread after persisting the associated record and offset to DB.
+   */
+  private volatile Future<Void> lastLeaderPersistFuture = null;
 
   /**
    * In-memory cache for the TopicSwitch in {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState};
@@ -66,6 +71,18 @@ class PartitionConsumptionState {
   private Optional<CheckSum> expectedSSTFileChecksum;
 
   private long latestMessageConsumptionTimestampInMs;
+
+  /**
+   * This hash map will keep a temporary mapping between a key and it's value.
+   * get {@link #getTransientRecord(byte[])} and put {@link ##setTransientRecord(long, byte[], byte[], int, int, int)}
+   * operation on this map will be invoked from from kafka consumer thread.
+   *
+   * delete {@link #mayRemoveTransientRecord(long, byte[])} operation will be invoked from drainer thread after persisting it in DB.
+   *
+   * because of the properties of the above operations the caller is gurranted to get the latest value for a key either from
+   * this map or from the DB.
+   */
+  private ConcurrentMap<ByteBuffer, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
 
   public void setSourceTopicMaxOffset(long sourceTopicMaxOffset) {
     this.sourceTopicMaxOffset = sourceTopicMaxOffset;
@@ -232,12 +249,12 @@ class PartitionConsumptionState {
     return this.leaderState;
   }
 
-  public void setLastLeaderProduceFuture(Future<RecordMetadata> future) {
-    this.lastLeaderProduceCallback = future;
+  public void setLastLeaderPersistFuture(Future<Void> future) {
+    this.lastLeaderPersistFuture = future;
   }
 
-  public Future<RecordMetadata> getLastLeaderProduceFuture() {
-    return this.lastLeaderProduceCallback;
+  public Future<Void> getLastLeaderPersistFuture() {
+    return this.lastLeaderPersistFuture;
   }
 
   /**
@@ -294,5 +311,64 @@ class PartitionConsumptionState {
 
   public void setLatestMessageConsumptionTimestampInMs(long consumptionTimestampInMs) {
     this.latestMessageConsumptionTimestampInMs = consumptionTimestampInMs;
+  }
+
+  public void setTransientRecord(long kafkaConsumedOffset, byte[] key) {
+    setTransientRecord(kafkaConsumedOffset, key, null, -1, -1, -1);
+  }
+
+  public void setTransientRecord(long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId) {
+    transientRecordMap.put(ByteBuffer.wrap(key), new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaConsumedOffset));
+  }
+
+  public TransientRecord getTransientRecord(byte[] key) {
+    return transientRecordMap.get(ByteBuffer.wrap(key));
+  }
+
+  /**
+   * This operation is performed atomically to delete the record only when the provided sourceOffset matches.
+   * @param key
+   * @param kafkaConsumedOffset
+   * @return
+   */
+  public TransientRecord mayRemoveTransientRecord(long kafkaConsumedOffset, byte[] key) {
+    TransientRecord removed = transientRecordMap.computeIfPresent(ByteBuffer.wrap(key), (k, v) -> {
+      if (v.kafkaConsumedOffset == kafkaConsumedOffset) {
+        return null;
+      } else {
+        return v;
+      }
+    });
+    return removed;
+  }
+
+  public int getTransientRecordMapSize() {
+    return transientRecordMap.size();
+  }
+
+  /**
+   * This immutable class holds a association between a key and  value and the source offset of the consumed message.
+   * The value could be either as received in kafka ConsumerRecord or it could be a write computed value.
+   */
+  public static class TransientRecord {
+    private final byte[] value;
+    private final int valueOffset;
+    private final int valueLen;
+    private final int valueSchemaId;
+    private final long kafkaConsumedOffset;
+
+    TransientRecord(byte[] value, int valueOffset, int valueLen, int valueSchemaId, long kafkaConsumedOffset) {
+      this.value = value;
+      this.valueOffset = valueOffset;
+      this.valueLen = valueLen;
+      this.valueSchemaId = valueSchemaId;
+      this.kafkaConsumedOffset = kafkaConsumedOffset;
+    }
+
+    public byte[] getValue() {return value;}
+    public int getValueOffset() {return valueOffset;}
+    public int getValueLen() {return valueLen;}
+    public int getValueSchemaId() {return valueSchemaId;}
+
   }
 }

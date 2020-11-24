@@ -43,12 +43,14 @@ public class StoreBufferService extends AbstractVeniceService {
      * Considering the overhead of {@link ConsumerRecord} and its internal structures.
      */
     private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
-    private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord;
-    private StoreIngestionTask ingestionTask;
+    private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord;
+    private final StoreIngestionTask ingestionTask;
+    private final ProducedRecord producedRecord;
 
-    public QueueNode(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, StoreIngestionTask ingestionTask) {
+    public QueueNode(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, StoreIngestionTask ingestionTask, ProducedRecord producedRecord) {
       this.consumerRecord = consumerRecord;
       this.ingestionTask = ingestionTask;
+      this.producedRecord = producedRecord;
     }
 
     public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getConsumerRecord() {
@@ -58,6 +60,8 @@ public class StoreBufferService extends AbstractVeniceService {
     public StoreIngestionTask getIngestionTask() {
       return this.ingestionTask;
     }
+
+    public ProducedRecord getProducedRecord() { return this.producedRecord; }
 
     /**
      * This function is being used by {@link BlockingQueue#contains(Object)}.
@@ -82,6 +86,7 @@ public class StoreBufferService extends AbstractVeniceService {
 
     @Override
     public int getSize() {
+      //TODO:This should not be a big issue but ideally it should calculate the size from producedRecord if present.
       return this.consumerRecord.serializedKeySize() +
           this.consumerRecord.serializedValueSize() +
           this.consumerRecord.topic().length() +
@@ -95,7 +100,7 @@ public class StoreBufferService extends AbstractVeniceService {
   };
 
   /**
-   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(ConsumerRecord)} to process
+   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(ConsumerRecord, ProducedRecord)} to process
    * each {@link ConsumerRecord} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
@@ -123,9 +128,14 @@ public class StoreBufferService extends AbstractVeniceService {
         }
 
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = node.getConsumerRecord();
+        ProducedRecord producedRecord = node.getProducedRecord();
         StoreIngestionTask ingestionTask = node.getIngestionTask();
         try {
-          ingestionTask.processConsumerRecord(consumerRecord);
+          ingestionTask.processConsumerRecord(consumerRecord, producedRecord);
+          //complete the producedRecord future as processing for this producedRecord is done here.
+          if (producedRecord != null) {
+            producedRecord.completePersistedToDBFuture(null);
+          }
         } catch (Exception e) {
           String consumerRecordString = consumerRecord.toString();
           if (consumerRecordString.length() > 1024) {
@@ -139,6 +149,9 @@ public class StoreBufferService extends AbstractVeniceService {
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.
            */
           ingestionTask.setLastDrainerException(e);
+          if (producedRecord != null) {
+            producedRecord.completePersistedToDBFuture(e);
+          }
         }
       }
       LOGGER.info("Current StoreBufferDrainer stopped");
@@ -172,10 +185,10 @@ public class StoreBufferService extends AbstractVeniceService {
   }
 
   public void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-                                StoreIngestionTask ingestionTask) throws InterruptedException {
+                                StoreIngestionTask ingestionTask, ProducedRecord producedRecord) throws InterruptedException {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord);
     blockingQueueArr.get(drainerIndex)
-        .put(new QueueNode(consumerRecord, ingestionTask));
+        .put(new QueueNode(consumerRecord, ingestionTask, producedRecord));
   }
 
   /**
@@ -197,7 +210,7 @@ public class StoreBufferService extends AbstractVeniceService {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fakeRecord = new ConsumerRecord<>(topic, partition, -1, null, null);
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord);
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
-    QueueNode fakeNode = new QueueNode(fakeRecord, null);
+    QueueNode fakeNode = new QueueNode(fakeRecord, null, null);
 
     int cur = 0;
     while (cur++ < retryNum) {

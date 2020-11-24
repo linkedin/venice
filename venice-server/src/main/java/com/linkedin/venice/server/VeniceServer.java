@@ -303,6 +303,14 @@ public class VeniceServer {
     }
   }
 
+  public KafkaStoreIngestionService getKafkaStoreIngestionService() {
+    if (isStarted()) {
+      return kafkaStoreIngestionService;
+    } else {
+      throw new VeniceException("Cannot get kafka store ingestion service if server is not started");
+    }
+  }
+
   /**
    * @return true if the {@link VeniceServer} and all of its inner services are fully started
    *         false if the {@link VeniceServer} was not started or if any of its inner services

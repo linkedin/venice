@@ -43,6 +43,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
@@ -50,11 +51,8 @@ import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.storage.StorageMetadataService;
-import com.linkedin.venice.storage.chunking.ChunkingUtils;
-import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
-import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
@@ -90,7 +88,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -101,7 +98,6 @@ import org.apache.log4j.Logger;
 import static com.linkedin.venice.stats.StatsErrorCode.*;
 import static com.linkedin.venice.store.record.ValueRecord.*;
 import static java.util.concurrent.TimeUnit.*;
-
 
 /**
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
@@ -154,6 +150,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Exception lastDrainerException = null;
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
+  /** Persists the exception thrown by kafka producer callback for L/F mode */
+  private Exception lastProducerException = null;
   /** Keeps track of every upstream producer this consumer task has seen so far. */
   protected final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
   protected final AggStoreIngestionStats storeIngestionStats;
@@ -219,8 +217,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final Set<String> topicWithLogCompaction = new ConcurrentSkipListSet<>();
 
-  private IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
-  static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+  protected IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
+  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final AggKafkaConsumerService aggKafkaConsumerService;
   /**
@@ -244,9 +242,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final long startReportingReadyToServeTimestamp;
 
+  protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
+
   int writeComputeFailureCode = 0;
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+
+  protected boolean isWriteComputationEnabled = false;
+
+  //This flag is introduced to help write integration test to exercise code path during UPDATE message processing in
+  //{@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}. This must be always set to true except
+  //as needed in integration test.
+  private boolean purgeTransientRecordCache = true;
 
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
@@ -278,7 +285,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      boolean isWriteComputationEnabled) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -356,6 +364,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.errorPartitionId = errorPartitionId;
     this.cacheWarmingThreadPool = cacheWarmingThreadPool;
     this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
+
+    this.isWriteComputationEnabled = isWriteComputationEnabled;
 
     buildRocksDBMemoryEnforcer();
 
@@ -646,31 +656,60 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected abstract void reportIfCatchUpBaseTopicOffset(PartitionConsumptionState partitionConsumptionState);
 
   /**
+   * This function will produce a pair of consumer record and a it's derived produced record to the writer buffers maintained by {@link StoreBufferService}.
+   * @param consumedrecord : received consumer record
+   * @param producedRecord : derived produced record
+   * @throws InterruptedException
+   */
+  protected void produceToStoreBufferService(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumedrecord, ProducedRecord producedRecord) throws InterruptedException {
+    long queuePutStartTimeInNS = System.nanoTime();
+    storeBufferService.putConsumerRecord(consumedrecord, this, producedRecord); // blocking call
+    storeIngestionStats.recordProduceToDrainQueueRecordNum(storeName, 1);
+    if (emitMetrics.get()) {
+      storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeName, LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
+    }
+  }
+
+  /**
    * This function is in charge of producing the consumer records to the writer buffers maintained by {@link StoreBufferService}.
    * @param records : received consumer records
    * @param whetherToApplyThrottling : whether to apply throttling in this function or not.
    * @throws InterruptedException
    */
-  protected void produceToStoreBufferService(Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records,
+  protected void produceToStoreBufferServiceOrKafka(Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records,
       boolean whetherToApplyThrottling) throws InterruptedException {
     long totalBytesRead = 0;
     double elapsedTimeForPuttingIntoQueue = 0;
     List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> processedRecord = new LinkedList<>();
     long beforeProcessingTimestamp = System.currentTimeMillis();
-    int recordNum = 0;
+    int recordQueuedToDrainer = 0;
+    int recordProducedToKafka = 0;
+    double elapsedTimeForProducingToKafka = 0;
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+      if (!shouldProcessRecord(record)) {
+        continue;
+      }
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
       processedRecord.add(record);
-      long queuePutStartTimeInNS = System.nanoTime();
-      storeBufferService.putConsumerRecord(record, this); // blocking call
-      elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
+      long kafkaProduceStartTimeInNS = System.nanoTime();
+      if (!hasProducedToKafka(record)) {
+        long queuePutStartTimeInNS = System.nanoTime();
+        storeBufferService.putConsumerRecord(record, this, null); // blocking call
+        elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
+        ++recordQueuedToDrainer;
+      } else {
+        elapsedTimeForProducingToKafka += LatencyUtils.getLatencyInMS(kafkaProduceStartTimeInNS);
+        ++recordProducedToKafka;
+      }
       totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
       // Update the latest message consumption time
       partitionConsumptionStateMap.get(record.partition()).setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
-      ++recordNum;
     }
-    storeIngestionStats.recordProduceToDrainQueueRecordNum(storeName, recordNum);
+    storeIngestionStats.recordProduceToDrainQueueRecordNum(storeName, recordQueuedToDrainer);
+    if (recordProducedToKafka > 0) {
+      storeIngestionStats.recordProduceToKafkaRecordNum(storeName, recordProducedToKafka);
+    }
 
     long quotaEnforcementStartTimeInNS = System.nanoTime();
     /**
@@ -691,8 +730,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
       long afterPutTimestamp = System.currentTimeMillis();
-      storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeName, elapsedTimeForPuttingIntoQueue);
       storeIngestionStats.recordConsumerToQueueLatency(storeName, afterPutTimestamp - beforeProcessingTimestamp);
+      if (elapsedTimeForPuttingIntoQueue > 0) {
+        storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeName, elapsedTimeForPuttingIntoQueue);
+      }
+      if (elapsedTimeForProducingToKafka > 0) {
+        storeIngestionStats.recordProduceToKafkaLatency(storeName, elapsedTimeForProducingToKafka);
+      }
     }
 
     if (whetherToApplyThrottling) {
@@ -739,6 +783,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       throw new VeniceException("Exception thrown by store buffer drainer", lastDrainerException);
     }
 
+    if (null != lastProducerException) {
+      throw new VeniceException("Exception thrown by kafka producer callback", lastProducerException);
+    }
+
     /**
      * Check whether current consumer has any subscription or not since 'poll' function will throw
      * {@link IllegalStateException} with empty subscription.
@@ -773,7 +821,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       /**
        * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
        * because of compaction or the disk quota could be adjusted even there is no record write.
-       * Since {@link #produceToStoreBufferService} is only being invoked by {@link KafkaConsumerService} when there
+       * Since {@link #produceToStoreBufferServiceOrKafka} is only being invoked by {@link KafkaConsumerService} when there
        * are available records, this function needs to check whether we need to resume the consumption when there are
        * paused consumption because of hybrid quota violation.
        */
@@ -825,7 +873,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : records) {
-      produceToStoreBufferService(consumerRecords, true);
+      produceToStoreBufferServiceOrKafka(consumerRecords, true);
     }
   }
 
@@ -872,7 +920,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * where `segment` could be changed by another message independent from current `offsetRecord`;
          */
         consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
-        storeBufferService.drainBufferedRecordsFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition());
+        waitForAllMessageToBeProcessedFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition(), partitionConsumptionState);
         syncOffset(kafkaVersionTopic, partitionConsumptionState);
       }
 
@@ -1075,7 +1123,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerUnSubscribe(topic, consumptionState);
         }
         // Drain the buffered message by last subscription.
-        storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
+        waitForAllMessageToBeProcessedFromTopicPartition(topic, partition, consumptionState);
+
         /**
          * Since the processing of the buffered messages are using {@link #partitionConsumptionStateMap} and
          * {@link #kafkaDataValidationService}, we would like to drain all the buffered messages before cleaning up those
@@ -1134,6 +1183,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionId = record.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
 
+    if (partitionConsumptionState.isErrorReported()) {
+      logger.info("Topic " + kafkaVersionTopic + " Partition " + partitionId + " is already errored, skip this record that has offset " + record.offset());
+      return false;
+    }
+
     if (partitionConsumptionState.isEndOfPushReceived() &&
         partitionConsumptionState.isBatchOnly()) {
 
@@ -1173,7 +1227,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This function will be invoked in {@link StoreBufferService} to process buffered {@link ConsumerRecord}.
    * @param record
    */
-  public void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) throws InterruptedException {
+  public void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, ProducedRecord producedRecord) throws InterruptedException {
     int partition = record.partition();
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when unsubscribing)
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
@@ -1187,12 +1241,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       logger.info("Topic " + kafkaVersionTopic + " Partition " + partition + " is already errored, skip this record that has offset " + record.offset());
       return;
     }
-    if (!shouldProcessRecord(record)) {
-      return;
-    }
+
     int recordSize = 0;
     try {
-      recordSize = internalProcessConsumerRecord(record, partitionConsumptionState);
+      recordSize = internalProcessConsumerRecord(record, partitionConsumptionState, producedRecord);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
       String errorMessage = "Fatal data validation problem with partition " + faultyPartition + ", offset " + record.offset();
@@ -1281,6 +1333,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     lastConsumerException = e;
   }
 
+  public void setLastProducerException(Exception e) {
+    lastProducerException = e;
+  }
+
   /**
    * @return the total lag for all subscribed partitions between the real-time buffer topic and this consumption task.
    */
@@ -1359,8 +1415,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
 
-  protected void processStartOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+  protected void processStartOfPush(ControlMessage controlMessage, int partition, long offset,
+      PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
     /**
      * Notify the underlying store engine about starting batch push.
@@ -1392,8 +1448,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } // else, no need to persist it once more.
   }
 
-  protected void processEndOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+  protected void processEndOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
 
     // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
     partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
@@ -1450,8 +1505,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected void processStartOfIncrementalPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage startOfIncrementalPush, int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
+  protected void processStartOfIncrementalPush(ControlMessage startOfIncrementalPush, int partition, long upstreamOffset,
+      PartitionConsumptionState partitionConsumptionState) {
     CharSequence startVersion = ((StartOfIncrementalPush) startOfIncrementalPush.controlMessageUnion).version;
     IncrementalPush newIncrementalPush = new IncrementalPush();
     newIncrementalPush.version = startVersion;
@@ -1460,8 +1515,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
   }
 
-  protected void processEndOfIncrementalPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage endOfIncrementalPush, int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
+  protected void processEndOfIncrementalPush(ControlMessage endOfIncrementalPush, int partition, long upstreamOffset,
+      PartitionConsumptionState partitionConsumptionState) {
     // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
     CharSequence endVersion = ((EndOfIncrementalPush) endOfIncrementalPush.controlMessageUnion).version;
     // Reset incremental push version
@@ -1479,8 +1534,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
    * offset is stale and is not updated until the very end
    */
-  private ControlMessageType processControlMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState)
+  private ControlMessageType processControlMessage(ControlMessage controlMessage, int partition, long offset,
+      PartitionConsumptionState partitionConsumptionState)
       throws InterruptedException {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
@@ -1493,39 +1548,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
     switch(type) {
       case START_OF_PUSH:
-        processStartOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
+        processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_PUSH:
-        processEndOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
+        processEndOfPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
         /**
-         * SOS and EOS will be produced to the local version topic with DIV pass-through mode by leader in the following cases:
-         * 1. SOS and EOS are from stream-reprocessing topics (use cases: stream-reprocessing)
-         * 2. SOS and EOS are from version topics in a remote fabric (use cases: native replication for remote fabrics)
-         *
-         * SOS and EOS will not be produced to local version topic in the following cases:
-         * 1. SOS and EOS are from real-time topics (use cases: hybrid ingestion, incremental push to RT)
-         * 2. SOS and EOS are from version topics in local fabric, which has 2 different scenarios:
-         *    i.  native replication is enabled, but the current fabric is the source fabric (use cases: native repl for source fabric)
-         *    ii. native replication is not enabled; it doesn't matter whether current replica is leader or follower,
-         *        messages from local VT doesn't need to be reproduced into local VT again (use cases: local batch consumption,
-         *        incremental push to VT)
+         * Nothing to do here as all of the processing is being done in {@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}.
          */
-        if (!Version.isRealTimeTopic(consumerRecord.topic())) {
-          produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
-            getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
-        }
         break;
       case START_OF_BUFFER_REPLAY:
         processStartOfBufferReplay(controlMessage, offset, partitionConsumptionState);
        break;
       case START_OF_INCREMENTAL_PUSH:
-        processStartOfIncrementalPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
+        processStartOfIncrementalPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        processEndOfIncrementalPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
+        processEndOfIncrementalPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
         processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
@@ -1542,7 +1583,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * of version topic, "leaderOffset" which indicates the last successfully consumed message offset from leader topic.
    */
   protected abstract void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord);
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, ProducedRecord producedRecord);
 
   /**
    * Process the message consumed from Kafka by de-serializing it and persisting it with the storage engine.
@@ -1551,7 +1592,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return the size of the data written to persistent storage.
    */
   private int internalProcessConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-                                            PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+                                            PartitionConsumptionState partitionConsumptionState, ProducedRecord producedRecord) throws InterruptedException {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
@@ -1565,20 +1606,43 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           System.currentTimeMillis(), partitionConsumptionState);
       FatalDataValidationException e = null;
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-      try {
-        offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
-        versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
-      } catch (FatalDataValidationException fatalException) {
-        divErrorMetricCallback.get().execute(fatalException);
-        if (endOfPushReceived) {
-          e = fatalException;
-        } else {
-          throw fatalException;
+
+      /**
+       * DIV happens in drainer thread in following case.
+       *  1. O/O model: All messages received from any topic.  ProducedRecord will be null.
+       *  2. L/F model: Follower: All messages received from any topic. ProducedRecord will be null.
+       *  3. L/F model: Leader: All messages received from VT before it switches to consume from RT.
+       *
+       * DIV happens in consumer thread in following case {@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}
+       *  4. L/F model: Leader: All messages received from RT.
+       *
+       *  Specific notes for Leader:
+       *  1.  For DIV pass through mode we are doing DIV in drainer thread with ConsumerRecord only ( ProducedRecord will NOT be null,
+       *      and there is 1-1 mapping between consumerRecord and producedRecord). This will implicitely verify all kafka callbacks were
+       *      executed properly and in order becuase we queue this pair <consumerRecord, producerRecord> from kafka callback thread only.
+       *      If there were any problems with callback thread then that will be caught by this DIV here.
+       *
+       *  2. For DIV non pass-through mode (RT messages) we are doing DIV in {@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}
+       *      in consumer thread and no further DIV happens for the producedRecord. The main challenege to do DIV for producedRecord
+       *      here is that VeniceWriter internally produces SOS/EOS for non-passthrough mode which is not fed into our DIV pipiline currently.
+       *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer calllback like pass through mode.
+       */
+      if (producedRecord == null || !Version.isRealTimeTopic(consumerRecord.topic())) {
+        try {
+          offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
+          versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
+        } catch (FatalDataValidationException fatalException) {
+          divErrorMetricCallback.get().execute(fatalException);
+          if (endOfPushReceived) {
+            e = fatalException;
+          } else {
+            throw fatalException;
+          }
         }
       }
       if (kafkaKey.isControlMessage()) {
-        ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-        ControlMessageType controlMessageType = processControlMessage(consumerRecord, controlMessage, consumerRecord.partition(),
+        ControlMessage controlMessage = (producedRecord == null ? (ControlMessage) kafkaValue.payloadUnion : (ControlMessage) producedRecord.getValueUnion());
+        ControlMessageType controlMessageType = processControlMessage(controlMessage, consumerRecord.partition(),
             consumerRecord.offset(), partitionConsumptionState);
         /**
          * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
@@ -1604,8 +1668,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
-        int keySize = kafkaKey.getKeyLength();
-        int valueSize = processVeniceMessage(consumerRecord, partitionConsumptionState);
+        Pair<Integer, Integer> kvSize = processVeniceMessage(consumerRecord, partitionConsumptionState, producedRecord);
+        int keySize = kvSize.getFirst();
+        int valueSize = kvSize.getSecond();
         if (emitMetrics.get()) {
           storeIngestionStats.recordKeySize(storeName, keySize);
           storeIngestionStats.recordValueSize(storeName, valueSize);
@@ -1663,7 +1728,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link DuplicateDataException} */
 
       // Potentially update the offset metadata in the OffsetRecord
-      updateOffset(partitionConsumptionState, offsetRecord, consumerRecord);
+      updateOffset(partitionConsumptionState, offsetRecord, consumerRecord, producedRecord);
 
       partitionConsumptionState.setOffsetRecord(offsetRecord);
       if (syncOffset) {
@@ -1688,7 +1753,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * The {@param topicName} maybe different from the store version topic, since in {@link LeaderFollowerStoreIngestionTask},
    * the topic could be other topics, such as RT topic or stream reprocessing topic.
    **/
-  private Optional<OffsetRecordTransformer> validateMessage(
+  protected Optional<OffsetRecordTransformer> validateMessage(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       boolean endOfPushReceived) {
     Optional<ProducerTracker.DIVErrorMetricCallback> errorCallback = divErrorMetricCallback;
@@ -1742,12 +1807,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
   }
-
-  /**
-   * Write to database and potentially produce to version topic
-   */
-  protected abstract void produceAndWriteToDatabase(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState, WriteToStorageEngine writeFunction, ProduceToTopic produceFunction);
 
   /**
    * Write to the storage engine with the optimization that we leverage the padding in front of the {@param putValue}
@@ -1898,157 +1957,86 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * @return the size of the data which was written to persistent storage.
    */
-  private int processVeniceMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, PartitionConsumptionState partitionConsumptionState) {
+  private Pair<Integer, Integer> processVeniceMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState, ProducedRecord producedRecord) {
+    int keyLen = 0;
+    int valueLen = 0;
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     int partition = consumerRecord.partition();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
 
-    byte[] keyBytes = kafkaKey.getKey();
+    byte[] keyBytes;
 
-    switch (MessageType.valueOf(kafkaValue)) {
+    MessageType messageType =
+        (producedRecord == null ? MessageType.valueOf(kafkaValue) : producedRecord.getMessageType());
+    switch (messageType) {
       case PUT:
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
-        Put put = (Put) kafkaValue.payloadUnion;
+        Put put;
+        if (producedRecord == null) {
+          keyBytes = kafkaKey.getKey();
+          put = (Put) kafkaValue.payloadUnion;
+        } else {
+          keyBytes = producedRecord.getKeyBytes();
+          put = (Put) producedRecord.getValueUnion();
+        }
         ByteBuffer putValue = put.putValue;
-        int valueLen = putValue.remaining();
+        valueLen = putValue.remaining();
+        keyLen = keyBytes.length;
 
         //update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
+        prependHeaderAndWriteToStorageEngine(kafkaVersionTopic, partition, keyBytes, putValue, put.schemaId);
+        break;
 
-        // Write to storage engine; potentially produce the PUT message to version topic
-        produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
-            key -> prependHeaderAndWriteToStorageEngine(kafkaVersionTopic, partition, key, putValue, put.schemaId),
-            (callback, sourceTopicOffset) -> {
-              /**
-               * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
-               * so we may be forced to do a copy here, if the backing array of the {@link putValue} has padding,
-               * which is the case when using {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}.
-               * Since this is in a closure, it is not guaranteed to be invoked.
-               *
-               * The {@link OnlineOfflineStoreIngestionTask}, which ignores this closure, will not pay this price.
-               *
-               * Conversely, the {@link LeaderFollowerStoreIngestionTask}, which does invoke it, will.
-               *
-               * TODO: Evaluate holistically what is the best way to optimize GC for the L/F case.
-               *
-               * 2. Enable venice writer "pass-through" mode if we haven't received EOP yet. In pass through mode,
-               * Leader will reuse upstream producer metadata. This would secures the correctness of DIV states in
-               * followers when the leadership failover happens.
-               */
-
-              if (!partitionConsumptionState.isEndOfPushReceived()) {
-                return getVeniceWriter().put(kafkaKey, kafkaValue, callback, partition, sourceTopicOffset);
-              }
-
-              return getVeniceWriter().put(keyBytes, ByteUtils.extractByteArray(putValue),
-                  put.schemaId, callback, sourceTopicOffset);
-            });
-
-        return valueLen;
-      case UPDATE:
-        Update update = (Update) kafkaValue.payloadUnion;
-        int valueSchemaId = update.schemaId;
-        int derivedSchemaId = update.updateSchemaId;
-
-        // Since we have an async call to produce the message before writing it to the disk, there is a race
-        // condition where, if a record gets updated multiple times shortly, the updates may be still
-        // pending in the producer queue and have not been written into disk. In order to prevent such
-        // async read case, we wait and do not perform read operation until producer finishes firing
-        // the message and persisting it to the disk.
-        // TODO: this is not efficient. We should consider optimizing the "waiting" behavior here
-        try {
-          long synchronizeStartTimeInNS = System.nanoTime();
-          Future<RecordMetadata> lastLeaderProduceFuture =
-              partitionConsumptionState.getLastLeaderProduceFuture();
-          if (lastLeaderProduceFuture != null) {
-            lastLeaderProduceFuture.get();
-          }
-          storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
-        } catch (Exception e) {
-          versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
-        }
-
-        GenericRecord originalValue;
-        boolean isChunkedTopic;
-        try {
-          long lookupStartTimeInNS = System.nanoTime();
-          isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
-          originalValue = GenericRecordChunkingAdapter.INSTANCE.get(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
-              partition,
-              ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null, storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
-              serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
-          storeIngestionStats.recordWriteComputeLookUpLatency(storeName, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-        } catch (Exception e) {
-          writeComputeFailureCode = WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
-          throw e;
-        }
-
-        byte[] updatedValueBytes;
-        try {
-          long writeComputeStartTimeInNS = System.nanoTime();
-          updatedValueBytes =
-              ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue, update.updateValue, valueSchemaId,
-                  derivedSchemaId);
-          storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
-        } catch (Exception e) {
-          writeComputeFailureCode = WRITE_COMPUTE_UPDATE_FAILURE.code;
-          throw e;
-        }
-
-        if (updatedValueBytes == null) {
-          valueLen = 0;
-          produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, key -> {
-            storageEngine.delete(partition, key);
-          }, (callback, sourceTopicOffset) -> getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset));
-        } else {
-          valueLen = updatedValueBytes.length;
-          ByteBuffer updateValueWithSchemaId = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + valueLen)
-              .putInt(valueSchemaId)
-              .put(updatedValueBytes);
-          updateValueWithSchemaId.flip();
-
-          // Write to storage engine; potentially produce the PUT message to version topic
-          // TODO: tweak here. write compute doesn't need to do fancy offset manipulation here.
-          produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, key -> {
-            if (isChunkedTopic) {
-              // Samza VeniceWriter doesn't handle chunking config properly. It reads chuncking config
-              // from user's input instead of getting it from store's metadata repo. This causes SN
-              // to der-se of keys a couple of times.
-              // TODO: Remove chunking logic form SN side once Samze VeniceWriter gets fixed.
-              writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
-                  ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes),
-                  updateValueWithSchemaId);
-            } else {
-              writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
-                  keyBytes, updateValueWithSchemaId);
-            }
-          }, (callback, sourceTopicOffset) -> getVeniceWriter().put(keyBytes, updatedValueBytes, valueSchemaId,
-              callback, sourceTopicOffset));
-        }
-
-        return valueLen;
       case DELETE:
-        // Write to storage engine; potentially produce the DELETE message to version topic
-        produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
-            key -> {
-              long deleteStartTimeNs = System.nanoTime();
-              storageEngine.delete(partition, key);
+        if (producedRecord == null) {
+          keyBytes = kafkaKey.getKey();
+        } else {
+          keyBytes = producedRecord.getKeyBytes();
+        }
+        keyLen = keyBytes.length;
 
-              if (logger.isTraceEnabled()) {
-                logger.trace(consumerTaskId + " : Completed DELETE to Store: " + kafkaVersionTopic + " in " +
-                    (System.nanoTime() - deleteStartTimeNs) + " ns at " + System.currentTimeMillis());
-              }
-            },
-            (callback, sourceTopicOffset) ->
-                getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset)
-        );
+        long deleteStartTimeNs = System.nanoTime();
+        storageEngine.delete(partition, keyBytes);
 
-        return 0;
+        if (logger.isTraceEnabled()) {
+          logger.trace(
+              consumerTaskId + " : Completed DELETE to Store: " + kafkaVersionTopic + " in " + (System.nanoTime()
+                  - deleteStartTimeNs) + " ns at " + System.currentTimeMillis());
+        }
+        break;
+
+      case UPDATE:
+        throw new VeniceMessageException(
+            consumerTaskId + ": Not expecting UPDATE message from  Topic: " + consumerRecord.topic() + " Partition: "
+                + partition + ", Offset: " + consumerRecord.offset());
       default:
         throw new VeniceMessageException(
-                consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
+            consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
+
+    /**
+     * Potentially clean the mapping from transient record map. consumedOffset may be -1 when individual chunks are getting
+     * produced to drainer queue from kafka callback thread {@link LeaderFollowerStoreIngestionTask#LeaderProducerMessageCallback}
+     */
+    if (purgeTransientRecordCache && isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()
+        && producedRecord != null && producedRecord.getConsumedOffset() != -1) {
+      PartitionConsumptionState.TransientRecord transientRecord =
+          partitionConsumptionState.mayRemoveTransientRecord(producedRecord.getConsumedOffset(), kafkaKey.getKey());
+      if (transientRecord != null) {
+        //This is perfectly fine, logging to see how often it happens where we get mulitple put/update/delete for same key in quick succession.
+        String msg =
+            consumerTaskId + ": multiple put,update,delete for same key received from Topic: " + consumerRecord.topic()
+                + " Partition: " + partition;
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          logger.info(msg);
+        }
+      }
+    }
+
+    return Pair.create(keyLen, valueLen);
   }
 
   /**
@@ -2107,7 +2095,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     waitValueSchemaAvailable(schemaId);
   }
 
-  private StoreVersionState waitVersionStateAvailable(String kafkaTopic) throws InterruptedException {
+  protected StoreVersionState waitVersionStateAvailable(String kafkaTopic) throws InterruptedException {
     long startTime = System.nanoTime();
     for (;;) {
       Optional<StoreVersionState> state = storageMetadataService.getStoreVersionState(this.kafkaVersionTopic);
@@ -2369,15 +2357,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
     notificationDispatcher.reportQuotaNotViolated(partitionConsumptionState);
   }
-  /**
-   * A function that would apply updates on the storage engine.
-   */
-  @FunctionalInterface
-  interface WriteToStorageEngine {
-    WriteToStorageEngine NO_OP = (key) -> {};
-
-    void apply(byte[] key);
-  }
 
   /**
    * A function that would produce messages to topic.
@@ -2447,4 +2426,57 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return entry.getSecond();
     }
   }
+
+  /**
+   * The purpose of this function is to wait for the complete processing (including persistence to disk) of all the messages
+   * those were consumed from this kafka {topic, partition} prior to calling this function.
+   * This is a common function to be used in O/O and L/F models for all scenarios.
+   * This will make the calling thread to block.
+   * @param topic
+   * @param partition
+   * @param partitionConsumptionState
+   * @throws InterruptedException
+   */
+  protected void waitForAllMessageToBeProcessedFromTopicPartition(String topic, int partition,
+      PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+
+    /**
+     * This will wait for all the messages to be processed (persisted to disk) that are already
+     * queued up to drainer till now.
+     */
+    storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
+
+    /**
+     * In case of L/F model in Leader we first produce to local kafka then queue to drainer from kafka callback thread.
+     * The above waiting is not sufficient enough since it only waits for whatever was queue prior to calling the
+     * above api. This alone would not guarantee that all messages from that topic partition
+     * has been processed completely. Additionally we need to wait for the last leader producer future to complete.
+     *
+     * Practically the above is not needed for Leader at all if we are waiting for the future below. But waiting does not
+     * cause any harm and also keep this function simple. Otherwise we might have to check if this is the Leader for the partition.
+     *
+     * The code should only be effective in L/F model Leader instances as lastFuture should be null in all other scenarios.
+     */
+    try {
+      Future<Void> lastFuture = partitionConsumptionState.getLastLeaderPersistFuture();
+      if (lastFuture != null) {
+        long synchronizeStartTimeInNS = System.nanoTime();
+        lastFuture.get();
+        storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName,
+            LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
+      }
+    } catch (Exception e) {
+      logger.error(
+          "Got exception while waiting for the latest producer future to be completed " + " for topic: " + topic
+              + " partition: " + partition, e);
+      //No need to fail the push job; just record the failure.
+      versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
+    }
+
+  }
+
+  protected boolean hasProducedToKafka(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+    return false;
+  }
+
 }
