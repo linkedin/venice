@@ -105,7 +105,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         partitionId,
         cacheWarmingThreadPool,
         startReportingReadyToServeTimestamp,
-        partitionStateSerializer);
+        partitionStateSerializer,
+        false);
   }
 
   @Override
@@ -145,15 +146,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, ProducedRecord producedRecord) {
     offsetRecord.setOffset(consumerRecord.offset());
-  }
-
-  @Override
-  protected void produceAndWriteToDatabase(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState, WriteToStorageEngine writeFunction, ProduceToTopic produceFunction) {
-    // Execute the write function immediately
-    writeFunction.apply(consumerRecord.key().getKey());
   }
 
   /**
@@ -246,6 +240,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic + " Partition Id: " + partitionId);
       return false;
     }
+
     long lastOffset = partitionConsumptionState.getOffsetRecord()
         .getOffset();
     if(lastOffset >= record.offset()) {

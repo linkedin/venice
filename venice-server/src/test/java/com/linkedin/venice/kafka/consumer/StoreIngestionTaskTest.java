@@ -419,7 +419,7 @@ public class StoreIngestionTaskTest {
         .build();
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
         isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true,
-        false, "", PARTITION_FOO);
+        false, "", PARTITION_FOO, false);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;

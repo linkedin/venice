@@ -10,15 +10,21 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -63,8 +69,8 @@ public class TestWriteCompute {
     veniceClusterWrapper.close();
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testWriteComputeWithHybridLeaderFollowerLargeRecord() throws Exception {
+  @Test(timeOut = 60 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testWriteComputeWithHybridLeaderFollowerLargeRecord(boolean writeComputeFromCache) throws Exception {
     SystemProducer veniceProducer = null;
 
     try {
@@ -109,6 +115,22 @@ public class TestWriteCompute {
           }
         });
 
+        //disable the purging of transientRecord cache using reflection.
+        if (writeComputeFromCache) {
+          for (VeniceServerWrapper veniceServerWrapper : veniceClusterWrapper.getVeniceServers()) {
+            try {
+              VeniceServer veniceServer = veniceServerWrapper.getVeniceServer();
+              StoreIngestionTask ingestionTask = veniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(Version.composeKafkaTopic(storeName, 1));
+              Field purgeTransientRecordCacheField =
+                  ingestionTask.getClass().getSuperclass().getDeclaredField("purgeTransientRecordCache");
+              purgeTransientRecordCacheField.setAccessible(true);
+              purgeTransientRecordCacheField.setBoolean(ingestionTask, false);
+            } catch (Exception e) {
+              throw e;
+            }
+          }
+        }
+
         // Write a streaming record (large record)
         veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
         String key = String.valueOf(101);
@@ -148,9 +170,7 @@ public class TestWriteCompute {
         String updatedFirstName = new String(chars);
         partialUpdateRecord.put("firstName", updatedFirstName);
         partialUpdateRecord.put("lastName", noOpRecord);
-
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
-
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           try {
@@ -162,6 +182,78 @@ public class TestWriteCompute {
             throw new VeniceException(e);
           }
         });
+
+        // Update the record again
+        GenericRecord partialUpdateRecord1 = new GenericData.Record(writeComputeSchema);
+        Arrays.fill(chars, 'v');
+        String updatedFirstName1 = new String(chars);
+        partialUpdateRecord1.put("firstName", updatedFirstName1);
+        partialUpdateRecord1.put("lastName", noOpRecord);
+        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord1);
+        // Verify the update
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          try {
+            GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
+            assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
+            assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName1);
+            assertEquals(retrievedValue.get("lastName").toString(), lastName);
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
+        //Delete the record
+        sendStreamingRecord(veniceProducer, storeName, key, null);
+        // Verify the delete
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          try {
+            GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
+            assertNull(retrievedValue, "Key " + key + " should be missing!");
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
+        // Update the record again
+        GenericRecord partialUpdateRecord2 = new GenericData.Record(writeComputeSchema);
+        Arrays.fill(chars, 'w');
+        String updatedFirstName2 = new String(chars);
+        Arrays.fill(chars, 'g');
+        String updatedLastName = new String(chars);
+        partialUpdateRecord2.put("firstName", updatedFirstName2);
+        partialUpdateRecord2.put("lastName", updatedLastName);
+        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord2);
+        // Verify the update
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          try {
+            GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
+            assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
+            assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName2);
+            assertEquals(retrievedValue.get("lastName").toString(), updatedLastName);
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
+        // Update the record again
+        GenericRecord partialUpdateRecord3 = new GenericData.Record(writeComputeSchema);
+        Arrays.fill(chars, 'x');
+        String updatedFirstName3 = new String(chars);
+        partialUpdateRecord3.put("firstName", updatedFirstName3);
+        partialUpdateRecord3.put("lastName", noOpRecord);
+        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord3);
+        // Verify the update
+        TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+          try {
+            GenericRecord retrievedValue = (GenericRecord)client.get(key).get();
+            assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
+            assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName3);
+            assertEquals(retrievedValue.get("lastName").toString(), updatedLastName);
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
       }
     } finally {
       if (null != veniceProducer) {

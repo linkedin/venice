@@ -69,14 +69,31 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   private final Sensor storageEnginePutLatencySensor;
 
   /**
-   * Measure the call count of {@literal StoreIngestionTask#produceToStoreBufferService}.
+   * Measure the call count of {@literal StoreIngestionTask#produceToStoreBufferServiceOrKafka}.
    *
    */
   private final Sensor produceToDrainerQueueCallCountSensor;
   /**
-   * Measure the record number passed to {@literal StoreIngestionTask#produceToStoreBufferService}.
+   * Measure the record number passed to {@literal StoreIngestionTask#produceToStoreBufferServiceOrKafka}.
    */
   private final Sensor produceToDrainerQueueRecordNumSensor;
+
+  /**
+   * Measure the number of record produced to kafka {@literal StoreIngestionTask#produceToStoreBufferServiceOrKafka}.
+   */
+  private final Sensor produceToKafkaRecordNumSensor;
+
+  /**
+   * Measure the latency of producing record to kafka {@literal StoreIngestionTask#produceToStoreBufferServiceOrKafka}.
+   */
+  private final Sensor produceToKafkaLatencySensor;
+
+  /**
+   * Measure the number of times a record was found in {@link PartitionConsumptionState#transientRecordMap} during UPDATE
+   * message processing.
+   */
+  private final Sensor writeComputeCacheHitCount;
+
 
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
@@ -125,6 +142,18 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     storageEnginePutLatencySensor = registerSensor("storage_engine_put_latency", new Avg(), new Max());
     produceToDrainerQueueCallCountSensor = registerSensor("produce_to_drainer_queue_call_count", new Rate());
     produceToDrainerQueueRecordNumSensor = registerSensor("produce_to_drainer_queue_record_num", new Avg(), new Max());
+
+    produceToKafkaRecordNumSensor = registerSensor("produce_to_kafka_record_num", new Avg(), new Max());
+
+    /**
+     * This measures the latency of producing message to local kafka VT. This will be recorded only in Leader SN for a partition.
+     * Also this reports a sum of latency after processing a batch of messages, so this metric doesn't indicate the producer to broker
+     * latency for each message.
+     */
+    produceToKafkaLatencySensor = registerSensor("produce_to_kafka_latency", new Avg(), new Max());
+
+    writeComputeCacheHitCount = registerSensor("write_compute_cache_hit_count", new Avg(), new Max());
+
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -219,6 +248,18 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   public void recordProduceToDrainQueueRecordNum(int recordNum) {
     produceToDrainerQueueCallCountSensor.record();
     produceToDrainerQueueRecordNumSensor.record(recordNum);
+  }
+
+  public void recordProduceToKafkaRecordNum(int recordNum) {
+    produceToKafkaRecordNumSensor.record(recordNum);
+  }
+
+  public void recordProduceToKafkaLatency(double latency) {
+    produceToKafkaLatencySensor.record(latency);
+  }
+
+  public void recordWriteComputeCacheHitCount() {
+    writeComputeCacheHitCount.record();
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {

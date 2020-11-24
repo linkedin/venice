@@ -4,6 +4,8 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.validation.DuplicateDataException;
+import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.KafkaClientFactory;
@@ -12,10 +14,12 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
+import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -33,8 +37,11 @@ import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.storage.StorageMetadataService;
+import com.linkedin.venice.storage.chunking.ChunkingUtils;
+import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
@@ -51,9 +58,9 @@ import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -97,7 +104,6 @@ import static com.linkedin.venice.writer.VeniceWriter.*;
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger logger = Logger.getLogger(LeaderFollowerStoreIngestionTask.class);
-  private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -149,7 +155,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int partitionId,
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      boolean isWriteComputationEnabled) {
     super(
         writerFactory,
         consumerFactory,
@@ -180,7 +187,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionId,
         cacheWarmingThreadPool,
         startReportingReadyToServeTimestamp,
-        partitionStateSerializer);
+        partitionStateSerializer,
+        isWriteComputationEnabled);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
@@ -272,23 +280,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (leaderTopic != null && !topic.equals(leaderTopic)) {
           consumerUnSubscribe(leaderTopic, partitionConsumptionState);
 
-          // finish consuming and producing all the things in queue
-          storeBufferService.drainBufferedRecordsFromTopicPartition(leaderTopic, partition);
-
-          // wait for the last callback to complete
-          try {
-            Future<RecordMetadata> lastFuture = partitionConsumptionState.getLastLeaderProduceFuture();
-            if (lastFuture != null) {
-              lastFuture.get();
-            }
-          } catch (Exception e) {
-            logger.error("Failed to produce the last message to version topic before demoting to standby;"
-                + " for partition: " + partition + "\n" + offsetRecord.toDetailedString(), e);
-            /**
-             * No need to fail the push job; new leader can safely resume from the failure checkpoint.
-             */
-            versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
-          }
+          waitForAllMessageToBeProcessedFromTopicPartition(leaderTopic, partition, partitionConsumptionState);
 
           partitionConsumptionState.setConsumeRemotely(false);
           logger.info(consumerTaskId + " disabled remote consumption for partition " + partition);
@@ -434,7 +426,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
             consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
             // If remote consumption flag is false, existing messages for the partition in the drainer queue should be processed before that
-            storeBufferService.drainBufferedRecordsFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition());
+            waitForAllMessageToBeProcessedFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition(), partitionConsumptionState);
+
             partitionConsumptionState.setConsumeRemotely(false);
             logger.info(consumerTaskId + " disabled remote consumption for partition " + partitionConsumptionState.getPartition());
             // Subscribe to local Kafka topic
@@ -475,7 +468,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
             // wait for the last callback to complete
             try {
-              Future<RecordMetadata> lastFuture = partitionConsumptionState.getLastLeaderProduceFuture();
+              Future<Void> lastFuture = partitionConsumptionState.getLastLeaderPersistFuture();
               if (lastFuture != null) {
                 lastFuture.get();
               }
@@ -490,25 +483,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // subscribe to the new upstream
             partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
             consumerSubscribe(newSourceTopicName, partitionConsumptionState, upstreamStartOffset);
-
-            if (!kafkaVersionTopic.equals(currentLeaderTopic)) {
-              /**
-               * This is for Samza grandfathering.
-               *
-               * Use default upstream offset for callback so that leader won't update its own leader consumed offset after
-               * producing the TS message.
-               */
-              LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, currentLeaderTopic,
-                  kafkaVersionTopic, partition, DEFAULT_UPSTREAM_OFFSET, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
-              /**
-               * Put default upstream offset for TS message so that followers won't update the leader offset after seeing
-               * the TS message.
-               */
-              ControlMessage controlMessage = new ControlMessage();
-              controlMessage.controlMessageType = ControlMessageType.TOPIC_SWITCH.getValue();
-              controlMessage.controlMessageUnion = topicSwitch;
-              getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET);
-            }
 
             logger.info(consumerTaskId + " leader successfully switch feed topic from " + currentLeaderTopic + " to "
                 + newSourceTopicName + " offset " + upstreamStartOffset + " partition " + partition);
@@ -560,89 +534,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
     return isLeader && bufferReplayEnabledForHybrid &&
         (!kafkaVersionTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
-  }
-
-  /**
-   * For regular hybrid store (batch ingestion from Hadoop and streaming ingestion from Samza), the control messages
-   * won't be produced to the version topic because leader gets these control message inside version topic, or in other
-   * words, `shouldProduceToVersionTopic` would return false.
-   *
-   * For grandfathering jobs, since the batch ingestion is from Samza and it will write to a transient topic (WIP),
-   * leader should produce these messages to version topic so that followers understands that the push starts or ends.
-   */
-  @Override
-  protected void processStartOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
-    super.processStartOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
-
-    /**
-     * N.B.: This is expected to be the first time time we call {@link #getVeniceWriter()}, which is important
-     *       because that function relies on the Start of Push's flags having been set in the
-     *       {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState}. The flag setting happens in
-     *       {@link StoreIngestionTask#processStartOfPush(ControlMessage, int, long, PartitionConsumptionState)},
-     *       which is called at the start of the current function.
-     *
-     * Note update: the first time we call {@link #getVeniceWriter()} is different in various use cases:
-     * 1. For hybrid store with L/F enabled, the first time a VeniceWriter is created is after leader switches to RT and
-     *    consumes the first message; potential message type: SOS, EOS, data message.
-     * 2. For store version generated by stream reprocessing push type, the first time is after leader switches to
-     *    SR topic and consumes the first message; potential message type: SOS, EOS, data message (consider server restart).
-     * 3. For store with native replication enabled, the first time is after leader switches to remote topic and start
-     *    consumes the first message; potential message type: SOS, EOS, SOP, EOP, data message (consider server restart).
-     */
-    produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
-        getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
-
-  }
-
-  @Override
-  protected void processEndOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
-    /**
-     * DIV pass through mode for producing EOP message.
-     */
-    produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
-        getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
-
-    /**
-     * Before ending the batch write and converting the storage engine to read-only mode, make sure that all the messages
-     * have been writen into storage engine by waiting on the last producer future.
-     */
-    try {
-      long synchronizeStartTimeInNS = System.nanoTime();
-      Future<RecordMetadata> lastLeaderProduceFuture =
-          partitionConsumptionStateMap.get(partition).getLastLeaderProduceFuture();
-      if (lastLeaderProduceFuture != null) {
-        lastLeaderProduceFuture.get();
-      }
-      storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
-    } catch (Exception e) {
-      versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
-    }
-    // End batch write.
-    super.processEndOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
-  }
-
-  /**
-   * For incremental push in hybrid store, the control messages should be produced to the version topic because leader
-   * gets these control message inside real time topic, or in other words, `shouldProduceToVersionTopic` would return true.
-   */
-  @Override
-  protected void processStartOfIncrementalPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage startOfIncrementalPush, int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
-    super.processStartOfIncrementalPush(consumerRecord, startOfIncrementalPush, partition, upstreamOffset, partitionConsumptionState);
-
-    produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
-        getVeniceWriter().asyncSendControlMessage(startOfIncrementalPush, partition, new HashMap<>(), callback, sourceTopicOffset));
-  }
-
-  @Override
-  protected void processEndOfIncrementalPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      ControlMessage endOfIncrementalPush, int partition, long upstreamOffset, PartitionConsumptionState partitionConsumptionState) {
-    super.processEndOfIncrementalPush(consumerRecord, endOfIncrementalPush, partition, upstreamOffset, partitionConsumptionState);
-
-    produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
-        getVeniceWriter().asyncSendControlMessage(endOfIncrementalPush, partition, new HashMap<>(), callback, sourceTopicOffset));
   }
 
   @Override
@@ -753,7 +644,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, ProducedRecord producedRecord) {
     // Only update the metadata if this replica should NOT produce to version topic.
     if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
       /**
@@ -882,23 +773,40 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (kafkaValue.leaderMetadataFooter != null) {
         offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
       }
+    } else {
+      //leader will only update the offset from producedRecord in VT.
+      if (producedRecord != null) {
+        /**
+         * producedOffset and consumedOffset both are set to -1 when producing individual chunks
+         * see {@link LeaderProducerMessageCallback#onCompletion(RecordMetadata, Exception)}
+         */
+        if (producedRecord.getProducedOffset() >= 0) {
+          offsetRecord.setOffset(producedRecord.getProducedOffset());
+        }
+
+        if (producedRecord.getConsumedOffset() >= 0) {
+          offsetRecord.setLeaderUpstreamOffset(producedRecord.getConsumedOffset());
+        }
+      } else {
+        //Ideally this should never happen.
+        String msg = consumerTaskId + " UpdateOffset: Produced record should not be null in LEADER. topic: " + consumerRecord.topic() + " Partition "
+            + consumerRecord.partition();
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          logger.warn(msg);
+        }
+      }
     }
   }
 
-  @Override
-  protected void produceAndWriteToDatabase(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState, WriteToStorageEngine writeFunction, ProduceToTopic produceFunction) {
+  private void produceToLocalKafka(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState, ProducedRecord producedRecord, ProduceToTopic produceFunction) {
     int partition = consumerRecord.partition();
-    if (shouldProduceToVersionTopic(partitionConsumptionState)) {
-      String leaderTopic = consumerRecord.topic();
-      long sourceTopicOffset = consumerRecord.offset();
-      LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
-          kafkaVersionTopic, partition, sourceTopicOffset, defaultReadyToServeChecker, Optional.of(writeFunction), versionedDIVStats, logger);
-      partitionConsumptionState.setLastLeaderProduceFuture(produceFunction.apply(callback, sourceTopicOffset));
-    } else {
-      // If (i) it's a follower or (ii) leader is consuming from VT, execute the write function immediately
-      writeFunction.apply(consumerRecord.key().getKey());
-    }
+    String leaderTopic = consumerRecord.topic();
+    long sourceTopicOffset = consumerRecord.offset();
+    LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(this, consumerRecord, partitionConsumptionState, leaderTopic,
+        kafkaVersionTopic, partition, versionedDIVStats, logger, producedRecord);
+    partitionConsumptionState.setLastLeaderPersistFuture(producedRecord.getPersistedToDBFuture());
+    produceFunction.apply(callback, sourceTopicOffset);
   }
 
   /**
@@ -1052,6 +960,397 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  /**
+   * The goal of this function is to possibly produce the incoming kafka message consumed from local VT, remote VT, RT or SR topic to
+   * local VT if needed. It's decided based on the function output of {@link #shouldProduceToVersionTopic} and message type.
+   * It also perform any necessary additional computation operation such as for write-compute/update message.
+   * It returns a boolean indicating if it was produced to kafka or not.
+   *
+   * This function should be called as one of the first steps in processing pipeline for all messages consumed from any kafka topic.
+   *
+   * The caller {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean)} of this function should
+   * not process this consumerRecord any further if it was produced to kafka (returnd true),
+   * Otherwise it should continute to process the message as it would.
+   *
+   * This function assumes {@link #shouldProcessRecord(ConsumerRecord)} has been called which happens in
+   * {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean)} before calling this and the it was decided that
+   * this record needs to be processed. It does not perform any validation check on the PartitionConsumptionState object
+   * to keep the goal of the function simple and not overload.
+   *
+   * Also DIV validation is done here if the message is received from RT topic. For more info please see
+   * please see {@link StoreIngestionTask#internalProcessConsumerRecord(ConsumerRecord, PartitionConsumptionState, ProducedRecord)}
+   *
+   * @param consumerRecord
+   * @return true if the message was produced to kafka, Otherwise false.
+   */
+  @Override
+  protected boolean hasProducedToKafka(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+    int partition = consumerRecord.partition();
+
+    boolean produceToLocalKafka = false;
+    try {
+      KafkaKey kafkaKey = consumerRecord.key();
+      KafkaMessageEnvelope kafkaValue = consumerRecord.value();
+
+      /**
+       * partitionConsumptionState must be in a valid state and no error reported. This is made sure by calling
+       * {@link shouldProcessRecord} before processing any record.
+       */
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+      produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
+
+      //UPDATE message is only expected in LEADER which must be produced to kafka.
+      MessageType msgType = MessageType.valueOf(kafkaValue);
+      if (msgType == MessageType.UPDATE && !produceToLocalKafka) {
+        throw new VeniceMessageException(
+            consumerTaskId + " HasProducedToKafka: Received UPDATE message in non-leader. Topic: "
+                + consumerRecord.topic() + " Partition " + consumerRecord.partition() + " Offset "
+                + consumerRecord.offset());
+      }
+
+      /**
+       * return early if it need not be produced to local VT such as cases like
+       * (i) it's a follower or (ii) leader is consuming from VT
+       */
+      if (!produceToLocalKafka) {
+        return false;
+      }
+
+      //If we are here the message must be produced to local kafka or silently consumed.
+      byte[] keyBytes = kafkaKey.getKey();
+      ProducedRecord producedRecord = null;
+
+      /**
+       * DIV pass-through mode is enabled for all messages received before EOP (from VT,SR topics) but
+       * DIV pass through mode is not enabled for messages received from RT.
+       *
+       * So for messages received from RT topics we are doing DIV here to avoid any out of ordering issue with
+       * respect to DIV in drainer thread.
+       *
+       * For messages received before EOP the DIV will happen in drainer thread after this message gets queued to drainer
+       * from kafka callback thread.
+       *
+       * Just to note this code is getting executed in Leader only.
+       *
+       * For more details
+       * please see {@link StoreIngestionTask#internalProcessConsumerRecord(ConsumerRecord, PartitionConsumptionState, ProducedRecord)}
+       */
+      if (Version.isRealTimeTopic(consumerRecord.topic())) {
+        try {
+          boolean endOfPushReceived = true;
+          Optional<OffsetRecordTransformer> offsetRecordTransformer =
+              validateMessage(consumerRecord, endOfPushReceived);
+          versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
+          if (offsetRecordTransformer.isPresent()) {
+            OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+            offsetRecord.addOffsetRecordTransformer(kafkaValue.producerMetadata.producerGUID,
+                offsetRecordTransformer.get());
+          }
+        } catch (FatalDataValidationException fatalException) {
+          divErrorMetricCallback.get().execute(fatalException);
+          String errorMessage =
+              "Fatal data validation problem with  Topic: " + consumerRecord.topic() + " partition " + partition
+                  + ", offset " + consumerRecord.offset();
+          logger.info(errorMessage + " versionTopic: " + kafkaVersionTopic
+              + ", however since EOP is already received so consumption will continue.");
+        } catch (DuplicateDataException e) {
+          versionedDIVStats.recordDuplicateMsg(storeName, versionNumber);
+          if (logger.isDebugEnabled()) {
+            logger.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
+          }
+        }
+      }
+
+      if (kafkaKey.isControlMessage()) {
+        boolean producedFinally = true;
+        ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
+        ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+        producedRecord =
+            ProducedRecord.newControlMessageRecord(consumerRecord.offset(), kafkaKey.getKey(), controlMessage);
+        switch (controlMessageType) {
+          case START_OF_PUSH:
+            /**
+             * N.B.: This is expected to be the first time time we call {@link #getVeniceWriter()}. During this time
+             *       since startOfPush has not been processed yet, {@link StoreVersionState} is not created yet (unless
+             *       this is a server restart scenario). So the {@link com.linkedin.venice.writer.VeniceWriter#isChunkingEnabled} field
+             *       will not be set correctly at this point. This is fine as chunking is mostly not applicable for control messages.
+             *       This chunking flag for the veniceWriter will happen be set correctly in
+             *       {@link StoreIngestionTask#processStartOfPush(ControlMessage, int, long, PartitionConsumptionState)},
+             *       which will be called when this message gets processed in drainer thread after successfully producing
+             *       to kafka.
+             *
+             * Note update: the first time we call {@link #getVeniceWriter()} is different in various use cases:
+             * 1. For hybrid store with L/F enabled, the first time a VeniceWriter is created is after leader switches to RT and
+             *    consumes the first message; potential message type: SOS, EOS, data message.
+             * 2. For store version generated by stream reprocessing push type, the first time is after leader switches to
+             *    SR topic and consumes the first message; potential message type: SOS, EOS, data message (consider server restart).
+             * 3. For store with native replication enabled, the first time is after leader switches to remote topic and start
+             *    consumes the first message; potential message type: SOS, EOS, SOP, EOP, data message (consider server restart).
+             */
+          case END_OF_PUSH:
+            /**
+             * Simply produce this EOP to local VT. It will be processed in order in the drainer queue later
+             * after successfully producing to kafka.
+             */
+            produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
+                (callback, sourceTopicOffset) -> getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(),
+                    callback, partition, sourceTopicOffset));
+            break;
+          case START_OF_SEGMENT:
+          case END_OF_SEGMENT:
+            /**
+             * SOS and EOS will be produced to the local version topic with DIV pass-through mode by leader in the following cases:
+             * 1. SOS and EOS are from stream-reprocessing topics (use cases: stream-reprocessing)
+             * 2. SOS and EOS are from version topics in a remote fabric (use cases: native replication for remote fabrics)
+             *
+             * SOS and EOS will not be produced to local version topic in the following cases:
+             * 1. SOS and EOS are from real-time topics (use cases: hybrid ingestion, incremental push to RT)
+             * 2. SOS and EOS are from version topics in local fabric, which has 2 different scenarios:
+             *    i.  native replication is enabled, but the current fabric is the source fabric (use cases: native repl for source fabric)
+             *    ii. native replication is not enabled; it doesn't matter whether current replica is leader or follower,
+             *        messages from local VT doesn't need to be reproduced into local VT again (use cases: local batch consumption,
+             *        incremental push to VT)
+             */
+            if (!Version.isRealTimeTopic(consumerRecord.topic())) {
+              produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
+                  (callback, sourceTopicOffset) -> getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(),
+                      callback, partition, sourceTopicOffset));
+            } else {
+              /**
+               * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
+               * received from RT to local VT. But ideally EOS must be queued in-order (after all previous data message
+               * PUT/UPDATE/DELETE) to drainer. But since the queueing of data message to drainer
+               * happens in Kafka producer callback there is no way to queue this EOS to drainer in-order.
+               *
+               * Usually following processing in Leader for other control message.
+               *    1. DIV:
+               *    2. updateOffset:
+               *    3. stats maintenance as in {@link StoreIngestionTask#processVeniceMessage(ConsumerRecord, PartitionConsumptionState, ProducedRecord)}
+               *
+               * For #1 Since we have moved the DIV validation in this function, We are good with DIV part which is the most critical one.
+               * For #2 Leader will not update the offset for SOS/EOS. From Server restart point of view this is tolerable. This was the case in previous design also. So there is no change in behaviour.
+               * For #3 stat counter update will not happen for SOS/EOS message. This should not be a big issue. If needed we can copy some of the stats maintenance
+               *   work here.
+               *
+               * So in summary NO further processing is needed SOS/EOS received from RT topics. Just silently drop the message here.
+               * We should not return false here.
+               */
+              producedFinally = false;
+            }
+            break;
+          case START_OF_BUFFER_REPLAY:
+            //this msg coming here is not possible;
+            throw new VeniceMessageException(
+                consumerTaskId + " HasProducedToKafka: Received SOBR in L/F mode. Topic: " + consumerRecord.topic()
+                    + " Partition " + consumerRecord.partition() + " Offset " + consumerRecord.offset());
+          case START_OF_INCREMENTAL_PUSH:
+          case END_OF_INCREMENTAL_PUSH:
+            /**
+             * We are using {@link VeniceWriter#asyncSendControlMessage()} api instead of {@link VeniceWriter#put()} since we have
+             * to calculate DIV for this message but keeping the ControlMessage content unchanged. {@link VeniceWriter#put()} does not
+             * allow that.
+             */
+            produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
+                (callback, sourceTopicOffset) -> getVeniceWriter().asyncSendControlMessage(controlMessage, partition,
+                    new HashMap<>(), callback, sourceTopicOffset));
+            break;
+          case TOPIC_SWITCH:
+            /**
+             * For TOPIC_SWITCH message we should use -1 as consumedOffset. This will ensure that it does not update the
+             * setLeaderUpstreamOffset in {@link updateOffset()}.
+             * The leaderUpstreamOffset is set from the TS message config itself. We should not override it.
+             */
+            producedRecord = ProducedRecord.newControlMessageRecord(-1, kafkaKey.getKey(), controlMessage);
+            produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
+                (callback, sourceTopicOffset) -> getVeniceWriter().asyncSendControlMessage(controlMessage, partition,
+                    new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET));
+            break;
+        }
+        if (producedFinally) {
+          logger.info(consumerTaskId + " hasProducedToKafka: YES. ControlMessage: " + controlMessageType.name()
+              + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + partition + " Offset: "
+              + consumerRecord.offset());
+        } else {
+          logger.info(consumerTaskId + " hasPoducedToKafka: NO. ControlMessage: " + controlMessageType.name()
+              + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + partition + " Offset: "
+              + consumerRecord.offset());
+        }
+      } else if (null == kafkaValue) {
+        throw new VeniceMessageException(
+            consumerTaskId + " HasProducedToKafka: Given null Venice Message.  Topic: " + consumerRecord.topic()
+                + " Partition " + consumerRecord.partition() + " Offset " + consumerRecord.offset());
+      } else {
+        switch (msgType) {
+          case PUT:
+            Put put = (Put) kafkaValue.payloadUnion;
+            ByteBuffer putValue = put.putValue;
+
+            /**
+             * For WC enabled stores update the transient record map with the latest {key,value}. This is needed only for messages
+             * received from RT. Messages received from VT have been persisted to disk already before switching to RT topic.
+             */
+            if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
+              partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, putValue.array(),
+                  putValue.position(), putValue.remaining(), put.schemaId);
+            }
+
+            producedRecord = ProducedRecord.newPutRecord(consumerRecord.offset(), keyBytes, put);
+            produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
+                (callback, sourceTopicOffset) -> {
+                  /**
+                   * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
+                   * so we may be forced to do a copy here, if the backing array of the {@link putValue} has padding,
+                   * which is the case when using {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}.
+                   * Since this is in a closure, it is not guaranteed to be invoked.
+                   *
+                   * The {@link OnlineOfflineStoreIngestionTask}, which ignores this closure, will not pay this price.
+                   *
+                   * Conversely, the {@link LeaderFollowerStoreIngestionTask}, which does invoke it, will.
+                   *
+                   * TODO: Evaluate holistically what is the best way to optimize GC for the L/F case.
+                   *
+                   * 2. Enable venice writer "pass-through" mode if we haven't received EOP yet. In pass through mode,
+                   * Leader will reuse upstream producer metadata. This would secures the correctness of DIV states in
+                   * followers when the leadership failover happens.
+                   */
+
+                  if (!partitionConsumptionState.isEndOfPushReceived()) {
+                    return getVeniceWriter().put(kafkaKey, kafkaValue, callback, partition, sourceTopicOffset);
+                  }
+
+                  return getVeniceWriter().put(keyBytes, ByteUtils.extractByteArray(putValue), put.schemaId, callback,
+                      sourceTopicOffset);
+                });
+            break;
+
+          case UPDATE:
+            Update update = (Update) kafkaValue.payloadUnion;
+            int valueSchemaId = update.schemaId;
+            int derivedSchemaId = update.updateSchemaId;
+
+            GenericRecord originalValue = null;
+            boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
+
+            /**
+             *  Few Notes:
+             *  Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
+             *  for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streamign ingestion.
+             *  Also we dont support compression at all for hybrid store.
+             *  So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
+             *  (non chunked) and non-compressed. Decoding should succeed using the the simplified API
+             *  {@link com.linkedin.venice.storage.chunking.ChunkingAdapter#constructValue(int, byte[], int, boolean, ReadOnlySchemaRepository, String)}
+             */
+            //Find the existing value. If a value for this key is found from the transient map then use that value, otherwise get it from DB.
+            PartitionConsumptionState.TransientRecord transientRecord =
+                partitionConsumptionState.getTransientRecord(keyBytes);
+            if (transientRecord == null) {
+              try {
+                long lookupStartTimeInNS = System.nanoTime();
+                originalValue = GenericRecordChunkingAdapter.INSTANCE.get(
+                    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
+                    ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
+                    storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
+                    serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+                storeIngestionStats.recordWriteComputeLookUpLatency(storeName,
+                    LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+              } catch (Exception e) {
+                writeComputeFailureCode = WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+                throw e;
+              }
+            } else {
+              storeIngestionStats.recordWriteComputeCacheHitCount(storeName);
+              //construct originalValue from this transient record only if it's not null.
+              if (transientRecord.getValue() != null) {
+                try {
+                  originalValue =
+                      GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(),
+                          transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen(),
+                          serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+                } catch (Exception e) {
+                  writeComputeFailureCode = WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+                  throw e;
+                }
+              } else {
+                originalValue = null;
+              }
+            }
+
+            //compute.
+            byte[] updatedValueBytes;
+            try {
+              long writeComputeStartTimeInNS = System.nanoTime();
+              updatedValueBytes =
+                  ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue, update.updateValue,
+                      valueSchemaId, derivedSchemaId);
+              storeIngestionStats.recordWriteComputeUpdateLatency(storeName,
+                  LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
+            } catch (Exception e) {
+              writeComputeFailureCode = WRITE_COMPUTE_UPDATE_FAILURE.code;
+              throw e;
+            }
+
+            //finally produce and update the transient record map.
+            if (updatedValueBytes == null) {
+              partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes);
+              producedRecord = ProducedRecord.newDeleteRecord(consumerRecord.offset(), keyBytes);
+              produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
+                  (callback, sourceTopicOffset) -> getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset));
+            } else {
+              int valueLen = updatedValueBytes.length;
+              partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
+                  valueLen, valueSchemaId);
+
+              ByteBuffer updateValueWithSchemaId = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + valueLen)
+                  .putInt(valueSchemaId)
+                  .put(updatedValueBytes);
+              updateValueWithSchemaId.flip();
+              updateValueWithSchemaId.position(ValueRecord.SCHEMA_HEADER_LENGTH);
+
+              Put updatedPut = new Put();
+              updatedPut.putValue = updateValueWithSchemaId;
+              updatedPut.schemaId = valueSchemaId;
+
+              byte[] updatedKeyBytes = keyBytes;
+              if (isChunkedTopic) {
+                // Samza VeniceWriter doesn't handle chunking config properly. It reads chuncking config
+                // from user's input instead of getting it from store's metadata repo. This causes SN
+                // to der-se of keys a couple of times.
+                updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+              }
+              producedRecord = ProducedRecord.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
+              produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
+                  (callback, sourceTopicOffset) -> getVeniceWriter().put(keyBytes, updatedValueBytes, valueSchemaId,
+                      callback, sourceTopicOffset));
+            }
+            break;
+
+          case DELETE:
+            /**
+             * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
+             */
+            if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
+              partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes);
+            }
+            producedRecord = ProducedRecord.newDeleteRecord(consumerRecord.offset(), keyBytes);
+            produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
+                (callback, sourceTopicOffset) -> getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset));
+            break;
+
+          default:
+            throw new VeniceMessageException(
+                consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
+        }
+      }
+    } catch (Exception e) {
+      throw new VeniceException(
+          consumerTaskId + " HasProducedToKafka: exception for message received from  Topic: " + consumerRecord.topic()
+              + " Partition: " + consumerRecord.partition() + ", Offset: " + consumerRecord.offset() + ". Bubbling up.",
+          e);
+    } finally {
+      return produceToLocalKafka;
+    }
+  }
+
   @Override
   public long getFollowerOffsetLag() {
     Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
@@ -1081,87 +1380,93 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private class LeaderProducerMessageCallback implements ChunkAwareCallback {
+    private StoreIngestionTask ingestionTask;
+    private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord;
     private final PartitionConsumptionState partitionConsumptionState;
     private final String feedTopic;
     private final String versionTopic;
     private final int partition;
-    private final long consumedOffset;
-    private final ReadyToServeCheck readyToServeChecker;
-    private final Optional<WriteToStorageEngine> writeFunction;
     private final AggVersionedDIVStats versionedDIVStats;
     private final Logger logger;
+    private final ProducedRecord producedRecord;
 
     /**
      * The three mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
      * which populates them via {@link ChunkAwareCallback#setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest)}.
      *
-     * They should always be set for any message that ought to be persisted to the storage engine, i.e.: any callback
-     * where the {@link #writeFunction} is present.
      */
     private byte[] key = null;
     private ChunkedValueManifest chunkedValueManifest = null;
     private ByteBuffer[] chunks = null;
 
-    public LeaderProducerMessageCallback(PartitionConsumptionState consumptionState, String feedTopic, String versionTopic,
-        int partition, long consumedOffset, ReadyToServeCheck readyToServeCheck, Optional<WriteToStorageEngine> writeFunction,
-        AggVersionedDIVStats versionedDIVStats, Logger logger) {
-      this.partitionConsumptionState = consumptionState;
+    public LeaderProducerMessageCallback(StoreIngestionTask ingestionTask,
+        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord,
+        PartitionConsumptionState partitionConsumptionState,
+        String feedTopic, String versionTopic, int partition, AggVersionedDIVStats versionedDIVStats, Logger logger,
+        ProducedRecord producedRecord) {
+      this.ingestionTask = ingestionTask;
+      this.sourceConsumerRecord = sourceConsumerRecord;
+      this.partitionConsumptionState = partitionConsumptionState;
       this.feedTopic = feedTopic;
       this.versionTopic = versionTopic;
       this.partition = partition;
-      this.consumedOffset = consumedOffset;
-      this.readyToServeChecker = readyToServeCheck;
-      this.writeFunction = writeFunction;
       this.versionedDIVStats = versionedDIVStats;
       this.logger = logger;
+      this.producedRecord = producedRecord;
     }
 
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        logger.error("Leader failed to send out message to version topic when consuming " + feedTopic + " partition " + partition, e);
+        logger.error("Leader failed to send out message to version topic when consuming " + feedTopic + " partition "
+            + partition, e);
         String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
         int version = Version.parseVersionFromKafkaTopicName(versionTopic);
         versionedDIVStats.recordLeaderProducerFailure(storeName, version);
       } else {
         /**
-         * Leader would update the storage engine only after successfully producing the message.
+         * performs some sanity checks for chunks.
+         * key may be null in case of producing control messages with direct api's like
+         * {@link VeniceWriter#SendControlMessage} or {@link VeniceWriter#asyncSendControlMessage}
          */
-        if (writeFunction.isPresent()) {
-          // Sanity check
-          if (null == key) {
-            throw new IllegalStateException("key not initialized.");
+
+        if (chunkedValueManifest != null) {
+          if (null == chunks) {
+            throw new IllegalStateException("chunking info not initialized.");
+          } else if (chunkedValueManifest.keysWithChunkIdSuffix.size() != chunks.length) {
+            throw new IllegalStateException("chunkedValueManifest.keysWithChunkIdSuffix is not in sync with chunks.");
           }
-          if (null == chunkedValueManifest) {
-            // We apply the write function as is only if it is a small value
-            writeFunction.get().apply(key);
-          } else {
-            /**
-             * For large values which have been chunked, we instead write the chunks
-             *
-             * N.B.: Some of the write path implementation details of chunking are spread between here and
-             * {@link com.linkedin.venice.writer.VeniceWriter#putLargeValue(byte[], byte[], int, Callback, int, long)},
-             * which is not ideal from a maintenance standpoint.
-             *
-             * TODO: Coalesce write path chunking logic to a single class, following the pattern of {@link ChunkingAdapter}.
-             */
+        }
 
-            // Sanity checks
-            if (null == chunks) {
-              throw new IllegalStateException("chunking info not initialized.");
-            } else if (chunkedValueManifest.keysWithChunkIdSuffix.size() != chunks.length) {
-              throw new IllegalStateException("chunkedValueManifest.keysWithChunkIdSuffix is not in sync with chunks.");
+        //produce to drainer buffer service for further processing.
+        try {
+          /**
+           * queue the producedRecord to drainer service as is in case the value was not chnuked.
+           * Otherwise queue the chunks and manifest individually to drainer service.
+           */
+          if (chunkedValueManifest == null) {
+            //update the keybytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in VeniceWriter.
+            if (key != null) {
+              producedRecord.setKeyBytes(key);
             }
-
-            // Write all chunks to the storage engine
+            producedRecord.setProducedOffset(recordMetadata.offset());
+            ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecord);
+          } else {
             int schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
             for (int i = 0; i < chunkedValueManifest.keysWithChunkIdSuffix.size(); i++) {
               ByteBuffer chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(i);
               ByteBuffer chunkValue = chunks[i];
-              prependHeaderAndWriteToStorageEngine(versionTopic, partition, ByteUtils.extractByteArray(chunkKey), chunkValue, schemaId);
+
+              Put chunkPut = new Put();
+              chunkPut.putValue = chunkValue;
+              chunkPut.schemaId = schemaId;
+
+              ProducedRecord producedRecordForChunk = ProducedRecord.newPutRecord(-1, ByteUtils.extractByteArray(chunkKey), chunkPut);
+              producedRecordForChunk.setProducedOffset(-1);
+              ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecordForChunk);
             }
 
-            // Write the manifest inside the top-level key
+            //produce the manifest inside the top-level key
             schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
             ByteBuffer manifest = ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(versionTopic, chunkedValueManifest));
             /**
@@ -1170,28 +1475,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * the padding in order for this trick to work.
              */
             manifest.position(SCHEMA_HEADER_LENGTH);
-            prependHeaderAndWriteToStorageEngine(versionTopic, partition, key, manifest, schemaId);
+
+            Put manifestPut = new Put();
+            manifestPut.putValue = manifest;
+            manifestPut.schemaId = schemaId;
+
+            ProducedRecord producedRecordForManifest = ProducedRecord.newPutRecordWithFuture(producedRecord.getConsumedOffset(),
+                key, manifestPut, producedRecord.getPersistedToDBFuture());
+            producedRecordForManifest.setProducedOffset(recordMetadata.offset());
+            ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecordForManifest);
+          }
+        } catch (Exception oe) {
+          boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
+          logger.error(consumerTaskId + " received exception in kafka callback thread EOP recevied: " + endOfPushReceived + " Topic: " + sourceConsumerRecord.topic() + " Partition: "
+              + sourceConsumerRecord.partition() + ", Offset: " + sourceConsumerRecord.offset() + " exception: ", e);
+          //If EOP is not receievd yet, set the ingestiontask exception so that ingestion will fail eventually.
+          if (!endOfPushReceived) {
+            ingestionTask.setLastProducerException(oe);
+          }
+          if (oe instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(oe);
           }
         }
-
-        // leader should keep track of the latest offset of the version topic
-        partitionConsumptionState.getOffsetRecord().setOffset(recordMetadata.offset());
-        // update the leader consumption offset
-        if (consumedOffset >= 0) {
-          partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(consumedOffset);
-        }
-        /**
-         * Check whether it's ready to serve after successfully produce a message.
-         *
-         * Reason behind adding check in Kafka producer callback:
-         * Only check whether it's ready to serve when consuming a message is not enough, especially for leader replica;
-         * for example, if the lag threshold is 100, leader has successfully consumed 1000 messages and successfully
-         * produced 800 messages, so currently the lag is 200 because the offset metadata will only be updated after
-         * successfully producing the messages; however, if the real-time topic doesn't receive any new messages since
-         * then, "isReadyToServe" will never be checked again, even though later the leader has successfully produced
-         * the rest 200 messages, so the leader replica will never be online.
-         */
-        readyToServeChecker.apply(partitionConsumptionState);
       }
     }
 
@@ -1202,4 +1508,5 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       this.chunks = chunks;
     }
   }
+
 }
