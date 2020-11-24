@@ -54,6 +54,9 @@ public class SchemaReader implements SchemaRetriever {
     this.storeClient = client;
     this.storeName = client.getStoreName();
     this.readerSchema = readerSchema;
+    if (readerSchema.isPresent()) {
+      AvroSchemaUtils.validateAvroSchemaStr(readerSchema.get());
+    }
   }
 
   @Override
@@ -261,7 +264,6 @@ public class SchemaReader implements SchemaRetriever {
     Schema alternativeWriterSchema = writerSchema;
     Schema readerSchemaCopy = readerSchema.get();
 
-    AvroSchemaUtils.validateAvroSchemaStr(readerSchemaCopy);
     try {
       if (AvroSchemaUtils.schemaResolveHasErrors(writerSchema, readerSchemaCopy)) {
         logger.info("Schema error detected during preemptive schema check for store " + storeName + " with writer schema id "
