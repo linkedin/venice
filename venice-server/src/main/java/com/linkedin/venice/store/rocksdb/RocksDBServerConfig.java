@@ -179,6 +179,7 @@ public class RocksDBServerConfig {
    * This is used to throttle flush and compaction.
    */
   public static final String ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND = "rocksdb.write.quota.bytes.per.second";
+  public static final String ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED = "rocksdb.auto.tuned.rate.limited.enabled";
 
   private final boolean rocksDBUseDirectReads;
 
@@ -223,6 +224,8 @@ public class RocksDBServerConfig {
   private final int cappedPrefixExtractorLength;
 
   private final long writeQuotaBytesPerSecond;
+  private final boolean autoTunedRateLimiterEnabled;
+
 
   private final int level0FileNumCompactionTrigger;
   private final int level0SlowdownWritesTrigger;
@@ -307,6 +310,7 @@ public class RocksDBServerConfig {
     this.databaseOpenOperationThrottle = props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, 3);
     this.cappedPrefixExtractorLength = props.getInt(CAPPED_PREFIX_EXTRACTOR_LENGTH, 16);
     this.writeQuotaBytesPerSecond = props.getSizeInBytes(ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND, 100L * 1024 * 1024); // 100MB by default
+    this.autoTunedRateLimiterEnabled = props.getBoolean(ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED, false);
     this.level0FileNumCompactionTrigger = props.getInt(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 40);
     this.level0SlowdownWritesTrigger = props.getInt(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 60);
     this.level0StopWritesTrigger = props.getInt(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 80);
@@ -469,5 +473,9 @@ public class RocksDBServerConfig {
 
   public long getWriteQuotaBytesPerSecond() {
     return writeQuotaBytesPerSecond;
+  }
+
+  public boolean isAutoTunedRateLimiterEnabled() {
+    return autoTunedRateLimiterEnabled;
   }
 }
