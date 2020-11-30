@@ -125,6 +125,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           // Parent controller needs config to route per-cluster requests such as job status
           // This dummy parent controller wont support such requests until we make this config configurable.
           String clusterWhiteList = "";
+          if (extraProps.containsKey(CHILD_CLUSTER_WHITELIST)) {
+            clusterWhiteList = extraProps.getString(CHILD_CLUSTER_WHITELIST);
+          }
           for (int dataCenterIndex = 0; dataCenterIndex < childControllers.length; dataCenterIndex++) {
             String childDataCenterName = "dc-" + dataCenterIndex;
             if (!clusterWhiteList.equals("")) {
@@ -153,7 +156,15 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentDataCenterName1, sslToKafka ? kafkaBrokerWrapper.getSSLAddress() : kafkaBrokerWrapper.getAddress());
           builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentDataCenterName1, kafkaBrokerWrapper.getZkAddress());
           builder.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentDataCenterName1);
-          builder.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
+
+          if (extraProps.containsKey(PARENT_KAFKA_CLUSTER_FABRIC_LIST)) {
+            nativeReplicationSourceFabricWhitelist = nativeReplicationSourceFabricWhitelist + "," + extraProps.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST);
+            builder.put(NATIVE_REPLICATION_FABRIC_WHITELIST, nativeReplicationSourceFabricWhitelist);
+            builder.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentDataCenterName1 + "," + extraProps.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST));
+          }
+          if (!extraProps.containsKey(NATIVE_REPLICATION_SOURCE_FABRIC)) {
+            builder.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
+          }
         }
 
         VeniceProperties props = builder.build();

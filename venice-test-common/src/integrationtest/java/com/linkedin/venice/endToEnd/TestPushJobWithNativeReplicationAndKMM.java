@@ -144,6 +144,9 @@ public class TestPushJobWithNativeReplicationAndKMM {
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
 
+    //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+    Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       // Current version should become 1
       for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
@@ -164,7 +167,7 @@ public class TestPushJobWithNativeReplicationAndKMM {
     });
   }
 
-  private void verifyDCConfigNativeRepl(ControllerClient controllerClient, String storeName, boolean enabled) {
+  public static void verifyDCConfigNativeRepl(ControllerClient controllerClient, String storeName, boolean enabled) {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertFalse(storeResponse.isError());

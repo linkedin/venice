@@ -1762,6 +1762,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     return versionTopicInfo.topic;
   }
 
+  public String getKafkaUrl() {
+    return versionTopicInfo.kafkaUrl;
+  }
+
   public String getInputDirectory() {
     return inputDirectory;
   }

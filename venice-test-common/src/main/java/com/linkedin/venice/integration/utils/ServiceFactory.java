@@ -86,7 +86,7 @@ public class ServiceFactory {
     return getKafkaBroker(ServiceFactory.getZkServer(), Optional.of(mockTime));
   }
 
-  static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
+  public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
     return getKafkaBroker(zkServerWrapper, Optional.empty());
   }
 

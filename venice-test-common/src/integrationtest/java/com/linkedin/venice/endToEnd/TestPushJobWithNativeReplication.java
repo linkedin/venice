@@ -125,6 +125,9 @@ public class TestPushJobWithNativeReplication {
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
 
+    //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+    Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       // Current version should become 1
       for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
