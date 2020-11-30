@@ -8,34 +8,16 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerFactory;
-import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.StartOfPush;
-import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Collections;
-import java.util.List;
 import java.util.Properties;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
-
-import java.io.IOException;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
@@ -150,79 +132,17 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     }
 
     if (CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)) == CompressionStrategy.ZSTD_WITH_DICT) {
-      ByteBuffer compressionDictionary = readDictionaryFromKafka(props);
+      String topicName = props.getString(TOPIC_PROP);
+      ByteBuffer compressionDictionary = DictionaryUtils.readDictionaryFromKafka(topicName, props);
       int compressionLevel = props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel());
 
       if (compressionDictionary != null && compressionDictionary.limit() > 0) {
-        String topicName = props.getString(TOPIC_PROP);
         this.compressor =
             CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, topicName, compressionDictionary.array(), compressionLevel);
       }
     } else {
       this.compressor =
           CompressorFactory.getCompressor(CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)));
-    }
-  }
-
-  private Properties getKafkaConsumerProps() {
-    Properties props = new Properties();
-    //This is a temporary fix for the issue described here
-    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
-    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    //Trying to avoid class loading via Kafka's ConfigDef class
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    return props;
-  }
-
-
-  /**
-   * This function reads the kafka topic for the store version for the Start Of Push message which contains the
-   * compression dictionary. Once the Start of Push message has been read, the consumer stops.
-   * @return The compression dictionary wrapped in a ByteBuffer, or null if no dictionary was present in the
-   * Start Of Push message.
-   */
-  private ByteBuffer readDictionaryFromKafka(VeniceProperties props) {
-    KafkaClientFactory kafkaClientFactory = new VeniceKafkaConsumerFactory(props);
-
-    try (KafkaConsumer<byte[], byte[]> consumer = kafkaClientFactory.getKafkaConsumer(getKafkaConsumerProps())) {
-      String topicName = props.getString(TOPIC_PROP);
-      List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
-      LOGGER.info("Consuming from topic: " + topicName + " till StartOfPush");
-      consumer.assign(partitions);
-      consumer.seekToBeginning(partitions);
-      while (true) {
-        ConsumerRecords<byte[], byte[]> records = consumer.poll(10 * Time.MS_PER_SECOND);
-        for (final ConsumerRecord<byte[], byte[]> record : records) {
-          KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-          KafkaKey kafkaKey = keySerializer.deserialize(topicName, record.key());
-
-          KafkaValueSerializer valueSerializer = new KafkaValueSerializer();
-          KafkaMessageEnvelope kafkaValue = valueSerializer.deserialize(topicName, record.value());
-          if (kafkaKey.isControlMessage()) {
-            ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-            ControlMessageType type = ControlMessageType.valueOf(controlMessage);
-            LOGGER.info(
-                "Consumed ControlMessage: " + type.name() + " from topic = " + record.topic() + " and partition = " + record.partition());
-            if (type == ControlMessageType.START_OF_PUSH) {
-              ByteBuffer compressionDictionary = ((StartOfPush) controlMessage.controlMessageUnion).compressionDictionary;
-              if (compressionDictionary == null || !compressionDictionary.hasRemaining()) {
-                LOGGER.warn(
-                    "No dictionary present in Start of Push message from topic = " + record.topic() + " and partition = " + record.partition());
-                return null;
-              }
-              return compressionDictionary;
-            }
-          } else {
-            LOGGER.error(
-                "Consumed non Control Message before Start of Push from topic = " + record.topic() + " and partition = " + record.partition());
-            return null;
-          }
-        }
-      }
     }
   }
 }
