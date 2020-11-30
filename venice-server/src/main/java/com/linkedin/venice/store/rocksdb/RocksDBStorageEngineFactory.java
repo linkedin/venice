@@ -27,11 +27,14 @@ import org.rocksdb.HistogramType;
 import org.rocksdb.LRUCache;
 import org.rocksdb.Priority;
 import org.rocksdb.RateLimiter;
+import org.rocksdb.RateLimiterMode;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileManager;
 import org.rocksdb.Statistics;
 import org.rocksdb.WriteBufferManager;
+
+import static org.rocksdb.RateLimiter.*;
 
 
 public class RocksDBStorageEngineFactory extends StorageEngineFactory {
@@ -131,7 +134,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
     this.rocksDBThrottler = new RocksDBThrottler(rocksDBServerConfig.getDatabaseOpenOperationThrottle());
-    this.rateLimiter = new RateLimiter(rocksDBServerConfig.getWriteQuotaBytesPerSecond());
+    this.rateLimiter = new RateLimiter(rocksDBServerConfig.getWriteQuotaBytesPerSecond(), DEFAULT_REFILL_PERIOD_MICROS,
+        DEFAULT_FAIRNESS, DEFAULT_MODE, rocksDBServerConfig.isAutoTunedRateLimiterEnabled());
   }
 
   public Optional<Statistics> getAggStatistics() {
