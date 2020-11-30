@@ -1,17 +1,18 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
-import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.server.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.stats.ThreadPoolStats;
-import com.linkedin.venice.storage.DiskHealthCheckService;
-import com.linkedin.venice.storage.MetadataRetriever;
+import com.linkedin.davinci.stats.ThreadPoolStats;
+import com.linkedin.davinci.storage.DiskHealthCheckService;
+import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -120,7 +121,7 @@ public class ListenerService extends AbstractVeniceService {
      * Netty shutdown gracefully is NOT working well for us since it will close all the connections right away.
      * By sleeping the configured period, Storage Node could serve all the requests, which are already received.
      *
-     * Since Storage Node will stop {@link com.linkedin.venice.helix.HelixParticipationService}
+     * Since Storage Node will stop {@link HelixParticipationService}
      * (disconnect from Zookeeper, which makes it unavailable in Venice Router) before Netty,
      * there shouldn't be a lot of requests coming during this grace period, otherwise, we need to tune the config.
      */

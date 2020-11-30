@@ -129,6 +129,16 @@ public class TestPushUtils {
       "    \"attributes_json\":\"{\\\"instance\\\":\\\"gobblin\\\",\\\"dumpdate\\\":1596776399999,\\\"isFull\\\":false,\\\"begin_date\\\":1596772800000,\\\"end_date\\\":1596776399999,\\\"total_records\\\":-1,\\\"isSharded\\\":false,\\\"isSecured\\\":false,\\\"permission_group\\\":\\\"\\\",\\\"datasource_colo\\\":\\\"prod-ltx1\\\",\\\"table_type\\\":\\\"SNAPSHOT_APPEND\\\",\\\"isDBChange\\\":true,\\\"validation_high_water\\\":-1,\\\"validation_drop_date\\\":-1,\\\"deleted_records\\\":0,\\\"full_dropdate\\\":0,\\\"base_dropdate\\\":1596700799999,\\\"lumos_operation\\\":\\\"QSB\\\",\\\"lumos_process_time\\\":1596780124566}\"\n" +
       "}";
 
+  public static final String USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"User\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"},  " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"\"}" +
+      "  ] " +
+      " } ";
+
   public static final String USER_SCHEMA_STRING_WITH_DEFAULT = "{" +
       "  \"namespace\" : \"example.avro\",  " +
       "  \"type\": \"record\",   " +

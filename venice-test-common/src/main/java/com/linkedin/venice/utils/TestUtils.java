@@ -180,6 +180,12 @@ public class TestUtils {
 
   public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,
       String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
+    return createVersionWithBatchData(controllerClient, storeName, keySchema, valueSchema, batchData,
+        HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+  }
+
+  public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,
+      String keySchema, String valueSchema, Stream<Map.Entry> batchData, int valueSchemaId) throws Exception {
     VersionCreationResponse response = controllerClient.requestTopicForWrites(
         storeName,
         1024,
@@ -191,12 +197,12 @@ public class TestUtils {
         Optional.empty(),
         Optional.empty());
     assertFalse(response.isError());
-    writeBatchData(response, keySchema, valueSchema, batchData);
+    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId);
     return response;
   }
 
   public static void writeBatchData(VersionCreationResponse response, String keySchema, String valueSchema,
-      Stream<Map.Entry> batchData) throws Exception {
+      Stream<Map.Entry> batchData, int valueSchemaId) throws Exception {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
@@ -216,7 +222,6 @@ public class TestUtils {
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
         VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer, venicePartitioner)) {
 
-      int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
       writer.broadcastStartOfPush(Collections.emptyMap());
       for (Map.Entry e : (Iterable<Map.Entry>) batchData::iterator) {
         writer.put(e.getKey(), e.getValue(), valueSchemaId).get();

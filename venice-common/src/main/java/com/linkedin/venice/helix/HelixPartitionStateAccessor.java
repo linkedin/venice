@@ -76,7 +76,7 @@ public abstract class HelixPartitionStateAccessor {
   /**
    * Only used in test now
    */
-  void setCustomizedStateProvider(CustomizedStateProvider customizedStateProvider) {
+  public void setCustomizedStateProvider(CustomizedStateProvider customizedStateProvider) {
     this.customizedStateProvider = customizedStateProvider;
   }
 }

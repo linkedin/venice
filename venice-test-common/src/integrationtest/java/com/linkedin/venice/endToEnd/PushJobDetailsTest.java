@@ -43,7 +43,7 @@ import org.testng.annotations.Test;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
-import static com.linkedin.venice.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 

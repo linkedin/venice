@@ -1,9 +1,9 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.venice.storage.chunking.SpecificRecordChunkingAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import org.apache.avro.specific.SpecificRecord;

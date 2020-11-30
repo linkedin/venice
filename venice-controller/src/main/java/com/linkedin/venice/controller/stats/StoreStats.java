@@ -15,7 +15,7 @@ public class StoreStats extends AbstractVeniceStats {
   public StoreStats(String storeName, MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
     super(metricsRepository, storeName);
 
-    registerSensor("data_age_ms", new Gauge(() -> {
+    registerSensorIfAbsent("data_age_ms", new Gauge(() -> {
       try {
         Store store = storeRepository.getStoreOrThrow(storeName);
         long now = System.currentTimeMillis();

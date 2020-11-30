@@ -1,11 +1,10 @@
 package com.linkedin.venice.restart;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.meta.PersistenceType;
 import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 
 
 public class TestRestartServerWithChecksumVerification extends TestRestartServerDuringIngestion {

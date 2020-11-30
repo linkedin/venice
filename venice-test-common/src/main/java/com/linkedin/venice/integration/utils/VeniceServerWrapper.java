@@ -2,13 +2,13 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
-import static com.linkedin.venice.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
-import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.davinci.VeniceConfigLoader;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;

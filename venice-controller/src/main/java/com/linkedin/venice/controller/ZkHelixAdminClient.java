@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.stats.ZkClientStatusStats;

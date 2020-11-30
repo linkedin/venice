@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.storage.DiskHealthCheckService;
+import com.linkedin.davinci.storage.DiskHealthCheckService;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 

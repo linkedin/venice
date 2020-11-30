@@ -4,7 +4,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.venice.MetadataStoreBasedStoreRepository;
+import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -13,6 +13,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -21,6 +22,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
@@ -55,6 +57,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -75,6 +78,9 @@ import static org.testng.Assert.*;
 
 public class SystemStoreTest {
   private static final Logger logger = Logger.getLogger(SystemStoreTest.class);
+  private final static String INT_KEY_SCHEMA = "\"int\"";
+  private final static String INT_VALUE_SCHEMA = "\"int\"";
+
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper parentZk;
@@ -110,7 +116,7 @@ public class SystemStoreTest {
     parentZk = ServiceFactory.getZkServer();
     parentController =
         ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), venice.getKafka(),
-            new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
+            venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
             new VeniceProperties(controllerConfig), false);
     participantMessageStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName());
     controllerClient = venice.getControllerClient();
@@ -136,7 +142,6 @@ public class SystemStoreTest {
     parentControllerClient.close();
     parentController.close();
     venice.close();
-    parentZk.close();
   }
 
   @Test
@@ -273,7 +278,7 @@ public class SystemStoreTest {
         StoreMetadataValue.class).setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setD2Client(testMetadataStoreD2Client).setVeniceURL(venice.getZk().getAddress());
     // Create MetadataStoreBasedStoreRepository
-    MetadataStoreBasedStoreRepository storeRepository = new MetadataStoreBasedStoreRepository(clientConfig);
+    MetadataStoreBasedStoreRepository storeRepository = MetadataStoreBasedStoreRepository.getInstance(clientConfig, new VeniceProperties());
     // Create test listener to monitor store repository changes.
     AtomicInteger creationCount = new AtomicInteger(0);
     AtomicInteger changeCount = new AtomicInteger(0);
@@ -454,6 +459,67 @@ public class SystemStoreTest {
           .isTopicTruncated(Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName))));
     });
 
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testDaVinciBootstrappedMetadataStore() throws Exception {
+    // Create a new Venice store and materialize the corresponding metadata system store
+    String regularVeniceStore = TestUtils.getUniqueString("venice_store_davinci");
+    assertFalse(parentControllerClient.createNewStore(regularVeniceStore, "venice-test", INT_KEY_SCHEMA,
+        USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT).isError());
+    String metadataStoreTopic = Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStore),
+        metadataStoreVersionNumber);
+    // The corresponding metadata store should be materialized automatically.
+    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
+        Optional.empty());
+
+    final int keyCount = 10;
+    final GenericRecord value = new GenericData.Record(Schema.parse(USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
+    value.put("id", "userSchemaStringSimple");
+    value.put("name", "testName");
+    VersionCreationResponse response = TestUtils.createVersionWithBatchData(parentControllerClient, regularVeniceStore,
+        INT_KEY_SCHEMA, USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT,
+        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)));
+    // Verify the data can be ingested by classic Venice before proceeding.
+    TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
+        TimeUnit.SECONDS, Optional.empty());
+    venice.refreshAllRouterMetaData();
+
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(CLIENT_METADATA_SYSTEM_STORE_VERSION, metadataStoreVersionNumber)
+        .build();
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setRocksDBMemoryLimit(1024 * 1024 * 1024);
+    D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2, new MetricsRepository(), backendConfig)) {
+      DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(regularVeniceStore, daVinciConfig);
+      client.subscribeAll().get();
+      for (int k = 0; k < keyCount; k++) {
+        assertEquals(client.get(k).get(), value);
+      }
+
+      // Evolve the schema and verify the new push with the new schema will eventually be reflected
+      SchemaResponse schemaResponse =
+          parentControllerClient.addValueSchema(regularVeniceStore, USER_SCHEMA_STRING_WITH_DEFAULT);
+      assertFalse(schemaResponse.isError());
+      final GenericRecord newValue = new GenericData.Record(Schema.parse(USER_SCHEMA_STRING_WITH_DEFAULT));
+      newValue.put("id", "userSchemaString");
+      newValue.put("name", "testName");
+      newValue.put("age", 20);
+      TestUtils.createVersionWithBatchData(parentControllerClient, regularVeniceStore,
+          INT_KEY_SCHEMA, USER_SCHEMA_STRING_WITH_DEFAULT,
+          IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)), schemaResponse.getId());
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        for (int k = 0; k < keyCount; k++) {
+          assertEquals(client.get(k).get(), newValue);
+        }
+      });
+      client.unsubscribeAll();
+    }
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

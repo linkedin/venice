@@ -1,12 +1,14 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.davinci.stats.DIVStats;
+import com.linkedin.davinci.stats.DIVStatsReporter;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
+import static com.linkedin.davinci.stats.StatsErrorCode.NULL_DIV_STATS;
 
 
 public class DIVStatsReporterTest {

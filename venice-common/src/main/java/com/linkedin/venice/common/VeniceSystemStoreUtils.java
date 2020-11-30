@@ -11,13 +11,14 @@ public class VeniceSystemStoreUtils {
   public static final String PARTICIPANT_STORE = "participant_store";
   public static final String PUSH_JOB_DETAILS_STORE = "push_job_details_store";
 
+  public static final int DEFAULT_SYSTEM_STORE_PARTITION_COUNT = 1;
+  public static final long DEFAULT_SYSTEM_STORE_LAG_THRESHOLD = 100;
+  public static final long DEFAULT_SYSTEM_STORE_REWIND_SECONDS = 7 * Time.SECONDS_PER_DAY;
+
   private static final String PARTICIPANT_STORE_PREFIX = String.format(Store.SYSTEM_STORE_FORMAT, PARTICIPANT_STORE);
   private static final String PARTICIPANT_STORE_FORMAT = PARTICIPANT_STORE_PREFIX + "_cluster_%s";
   private static final String PUSH_JOB_DETAILS_STORE_NAME =
       String.format(Store.SYSTEM_STORE_FORMAT, PUSH_JOB_DETAILS_STORE);
-  private static final int DEFAULT_SYSTEM_STORE_PARTITION_COUNT = 1;
-  private static final long DEFAULT_SYSTEM_STORE_LAG_THRESHOLD = 100;
-  private static final long DEFAULT_SYSTEM_STORE_REWIND_SECONDS = 7 * Time.SECONDS_PER_DAY;
   private static final String SEPARATOR = "_";
 
   public static String getParticipantStoreNameForCluster(String clusterName) {

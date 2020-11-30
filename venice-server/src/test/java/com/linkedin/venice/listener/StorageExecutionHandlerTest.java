@@ -1,18 +1,18 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.storage.DiskHealthCheckService;
-import com.linkedin.venice.storage.MetadataRetriever;
-import com.linkedin.venice.server.StorageEngineRepository;
-import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.record.ValueRecord;
-import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.storage.DiskHealthCheckService;
+import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;

@@ -1,6 +1,19 @@
 package com.linkedin.davinci;
 
-import com.linkedin.venice.MetadataStoreBasedStoreRepository;
+import com.linkedin.davinci.ingestion.IngestionReportListener;
+import com.linkedin.davinci.ingestion.IngestionRequestClient;
+import com.linkedin.davinci.ingestion.IngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.IngestionUtils;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -10,13 +23,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.ingestion.IngestionReportListener;
-import com.linkedin.venice.ingestion.IngestionRequestClient;
-import com.linkedin.venice.ingestion.IngestionStorageMetadataService;
-import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
-import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -27,22 +34,15 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.server.VeniceConfigLoader;
-import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
-import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
-import com.linkedin.venice.storage.StorageEngineMetadataService;
-import com.linkedin.venice.storage.StorageMetadataService;
-import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
@@ -59,11 +59,13 @@ import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static java.lang.Thread.*;
 
 
 public class DaVinciBackend implements Closeable {
   private static final Logger logger = Logger.getLogger(DaVinciBackend.class);
+  private static final int DEFAULT_PUSH_STATUS_HEARTBEAT_PERIOD_IN_SECONDS = 10;
 
   private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;
@@ -85,16 +87,11 @@ public class DaVinciBackend implements Closeable {
   private Process isolatedIngestionService;
   private PushStatusStoreWriter pushStatusStoreWriter;
 
-  public DaVinciBackend(
-      ClientConfig clientConfig,
-      VeniceConfigLoader configLoader,
-      String instanceName,
-      boolean useSystemStoreBasedRepository,
-      long systemStoreBasedRepositoryRefreshIntervalInSeconds,
-      long pushStatusStoreHeartbeatIntervalInSeconds) {
-
+  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, String instanceName,
+      VeniceProperties backendConfig) {
     this.configLoader = configLoader;
-    this.pushStatusStoreHeartbeatIntervalInSeconds = pushStatusStoreHeartbeatIntervalInSeconds;
+    this.pushStatusStoreHeartbeatIntervalInSeconds =
+        backendConfig.getLong(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_PERIOD_IN_SECONDS);
 
     metricsRepository =
         Optional.ofNullable(clientConfig.getMetricsRepository())
@@ -107,9 +104,9 @@ public class DaVinciBackend implements Closeable {
     String clusterName = configLoader.getVeniceClusterConfig().getClusterName();
     ClusterInfoProvider clusterInfoProvider;
 
-    if (useSystemStoreBasedRepository) {
+    if (backendConfig.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false)) {
       MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository =
-          new MetadataStoreBasedStoreRepository(clientConfig, systemStoreBasedRepositoryRefreshIntervalInSeconds);
+          MetadataStoreBasedStoreRepository.getInstance(clientConfig, backendConfig);
       clusterInfoProvider = metadataStoreBasedStoreRepository;
       storeRepository = metadataStoreBasedStoreRepository;
       schemaRepository = metadataStoreBasedStoreRepository;
@@ -131,7 +128,8 @@ public class DaVinciBackend implements Closeable {
     final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
 
-    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
+    AggVersionedStorageEngineStats
+        storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
     rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
     storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);

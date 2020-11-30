@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.davinci.stats.ThreadPoolStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.BlockingQueue;

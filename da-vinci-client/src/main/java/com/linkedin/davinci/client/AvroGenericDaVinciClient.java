@@ -1,7 +1,10 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
@@ -12,10 +15,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.server.VeniceConfigLoader;
-import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.venice.storage.chunking.GenericChunkingAdapter;
-import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -47,7 +46,6 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 
 public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClient.class);
-  private static final int DEFAULT_PUSH_STATUS_HEARTBEAT_PERIOD_IN_SECONDS = 10;
 
   protected final DaVinciConfig daVinciConfig;
   protected final ClientConfig clientConfig;
@@ -288,22 +286,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     return new VeniceConfigLoader(config, config);
   }
 
-  private static synchronized void initBackend(
-      ClientConfig clientConfig,
-      VeniceConfigLoader configLoader,
-      String instanceName,
-      boolean useSystemStoreBasedRepository,
-      long systemStoreBasedRepositoryRefreshIntervalInSeconds,
-      long pushStatusStoreHeartbeatIntervalInSeconds) {
+  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
+      String instanceName, VeniceProperties backendConfig) {
     if (daVinciBackend == null) {
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(
-          clientConfig,
-          configLoader,
-          instanceName,
-          useSystemStoreBasedRepository,
-          systemStoreBasedRepositoryRefreshIntervalInSeconds,
-          pushStatusStoreHeartbeatIntervalInSeconds),
-          backend -> {
+      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, instanceName, backendConfig), backend -> {
         daVinciBackend = null;
         backend.close();
       });
@@ -319,13 +305,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
     logger.info("Starting Da Vinci client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader, instanceName,
-        backendConfig.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false),
-        backendConfig.getLong(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
-            MetadataStoreBasedStoreRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS),
-        backendConfig.getLong(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_PERIOD_IN_SECONDS)
-    );
-
+    initBackend(clientConfig, configLoader, instanceName, backendConfig);
     try {
       storeBackend = daVinciBackend.get().getStoreOrThrow(getStoreName());
       daVinciBackend.get().registerRocksDBMemoryLimit(getStoreName(), daVinciConfig.getRocksDBMemoryLimit());

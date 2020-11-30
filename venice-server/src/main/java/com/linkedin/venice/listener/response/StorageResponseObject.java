@@ -1,11 +1,8 @@
 package com.linkedin.venice.listener.response;
 
-import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.store.record.ValueRecord;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.HttpResponseStatus;
-
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
 public class StorageResponseObject extends ReadResponse {
