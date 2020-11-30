@@ -191,4 +191,12 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
             whitelistConfigForKMM);
     mirrorMakers.add(mirrorMakerWrapper);
   }
+
+  public void addMirrorMakerBetween(KafkaBrokerWrapper srcKafka, KafkaBrokerWrapper dstKafka,
+      String whitelistConfigForKMM) {
+    MirrorMakerWrapper mirrorMakerWrapper =
+        ServiceFactory.getKafkaMirrorMaker(srcKafka, dstKafka, whitelistConfigForKMM);
+    mirrorMakers.add(mirrorMakerWrapper);
+  }
+
 }
