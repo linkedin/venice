@@ -1,5 +1,6 @@
 package com.linkedin.venice.server;
 
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;

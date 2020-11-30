@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener.response;
 
+import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;

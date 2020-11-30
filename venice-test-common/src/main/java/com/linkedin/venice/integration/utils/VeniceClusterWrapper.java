@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
@@ -801,7 +802,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       if (response.isError()) {
         throw new VeniceException(response.getError());
       }
-      TestUtils.writeBatchData(response, keySchema, valueSchema, batchData);
+      TestUtils.writeBatchData(response, keySchema, valueSchema, batchData, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
 
       int versionId = response.getVersion();
       waitVersion(storeName, versionId);

@@ -1,15 +1,16 @@
 package com.linkedin.venice.cleaner;
 
+import com.linkedin.davinci.kafka.consumer.ParticipantStoreConsumptionTask;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.server.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.LeakedResourceCleanerStats;
-import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -128,7 +129,7 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
             if (!store.getVersion(version).isPresent() &&  // The version has already been deleted
                 /**
                  * This is to avoid the race condition since Version will be deleted in Controller first and the
-                 * actual cleanup in storage node is being handled in {@link com.linkedin.venice.kafka.consumer.ParticipantStoreConsumptionTask}.
+                 * actual cleanup in storage node is being handled in {@link ParticipantStoreConsumptionTask}.
                  *
                  * If there is no version existed in ZK and no running ingestion task for current resource, it
                  * is safe to be deleted.

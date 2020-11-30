@@ -1,9 +1,11 @@
 package com.linkedin.davinci;
 
-import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.davinci.ingestion.IngestionRequestClient;
+import com.linkedin.davinci.ingestion.IngestionUtils;
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.ingestion.IngestionRequestClient;
-import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
@@ -12,8 +14,6 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -38,7 +38,7 @@ import java.util.stream.IntStream;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.ingestion.IngestionUtils.*;
+import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 
 
 public class VersionBackend {

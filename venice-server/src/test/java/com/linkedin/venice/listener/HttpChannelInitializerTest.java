@@ -3,7 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
-import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import io.tehuti.metrics.MetricsRepository;

@@ -1,7 +1,8 @@
 package com.linkedin.venice.stats;
 
 
-import com.linkedin.venice.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;

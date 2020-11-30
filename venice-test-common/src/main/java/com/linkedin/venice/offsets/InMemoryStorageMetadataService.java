@@ -2,7 +2,7 @@ package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import org.apache.log4j.Logger;
 
 import java.util.Optional;

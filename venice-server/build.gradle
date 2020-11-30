@@ -45,9 +45,8 @@ dependencies {
   implementation libraries.rocksdbjni
   implementation libraries.avroUtilFastserde
 
-  implementation project(':venice-consumer')
   implementation project(':venice-common')
-  implementation project(':venice-controller')
+  implementation project(':da-vinci-client')
   implementation (project(':venice-thin-client')) {
     exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
   }

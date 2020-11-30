@@ -21,7 +21,7 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.davinci.stats.StatsErrorCode;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -57,8 +57,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.config.BlockingQueueType.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.davinci.config.BlockingQueueType.*;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 

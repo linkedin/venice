@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
@@ -133,7 +134,7 @@ public class MirrorMakerTest {
   }
 
   /**
-   * Copied from {@link com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService}
+   * Copied from {@link KafkaStoreIngestionService}
    * @return Properties Kafka properties corresponding to the venice store.
    */
   private static Properties getKafkaConsumerProperties(String kafkaBootstrapServers) {

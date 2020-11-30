@@ -1346,4 +1346,11 @@ public class ConfigKeys {
    * time, it will be considered as stale.
    */
   public static final String PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS = "push.status.store.heartbeat.expiration.seconds";
+
+  /*
+   * Temporary config to specify the version number of the corresponding metadata system store. This config will retire
+   * once multi-versioned metadata system store is properly supported. Setting the config will enable DaVinci to
+   * bootstrap the metadata system store locally.
+   */
+  public static final String CLIENT_METADATA_SYSTEM_STORE_VERSION = "client.metadata.system.store.version";
 }

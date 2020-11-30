@@ -4,7 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
-import com.linkedin.venice.listener.response.ReadResponse;
+import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
