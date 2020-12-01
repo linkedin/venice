@@ -95,10 +95,16 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     }
 
     public long getFollowerOffsetLag() {
+      if (ingestionTask == null) {
+        return INACTIVE_STORE_INGESTION_TASK.code;
+      }
       return ingestionTask.getFollowerOffsetLag();
     }
 
     public int getWriteComputeErrorCode() {
+      if (ingestionTask == null) {
+        return INACTIVE_STORE_INGESTION_TASK.code;
+      }
       return ingestionTask.getWriteComputeErrorCode();
     }
   }
