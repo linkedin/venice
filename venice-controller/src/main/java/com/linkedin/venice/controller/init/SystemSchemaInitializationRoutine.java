@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.init;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -12,6 +13,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 
@@ -24,15 +26,26 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializationRoutine {
   private static final Logger LOGGER = Logger.getLogger(SystemSchemaInitializationRoutine.class);
+  private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
 
   private final AvroProtocolDefinition protocolDefinition;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final VeniceHelixAdmin admin;
+  private final Optional<Schema> keySchema;
+  private final Optional<UpdateStoreQueryParams> storeMetadataUpdate;
 
   public SystemSchemaInitializationRoutine(AvroProtocolDefinition protocolDefinition, VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin) {
+    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty());
+  }
+
+  public SystemSchemaInitializationRoutine(AvroProtocolDefinition protocolDefinition,
+      VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin,
+      Optional<Schema> keySchema, Optional<UpdateStoreQueryParams> storeMetadataUpdate) {
     this.protocolDefinition = protocolDefinition;
     this.multiClusterConfigs = multiClusterConfigs;
     this.admin = admin;
+    this.keySchema = keySchema;
+    this.storeMetadataUpdate = storeMetadataUpdate;
   }
 
   @Override
@@ -66,10 +79,14 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
           if (null == firstSchema) {
             throw new VeniceException("Invalid protocol definition: '" + protocolDefinition.name() + "' does not have a version 1");
           }
-          String firstKeySchemaStr = "\"int\""; // ignored
+          String firstKeySchemaStr = keySchema.isPresent() ? keySchema.get().toString() : DEFAULT_KEY_SCHEMA_STR;
           String firstSchemaStr = firstSchema.toString();
           admin.addStore(clusterToInit, systemStoreName, VeniceConstants.SYSTEM_STORE_OWNER, firstKeySchemaStr,
               firstSchemaStr, true);
+          // Update the default store config
+          if (storeMetadataUpdate.isPresent()) {
+            admin.updateStore(clusterToInit, systemStoreName, storeMetadataUpdate.get());
+          }
 
           LOGGER.info("System store '" + systemStoreName + "' has been created.");
         } else {
@@ -79,6 +96,19 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
            */
           LOGGER.info("Unexpected: The system store '" + systemStoreName + "' was not found in cluster discovery but"
               + " it was then found when querying directly for it...");
+        }
+      }
+
+      if (keySchema.isPresent()) {
+        /**
+         * Only verify the key schema if it is explicitly specified by the caller, and we don't care about the dummy key schema.
+         */
+        SchemaEntry keySchemaEntry = admin.getKeySchema(clusterToInit, systemStoreName);
+        if (!keySchemaEntry.getSchema().equals(keySchema.get())) {
+          LOGGER.error("Key Schema of '" + systemStoreName + "' in cluster: " + clusterToInit +
+              " is already registered but it is INCONSISTENT with the local definition.\n"
+              + "Already registered: " + keySchemaEntry.getSchema().toString(true) + "\n"
+              + "Local definition: " + keySchema.get().toString(true));
         }
       }
 

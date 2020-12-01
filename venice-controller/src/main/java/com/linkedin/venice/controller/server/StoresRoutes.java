@@ -485,7 +485,8 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setName(request.queryParams(NAME));
 
         List<String> lFEnabledStores = admin.getAllStores(veniceResponse.getCluster()).stream()
-            .filter(store -> store.isLeaderFollowerModelEnabled())
+            // Skip all the system stores
+            .filter(store -> (store.isLeaderFollowerModelEnabled() && !store.isSystemStore()))
             .map(Store::getName)
             .collect(Collectors.toList());
 
@@ -526,6 +527,9 @@ public class StoresRoutes extends AbstractRoute {
         } else {
           throw new VeniceException("Unsupported store type." + storeType);
         }
+
+        // filter out all the system stores
+        storeCandidates = storeCandidates.stream().filter(store -> !store.isSystemStore()).collect(Collectors.toList());
 
         boolean isLFEnabled = Utils.parseBooleanFromString(request.queryParams(STATUS), "isLFEnabled");
         storeCandidates.forEach(store -> admin.setLeaderFollowerModelEnabled(cluster, store.getName(), isLFEnabled));
