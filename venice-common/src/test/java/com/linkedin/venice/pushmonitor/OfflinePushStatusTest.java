@@ -51,6 +51,26 @@ public class OfflinePushStatusTest {
   }
 
   @Test
+  public void testIsReadyToStartBufferReplay() {
+    // Make sure buffer replay can be started in the case where current replica status is PROGRESS but END_OF_PUSH_RECEIVED was already received
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(kafkaTopic, 1, replicationFactor, strategy);
+    PartitionStatus partitionStatus = new PartitionStatus(0);
+    List<ReplicaStatus> replicaStatuses = new ArrayList<>(replicationFactor);
+    for (int i = 0; i < replicationFactor; i++) {
+      replicaStatuses.add(new ReplicaStatus(Integer.toString(i)));
+    }
+    partitionStatus.setReplicaStatuses(replicaStatuses);
+    for (int i = 0; i < replicationFactor; i++) {
+      partitionStatus.updateReplicaStatus(Integer.toString(i), END_OF_PUSH_RECEIVED);
+      partitionStatus.updateReplicaStatus(Integer.toString(i), PROGRESS);
+    }
+    offlinePushStatus.setPartitionStatuses(Collections.singletonList(partitionStatus));
+    Assert.assertTrue(offlinePushStatus.isReadyToStartBufferReplay(),
+        "Buffer replay should be allowed to start since END_OF_PUSH_RECEIVED was already received");
+  }
+
+  @Test
   public void testSetPartitionStatus() {
     OfflinePushStatus offlinePushStatus =
         new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
