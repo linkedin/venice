@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -344,11 +345,31 @@ public class OfflinePushStatus {
     if(!getCurrentStatus().equals(ExecutionStatus.STARTED)) {
       return false;
     }
-    return getPartitionStatuses().stream()
-        // For all partitions
-        .allMatch(partitionStatus -> partitionStatus.getReplicaStatuses().stream()
-            // There must be at least one replica which has received the EOP
-            .anyMatch(replicaStatus -> replicaStatus.getCurrentStatus() == ExecutionStatus.END_OF_PUSH_RECEIVED));
+    boolean isReady = true;
+    for (PartitionStatus partitionStatus : getPartitionStatuses()) {
+      boolean proceedToNextPartition = false;
+      for (ReplicaStatus replicaStatus : partitionStatus.getReplicaStatuses()) {
+        if (replicaStatus.getCurrentStatus() == END_OF_PUSH_RECEIVED) {
+          proceedToNextPartition = true;
+          break;
+        } else {
+          // If the previous status contains END_OF_PUSH_RECEIVED then the partition is also ready to start buffer replay.
+          // We don't have to worry about duplicate start buffer replay message scenario here because it's already
+          // handled by the check on the overall status equals to STARTED.
+          for (StatusSnapshot snapshot : replicaStatus.getStatusHistory()) {
+            if (snapshot.getStatus() == END_OF_PUSH_RECEIVED) {
+              proceedToNextPartition = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!proceedToNextPartition) {
+        isReady = false;
+        break;
+      }
+    }
+    return isReady;
   }
 
   public Map<String, String> getPushProperties() {
