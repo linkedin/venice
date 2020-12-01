@@ -423,8 +423,21 @@ public class DaVinciBackend implements Closeable {
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
-      pushStatusStoreWriter.writePushStatus(version.getStoreName(), version.getNumber(), subPartition, status, incrementalPushVersion);
+      pushStatusStoreWriter.writePushStatus(version.getStoreName(), version.getNumber(), subPartition, status,
+          incrementalPushVersion);
     }
+  }
+
+  Optional<Version> getCurrentVersion(String storeName) {
+    try {
+      return getCurrentVersion(storeRepository.getStoreOrThrow(storeName));
+    } catch (VeniceNoStoreException e) {
+      return Optional.empty();
+    }
+  }
+
+  static Optional<Version> getCurrentVersion(Store store) {
+    return store.getVersion(store.getCurrentVersion());
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
