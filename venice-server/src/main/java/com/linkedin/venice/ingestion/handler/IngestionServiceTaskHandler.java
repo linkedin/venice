@@ -28,8 +28,8 @@ import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionAction;
-import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
@@ -281,9 +281,9 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
       switch (IngestionCommandType.valueOf(ingestionTaskCommand.commandType)) {
         case START_CONSUMPTION:
-          IngestionIsolationMode isolationMode = ingestionService.getConfigLoader().getVeniceServerConfig().getIngestionIsolationMode();
-          if (isolationMode.equals(IngestionIsolationMode.NO_OP)) {
-            throw new VeniceException("Ingestion Isolation Mode is set as NO_OP(not enabled).");
+          IngestionMode ingestionMode = ingestionService.getConfigLoader().getVeniceServerConfig().getIngestionMode();
+          if (!ingestionMode.equals(IngestionMode.ISOLATED)) {
+            throw new VeniceException("Ingestion isolation is not enabled.");
           }
           // Subscribe to the store in store repository.
           String storeName = Version.parseStoreFromKafkaTopicName(topicName);

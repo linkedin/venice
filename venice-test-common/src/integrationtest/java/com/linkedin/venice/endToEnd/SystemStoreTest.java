@@ -66,7 +66,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.meta.IngestionIsolationMode.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.meta.VersionStatus.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
@@ -426,7 +426,7 @@ public class SystemStoreTest {
             .put(DATA_BASE_PATH, baseDataPath)
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-            .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+            .put(SERVER_INGESTION_MODE, ISOLATED)
             .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
             .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
             .build();

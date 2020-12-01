@@ -3,7 +3,7 @@ package com.linkedin.venice.config;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
-import com.linkedin.venice.meta.IngestionIsolationMode;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.queues.FairBlockingQueue;
@@ -200,7 +200,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int cacheWarmingThreadPoolSize;
   private final long delayReadyToServeMS;
 
-  private final IngestionIsolationMode ingestionIsolationMode;
+  private final IngestionMode ingestionMode;
   private final int ingestionServicePort;
   private final int ingestionApplicationPort;
   private final boolean databaseChecksumVerificationEnabled;
@@ -307,7 +307,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     cacheWarmingThreadPoolSize = serverProperties.getInt(SERVER_CACHE_WARMING_THREAD_POOL_SIZE, 4);
     delayReadyToServeMS = serverProperties.getLong(SERVER_DELAY_REPORT_READY_TO_SERVE_MS, 0); // by default no delay
 
-    ingestionIsolationMode = IngestionIsolationMode.valueOf(serverProperties.getString(SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.NO_OP.toString()));
+    ingestionMode = IngestionMode.valueOf(serverProperties.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString()));
     ingestionServicePort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_SERVICE_PORT, 27015);
     ingestionApplicationPort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, 27016);
     databaseChecksumVerificationEnabled = serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
@@ -565,8 +565,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return delayReadyToServeMS;
   }
 
-  public IngestionIsolationMode getIngestionIsolationMode() {
-    return ingestionIsolationMode;
+  public IngestionMode getIngestionMode() {
+    return ingestionMode;
   }
 
   public int getIngestionServicePort() {

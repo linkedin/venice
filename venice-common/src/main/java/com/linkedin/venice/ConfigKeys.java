@@ -424,10 +424,10 @@ public class ConfigKeys {
   public static final String SERVER_DELAY_REPORT_READY_TO_SERVE_MS = "server.delay.report.ready.to.serve.ms";
 
   /**
-   * Ingestion isolation mode in target storage instance.
+   * Ingestion mode in target storage instance.
    * This will be applied to Da Vinci and Storage Node.
    */
-  public static final String SERVER_INGESTION_ISOLATION_MODE = "server.ingestion.isolation.mode";
+  public static final String SERVER_INGESTION_MODE = "server.ingestion.mode";
 
   /**
    * Port number for ingestion listener. For Parent/Child mode, it will be used by child process. For SplitService mode,
