@@ -21,7 +21,6 @@ import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
@@ -63,7 +62,7 @@ import org.testng.internal.thread.ThreadTimeoutException;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
-import static com.linkedin.venice.meta.IngestionIsolationMode.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
 import static org.testng.Assert.*;
 
@@ -206,8 +205,8 @@ public class DaVinciClientTest {
     int servicePort = getFreePort();
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, baseDataPath)
-        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(SERVER_INGESTION_MODE, ISOLATED)
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .build();
@@ -264,8 +263,8 @@ public class DaVinciClientTest {
     int servicePort = getFreePort();
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(DATA_BASE_PATH, baseDataPath)
-            .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-            .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD)
+            .put(PERSISTENCE_TYPE, ROCKS_DB)
+            .put(SERVER_INGESTION_MODE, ISOLATED)
             .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
             .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
             .build();
@@ -275,7 +274,6 @@ public class DaVinciClientTest {
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
       client.subscribe(Collections.singleton(emptyPartition)).get();
-      //Utils.sleep(1000);
       for (int i = 0; i < KEY_COUNT; i++) {
         final int key = i;
         assertThrows(VeniceException.class, () -> client.get(key).get());
@@ -290,7 +288,6 @@ public class DaVinciClientTest {
         }
       });
     }
-    //Utils.sleep(1000);
     // Restart Da Vinci client to test bootstrap logic.
     d2Client = new D2ClientBuilder()
         .setZkHosts(cluster.getZk().getAddress())
@@ -538,7 +535,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+        .put(SERVER_INGESTION_MODE, ISOLATED)
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .build();
@@ -562,7 +559,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_ISOLATION_MODE, PARENT_CHILD)
+        .put(SERVER_INGESTION_MODE, ISOLATED)
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .build();

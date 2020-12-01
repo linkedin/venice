@@ -20,7 +20,7 @@ import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
-import com.linkedin.venice.meta.IngestionIsolationMode;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.meta.Store;
@@ -131,7 +131,7 @@ public class DaVinciBackend implements Closeable {
             .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
 
     // TODO: May need to reorder the object to make it looks cleaner.
-    storageMetadataService = configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)
+    storageMetadataService = configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)
         ? new IngestionStorageMetadataService(configLoader.getVeniceServerConfig().getIngestionServicePort(), partitionStateSerializer)
         : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
 
@@ -151,7 +151,7 @@ public class DaVinciBackend implements Closeable {
     ingestionService.addCommonNotifier(ingestionListener);
     Map<String, Pair<Version, Set<Integer>>> bootstrapStoreNameToVersionPartitionsMap = new HashMap<>();
     // Start ingestion service in child process and ingestion listener service.
-    if (configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
       /**
        * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
        * record all store versions that are up-to-date and close all storage engines. This will make sure child process
@@ -176,7 +176,6 @@ public class DaVinciBackend implements Closeable {
           }
         }
       };
-
 
       try {
         ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort, partitionStateSerializer);
@@ -228,7 +227,7 @@ public class DaVinciBackend implements Closeable {
       StoreBackend store = getStoreOrThrow(storeName);
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
       Set<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
-      if (configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+      if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
         logger.info("Will bootstrap store " + storeName + " with version " + version.kafkaTopicName() + " with partitions: " + partitions);
         // If ingestion isolation is turned on, we will not subscribe to versions immediately, but instead stores all versions of interest.
         bootstrapStoreNameToVersionPartitionsMap.put(storeName, new Pair<>(version, partitions));
@@ -237,7 +236,7 @@ public class DaVinciBackend implements Closeable {
       }
     }
 
-    if (configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
       // Close all opened store engines so child process can open them.
       logger.info(
           "Storage service has " + storageService.getStorageEngineRepository().getAllLocalStorageEngines().size() + " storage engine before clean up.");

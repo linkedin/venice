@@ -8,14 +8,13 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.meta.IngestionAction;
-import com.linkedin.venice.meta.IngestionIsolationMode;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpRequest;
@@ -32,7 +31,7 @@ import org.apache.avro.io.BinaryDecoder;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ingestion.IngestionUtils.*;
-import static java.lang.Thread.*;
+
 
 public class VersionBackend {
   private static final Logger logger = Logger.getLogger(VersionBackend.class);
@@ -50,7 +49,7 @@ public class VersionBackend {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
-    if (this.config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+    if (this.config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       /**
        * Explicitly disable the store restore since we don't want to open other partitions that should be controlled by
        * child process. All the finished partitions will be closed by child process and reopened in parent process.
@@ -81,7 +80,7 @@ public class VersionBackend {
     }
 
     // Send remote request to isolated ingestion service to stop ingestion.
-    if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       logger.info("Sending DROP_STORE request to child process to drop metadata partition for store: "  + version.kafkaTopicName());
       IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
       ingestionTaskCommand.commandType = IngestionCommandType.DROP_STORE.getValue();
@@ -204,7 +203,7 @@ public class VersionBackend {
         return subPartitionFutures.computeIfAbsent(subPartition, k -> CompletableFuture.completedFuture(null));
       }
     }
-    if (config.getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)) {
+    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       backend.getIngestionReportListener().addVersionPartitionToIngestionMap(version.kafkaTopicName(), subPartition);
       IngestionUtils.subscribeTopicPartition(backend.getIngestionRequestClient(), version.kafkaTopicName(), subPartition);
     } else {

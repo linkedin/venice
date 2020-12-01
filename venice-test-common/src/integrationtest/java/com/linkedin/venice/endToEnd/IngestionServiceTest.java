@@ -19,7 +19,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.IngestionAction;
-import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -39,7 +38,9 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.ingestion.IngestionUtils.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
 import static org.testng.Assert.*;
 
 
@@ -104,7 +105,7 @@ public class IngestionServiceTest {
   public void testTopicIngestionParentChildMode() throws Exception {
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     InitializationConfigs initializationConfigs = createInitializationConfigs(baseDataPath);
-    initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD.toString());
+    initializationConfigs.aggregatedConfigs.put(SERVER_INGESTION_MODE, ISOLATED.toString());
     sendInitializationMessage(serializeInitializationConfigs(initializationConfigs));
     sendStartConsumptionMessage(testStoreName, 1, 0);
   }
@@ -116,8 +117,8 @@ public class IngestionServiceTest {
     // Use Da Vinci bootstrap to test.
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
+        .put(SERVER_INGESTION_MODE, ISOLATED)
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .put(ConfigKeys.SERVER_INGESTION_ISOLATION_MODE, IngestionIsolationMode.PARENT_CHILD)
         .build();
 
     D2Client d2Client = new D2ClientBuilder()
