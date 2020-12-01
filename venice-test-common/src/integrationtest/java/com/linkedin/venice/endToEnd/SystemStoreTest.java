@@ -9,11 +9,11 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.MetadataStoreUtils;
-import com.linkedin.venice.common.StoreMetadataType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -38,6 +38,7 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -135,6 +136,21 @@ public class SystemStoreTest {
     parentController.close();
     venice.close();
     parentZk.close();
+  }
+
+  @Test
+  public void testMetadataSystemStoreAutoCreation() {
+    // Once the cluster is up and running, the metadata system store should be automatically created
+    String metadataSystemStoreName = AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName();
+    StoreResponse metadataSystemStoreFromParent = parentControllerClient.getStore(metadataSystemStoreName);
+    StoreResponse metadataSystemStoreFromChild = controllerClient.getStore(metadataSystemStoreName);
+    for (StoreResponse storeResponse : Arrays.asList(metadataSystemStoreFromParent, metadataSystemStoreFromChild)) {
+      Assert.assertFalse(storeResponse.isError(), metadataSystemStoreName + " should exist in both parent and child");
+      StoreInfo storeInfo = storeResponse.getStore();
+      assertTrue(storeInfo.getHybridStoreConfig() != null, metadataSystemStoreName + " should be a hybrid store");
+      assertTrue(storeInfo.isLeaderFollowerModelEnabled(), metadataSystemStoreName + " should enable L/F model");
+      assertTrue(storeInfo.isWriteComputationEnabled(), metadataSystemStoreName + " should enable write compute");
+    }
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
