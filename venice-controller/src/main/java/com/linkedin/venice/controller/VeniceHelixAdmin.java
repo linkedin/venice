@@ -4014,6 +4014,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         jobTrackingVeniceWriterMap.clear();
         participantMessageWriterMap.forEach( (k, v) -> IOUtils.closeQuietly(v));
         participantMessageWriterMap.clear();
+        metadataStoreWriter.close();
         IOUtils.closeQuietly(topicManagerRepository);
     }
 

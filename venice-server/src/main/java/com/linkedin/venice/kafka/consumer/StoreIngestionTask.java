@@ -1294,8 +1294,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(kafkaVersionTopic, faultyPartition);
       } else {
-        logger.info(errorMessage + ". However, " + kafkaVersionTopic
-            + " is the current version or EOP is already received so consumption will continue.");
+        logger.warn(errorMessage + ". However, " + kafkaVersionTopic
+            + " is the current version or EOP is already received so consumption will continue.", e);
       }
     } catch (VeniceMessageException | UnsupportedOperationException excp) {
       throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "
