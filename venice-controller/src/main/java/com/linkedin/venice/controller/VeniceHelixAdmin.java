@@ -332,17 +332,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             AvroProtocolDefinition.PARTITION_STATE, multiClusterConfigs, this));
         initRoutines.add(new SystemSchemaInitializationRoutine(
             AvroProtocolDefinition.STORE_VERSION_STATE, multiClusterConfigs, this));
-        // Add routine to create zk shared metadata system store
-        UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams()
-            .setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-            .setHybridOffsetLagThreshold(100)
-            .setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(5)) // 5 mins
-            .setLeaderFollowerModel(true)
-            .setWriteComputationEnabled(true);
-        initRoutines.add(new SystemSchemaInitializationRoutine(
-            AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE, multiClusterConfigs, this,
-            Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()), Optional.of(metadataSystemStoreUpdate)));
-
+        if (multiClusterConfigs.isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled()) {
+            // Add routine to create zk shared metadata system store
+            UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
+                .setHybridOffsetLagThreshold(100).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(5)) // 5 mins
+                .setLeaderFollowerModel(true).setWriteComputationEnabled(true);
+            initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+                multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
+                Optional.of(metadataSystemStoreUpdate)));
+        }
         ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
         // Create the controller cluster if required.

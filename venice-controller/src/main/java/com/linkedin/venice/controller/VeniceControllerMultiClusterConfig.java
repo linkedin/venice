@@ -209,4 +209,8 @@ public class VeniceControllerMultiClusterConfig {
   public Set<String> getParentFabrics() {
     return getCommonConfig().getParentFabrics();
   }
+
+  public boolean isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() {
+    return getCommonConfig().isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled();
+  }
 }

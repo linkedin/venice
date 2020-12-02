@@ -199,6 +199,11 @@ public class ConfigKeys {
   public static final String CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED = "controller.backup.version.retention.based.cleanup.enabled";
 
   /**
+   * Whether to automatically create zk shared metadata system store in Controller or not
+   */
+  public static final String CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED = "controller.zk.shared.metadata.system.schema.store.auto.creation.enabled";
+
+  /**
    * Whether controller should enforce SSL.
    */
   public static final String CONTROLLER_ENFORCE_SSL = "controller.enforce.ssl";
