@@ -88,16 +88,17 @@ public class SystemStoreTest {
 
   @BeforeClass
   public void setup() {
-    Properties enableParticipantMessageStore = new Properties();
+    Properties controllerConfig = new Properties();
     Properties serverFeatureProperties = new Properties();
     Properties serverProperties = new Properties();
-    enableParticipantMessageStore.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-    enableParticipantMessageStore.setProperty(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, "false");
+    controllerConfig.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    controllerConfig.setProperty(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, "false");
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
-    enableParticipantMessageStore.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
+    controllerConfig.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
         String.valueOf(Long.MAX_VALUE));
+    controllerConfig.setProperty(CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED, String.valueOf(true));
     venice = ServiceFactory.getVeniceCluster(1, 0, 1, 1,
-        100000, false, false, enableParticipantMessageStore);
+        100000, false, false, controllerConfig);
     clusterName = venice.getClusterName();
     zkSharedStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName);
     D2Client d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
@@ -110,7 +111,7 @@ public class SystemStoreTest {
     parentController =
         ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), venice.getKafka(),
             new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
-            new VeniceProperties(enableParticipantMessageStore), false);
+            new VeniceProperties(controllerConfig), false);
     participantMessageStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName());
     controllerClient = venice.getControllerClient();
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
@@ -254,15 +255,13 @@ public class SystemStoreTest {
     NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularVeniceStoreName, "test",
         STRING_SCHEMA, USER_SCHEMA_STRING);
     assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
-    ControllerResponse controllerResponse =
-        parentControllerClient.materializeMetadataStoreVersion(regularVeniceStoreName, metadataStoreVersionNumber);
-    assertFalse(controllerResponse.isError(), "Failed to materialize the new Zk shared store version");
     String metadataStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
+    // The corresponding metadata store should be materialized automatically.
     TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
         Optional.empty());
 
-    controllerResponse = parentControllerClient.addValueSchema(regularVeniceStoreName, USER_SCHEMA_STRING_WITH_DEFAULT);
+    ControllerResponse controllerResponse = parentControllerClient.addValueSchema(regularVeniceStoreName, USER_SCHEMA_STRING_WITH_DEFAULT);
     assertFalse(controllerResponse.isError(), "Failed to add new store value schema");
 
     // Try to read from the metadata store
@@ -463,17 +462,15 @@ public class SystemStoreTest {
     NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularVeniceStoreName, "test",
         STRING_SCHEMA, STRING_SCHEMA);
     assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
-    ControllerResponse controllerResponse =
-        parentControllerClient.materializeMetadataStoreVersion(regularVeniceStoreName, metadataStoreVersionNumber);
-    assertFalse(controllerResponse.isError(), "Failed to materialize the new Zk shared store version");
     String metadataStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
+    // The corresponding metadata store should be materialized automatically.
     TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
         Optional.empty());
     assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
     assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
     // Delete the Venice store and verify its metadata store version is dematerialized.
-    controllerResponse = parentControllerClient.disableAndDeleteStore(regularVeniceStoreName);
+    ControllerResponse controllerResponse = parentControllerClient.disableAndDeleteStore(regularVeniceStoreName);
     assertFalse(controllerResponse.isError(), "Failed to delete the regular Venice store");
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));

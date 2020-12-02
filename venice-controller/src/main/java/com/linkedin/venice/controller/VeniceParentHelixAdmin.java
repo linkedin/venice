@@ -504,6 +504,15 @@ public class VeniceParentHelixAdmin implements Admin {
       message.operationType = AdminMessageType.STORE_CREATION.getValue();
       message.payloadUnion = storeCreation;
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      // TODO For now only auto materialize if the config is enabled and the zk shared store already exists. We will
+      //      automatically create the zk shared store too once we refactor the zk shared scheme.
+      if (!VeniceSystemStoreUtils.isSystemStore(storeName) &&
+          multiClusterConfigs.getConfigForCluster(clusterName).isMetadataSystemStoreAutoMaterializeEnabled()) {
+        Store zkSharedStore = getStore(clusterName, VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName));
+        if (zkSharedStore != null) {
+          materializeMetadataStoreVersion(clusterName, storeName, zkSharedStore.getCurrentVersion());
+        }
+      }
     } finally {
       releaseLock(clusterName);
     }

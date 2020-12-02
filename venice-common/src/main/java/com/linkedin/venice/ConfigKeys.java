@@ -1320,4 +1320,9 @@ public class ConfigKeys {
    * child controllers in certain scenarios.
    */
   public static final String CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION = "controller.disable.parent.topic.truncation.upon.completion";
+
+  /**
+   * Config to control whether automatically materialize metadata system store for newly created Venice stores.
+   */
+  public static final String CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED = "controller.auto.materialize.metadata.system.store.enabled";
 }

@@ -26,18 +26,20 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.apache.commons.io.IOUtils;
 
 import static com.linkedin.venice.common.VeniceSystemStore.*;
 import static com.linkedin.venice.schema.SchemaData.*;
 
 
-public class MetadataStoreWriter {
+public class MetadataStoreWriter implements Closeable {
   private final Map<String, VeniceWriter> metadataStoreWriterMap = new VeniceConcurrentHashMap<>();
   private final TopicManager topicManager;
   private final VeniceWriterFactory writerFactory;
@@ -253,5 +255,11 @@ public class MetadataStoreWriter {
       return partitionerConfig;
     }
     return null;
+  }
+
+  @Override
+  public void close() {
+    metadataStoreWriterMap.forEach((k, v) -> IOUtils.closeQuietly(v));
+    metadataStoreWriterMap.clear();
   }
 }
