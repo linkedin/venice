@@ -81,6 +81,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   private final boolean disableParentTopicTruncationUponCompletion;
   private final Set<String> parentFabrics;
+  private final boolean zkSharedMetadataSystemSchemaStoreAutoCreationEnabled;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -178,6 +179,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure routes
     this.terminalStateTopicCheckerDelayMs = props.getLong(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
     this.disableParentTopicTruncationUponCompletion = props.getBoolean(CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION, false);
+    /**
+     * Disable the zk shared metadata system schema store by default until the schema is fully finalized.
+     */
+    this.zkSharedMetadataSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
   }
 
   public int getAdminPort() {
@@ -364,6 +369,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean disableParentTopicTruncationUponCompletion() {
     return disableParentTopicTruncationUponCompletion;
+  }
+
+  public boolean isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() {
+    return zkSharedMetadataSystemSchemaStoreAutoCreationEnabled;
   }
 
   /**
