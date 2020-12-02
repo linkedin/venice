@@ -1,9 +1,10 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
@@ -77,6 +78,7 @@ import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
+import com.linkedin.venice.pushstatus.PushStatusStoreReader;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
@@ -163,6 +165,21 @@ import static com.linkedin.venice.meta.VersionStatus.*;
  * Admin is shared by multiple cluster's controllers running in one physical Venice controller instance.
  */
 public class VeniceHelixAdmin implements Admin, StoreCleaner {
+
+    public static final List<ExecutionStatus> STATUS_PRIORITIES = Arrays.asList(
+        ExecutionStatus.PROGRESS,
+        ExecutionStatus.STARTED,
+        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
+        ExecutionStatus.UNKNOWN,
+        ExecutionStatus.NEW,
+        ExecutionStatus.NOT_CREATED,
+        ExecutionStatus.END_OF_PUSH_RECEIVED,
+        ExecutionStatus.ERROR,
+        ExecutionStatus.WARNING,
+        ExecutionStatus.COMPLETED,
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
+        ExecutionStatus.ARCHIVED);
+
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
 
     private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -212,6 +229,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Optional<SSLFactory> sslFactory;
     private final String pushJobStatusStoreClusterName;
     private final MetadataStoreWriter metadataStoreWriter;
+    private final Optional<PushStatusStoreReader> pushStatusStoreReader;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -245,12 +263,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, ReentrantLock> perStoreLockMap = new ConcurrentHashMap<>();
 
     public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
-        this(multiClusterConfigs, metricsRepository, false, Optional.empty(), Optional.empty());
+        this(multiClusterConfigs, metricsRepository, false, Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     //TODO Use different configs for different clusters when creating helix admin.
     public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository,
-            boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController) {
+        boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController,
+        Optional<D2Client> d2Client) {
         this.multiClusterConfigs = multiClusterConfigs;
         VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
         this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
@@ -324,6 +343,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         coloMasterClusterName = commonConfig.getClusterName();
         pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
         metadataStoreWriter = new MetadataStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, this);
+        if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
+            if (!d2Client.isPresent()) {
+                throw new VeniceException("D2Client must present when push status store enabled.");
+            }
+            pushStatusStoreReader = Optional.of(new PushStatusStoreReader(d2Client.get(),
+                commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
+        } else {
+            pushStatusStoreReader = Optional.empty();
+        }
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -452,10 +480,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Find out the cluster first
         StoreConfig storeConfig = getStoreConfigAccessor().getStoreConfig(storeName);
         if (null == storeConfig) {
-            if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE) {
+            if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
                 // Use the corresponding Venice store name to get cluster information
                 storeConfig = getStoreConfigAccessor().getStoreConfig(
-                    VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName));
+                    VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName));
             }
             if (null == storeConfig) {
                 logger.info(
@@ -619,7 +647,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             if (store.isStoreMetadataSystemStoreEnabled()) {
                 // Attempt to dematerialize all possible versions, no-op if a version doesn't actually exist.
-                for (Version version : storeRepository.getStore(VeniceSystemStore.METADATA_STORE.getPrefix()).getVersions()) {
+                for (Version version : storeRepository.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix()).getVersions()) {
                     dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), !store.isMigrating());
                 }
             }
@@ -724,7 +752,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         if (store.getCurrentVersion() == versionNumber){
-            if (VeniceSystemStoreUtils.getSystemStoreType(storeName) != VeniceSystemStore.METADATA_STORE) {
+            if (!VeniceSystemStoreUtils.isSystemStore(storeName)) {
                 // This check should only apply to non Zk shared stores.
                 throw new VeniceHttpException(HttpStatus.SC_CONFLICT, "Cannot end push for version " + versionNumber + " that is currently being served");
             }
@@ -803,9 +831,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (srcStore.isStoreMetadataSystemStoreEnabled()) {
             // Materialize the metadata system store in the destination cluster for the migrating Venice store too.
             String exceptionMessage = "Cannot proceed with the store migration for store: " + storeName + ". ";
-            StoreResponse storeResponse = destControllerClient.getStore(VeniceSystemStore.METADATA_STORE.getPrefix());
+            StoreResponse storeResponse = destControllerClient.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix());
             if (storeResponse.isError() || storeResponse.getStore() == null) {
-                throw new VeniceException(exceptionMessage + "Failed to get store: " + VeniceSystemStore.METADATA_STORE
+                throw new VeniceException(exceptionMessage + "Failed to get store: " + VeniceSystemStoreType.METADATA_STORE
                     + " in the destination cluster: " + destClusterName);
             }
             int destMetadataStoreCurrentVersion = storeResponse.getStore().getCurrentVersion();
@@ -1788,9 +1816,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         try {
             Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
             Store storeToCheckOngoingMigration =
-                VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE ?
+                VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE ?
                     getVeniceHelixResource(clusterName).getMetadataRepository()
-                        .getStore(VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName)) :
+                        .getStore(VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName)) :
                     store;
             if (!store.containsVersion(versionNumber)) {
                 logger.info("Version: " + versionNumber + " doesn't exist in store: " + storeName + ", will skip `deleteOneStoreVersion`");
@@ -1917,7 +1945,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store == null) {
                 throw new VeniceNoStoreException(storeName);
             }
-            VeniceSystemStore systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
+            VeniceSystemStoreType systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
             if (systemStore != null && systemStore.isStoreZkShared()) {
                 deletedVersion = store.getVersion(versionNumber);
             } else {
@@ -3245,7 +3273,117 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             details = Optional.of(moreDetailsBuilder.toString());
         }
+
+        // Retrive Da Vinci push status
+        String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+        Store store = getStore(clusterName, storeName);
+        int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
+        // Da Vinci can only subscribe to an existing version, so skip 1st push
+        if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
+            Version version = store.getVersion(versionNumber)
+                .orElseThrow(() -> new VeniceException("Version " + versionNumber + " of " + storeName + " does not exist."));
+            Pair<ExecutionStatus, Optional<String>> daVinciStatusAndDetails = getDaVinciPushStatusAndDetails(version, incrementalPushVersion);
+            ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getFirst();
+            Optional<String> daVinciDetails = daVinciStatusAndDetails.getSecond();
+            executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
+            if (details.isPresent() || daVinciDetails.isPresent()) {
+                String overallDetails = "";
+                if (details.isPresent()) {
+                    overallDetails += details.get();
+                }
+                if (daVinciDetails.isPresent()) {
+                    overallDetails += (overallDetails.isEmpty() ? "" : " ") + daVinciDetails.get();
+                }
+                details = Optional.of(overallDetails);
+            }
+        }
         return new OfflinePushStatusInfo(executionStatus, details);
+    }
+
+    private ExecutionStatus getOverallPushStatus(ExecutionStatus veniceStatus, ExecutionStatus daVinciStatus) {
+        List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
+        Collections.sort(statuses, Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
+        long failCount = statuses.stream().filter(s -> s == ExecutionStatus.ERROR).count();
+        ExecutionStatus currentStatus = statuses.get(0);
+        if (failCount == 1) {
+            currentStatus = ExecutionStatus.PROGRESS;
+        }
+        if (currentStatus.isTerminal() && failCount != 0) {
+            currentStatus = ExecutionStatus.ERROR;
+        }
+        return currentStatus;
+    }
+
+    /**
+     * getDaVinciPushStatusAndDetails checks all partitions and compute a final status.
+     * Inside each partition, getDaVinciPushStatusAndDetails will compute status based on all active replicas/Da Vinci instances.
+     * A replica/Da Vinci instance sent heartbeat to controllers recently is considered active.
+     */
+    private Pair<ExecutionStatus, Optional<String>> getDaVinciPushStatusAndDetails(Version version, Optional<String> incrementalPushVersion) {
+        if (!pushStatusStoreReader.isPresent()) {
+            throw new VeniceException("D2Client must be provided to read from push status store.");
+        }
+        boolean allMiddleStatusReceived = true;
+        ExecutionStatus completeStatus = incrementalPushVersion.isPresent() ?
+            ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED : ExecutionStatus.COMPLETED;
+        ExecutionStatus middleStatus = incrementalPushVersion.isPresent() ?
+            ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED : ExecutionStatus.END_OF_PUSH_RECEIVED;
+        List<String> erroredInstances = new ArrayList<>();
+        boolean notCreated = true;
+        String storeName = version.getStoreName();
+        int completedPartitions = 0;
+        for (int partitionId = 0; partitionId < version.getPartitionCount(); partitionId++) {
+            Map<CharSequence, Integer> instances = pushStatusStoreReader.get().getPartitionStatus(storeName, version.getNumber(), partitionId, incrementalPushVersion);
+            if (!instances.isEmpty()) {
+                notCreated = false;
+            }
+            boolean allInstancesCompleted = true;
+            for (Map.Entry<CharSequence, Integer> entry : instances.entrySet()) {
+                ExecutionStatus status = ExecutionStatus.fromOrdinal(entry.getValue());
+                if (status != completeStatus && pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
+                    allInstancesCompleted = false;
+                    if (status != middleStatus) {
+                        allMiddleStatusReceived = false;
+                        if (status == ExecutionStatus.ERROR) {
+                            erroredInstances.add(entry.getKey().toString());
+                        }
+                    }
+                }
+            }
+            if (allInstancesCompleted) {
+                completedPartitions++;
+            }
+        }
+        if (notCreated) {
+            return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Da Vinci hasn't been started yet."));
+        }
+        Optional<String> statusDetail;
+        String details = "";
+        if (completedPartitions > 0) {
+            details += completedPartitions + "/" + version.getPartitionCount() + " partitions completed in Da Vinci.";
+        }
+        if (!erroredInstances.isEmpty()) {
+            details += erroredInstances.size() + " instances failed in Da Vinci, they are ";
+            // list first 3 to prevent bloating the response size
+            for (int i = 0; i < erroredInstances.size() && i < 3; i++) {
+                details += erroredInstances.get(i);
+            }
+            details += "...";
+        }
+        if (details.length() != 0) {
+            statusDetail = Optional.of(details);
+        } else {
+            statusDetail = Optional.empty();
+        }
+        if (completedPartitions == version.getPartitionCount()) {
+            return new Pair<>(completeStatus, statusDetail);
+        } else if (allMiddleStatusReceived) {
+            return new Pair<>(middleStatus, statusDetail);
+        } else if (!erroredInstances.isEmpty()) {
+            return new Pair<>(ExecutionStatus.ERROR, statusDetail);
+        } else {
+            return new Pair<>(ExecutionStatus.STARTED, statusDetail);
+        }
     }
 
     @Override
@@ -4016,6 +4154,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         participantMessageWriterMap.clear();
         metadataStoreWriter.close();
         IOUtils.closeQuietly(topicManagerRepository);
+        pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
     }
 
     /**
@@ -4153,7 +4292,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void materializeMetadataStoreVersion(String clusterName, String storeName, int metadataStoreVersionNumber) {
         checkControllerMastership(clusterName);
         Store veniceStore = getStore(clusterName, storeName);
-        Store zkSharedStoreMetadata = getStore(clusterName, VeniceSystemStore.METADATA_STORE.getPrefix());
+        Store zkSharedStoreMetadata = getStore(clusterName, VeniceSystemStoreType.METADATA_STORE.getPrefix());
         checkMetadataStorePrerequisites(clusterName, storeName, metadataStoreVersionNumber, veniceStore,
             zkSharedStoreMetadata);
         String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
@@ -4167,7 +4306,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceRetriableException("Waiting for previously materialized RT to be deleted for store: "
                 + metadataStoreName);
         }
-        createMetadataStoreResources(clusterName, storeName, metadataStoreVersionNumber, zkSharedStoreMetadata);
+        createSystemStoreResources(clusterName, storeName, metadataStoreVersionNumber, zkSharedStoreMetadata, VeniceSystemStoreType.METADATA_STORE);
         writeEndOfPush(clusterName, metadataStoreName, metadataStoreVersionNumber, true);
         getRealTimeTopic(clusterName, metadataStoreName);
         metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, veniceStore);
@@ -4184,18 +4323,50 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    private void createMetadataStoreResources(String clusterName, String storeName, int metadataStoreVersionNumber,
-        Store zkSharedStoreMetadata) {
-        Version version = zkSharedStoreMetadata.getVersion(metadataStoreVersionNumber).get();
-        String metadataStoreTopicName =
-            Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName), metadataStoreVersionNumber);
+    @Override
+    public void createDaVinciPushStatusStore(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        if (!multiClusterConfigs.getCommonConfig().isDaVinciPushStatusStoreEnabled()) {
+            throw new VeniceException("Push status store reporting is not enabled on this controller.");
+        }
+        Store daVinciStore = getStore(clusterName, storeName);
+        Store zkSharedStore = getStore(clusterName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getPrefix());
+        if (daVinciStore == null) {
+            throw new VeniceException("Store " + storeName + " not created.");
+        }
+        if (zkSharedStore == null) {
+            throw new VeniceException("Da Vinci ZK-shared push status store not created in cluster " + clusterName + ".");
+        }
+        if (zkSharedStore.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
+            throw new VeniceException("Da Vinci ZK-shared push status store initial version not created.");
+        }
+        String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
+        createSystemStoreResources(clusterName, storeName, zkSharedStore.getCurrentVersion(), zkSharedStore, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
+        writeEndOfPush(clusterName, pushStatusStoreName, zkSharedStore.getCurrentVersion(), true);
+        getRealTimeTopic(clusterName, pushStatusStoreName);
+        storeMetadataUpdate(clusterName, pushStatusStoreName, store -> {
+            store.setLeaderFollowerModelEnabled(true);
+            store.setWriteComputationEnabled(true);
+            return store;
+        });
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setDaVinciPushStatusStoreEnabled(true);
+            return store;
+        });
+    }
+
+    private void createSystemStoreResources(String clusterName, String storeName, int versionNumber,
+        Store zkSharedStore, VeniceSystemStoreType storeType) {
+        Version version = zkSharedStore.getVersion(versionNumber).get();
+        String topicName =
+            Version.composeKafkaTopic(VeniceSystemStoreUtils.getSystemStoreName(storeName, storeType), versionNumber);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         int replicationFactor = resources.getMetadataRepository().getStore(storeName).getReplicationFactor();
         resources.lockForMetadataOperation();
         try {
             getTopicManager().createTopic(
-                metadataStoreTopicName,
+                topicName,
                 version.getPartitionCount(),
                 clusterConfig.getKafkaReplicationFactor(),
                 true,
@@ -4204,21 +4375,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 false
             );
             try {
-                startMonitorOfflinePush(clusterName, metadataStoreTopicName, version.getPartitionCount(),
-                    replicationFactor, zkSharedStoreMetadata.getOffLinePushStrategy());
-                helixAdminClient.createVeniceStorageClusterResources(clusterName, metadataStoreTopicName,
+                startMonitorOfflinePush(clusterName, topicName, version.getPartitionCount(),
+                    replicationFactor, zkSharedStore.getOffLinePushStrategy());
+                helixAdminClient.createVeniceStorageClusterResources(clusterName, topicName,
                     version.getPartitionCount(), replicationFactor,
                     version.isLeaderFollowerModelEnabled());
-                waitUntilNodesAreAssignedForResource(clusterName, metadataStoreTopicName,
-                    zkSharedStoreMetadata.getOffLinePushStrategy(),
+                waitUntilNodesAreAssignedForResource(clusterName, topicName,
+                    zkSharedStore.getOffLinePushStrategy(),
                     clusterConfig.getOffLineJobWaitTimeInMilliseconds(), replicationFactor);
             } catch (Throwable e) {
                 String errorMessage = "Failed to create Helix resources and start push monitor when trying to "
-                    + "materialize metadata store version: " + metadataStoreTopicName;
+                    + "materialize store version: " + topicName;
                 String stackTrace = ExceptionUtils.stackTraceToString(e);
                 logger.error(errorMessage, e);
-                getVeniceHelixResource(clusterName).getPushMonitor().markOfflinePushAsError(metadataStoreTopicName,
-                    "Error when materializing metadata store version:\n" + stackTrace);
+                getVeniceHelixResource(clusterName).getPushMonitor().markOfflinePushAsError(topicName,
+                    "Error when materializing store version:\n" + stackTrace);
                 throw new VeniceException(errorMessage + ". Stack trace: " + stackTrace);
             }
         } finally {
@@ -4249,7 +4420,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceNoStoreException(storeName, clusterName);
         }
         if (zkSharedStoreMetadata == null) {
-            throw new VeniceNoStoreException(VeniceSystemStore.METADATA_STORE.getPrefix(), clusterName);
+            throw new VeniceNoStoreException(VeniceSystemStoreType.METADATA_STORE.getPrefix(), clusterName);
         }
         if (!zkSharedStoreMetadata.getVersion(zkSharedStoreVersionNumber).isPresent()) {
             throw new VeniceException("Cannot materialize metadata system store for store: " + storeName

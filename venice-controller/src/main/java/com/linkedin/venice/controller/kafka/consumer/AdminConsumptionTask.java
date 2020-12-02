@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
@@ -104,6 +104,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private final ExecutionIdAccessor executionIdAccessor;
   private final ExecutorService executorService;
+
+  public ExecutorService getExecutorService() {
+    return executorService;
+  }
+
   private final long processingCycleTimeoutInMs;
   /**
    * Once all admin messages in a cycle is processed successfully, the id would be updated together with the offset.
@@ -505,9 +510,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               + " because it does not contain a storeName field");
         }
     }
-    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE
+    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE
         && !VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName).equals(storeName)) {
-      storeName = VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName);
+      storeName = VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName);
+    } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE
+        && !VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(clusterName).equals(storeName)) {
+      storeName = VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName);
     }
     return storeName;
   }

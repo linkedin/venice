@@ -1330,4 +1330,20 @@ public class ConfigKeys {
    * ZooKeeper address of d2 client.
    */
   public static final String D2_CLIENT_ZK_HOSTS_ADDRESS = "r2d2Client.zkHosts";
+
+  /**
+   * Config to control if push status store is enabled and should be initialized
+   */
+  public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
+
+  /**
+   * Interval for Da Vinci clients to send heartbeats.
+   */
+  public static final String PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_SECONDS = "push.status.store.heartbeat.interval.seconds";
+
+  /**
+   * The expiration timeout. If an instance not sending heartbeats for over the expiration
+   * time, it will be considered as stale.
+   */
+  public static final String PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS = "push.status.store.heartbeat.expiration.seconds";
 }

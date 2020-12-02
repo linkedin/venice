@@ -83,7 +83,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean disableParentTopicTruncationUponCompletion;
   private final Set<String> parentFabrics;
   private final boolean zkSharedMetadataSystemSchemaStoreAutoCreationEnabled;
-
+  /**
+   * To decide whether to initialize push status store related components.
+   */
+  private final boolean isDaVinciPushStatusStoreEnabled;
+  /**
+   * Used to decide if an instance is stale.
+   */
+  private final long pushStatusStoreHeartbeatExpirationTimeInSeconds;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -186,6 +193,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.zkSharedMetadataSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.isMetadataSystemStoreAutoMaterializeEnabled = props.getBoolean(
         CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED, false);
+    this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
+    this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
   }
 
   public int getAdminPort() {
@@ -316,6 +325,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isParticipantMessageStoreEnabled() { return participantMessageStoreEnabled; }
 
+  public boolean isDaVinciPushStatusEnabled() { return true; }
+
   public String getSystemSchemaClusterName() { return systemSchemaClusterName; }
 
   public int getTopicDeletionStatusPollIntervalMs() {
@@ -380,6 +391,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isMetadataSystemStoreAutoMaterializeEnabled() {
     return isMetadataSystemStoreAutoMaterializeEnabled;
+  }
+
+  public long getPushStatusStoreHeartbeatExpirationTimeInSeconds() {
+    return pushStatusStoreHeartbeatExpirationTimeInSeconds;
+  }
+
+  public boolean isDaVinciPushStatusStoreEnabled() {
+    return isDaVinciPushStatusStoreEnabled;
   }
 
   /**

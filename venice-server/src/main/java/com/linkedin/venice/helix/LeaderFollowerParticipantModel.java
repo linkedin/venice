@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -69,7 +70,8 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
 
 
       // Placing a latch in the transition if this is the current version
-      if (getMetaDataRepo().getStore(storeName).getCurrentVersion() == version) {
+      if (getMetaDataRepo().getStore(storeName).getCurrentVersion() == version
+          && !VeniceSystemStoreUtils.isSystemStore(storeName)) {
         //startConsumption is called in order to create the latch
         notifier.startConsumption(resourceName, getPartition());
         waitConsumptionCompleted(resourceName, notifier);

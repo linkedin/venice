@@ -1,7 +1,6 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.VeniceResource;
-import com.linkedin.venice.common.VeniceSystemStore;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
@@ -98,8 +97,8 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
    */
   @Override
   public Optional<StoreConfig> getStoreConfig(String storeName) {
-    String veniceStoreName = VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE
-        ? VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName): storeName;
+    String veniceStoreName = VeniceSystemStoreUtils.isSystemStore(storeName) ?
+        VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName) : storeName;
     StoreConfig config = storeConfigMap.get().get(veniceStoreName);
     if (config != null) {
       return Optional.of(config);

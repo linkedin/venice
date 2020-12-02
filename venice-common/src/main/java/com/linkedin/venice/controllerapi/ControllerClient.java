@@ -2,7 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
-import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -303,7 +303,7 @@ public class ControllerClient implements Closeable {
   }
 
   public NewStoreResponse createNewZkSharedStore(String storeName, String owner) {
-    VeniceSystemStore systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
+    VeniceSystemStoreType systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
     if (systemStore == null || !systemStore.isStoreZkShared()) {
       throw new VeniceException("Cannot create new Zk shared store, " + storeName + "is not a known Zk shared store");
     }
@@ -352,6 +352,12 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName)
         .add(VERSION, versionNumber);
     return request(ControllerRoute.DEMATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse createDaVinciPushStatusStore(String storeName) {
+    QueryParams params = newParams()
+        .add(NAME, storeName);
+    return request(ControllerRoute.CREATE_DAVINCI_PUSH_STATUS_STORE, params, ControllerResponse.class);
   }
 
   public StoreMigrationResponse migrateStore(String storeName, String destClusterName) {

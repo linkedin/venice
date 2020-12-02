@@ -28,6 +28,7 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -43,6 +44,7 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Collections;
@@ -74,16 +76,25 @@ public class DaVinciBackend implements Closeable {
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
+  private final long pushStatusStoreHeartbeatIntervalInSeconds;
 
   private StorageMetadataService storageMetadataService;
   private IngestionRequestClient ingestionRequestClient;
   private IngestionReportListener ingestionReportListener;
   private VeniceNotifier isolatedIngestionListener;
   private Process isolatedIngestionService;
+  private PushStatusStoreWriter pushStatusStoreWriter;
 
-  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, boolean useSystemStoreBasedRepository,
-      long systemStoreBasedRepositoryRefreshIntervalInSeconds) {
+  public DaVinciBackend(
+      ClientConfig clientConfig,
+      VeniceConfigLoader configLoader,
+      String instanceName,
+      boolean useSystemStoreBasedRepository,
+      long systemStoreBasedRepositoryRefreshIntervalInSeconds,
+      long pushStatusStoreHeartbeatIntervalInSeconds) {
+
     this.configLoader = configLoader;
+    this.pushStatusStoreHeartbeatIntervalInSeconds = pushStatusStoreHeartbeatIntervalInSeconds;
 
     metricsRepository =
         Optional.ofNullable(clientConfig.getMetricsRepository())
@@ -125,6 +136,10 @@ public class DaVinciBackend implements Closeable {
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
     storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);
     storageService.start();
+
+    VeniceWriterFactory factory = new VeniceWriterFactory(configLoader.getCombinedProperties().toProperties());
+
+    pushStatusStoreWriter = new PushStatusStoreWriter(factory, schemaRepository, instanceName);
 
     SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
@@ -299,6 +314,7 @@ public class DaVinciBackend implements Closeable {
       metricsRepository.close();
       storeRepository.clear();
       schemaRepository.clear();
+      pushStatusStoreWriter.close();
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Da Vinci backend", e);
     }
@@ -358,6 +374,14 @@ public class DaVinciBackend implements Closeable {
     return ingestionRequestClient;
   }
 
+  public PushStatusStoreWriter getPushStatusStoreWriter() {
+    return pushStatusStoreWriter;
+  }
+
+  public long getPushStatusStoreHeartbeatIntervalInSeconds() {
+    return pushStatusStoreHeartbeatIntervalInSeconds;
+  }
+
   Optional<Version> getLatestVersion(String storeName) {
     try {
       return getLatestVersion(storeRepository.getStoreOrThrow(storeName));
@@ -396,6 +420,7 @@ public class DaVinciBackend implements Closeable {
       if (versionBackend != null) {
         versionBackend.completeSubPartition(partitionId);
       }
+      reportStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
     }
 
     @Override
@@ -403,6 +428,54 @@ public class DaVinciBackend implements Closeable {
       VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
       if (versionBackend != null) {
         versionBackend.completeErrorSubPartition(partitionId, e);
+      }
+      reportStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
+    }
+
+    @Override
+    public void started(String kafkaTopic, int partitionId) {
+      reportStatus(kafkaTopic, partitionId, ExecutionStatus.STARTED);
+    }
+
+    @Override
+    public void endOfPushReceived(String kafkaTopic, int partitionId, long offset) {
+      reportStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED);
+    }
+
+    @Override
+    public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset) {
+      reportStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED);
+    }
+
+    @Override
+    public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+      reportStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(message));
+      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+      if (versionBackend != null) {
+        versionBackend.tryStartHeartbeat();
+      }
+    }
+
+    @Override
+    public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+      reportStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(message));
+      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+      if (versionBackend != null) {
+        versionBackend.tryStopHeartbeat();
+      }
+    }
+
+    private void reportStatus(String kafkaTopic, int partitionId, ExecutionStatus status) {
+      reportStatus(kafkaTopic, partitionId, status, Optional.empty());
+    }
+
+    private void reportStatus(String kafkaTopic, int partitionId, ExecutionStatus status, Optional<String> incrementalPushVersion) {
+      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+      if (versionBackend != null) {
+        if (versionBackend.isPushStatusStoreEnabled()) {
+          Version version = versionBackend.getVersion();
+          pushStatusStoreWriter.writePushStatus(version.getStoreName(), version.getNumber(), partitionId, status, incrementalPushVersion);
+        }
       }
     }
   };

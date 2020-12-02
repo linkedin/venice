@@ -68,6 +68,7 @@ public interface Admin extends AutoCloseable, Closeable {
             return extraDetails;
         }
     }
+
     void start(String clusterName);
 
     boolean isClusterValid(String clusterName);
@@ -485,6 +486,8 @@ public interface Admin extends AutoCloseable, Closeable {
      * storeMetadataSystemStoreEnabled flag to true.
      */
     void materializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber);
+
+    void createDaVinciPushStatusStore(String clusterName, String storeName);
 
     /**
      * Dematerialize the specified Zk shared metadata store version for the given Venice store name and set the

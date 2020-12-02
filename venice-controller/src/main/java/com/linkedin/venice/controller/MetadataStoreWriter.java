@@ -35,7 +35,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 
-import static com.linkedin.venice.common.VeniceSystemStore.*;
+import static com.linkedin.venice.common.VeniceSystemStoreType.*;
 import static com.linkedin.venice.schema.SchemaData.*;
 
 

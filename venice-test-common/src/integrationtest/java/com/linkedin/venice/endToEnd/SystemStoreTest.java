@@ -410,7 +410,7 @@ public class SystemStoreTest {
     long memoryLimit = 1024 * 1024 * 1024; // 1GB
     daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
     D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig, "test")) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
       GenericRecord actualValueRecord = client.get("testKey").get();
@@ -434,7 +434,7 @@ public class SystemStoreTest {
     daVinciConfig = new DaVinciConfig();
     daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
     daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig, "test")) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
       GenericRecord actualValueRecord = client.get("testKey").get();

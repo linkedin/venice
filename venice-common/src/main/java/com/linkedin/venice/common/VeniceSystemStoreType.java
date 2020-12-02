@@ -3,6 +3,8 @@ package com.linkedin.venice.common;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
+import com.linkedin.venice.pushstatus.PushStatusKey;
+import com.linkedin.venice.pushstatus.PushStatusValue;
 
 
 /**
@@ -10,17 +12,19 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
  * the store metadata system stores are treated differently because they are sharing metadata in Zookeeper. Future system
  * store types should be added here especially if they also would like to share metadata in Zookeeper.
  */
-public enum VeniceSystemStore {
+public enum VeniceSystemStoreType {
 
   METADATA_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "metadata_store"), true,
-      StoreMetadataKey.SCHEMA$.toString(), StoreMetadataValue.SCHEMA$.toString());
+      StoreMetadataKey.SCHEMA$.toString(), StoreMetadataValue.SCHEMA$.toString()),
+  DAVINCI_PUSH_STATUS_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true,
+      PushStatusKey.SCHEMA$.toString(), PushStatusValue.SCHEMA$.toString());
 
   private final String prefix;
   private final boolean isStoreZkShared;
   private final String keySchema;
   private final String valueSchema;
 
-  VeniceSystemStore(String prefix, boolean isStoreZkShared, String keySchema, String valueSchema) {
+  VeniceSystemStoreType(String prefix, boolean isStoreZkShared, String keySchema, String valueSchema) {
     this.prefix = prefix;
     this.isStoreZkShared = isStoreZkShared;
     this.keySchema = keySchema;
