@@ -4,7 +4,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.Time;
 
-import static com.linkedin.venice.common.VeniceSystemStore.*;
+import static com.linkedin.venice.common.VeniceSystemStoreType.*;
 
 
 public class VeniceSystemStoreUtils {
@@ -32,9 +32,16 @@ public class VeniceSystemStoreUtils {
     return storeName.startsWith(Store.SYSTEM_STORE_NAME_PREFIX);
   }
 
-  public static VeniceSystemStore getSystemStoreType(String storeName) {
+  public static boolean isZkSharedStore(String clusterName, String storeName) {
+    return VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName).equals(storeName)
+        || VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(clusterName).equals(storeName);
+  }
+
+  public static VeniceSystemStoreType getSystemStoreType(String storeName) {
     if (storeName.startsWith(METADATA_STORE.getPrefix())) {
       return METADATA_STORE;
+    } else if (storeName.startsWith(DAVINCI_PUSH_STATUS_STORE.getPrefix())) {
+      return DAVINCI_PUSH_STATUS_STORE;
     } else {
       return null;
     }
@@ -45,7 +52,7 @@ public class VeniceSystemStoreUtils {
    * @return the corresponding store name for shared Zookeeper if applicable. The same store name is returned otherwise.
    */
   public static String getZkStoreName(String storeName) {
-    VeniceSystemStore systemStore = getSystemStoreType(storeName);
+    VeniceSystemStoreType systemStore = getSystemStoreType(storeName);
     return systemStore != null && systemStore.isStoreZkShared() ? systemStore.getPrefix() : storeName;
   }
 
@@ -53,31 +60,46 @@ public class VeniceSystemStoreUtils {
     UpdateStoreQueryParams defaultParams = new UpdateStoreQueryParams();
     defaultParams
         .setPartitionCount(DEFAULT_SYSTEM_STORE_PARTITION_COUNT)
+        .setLeaderFollowerModel(true)
         .setHybridOffsetLagThreshold(DEFAULT_SYSTEM_STORE_LAG_THRESHOLD)
         .setHybridRewindSeconds(DEFAULT_SYSTEM_STORE_REWIND_SECONDS);
     return defaultParams;
   }
 
-  public static String getMetadataStoreName(String storeName) {
-    return METADATA_STORE.getPrefix() + SEPARATOR + storeName;
+  public static String getSystemStoreName(String storeName, VeniceSystemStoreType storeType) {
+    return storeType.getPrefix() + SEPARATOR + storeName;
   }
 
-  public static String getStoreNameFromMetadataStoreName(String metadataStoreName) {
-    if (metadataStoreName.isEmpty()) {
-      throw new IllegalArgumentException("Empty string is not a valid metadata store name");
+  public static String getMetadataStoreName(String storeName) {
+    return getSystemStoreName(storeName, METADATA_STORE);
+  }
+
+  public static String getDaVinciPushStatusStoreName(String storeName) {
+    return getSystemStoreName(storeName, DAVINCI_PUSH_STATUS_STORE);
+  }
+
+  public static String getStoreNameFromSystemStoreName(String storeName) {
+    if (storeName.isEmpty()) {
+      throw new IllegalArgumentException("Empty string is not a valid push status store name");
     }
-    if (!metadataStoreName.startsWith(METADATA_STORE.getPrefix())) {
-      throw new IllegalArgumentException("The metadata store name: " + metadataStoreName + " is not valid");
+    VeniceSystemStoreType storeType = getSystemStoreType(storeName);
+    if (storeType == null) {
+      return storeName;
     }
-    int index = metadataStoreName.lastIndexOf(METADATA_STORE.getPrefix());
+    int index = storeName.lastIndexOf(storeType.getPrefix());
     if (index == -1) {
-      throw new IllegalArgumentException("Cannot find the metadata store prefix: " + METADATA_STORE.getPrefix()
-          + " in metadata store name: " + metadataStoreName);
+      throw new IllegalArgumentException("Cannot find the store prefix: " + storeType.getPrefix()
+          + " in store name: " + storeName);
     }
-    return metadataStoreName.substring(index + METADATA_STORE.getPrefix().length() + SEPARATOR.length());
+    return storeName.substring(index + storeType.getPrefix().length() + SEPARATOR.length());
   }
 
   public static String getSharedZkNameForMetadataStore(String clusterName) {
     return METADATA_STORE.getPrefix() + SEPARATOR + clusterName;
   }
+
+  public static String getSharedZkNameForDaVinciPushStatusStore(String clusterName) {
+    return DAVINCI_PUSH_STATUS_STORE.getPrefix() + SEPARATOR + clusterName;
+  }
+
 }

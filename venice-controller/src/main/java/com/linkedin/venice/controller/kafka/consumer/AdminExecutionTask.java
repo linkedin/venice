@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
@@ -322,10 +322,10 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     int versionNum = message.versionNum;
-    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE) {
+    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
       // Dematerialize a metadata store version.
       admin.dematerializeMetadataStoreVersion(clusterName,
-          VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName), versionNum, true);
+          VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName), versionNum, true);
     } else {
       // Delete an old version for a Venice store.
       admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
@@ -492,13 +492,15 @@ public class AdminExecutionTask implements Callable<Void> {
             pushType, remoteKafkaBootstrapServers);
       }
     } else {
-      if (VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName).equals(storeName)) {
+      if (VeniceSystemStoreUtils.isZkSharedStore(clusterName, storeName)) {
         // New version for the Zk shared metadata store.
         admin.newZkSharedStoreVersion(clusterName, storeName);
-      } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStore.METADATA_STORE) {
+      } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
         // Materialize a metadata store for a specific Venice store.
         admin.materializeMetadataStoreVersion(clusterName,
-            VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName), versionNumber);
+            VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName), versionNumber);
+      } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
+        admin.createDaVinciPushStatusStore(clusterName, VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(clusterName));
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,

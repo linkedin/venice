@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
@@ -1214,7 +1214,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @Test
   public void testZkSharedStore() {
-    String metadataStorePrefix = VeniceSystemStore.METADATA_STORE.getPrefix();
+    String metadataStorePrefix = VeniceSystemStoreType.METADATA_STORE.getPrefix();
     String systemStoreOne = metadataStorePrefix + "_store_one";
     String systemStoreTwo = metadataStorePrefix + "_store_two";
     veniceAdmin.addStore(clusterName, metadataStorePrefix,"Venice", KEY_SCHEMA, VALUE_SCHEMA, true);

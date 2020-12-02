@@ -1,0 +1,17 @@
+{
+  "name": "PushStatusKey",
+  "namespace": "com.linkedin.venice.pushstatus",
+  "type": "record",
+  "fields": [
+    {
+      "name": "keyStrings",
+      "doc": "Composite key. For a heartbeat message, this is a string containing [instanceId + app_name]. For full push status, it is [version, partitionId]. For incremental push status, it is [version, partition id, incremental push id].",
+      "type": {"type":  "array", "items": ["int", "string"]}
+    },
+    {
+      "name": "messageType",
+      "doc": "0 -> Heartbeat Message, 1 -> Full Push, 2 -> Incremental Push.",
+      "type": "int"
+    }
+  ]
+}

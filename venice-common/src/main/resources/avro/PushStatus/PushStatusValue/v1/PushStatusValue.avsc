@@ -1,0 +1,22 @@
+{
+  "name": "PushStatusValue",
+  "namespace": "com.linkedin.venice.pushstatus",
+  "type": "record",
+  "fields": [
+    {
+      "name": "instances",
+      "type": {
+        "type": "map",
+        "doc" : "[hostName + appName] -> partitionStatus",
+        "values": "int"
+      },
+      "default": {}
+    },
+    {
+      "name": "reportTimestamp",
+      "doc": "heartbeat.",
+      "type": [ "null", "long" ],
+      "default": null
+    }
+  ]
+}

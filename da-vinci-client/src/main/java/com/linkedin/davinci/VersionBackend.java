@@ -9,6 +9,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
@@ -22,8 +23,15 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -35,15 +43,22 @@ import static com.linkedin.venice.ingestion.IngestionUtils.*;
 
 public class VersionBackend {
   private static final Logger logger = Logger.getLogger(VersionBackend.class);
-
   private final DaVinciBackend backend;
   private final Version version;
   private final VeniceStoreConfig config;
   private final VenicePartitioner partitioner;
   private final int subPartitionCount;
+  private final boolean pushStatusStoreEnabled;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
   private final Map<Integer, CompletableFuture> subPartitionFutures = new VeniceConcurrentHashMap<>();
   private final boolean suppressLiveUpdates;
+
+  /**
+   * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
+   * to PushStatusStore. The heartbeat job will be cancelled once the push completes or VersionBackend is closed.
+   */
+  private Optional<ScheduledExecutorService> executorService = Optional.empty();
+  private Optional<ScheduledFuture> heartbeat = Optional.empty();
 
   VersionBackend(DaVinciBackend backend, Version version) {
     this.backend = backend;
@@ -62,6 +77,10 @@ public class VersionBackend {
     this.suppressLiveUpdates = this.config.freezeIngestionIfReadyToServeOrLocalDataExists();
     storageEngine.set(backend.getStorageService().getStorageEngineRepository().getLocalStorageEngine(version.kafkaTopicName()));
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
+    String storeName = version.getStoreName();
+    Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
+    this.pushStatusStoreEnabled = store.isDaVinciPushStatusStoreEnabled();
+    tryStartHeartbeat();
   }
 
   synchronized void close() {
@@ -70,6 +89,7 @@ public class VersionBackend {
       backend.getIngestionService().stopConsumptionAndWait(config, entry.getKey(), 1, 30);
       entry.getValue().cancel(true);
     }
+    tryStopHeartbeat();
   }
 
   synchronized void delete() {
@@ -118,6 +138,51 @@ public class VersionBackend {
       throw new VeniceException("Storage engine is not ready, version=" + version.kafkaTopicName());
     }
     return engine;
+  }
+
+  public boolean isPushStatusStoreEnabled() {
+    return this.pushStatusStoreEnabled;
+  }
+
+  synchronized void tryStartHeartbeat() {
+    if (!isPushStatusStoreEnabled()) {
+      logger.info("Won't start heartbeat. PushStatusStore is not enabled in store " + version.getStoreName() + ".");
+      return;
+    }
+    if (!executorService.isPresent()) {
+      executorService = Optional.of(Executors.newSingleThreadScheduledExecutor());
+    }
+    if (!heartbeat.isPresent()) {
+      heartbeat = Optional.of(executorService.get()
+          .scheduleAtFixedRate(() -> {
+              try {
+                backend.getPushStatusStoreWriter().writeHeartbeat(
+                    version.getStoreName());
+              } catch (Exception e) {
+                throw new VeniceException("Error in sending heartbeat.", e);
+              }
+            },
+              0,
+              backend.getPushStatusStoreHeartbeatIntervalInSeconds(),
+              TimeUnit.SECONDS));
+    }
+  }
+
+  synchronized void tryStopHeartbeat() {
+    if (!isPushStatusStoreEnabled()) {
+      return;
+    }
+    for (CompletableFuture future : subPartitionFutures.values()) {
+      if (!future.isDone()) {
+        return;
+      }
+    }
+    if (heartbeat.isPresent() && !heartbeat.get().isDone() && !heartbeat.get().isCancelled()) {
+      heartbeat.get().cancel(true);
+    }
+    if (executorService.isPresent()) {
+      executorService.get().shutdown();
+    }
   }
 
   public <V> V read(
@@ -229,10 +294,12 @@ public class VersionBackend {
 
   synchronized void completeSubPartition(int subPartition) {
     subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).complete(null);
+    tryStopHeartbeat();
   }
 
   synchronized void completeErrorSubPartition(int subPartition, Exception e) {
     subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).completeExceptionally(e);
+    tryStopHeartbeat();
   }
 
   synchronized void completeSubPartitionByIsolatedIngestionService(int subPartition) {

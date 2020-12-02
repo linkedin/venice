@@ -278,6 +278,7 @@ public class Store {
    */
   private String nativeReplicationSourceFabric = "";
 
+  private boolean daVinciPushStatusStoreEnabled = false;
 
   public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
       RoutingStrategy routingStrategy, ReadStrategy readStrategy,
@@ -950,6 +951,14 @@ public class Store {
     });
   }
 
+  public boolean isDaVinciPushStatusStoreEnabled() {
+    return daVinciPushStatusStoreEnabled;
+  }
+
+  public void setDaVinciPushStatusStoreEnabled(boolean daVinciPushStatusStoreEnabled) {
+    this.daVinciPushStatusStoreEnabled = daVinciPushStatusStoreEnabled;
+  }
+
   @Override
   public int hashCode() {
     int result = name.hashCode();
@@ -993,7 +1002,7 @@ public class Store {
     result = 31 * result + replicationFactor;
     result = 31 * result + (migrationDuplicateStore ? 1 : 0);
     result = 31 * result + nativeReplicationSourceFabric.hashCode();
-
+    result = 31 * result + (daVinciPushStatusStoreEnabled ? 1 : 0);
     return result;
   }
 
@@ -1043,6 +1052,7 @@ public class Store {
     if (replicationFactor != store.replicationFactor) return false;
     if (migrationDuplicateStore != store.migrationDuplicateStore) return false;
     if (!nativeReplicationSourceFabric.equals(store.nativeReplicationSourceFabric)) return false;
+    if (daVinciPushStatusStoreEnabled != store.daVinciPushStatusStoreEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
         && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
   }
@@ -1094,6 +1104,7 @@ public class Store {
     clonedStore.setReplicationFactor(replicationFactor);
     clonedStore.setMigrationDuplicateStore(migrationDuplicateStore);
     clonedStore.setNativeReplicationSourceFabric(nativeReplicationSourceFabric);
+    clonedStore.setDaVinciPushStatusStoreEnabled(daVinciPushStatusStoreEnabled);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion(), true);
     }

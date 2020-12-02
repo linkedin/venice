@@ -131,7 +131,7 @@ public class IngestionServiceTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig, "test")) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(testStoreName, daVinciConfig);
       client1.subscribeAll().get();
       assertEquals(client1.get(0).get(), 1);

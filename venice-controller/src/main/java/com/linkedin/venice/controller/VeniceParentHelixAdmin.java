@@ -8,7 +8,7 @@ import com.linkedin.venice.authorization.Method;
 import com.linkedin.venice.authorization.Permission;
 import com.linkedin.venice.authorization.Principal;
 import com.linkedin.venice.authorization.Resource;
-import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -63,7 +63,6 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -1668,20 +1667,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // Edge case example: if one cluster is stuck in NOT_CREATED, then
     //   as another cluster goes from PROGRESS to COMPLETED
     //   the aggregate status will go from PROGRESS back down to NOT_CREATED.
-    List<ExecutionStatus> priorityOrderList = Arrays.asList(
-        ExecutionStatus.PROGRESS,
-        ExecutionStatus.STARTED,
-        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
-        ExecutionStatus.UNKNOWN,
-        ExecutionStatus.NEW,
-        ExecutionStatus.NOT_CREATED,
-        ExecutionStatus.END_OF_PUSH_RECEIVED,
-        ExecutionStatus.ERROR,
-        ExecutionStatus.WARNING,
-        ExecutionStatus.COMPLETED,
-        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
-        ExecutionStatus.ARCHIVED);
-    Collections.sort(statuses, Comparator.comparingInt(priorityOrderList::indexOf));
+    Collections.sort(statuses, Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf));
     if (statuses.size() > 0) {
       currentReturnStatus = statuses.get(0);
     }
@@ -2149,7 +2135,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public void materializeMetadataStoreVersion(String clusterName, String storeName, int metadataStoreVersionNumber) {
     veniceHelixAdmin.checkControllerMastership(clusterName);
     Store veniceStore = getStore(clusterName, storeName);
-    Store zkSharedStoreMetadata = getStore(clusterName, VeniceSystemStore.METADATA_STORE.getPrefix());
+    Store zkSharedStoreMetadata = getStore(clusterName, VeniceSystemStoreType.METADATA_STORE.getPrefix());
     veniceHelixAdmin.checkMetadataStorePrerequisites(clusterName, storeName, metadataStoreVersionNumber, veniceStore,
         zkSharedStoreMetadata);
     Version version = zkSharedStoreMetadata.getVersion(metadataStoreVersionNumber).get();
@@ -2165,6 +2151,35 @@ public class VeniceParentHelixAdmin implements Admin {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.ADD_VERSION.getValue();
     message.payloadUnion = getAddVersionMessage(clusterName, metadataStoreName, version.getPushJobId(), version,
+        version.getPartitionCount(), version.getPushType());
+    acquireLock(clusterName, storeName);
+    try {
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    } finally {
+      releaseLock(clusterName);
+    }
+  }
+
+  @Override
+  public void createDaVinciPushStatusStore(String clusterName, String storeName) {
+    veniceHelixAdmin.checkControllerMastership(clusterName);
+    Store daVinciStore = getStore(clusterName, storeName);
+    Store zkSharedStore = getStore(clusterName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getPrefix());
+    if (daVinciStore == null) {
+      throw new VeniceException("Store " + storeName + " not created.");
+    }
+    if (zkSharedStore == null) {
+      throw new VeniceException("Da Vinci ZK-shared push status store not created in cluster " + clusterName + ".");
+    }
+    if (zkSharedStore.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
+      throw new VeniceException("Da Vinci ZK-shared push status store initial version not created.");
+    }
+    String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
+    Version version = zkSharedStore.getVersion(zkSharedStore.getCurrentVersion()).orElseThrow(() ->
+        new VeniceException("Version " + zkSharedStore.getCurrentVersion() + " not created."));
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.ADD_VERSION.getValue();
+    message.payloadUnion = getAddVersionMessage(clusterName, pushStatusStoreName, version.getPushJobId(), version,
         version.getPartitionCount(), version.getPushType());
     acquireLock(clusterName, storeName);
     try {

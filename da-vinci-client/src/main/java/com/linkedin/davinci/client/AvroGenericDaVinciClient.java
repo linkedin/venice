@@ -47,10 +47,13 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 
 public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClient.class);
+  private static final int DEFAULT_PUSH_STATUS_HEARTBEAT_PERIOD_IN_SECONDS = 10;
 
   protected final DaVinciConfig daVinciConfig;
   protected final ClientConfig clientConfig;
   protected final VeniceProperties backendConfig;
+  // instanceName = {hostName}/{appName}
+  protected final String instanceName;
 
   private RecordSerializer<K> keySerializer;
   private AvroGenericStoreClient<K, V> veniceClient;
@@ -67,10 +70,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private final AtomicBoolean isReady = new AtomicBoolean(false);
   private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
 
-  public AvroGenericDaVinciClient(DaVinciConfig daVinciConfig, ClientConfig clientConfig, VeniceProperties backendConfig) {
+  public AvroGenericDaVinciClient(DaVinciConfig daVinciConfig, ClientConfig clientConfig, VeniceProperties backendConfig, String instanceName) {
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.backendConfig = backendConfig;
+    this.instanceName = instanceName;
   }
 
   @Override
@@ -284,11 +288,22 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     return new VeniceConfigLoader(config, config);
   }
 
-  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
-      boolean useSystemStoreBasedRepository, long systemStoreBasedRepositoryRefreshIntervalInSeconds) {
+  private static synchronized void initBackend(
+      ClientConfig clientConfig,
+      VeniceConfigLoader configLoader,
+      String instanceName,
+      boolean useSystemStoreBasedRepository,
+      long systemStoreBasedRepositoryRefreshIntervalInSeconds,
+      long pushStatusStoreHeartbeatIntervalInSeconds) {
     if (daVinciBackend == null) {
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader,
-          useSystemStoreBasedRepository, systemStoreBasedRepositoryRefreshIntervalInSeconds), backend -> {
+      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(
+          clientConfig,
+          configLoader,
+          instanceName,
+          useSystemStoreBasedRepository,
+          systemStoreBasedRepositoryRefreshIntervalInSeconds,
+          pushStatusStoreHeartbeatIntervalInSeconds),
+          backend -> {
         daVinciBackend = null;
         backend.close();
       });
@@ -304,9 +319,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
     logger.info("Starting Da Vinci client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader, backendConfig.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false),
+    initBackend(clientConfig, configLoader, instanceName,
+        backendConfig.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false),
         backendConfig.getLong(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
-            MetadataStoreBasedStoreRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS));
+            MetadataStoreBasedStoreRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS),
+        backendConfig.getLong(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_PERIOD_IN_SECONDS)
+    );
 
     try {
       storeBackend = daVinciBackend.get().getStoreOrThrow(getStoreName());

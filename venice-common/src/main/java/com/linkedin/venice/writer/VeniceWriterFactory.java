@@ -76,7 +76,7 @@ public class VeniceWriterFactory {
         Optional.of(chunkingEnabled), SystemTime.INSTANCE);
   }
 
-  protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, VeniceKafkaSerializer<K> keySerializer,
+  public <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, VeniceKafkaSerializer<K> keySerializer,
       VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time) {
     return createVeniceWriter(topic, this.localKafkaBootstrapServers, keySerializer, valueSerializer, writeComputeSerializer, chunkingEnabled, time);
   }

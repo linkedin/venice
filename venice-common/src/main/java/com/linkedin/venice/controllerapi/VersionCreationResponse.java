@@ -23,6 +23,8 @@ public class VersionCreationResponse extends VersionResponse {
 
   private int amplificationFactor = 1;
 
+  private boolean daVinciPushStatusStoreEnabled = false;
+
   public void setPartitions(int partitions) {
     this.partitions = partitions;
   }
@@ -95,6 +97,14 @@ public class VersionCreationResponse extends VersionResponse {
     this.amplificationFactor = amplificationFactor;
   }
 
+  public void setDaVinciPushStatusStoreEnabled(boolean daVinciPushStatusStoreEnabled) {
+    this.daVinciPushStatusStoreEnabled = daVinciPushStatusStoreEnabled;
+  }
+
+  public boolean isDaVinciPushStatusStoreEnabled() {
+    return this.daVinciPushStatusStoreEnabled;
+  }
+
   @JsonIgnore
   public String toString() {
     return VersionCreationResponse.class.getSimpleName() + "(partitions: " + partitions +
@@ -106,6 +116,7 @@ public class VersionCreationResponse extends VersionResponse {
         ", partitionerClass: " + partitionerClass +
         ", partitionerParams: " + partitionerParams +
         ", amplificationFactor: " + amplificationFactor +
+        ", daVinciPushStatusStoreEnabled: " + daVinciPushStatusStoreEnabled +
         ", super: " + super.toString() + ")";
   }
 }

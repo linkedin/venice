@@ -95,6 +95,7 @@ public class CreateVersion extends AbstractRoute {
         }
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
+        responseObject.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
 
         // Retrieve partitioner config from the store
         PartitionerConfig storePartitionerConfig = store.getPartitionerConfig();
@@ -438,6 +439,27 @@ public class CreateVersion extends AbstractRoute {
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
 
         admin.materializeMetadataStoreVersion(clusterName, storeName, versionNumber);
+
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route createDaVinciPushStatusStore(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        AdminSparkServer.validateParams(request, CREATE_DAVINCI_PUSH_STATUS_STORE.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+
+        admin.createDaVinciPushStatusStore(clusterName, storeName);
 
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);

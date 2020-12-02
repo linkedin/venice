@@ -344,6 +344,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     // Kafka url will get from Venice backend for store push
     String kafkaUrl;
     boolean sslToKafka;
+    boolean daVinciPushStatusStoreEnabled;
     CompressionStrategy compressionStrategy;
     String partitionerClass;
     Map<String, String> partitionerParams;
@@ -1114,6 +1115,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     versionTopicInfo.partitionerClass = versionCreationResponse.getPartitionerClass();
     versionTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
     versionTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
+    versionTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
@@ -1234,6 +1236,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
       JobStatusQueryResponse response = controllerClient.retryableRequest(pushJobSetting.controllerStatusPollRetries,
           c -> c.queryOverallJobStatus(topicToMonitor, incrementalPushVersion));
+
       // response#isError() means the status could not be queried which could be due to a communication error.
       if (response.isError()) {
         throw new RuntimeException("Failed to connect to: " + pushJobSetting.veniceControllerUrl +

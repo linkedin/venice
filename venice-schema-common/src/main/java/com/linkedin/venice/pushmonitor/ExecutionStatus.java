@@ -115,4 +115,16 @@ public enum ExecutionStatus {
   public boolean isTerminal() {
     return this.isTerminal;
   }
+
+  /**
+   * Get ExecutionStatus from integer ordinal value in avro.
+   */
+  public static ExecutionStatus fromOrdinal(int ordinal) {
+    for (ExecutionStatus status : values()) {
+      if (status.ordinal() == ordinal) {
+        return status;
+      }
+    }
+    return ExecutionStatus.UNKNOWN;
+  }
 }

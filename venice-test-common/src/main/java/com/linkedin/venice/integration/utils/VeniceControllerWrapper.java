@@ -1,22 +1,31 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.util.Optional;
+import java.util.Properties;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
 import java.io.File;
@@ -175,7 +184,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (d2Enabled) {
         d2ServerList.add(createD2Server(zkAddress, adminPort));
       }
-      VeniceController veniceController = new VeniceController(propertiesList, d2ServerList, authorizerService);
+      D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
+      VeniceController veniceController = new VeniceController(propertiesList, d2ServerList, authorizerService, Optional.of(d2Client));
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress);
     };
   }
@@ -271,8 +281,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       d2ServerList.clear();
       d2ServerList.add(createD2Server(zkAddress, port));
     }
-
-    service = new VeniceController(configs, d2ServerList, Optional.empty());
+    D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
+    service = new VeniceController(configs, d2ServerList, Optional.empty(), Optional.of(d2Client));
   }
 
   /***

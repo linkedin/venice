@@ -109,7 +109,7 @@ public class DaVinciClientTest {
     daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig, "test")) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
       Map<Integer, Integer> keyValueMap = new HashMap<>();
       client1.subscribeAll().get();
@@ -213,7 +213,7 @@ public class DaVinciClientTest {
 
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig, "test")) {
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
       writer.broadcastStartOfPush(Collections.emptyMap());
       for (int i = 0; i < KEY_COUNT; i++) {
@@ -269,7 +269,7 @@ public class DaVinciClientTest {
             .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
             .build();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig, "test")) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
@@ -296,7 +296,7 @@ public class DaVinciClientTest {
         .build();
     D2ClientUtils.startClient(d2Client);
     metricsRepository = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig, "test")) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       client.subscribe(Collections.singleton(partition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -541,7 +541,7 @@ public class DaVinciClientTest {
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setRocksDBMemoryLimit(1024 * 1024 * 1024); // 1GB
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, new MetricsRepository(), backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, new MetricsRepository(), backendConfig, "test")) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       client.subscribeAll().get();
       client.unsubscribeAll();

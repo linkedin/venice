@@ -14,8 +14,9 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
   public AvroSpecificDaVinciClient(
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
-      VeniceProperties backendConfig) {
-    super(daVinciConfig, clientConfig, backendConfig);
+      VeniceProperties backendConfig,
+      String instanceName) {
+    super(daVinciConfig, clientConfig, backendConfig, instanceName);
 
     Class<V> valueClass = clientConfig.getSpecificValueClass();
     FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
