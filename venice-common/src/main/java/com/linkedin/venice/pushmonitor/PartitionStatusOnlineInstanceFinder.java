@@ -76,10 +76,21 @@ public class PartitionStatusOnlineInstanceFinder
       routingDataRepository.refreshRoutingDataForResource(kafkaTopic);
     }
     offlinePushStatus.setPartitionStatus(partitionStatus, false);
-    if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
-      Pair<ExecutionStatus, Optional<String>> status = PushStatusDecider.getDecider(offlinePushStatus.getStrategy())
-          .checkPushStatusAndDetailsByPartitionsStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(kafkaTopic));
-      offlinePushStatus.updateStatus(status.getFirst());
+    try {
+      if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
+        Pair<ExecutionStatus, Optional<String>> status = PushStatusDecider.getDecider(offlinePushStatus.getStrategy())
+            .checkPushStatusAndDetailsByPartitionsStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(kafkaTopic));
+        offlinePushStatus.updateStatus(status.getFirst());
+      }
+    } catch (VeniceNoHelixResourceException e) {
+      /*
+        This exception is thrown out if we cannot find corresponding EV
+        when a OfflinePush update comes. This is expected since EV is
+        slow in the heavy resource cluster and is likely that EV comes
+        out later than OfflinePushStatus when new resources are created.
+       */
+
+      logger.warn("Can not find Helix resource: " + kafkaTopic + ", partition: " + partitionStatus.getPartitionId());
     }
   }
 
