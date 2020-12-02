@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentStoreStates;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentVersionStates;
 import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
@@ -506,7 +507,7 @@ public abstract class MetadataStoreBasedStoreRepository implements SubscriptionB
       );
     }
 
-    Store store = new Store(storeProperties.name.toString(),
+    Store store = new ZKStore(storeProperties.name.toString(),
         storeProperties.owner.toString(),
         storeProperties.createdTime,
         PersistenceType.valueOf(storeProperties.persistenceType.toString()),

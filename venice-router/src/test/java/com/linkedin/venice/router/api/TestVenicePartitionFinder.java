@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.TestUtils;
@@ -30,7 +31,7 @@ public class TestVenicePartitionFinder {
     RoutingDataRepository mockDataRepo = Mockito.mock(RoutingDataRepository.class);
     HelixReadOnlyStoreRepository mockMetadataRepo = Mockito.mock(HelixReadOnlyStoreRepository.class);
     String storeName = TestUtils.getUniqueString("store");
-    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     for (int i = 0; i < NUM_VERSIONS; i++) {

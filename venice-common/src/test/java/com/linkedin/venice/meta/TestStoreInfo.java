@@ -32,7 +32,7 @@ public class TestStoreInfo {
 
   @Test
   public void testStoreInfoReturnsIncrementalPushPolicy() throws IOException {
-    Store store = new Store("testStore", "", 10, PersistenceType.ROCKS_DB,
+    Store store = new ZKStore("testStore", "", 10, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     store.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
 

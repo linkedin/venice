@@ -1,5 +1,8 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.exceptions.VeniceException;
+
+
 /**
  * Enums of status of verion.
  */
@@ -12,6 +15,15 @@ public enum VersionStatus {
     // Version has been pushed to venice and is ready to serve read request.
     ONLINE,
     ERROR;
+
+    private static final VersionStatus[] ALL_VERSION_STATUSES = values();
+
+    public static VersionStatus getVersionStatusFromOrdinal(int ordinal) {
+        if (ordinal >= ALL_VERSION_STATUSES.length) {
+            throw new VeniceException("Invalid VersionStatus ordinal: " + ordinal);
+        }
+        return ALL_VERSION_STATUSES[ordinal];
+    }
 
     /**
      * check if a status can be deleted immediately.

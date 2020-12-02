@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -9,6 +10,8 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
+import java.io.IOException;
 import java.util.Map;
 import org.codehaus.jackson.annotate.JsonCreator;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -20,7 +23,7 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
 
     public StoreJSONSerializer() {
         super(Store.class);
-        addMixin(Store.class, StoreSerializerMixin.class);
+        addMixin(ZKStore.class, StoreSerializerMixin.class);
         addMixin(Version.class, VersionSerializerMixin.class);
         addMixin(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
         addMixin(ETLStoreConfig.class, ETLStoreConfigSerializerMixin.class);
@@ -86,5 +89,26 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
             @JsonProperty("partitionerClass") String partitionerClass,
             @JsonProperty("partitionerParams") Map<String, String> partitionerParams,
             @JsonProperty("amplificationFactor") int amplificationFactor) {}
+    }
+
+    @Override
+    public byte[] serialize(Store object, String path)
+        throws IOException {
+        /**
+         * This function will only serialize {@link ZKStore}.
+         */
+        if (!(object instanceof ZKStore)) {
+            throw new VeniceException("Only ZKStore type is supported for json serialization");
+        }
+        return super.serialize(object, path);
+    }
+
+    @Override
+    public Store deserialize(byte[] bytes, String path)
+        throws IOException {
+        /**
+         * This function will only deserialize into {@link ZKStore} implementation.
+         */
+        return mapper.readValue(bytes, ZKStore.class);
     }
 }

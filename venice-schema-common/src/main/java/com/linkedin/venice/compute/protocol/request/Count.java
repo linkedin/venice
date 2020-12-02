@@ -7,8 +7,8 @@ package com.linkedin.venice.compute.protocol.request;
 
 @SuppressWarnings("all")
 public class Count extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"Count\",\"namespace\":\"com.linkedin.venice.compute.protocol.request\",\"fields\":[{\"name\":\"field\",\"type\":\"string\",\"doc\":\"The field name in the original value record of type array, which will used to execute count operation on\"},{\"name\":\"resultFieldName\",\"type\":\"string\",\"doc\":\"The field name used to store the count operation result\"}]}");
-  /** The field name in the original value record of type array, which will used to execute count operation on */
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"Count\",\"namespace\":\"com.linkedin.venice.compute.protocol.request\",\"fields\":[{\"name\":\"field\",\"type\":\"string\",\"doc\":\"The field name in the original value record of type array or map, which will used to execute count operation on\"},{\"name\":\"resultFieldName\",\"type\":\"string\",\"doc\":\"The field name used to store the count operation result\"}]}");
+  /** The field name in the original value record of type array or map, which will used to execute count operation on */
   public java.lang.CharSequence field;
   /** The field name used to store the count operation result */
   public java.lang.CharSequence resultFieldName;

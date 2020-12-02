@@ -200,6 +200,12 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     return zkDataAccessor.get(getStoreZkPath(storeName), null, AccessOption.PERSISTENT);
   }
 
+  /**
+   * {@link HelixReadOnlyZKSharedSystemStoreRepository} is overriding this function to filter out
+   * stores, which are not necessary to put a watch against during {@link #refresh()}, and if this logic to refresh the zk
+   * store repository gets changed in the future, we need to update {@link HelixReadOnlyZKSharedSystemStoreRepository}
+   * accordingly.
+   */
   protected List<Store> getStoresFromZk() {
     List<Store> stores = zkDataAccessor.getChildren(clusterStoreRepositoryPath, null, AccessOption.PERSISTENT);
     stores.removeIf(Objects::isNull);

@@ -3,6 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
@@ -14,7 +15,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
  */
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 @org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
-public class Version implements Comparable<Version> {
+public class Version implements Comparable<Version>, DataModelBackedStructure<StoreVersion> {
   private static final String VERSION_SEPARATOR = "_v";
   private static final String REAL_TIME_TOPIC_SUFFIX = "_rt";
   private static final String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
@@ -51,88 +52,11 @@ public class Version implements Comparable<Version> {
     }
   }
 
-  /**
-   * Name of the store which this version belong to.
-   */
-  private final String storeName;
-  /**
-   * Version number.
-   */
-  private final int number;
-
   @JsonIgnore
   private final String kafkaTopicName;
-  /**
-   * Time when this version was created.
-   */
-  private final long createdTime;
-  /**
-   * Status of version.
-   */
-  private VersionStatus status = VersionStatus.STARTED;
 
-  private final String pushJobId;
-  /**
-   * strategies used to compress/decompress Record's value
-   */
-  private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-
-  /**
-   * Whether or not to use leader follower state transition model
-   * for upcoming version.
-   */
-  private boolean leaderFollowerModelEnabled = false;
-
-  /**
-   * Whether or not native replication is enabled
-   */
-  private boolean nativeReplicationEnabled = false;
-
-  /**
-   * Address to the kafka broker which holds the source of truth topic for this store version.
-   */
-  private String pushStreamSourceAddress = "";
-
-  /**
-   * Whether or not to enable buffer replay for hybrid.
-   */
-  private boolean bufferReplayEnabledForHybrid = true;
-
-  /**
-   * Whether or not large values are supported (via chunking).
-   */
-  private boolean chunkingEnabled = false;
-
-  /**
-   * Producer type for this version.
-   */
-  private PushType pushType = PushType.BATCH;
-
-  /**
-   * Default partition count of this version.
-   * assigned.
-   */
-  private int partitionCount = 0;
-
-  /**
-   * Config for custom partitioning.
-   */
-  private PartitionerConfig partitionerConfig;
-
-  /**
-   * Incremental Push Policy to reconcile with real time pushes.
-   */
-  private IncrementalPushPolicy incrementalPushPolicy = IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC;
-
-  /**
-   * the number of replica each store version will hold.
-   */
-  private int replicationFactor = Store.DEFAULT_REPLICATION_FACTOR;
-
-  /**
-   * The source fabric name to be uses in native replication. Remote consumption will happen from kafka in this fabric.
-   */
-  private String nativeReplicationSourceFabric = "";
+  // The internal data model
+  private final StoreVersion storeVersion;
 
   /**
    * Use the constructor that specifies a pushJobId instead
@@ -157,158 +81,177 @@ public class Version implements Comparable<Version> {
       @JsonProperty("pushJobId") @com.fasterxml.jackson.annotation.JsonProperty("pushJobId") String pushJobId,
       @JsonProperty("partitionCount") @com.fasterxml.jackson.annotation.JsonProperty("partitionCount") int partitionCount,
       @JsonProperty("partitionerConfig") @com.fasterxml.jackson.annotation.JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig) {
-    this.storeName = storeName;
-    this.number = number;
-    this.createdTime = createdTime;
-    this.pushJobId = pushJobId == null ? numberBasedDummyPushId(number) : pushJobId; // for deserializing old Versions that didn't get an pushJobId
-    this.partitionCount = partitionCount;
-    this.partitionerConfig = partitionerConfig;
+    this.storeVersion = Store.prefillAvroRecordWithDefaultValue(new StoreVersion());
+    this.storeVersion.storeName = storeName;
+    this.storeVersion.number = number;
+    this.storeVersion.createdTime = createdTime;
+    this.storeVersion.pushJobId = pushJobId == null ? numberBasedDummyPushId(number) : pushJobId; // for deserializing old Versions that didn't get an pushJobId
+    this.storeVersion.partitionCount = partitionCount;
+    if (partitionerConfig != null) {
+      this.storeVersion.partitionerConfig = partitionerConfig.dataModel();
+    }
+
     this.kafkaTopicName = composeKafkaTopic(storeName, number);
   }
 
+  Version(StoreVersion storeVersion) {
+    this.storeVersion = storeVersion;
+    this.kafkaTopicName = composeKafkaTopic(getStoreName(), getNumber());
+  }
+
   public int getNumber() {
-    return number;
+    return this.storeVersion.number;
   }
 
   public long getCreatedTime() {
-    return createdTime;
+    return this.storeVersion.createdTime;
   }
 
   public VersionStatus getStatus() {
-    return status;
+    return VersionStatus.getVersionStatusFromOrdinal(this.storeVersion.status);
   }
 
   public void setStatus(VersionStatus status) {
-    this.status = status;
+    this.storeVersion.status = status.ordinal();
   }
 
   public CompressionStrategy getCompressionStrategy() {
-    return compressionStrategy;
+    return CompressionStrategy.valueOf(this.storeVersion.compressionStrategy);
   }
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
-    this.compressionStrategy = compressionStrategy;
+    this.storeVersion.compressionStrategy = compressionStrategy.getValue();
   }
 
   public boolean isLeaderFollowerModelEnabled() {
-    return leaderFollowerModelEnabled;
+    return this.storeVersion.leaderFollowerModelEnabled;
   }
 
   public boolean isNativeReplicationEnabled() {
-    return nativeReplicationEnabled;
+    return this.storeVersion.nativeReplicationEnabled;
   }
 
   public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
+    this.storeVersion.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 
   public void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
-    this.nativeReplicationEnabled = nativeReplicationEnabled;
+    this.storeVersion.nativeReplicationEnabled = nativeReplicationEnabled;
   }
 
   public String getPushStreamSourceAddress() {
-    return this.pushStreamSourceAddress;
+    return this.storeVersion.pushStreamSourceAddress.toString();
   }
 
   public void setPushStreamSourceAddress(String address) {
-    pushStreamSourceAddress = address;
+    this.storeVersion.pushStreamSourceAddress = address;
   }
 
   public boolean isBufferReplayEnabledForHybrid() {
-    return bufferReplayEnabledForHybrid;
+    return this.storeVersion.bufferReplayEnabledForHybrid;
   }
 
   public void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid) {
-    this.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
+    this.storeVersion.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
   }
 
   public boolean isChunkingEnabled() {
-    return chunkingEnabled;
+    return this.storeVersion.chunkingEnabled;
   }
 
   public void setChunkingEnabled(boolean chunkingEnabled) {
-    this.chunkingEnabled = chunkingEnabled;
+    this.storeVersion.chunkingEnabled = chunkingEnabled;
   }
 
   public String getStoreName() {
-    return storeName;
+    return this.storeVersion.storeName.toString();
   }
 
   public String getPushJobId() {
-    return pushJobId;
+    return this.storeVersion.pushJobId.toString();
   }
 
   public PushType getPushType() {
-    return pushType;
+    return PushType.valueOf(this.storeVersion.pushType);
   }
 
   public void setPushType(PushType pushType) {
-    this.pushType = pushType;
+    this.storeVersion.pushType = pushType.getValue();
   }
 
   public void setPartitionCount(int partitionCount) {
-    this.partitionCount = partitionCount;
+    this.storeVersion.partitionCount = partitionCount;
   }
 
   public int getPartitionCount() {
-    return partitionCount;
+    return this.storeVersion.partitionCount;
   }
 
   public PartitionerConfig getPartitionerConfig() {
-    return partitionerConfig;
+    if (null == this.storeVersion.partitionerConfig) {
+      return null;
+    }
+    return new PartitionerConfig(this.storeVersion.partitionerConfig);
   }
 
   public void setPartitionerConfig(PartitionerConfig partitionerConfig) {
-    this.partitionerConfig = partitionerConfig;
+    if (partitionerConfig != null) {
+      this.storeVersion.partitionerConfig = partitionerConfig.dataModel();
+    }
   }
 
   public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return incrementalPushPolicy;
+    return IncrementalPushPolicy.valueOf(this.storeVersion.incrementalPushPolicy);
   }
 
   public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.incrementalPushPolicy = incrementalPushPolicy;
+    this.storeVersion.incrementalPushPolicy = incrementalPushPolicy.getValue();
   }
 
   public int getReplicationFactor() {
-    return replicationFactor;
+    return this.storeVersion.replicationFactor;
   }
 
   public void setReplicationFactor(int replicationFactor) {
-    this.replicationFactor = replicationFactor;
+    this.storeVersion.replicationFactor = replicationFactor;
   }
 
   public int getMinActiveReplicas() {
-    return replicationFactor - 1;
+    return this.storeVersion.replicationFactor - 1;
   }
 
   public String getNativeReplicationSourceFabric() {
-    return this.nativeReplicationSourceFabric;
+    return this.storeVersion.nativeReplicationSourceFabric.toString();
   }
 
   public void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
-    this.nativeReplicationSourceFabric = nativeReplicationSourceFabric;
+    this.storeVersion.nativeReplicationSourceFabric = nativeReplicationSourceFabric;
+  }
+
+  @Override
+  public StoreVersion dataModel() {
+    return this.storeVersion;
   }
 
 
   @Override
   public String toString() {
     return "Version{" +
-        "storeName='" + storeName + '\'' +
-        ", number=" + number +
-        ", createdTime=" + createdTime +
-        ", status=" + status +
-        ", pushJobId='" + pushJobId + '\'' +
-        ", compressionStrategy='" + compressionStrategy + '\'' +
-        ", leaderFollowerModelEnabled=" + leaderFollowerModelEnabled +
-        ", bufferReplayEnabledForHybrid=" + bufferReplayEnabledForHybrid +
-        ", pushType=" + pushType +
-        ", partitionCount=" + partitionCount +
-        ", partitionerConfig=" + partitionerConfig +
-        ", nativeReplicationEnabled=" + nativeReplicationEnabled +
-        ", pushStreamSourceAddress=" + pushStreamSourceAddress +
-        ", replicationFactor=" + replicationFactor +
-        ", nativeReplicationSourceFabric=" + nativeReplicationSourceFabric +
+        "storeName='" + getStoreName() + '\'' +
+        ", number=" + getNumber() +
+        ", createdTime=" + getCreatedTime() +
+        ", status=" + getStatus() +
+        ", pushJobId='" + getPushJobId() + '\'' +
+        ", compressionStrategy='" + getCompressionStrategy() + '\'' +
+        ", leaderFollowerModelEnabled=" + isLeaderFollowerModelEnabled() +
+        ", bufferReplayEnabledForHybrid=" + isBufferReplayEnabledForHybrid() +
+        ", pushType=" + getPushType() +
+        ", partitionCount=" + getPartitionCount() +
+        ", partitionerConfig=" + getPartitionerConfig() +
+        ", nativeReplicationEnabled=" + isNativeReplicationEnabled() +
+        ", pushStreamSourceAddress=" + getPushStreamSourceAddress() +
+        ", replicationFactor=" + getReplicationFactor() +
+        ", nativeReplicationSourceFabric=" + getNativeReplicationSourceFabric() +
         '}';
   }
 
@@ -318,8 +261,8 @@ public class Version implements Comparable<Version> {
       throw new IllegalArgumentException("Input argument is null");
     }
 
-    Integer num = this.number;
-    return num.compareTo(o.number);
+    Integer num = this.storeVersion.number;
+    return num.compareTo(o.storeVersion.number);
   }
 
   @Override
@@ -330,93 +273,14 @@ public class Version implements Comparable<Version> {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-
     Version version = (Version) o;
-
-    if (number != version.number) {
-      return false;
-    }
-
-    if (createdTime != version.createdTime) {
-      return false;
-    }
-
-    // NPE proof comparison
-    if (!Objects.equals(storeName, version.storeName)) {
-      return false;
-    }
-
-    if (status != version.status) {
-      return false;
-    }
-
-    if (compressionStrategy != version.compressionStrategy) {
-      return false;
-    }
-
-    if (leaderFollowerModelEnabled != version.leaderFollowerModelEnabled) {
-      return false;
-    }
-
-    if (nativeReplicationEnabled != version.nativeReplicationEnabled) {
-      return false;
-    }
-
-    if(!pushStreamSourceAddress.equals(version.pushStreamSourceAddress)) {
-      return false;
-    }
-
-    if (bufferReplayEnabledForHybrid != version.bufferReplayEnabledForHybrid) {
-      return false;
-    }
-
-    if (chunkingEnabled != version.chunkingEnabled) {
-      return false;
-    }
-
-    if (partitionCount != version.partitionCount) {
-      return false;
-    }
-
-    if (!Objects.equals(partitionerConfig, version.partitionerConfig)) {
-      return false;
-    }
-
-    if (incrementalPushPolicy != version.incrementalPushPolicy) {
-      return false;
-    }
-
-    if (replicationFactor != version.replicationFactor) {
-      return false;
-    }
-
-    if(!nativeReplicationSourceFabric.equals(version.nativeReplicationSourceFabric)) {
-      return false;
-    }
-
-    return pushJobId.equals(version.pushJobId);
+    return storeVersion.equals(version.storeVersion);
   }
 
   @Override
   public int hashCode() {
-    int result = storeName.hashCode();
-    result = 31 * result + number;
-    result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
-    result = 31 * result + status.hashCode();
-    result = 31 * result + pushJobId.hashCode();
-    result = 31 * result + compressionStrategy.hashCode();
-    result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
-    result = 31 * result + (bufferReplayEnabledForHybrid ? 1: 0);
-    result = 31 * result + (nativeReplicationEnabled ? 1 : 0);
-    result = 31 * result + pushStreamSourceAddress.hashCode();
-    result = 31 * result + partitionCount;
-    result = 31 * result + incrementalPushPolicy.hashCode();
-    result = 31 * result + replicationFactor;
-    result = 31 * result + nativeReplicationSourceFabric.hashCode();
-    return result;
+    return Objects.hash(storeVersion);
   }
-
-
 
   /**
    * Clone a new version based on current data in this version.
@@ -425,18 +289,18 @@ public class Version implements Comparable<Version> {
    */
   @JsonIgnore
   public Version cloneVersion() {
-    Version clonedVersion = new Version(storeName, number, createdTime, pushJobId, partitionCount, partitionerConfig);
-    clonedVersion.setStatus(status);
-    clonedVersion.setCompressionStrategy(compressionStrategy);
-    clonedVersion.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
-    clonedVersion.setBufferReplayEnabledForHybrid(bufferReplayEnabledForHybrid);
-    clonedVersion.setChunkingEnabled(chunkingEnabled);
-    clonedVersion.setPushType(pushType);
-    clonedVersion.setNativeReplicationEnabled(nativeReplicationEnabled);
-    clonedVersion.setPushStreamSourceAddress(pushStreamSourceAddress);
-    clonedVersion.setIncrementalPushPolicy(incrementalPushPolicy);
-    clonedVersion.setReplicationFactor(replicationFactor);
-    clonedVersion.setNativeReplicationSourceFabric(nativeReplicationSourceFabric);
+    Version clonedVersion = new Version(getStoreName(), getNumber(), getCreatedTime(), getPushJobId(), getPartitionCount(), getPartitionerConfig());
+    clonedVersion.setStatus(getStatus());
+    clonedVersion.setCompressionStrategy(getCompressionStrategy());
+    clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
+    clonedVersion.setBufferReplayEnabledForHybrid(isBufferReplayEnabledForHybrid());
+    clonedVersion.setChunkingEnabled(isChunkingEnabled());
+    clonedVersion.setPushType(getPushType());
+    clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
+    clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());
+    clonedVersion.setIncrementalPushPolicy(getIncrementalPushPolicy());
+    clonedVersion.setReplicationFactor(getReplicationFactor());
+    clonedVersion.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     return clonedVersion;
   }
 

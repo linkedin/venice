@@ -70,6 +70,7 @@ import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
@@ -365,7 +366,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Add routine to create zk shared metadata system store
             UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
                 .setHybridOffsetLagThreshold(100).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(5)) // 5 mins
-                .setLeaderFollowerModel(true).setWriteComputationEnabled(true);
+                .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
+                .setPartitionCount(1);
             initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
                 multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
                 Optional.of(metadataSystemStoreUpdate)));
@@ -532,7 +534,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         try{
             checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-            Store newStore = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
+            Store newStore = new ZKStore(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
                 config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
 
             if (config.isLeaderFollowerEnabledForAllStores()) {

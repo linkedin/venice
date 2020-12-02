@@ -6,13 +6,10 @@
 package com.linkedin.venice.systemstore.schemas;
 
 @SuppressWarnings("all")
-public class HybridStoreConfig extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"HybridStoreConfig\",\"namespace\":\"com.linkedin.venice.systemstore.schemas\",\"fields\":[{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\",\"doc\":\"\"},{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\",\"doc\":\"\"},{\"name\":\"producerTimestampLagThresholdToGoOnlineInSeconds\",\"type\":\"long\",\"doc\":\"\"}]}");
-  /**  */
+public class StoreHybridConfig extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreHybridConfig\",\"namespace\":\"com.linkedin.venice.systemstore.schemas\",\"fields\":[{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"},{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"},{\"name\":\"producerTimestampLagThresholdToGoOnlineInSeconds\",\"type\":\"long\"}]}");
   public long rewindTimeInSeconds;
-  /**  */
   public long offsetLagThresholdToGoOnline;
-  /**  */
   public long producerTimestampLagThresholdToGoOnlineInSeconds;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 

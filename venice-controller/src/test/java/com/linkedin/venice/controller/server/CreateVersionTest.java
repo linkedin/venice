@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
@@ -152,7 +153,7 @@ public class CreateVersionTest {
     }
 
     // Setting up a store with hybrid and incremental enabled and incremental policy = INCREMENTAL_PUSH_SAME_AS_REAL_TIME
-    Store store = new Store(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
+    Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     store.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
     store.setHybridStoreConfig(new HybridStoreConfig(0, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));

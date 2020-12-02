@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
@@ -63,7 +64,7 @@ public class TestHelixReadOnlySchemaRepository {
   }
 
   private void createStore(String storeName) {
-    Store store = new Store(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
+    Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     storeRWRepo.addStore(store);
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> storeRORepo.hasStore(storeName));

@@ -713,4 +713,16 @@ public class Utils {
     };
     return new ResultList();
   }
+
+  public static Map<CharSequence, CharSequence> convertStringMapToCharSequenceMap(Map<String, String> stringMap) {
+    Map<CharSequence, CharSequence> res = new HashMap<>();
+    stringMap.forEach( (k, v) -> res.put(k, v));
+    return res;
+  }
+
+  public static Map<String, String> convertCharSequenceMapToStringMap(Map<CharSequence, CharSequence> charSequenceMap) {
+    Map<String, String> res = new HashMap<>();
+    charSequenceMap.forEach((k, v) -> res.put(k.toString(), v.toString()));
+    return res;
+  }
 }
