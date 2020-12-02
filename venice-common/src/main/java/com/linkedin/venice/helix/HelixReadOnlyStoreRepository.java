@@ -88,6 +88,13 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
     }
   }
 
+  /**
+   * {@link HelixReadOnlyZKSharedSystemStoreRepository} is overriding this function to filter out
+   * stores, which are not necessary to put a watch against, and if this logic to monitor the zk
+   * store repository gets changed in the future, we need to update {@link HelixReadOnlyZKSharedSystemStoreRepository}
+   * accordingly.
+   * @param newZkStoreNames
+   */
   protected void onRepositoryChanged(Collection<String> newZkStoreNames) {
     updateLock.lock();
     try {

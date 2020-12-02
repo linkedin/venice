@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -70,7 +71,7 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
     try {
       if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
         metadataSystemStores.computeIfAbsent(storeName, k -> {
-          Store store = new Store(storeName, "venice-system", 0,
+          Store store = new ZKStore(storeName, "venice-system", 0,
               PersistenceType.ROCKS_DB, RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE,
               OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
           store.setPartitionCount(DEFAULT_SYSTEM_STORE_PARTITION_COUNT);

@@ -1,13 +1,17 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 
-import com.linkedin.venice.utils.Time;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -89,5 +93,33 @@ public class TestStoreJsonSerializer {
         String jsonStr = new String(data);
         Store newStore = serializer.deserialize(jsonStr.getBytes(), "");
         Assert.assertEquals(store, newStore);
+    }
+
+    @Test
+    public void testSerializationWithSystemStores() throws IOException {
+        Store store = TestUtils.createTestStore("s1", "owner", 1l);
+        store.addVersion(new Version(store.getName(), 1, "test_push_id"));
+
+        SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributes();
+        systemStoreAttributes.setCurrentVersion(1);
+        systemStoreAttributes.setLargestUsedVersionNumber(1);
+        VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.META_STORE;
+        String systemStoreName = systemStoreType.getSystemStoreName(store.getName());
+        Version systemStoreVersion = new Version(systemStoreName, 1, "test_push_id");
+        systemStoreAttributes.setVersions(Arrays.asList(systemStoreVersion));
+        Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
+        systemStores.put(systemStoreType.getPrefix(), systemStoreAttributes);
+        store.setSystemStores(systemStores);
+        StoreJSONSerializer serializer = new StoreJSONSerializer();
+        byte[] serializedBytes = serializer.serialize(store, "test");
+
+        Store deserializedStore = serializer.deserialize(serializedBytes, "test");
+        Assert.assertTrue(deserializedStore.getVersion(1).isPresent(), "Version 1 should exist");
+        Map<String, SystemStoreAttributes> deserializedStoreSystemStores = deserializedStore.getSystemStores();
+        Assert.assertTrue(deserializedStoreSystemStores.containsKey(systemStoreType.getPrefix()), "System store attributes for type: " + systemStoreType.getPrefix() + " must exist");
+        SystemStoreAttributes systemStoreAttributesForTestType = deserializedStoreSystemStores.get(systemStoreType.getPrefix());
+        Assert.assertEquals(systemStoreAttributesForTestType.getCurrentVersion(), 1);
+        Assert.assertEquals(systemStoreAttributesForTestType.getLargestUsedVersionNumber(), 1);
+        Assert.assertEquals(systemStoreAttributesForTestType.getVersions().size(), 1);
     }
 }

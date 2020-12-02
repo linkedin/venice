@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.testng.Assert;
@@ -13,7 +12,7 @@ import org.testng.annotations.Test;
 /**
  * Test cases for Venice Store.
  */
-public class TestStore {
+public class TestZKStore {
   @Test
   public void testVersionsAreAddedInOrdered(){
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
@@ -316,7 +315,7 @@ public class TestStore {
 
   @Test(expectedExceptions = VeniceException.class)
   public void invalidStoreNameThrows(){
-    Store store = new Store("My Store Name", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new ZKStore("My Store Name", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
   }
 
   /**
@@ -325,7 +324,7 @@ public class TestStore {
   @Test(groups = {"flaky"})
   public void cannotAddDifferentVersionsWithSamePushId(){
     String storeName = "storeName";
-    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     String duplicatePushJobId = "pushId";
     Version versionOne = new Version(storeName, 1, duplicatePushJobId);
     store.addVersion(versionOne);
@@ -340,7 +339,7 @@ public class TestStore {
 
   @Test
   public void testStoreLevelAcl(){
-    Store store = new Store("storeName", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new ZKStore("storeName", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     Assert.assertTrue(store.isAccessControlled());
   }
 }

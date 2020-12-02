@@ -1,5 +1,8 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.exceptions.VeniceException;
+
+
 /**
  * Enums of the strategies used to backup older store versions in Venice.
  */
@@ -18,12 +21,12 @@ public enum BackupStrategy {
     /** Keep in user-specified store eg HDD, other DB */
     // KEEP_IN_USER_STORE;
 
+    private static BackupStrategy[] ALL_BACKUP_STRATEGIES = values();
+
     public static BackupStrategy fromInt(int i) {
-        for (BackupStrategy backupStrategy : values()) {
-            if (backupStrategy.ordinal() == i) {
-                return backupStrategy;
-            }
+        if (i >= ALL_BACKUP_STRATEGIES.length) {
+            throw new VeniceException("Invalid BackStrategy ordinal: " + i);
         }
-        return KEEP_MIN_VERSIONS;
+        return ALL_BACKUP_STRATEGIES[i];
     }
 }

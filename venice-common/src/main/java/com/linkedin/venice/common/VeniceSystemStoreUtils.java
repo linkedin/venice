@@ -19,7 +19,7 @@ public class VeniceSystemStoreUtils {
   private static final String PARTICIPANT_STORE_FORMAT = PARTICIPANT_STORE_PREFIX + "_cluster_%s";
   private static final String PUSH_JOB_DETAILS_STORE_NAME =
       String.format(Store.SYSTEM_STORE_FORMAT, PUSH_JOB_DETAILS_STORE);
-  private static final String SEPARATOR = "_";
+  public static final String SEPARATOR = "_";
 
   public static String getParticipantStoreNameForCluster(String clusterName) {
     return String.format(PARTICIPANT_STORE_FORMAT, clusterName);
@@ -43,6 +43,8 @@ public class VeniceSystemStoreUtils {
       return METADATA_STORE;
     } else if (storeName.startsWith(DAVINCI_PUSH_STATUS_STORE.getPrefix())) {
       return DAVINCI_PUSH_STATUS_STORE;
+    } if (storeName.startsWith(META_STORE.getPrefix())) {
+      return META_STORE;
     } else {
       return null;
     }
@@ -54,7 +56,7 @@ public class VeniceSystemStoreUtils {
    */
   public static String getZkStoreName(String storeName) {
     VeniceSystemStoreType systemStore = getSystemStoreType(storeName);
-    return systemStore != null && systemStore.isStoreZkShared() ? systemStore.getPrefix() : storeName;
+    return systemStore != null && systemStore.isStoreZkShared() ? systemStore.getZkSharedStoreName() : storeName;
   }
 
   public static UpdateStoreQueryParams getDefaultZkSharedStoreParams() {

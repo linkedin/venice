@@ -1,27 +1,36 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
+import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class PartitionerConfig {
-  private String partitionerClass;
-  private Map<String, String> partitionerParams;
-  private int amplificationFactor;
+public class PartitionerConfig implements DataModelBackedStructure<StorePartitionerConfig> {
+  private final StorePartitionerConfig partitionerConfig;
 
   public PartitionerConfig(
       @JsonProperty("partitionerClass") String partitionerClass,
       @JsonProperty("partitionerParams") Map<String, String> partitionerParams,
-      @JsonProperty("amplificationFactor") int amplificationFactor
-  ) {
-    this.partitionerClass = partitionerClass;
-    this.partitionerParams = partitionerParams;
-    this.amplificationFactor = amplificationFactor;
+      @JsonProperty("amplificationFactor") int amplificationFactor) {
+    this.partitionerConfig = new StorePartitionerConfig();
+    this.partitionerConfig.partitionerClass = partitionerClass;
+    /**
+     * TODO: once the full stack migrates to adopt modern avro versions (1.7+), we could specify `java.string` in schema,
+     * then this kind of conversion can be avoided.
+     */
+    this.partitionerConfig.partitionerParams = Utils.convertStringMapToCharSequenceMap(partitionerParams);
+    this.partitionerConfig.amplificationFactor = amplificationFactor;
+  }
+
+  PartitionerConfig(StorePartitionerConfig partitionerConfig) {
+    this.partitionerConfig = partitionerConfig;
   }
 
   public PartitionerConfig() {
@@ -29,52 +38,53 @@ public class PartitionerConfig {
   }
 
   public String getPartitionerClass() {
-    return this.partitionerClass;
+    return this.partitionerConfig.partitionerClass.toString();
   }
 
   public Map<String, String> getPartitionerParams() {
-    return this.partitionerParams;
+    return Utils.convertCharSequenceMapToStringMap(this.partitionerConfig.partitionerParams);
   }
 
   public int getAmplificationFactor() {
-    return this.amplificationFactor;
+    return this.partitionerConfig.amplificationFactor;
   }
 
   public void setAmplificationFactor(int amplificationFactor) {
-    this.amplificationFactor = amplificationFactor;
+    this.partitionerConfig.amplificationFactor = amplificationFactor;
   }
 
   public void setPartitionerClass(String partitionerClass) {
-    this.partitionerClass = partitionerClass;
+    this.partitionerConfig.partitionerClass = partitionerClass;
   }
 
   public void setPartitionerParams(Map<String, String> partitionerParams) {
-    this.partitionerParams = partitionerParams;
+    this.partitionerConfig.partitionerParams = Utils.convertStringMapToCharSequenceMap(partitionerParams);
+  }
+
+  @Override
+  public StorePartitionerConfig dataModel() {
+    return this.partitionerConfig;
   }
 
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
     PartitionerConfig that = (PartitionerConfig) o;
-
-    if (!partitionerClass.equals(that.partitionerClass)) return false;
-    if (!partitionerParams.equals(that.partitionerParams)) return false;
-    return amplificationFactor == that.amplificationFactor;
+    return partitionerConfig.equals(that.partitionerConfig);
   }
 
   @Override
   public int hashCode() {
-    int result = partitionerClass.hashCode();
-    int partitionerParamsHashCode = partitionerParams == null ? 0 : partitionerParams.toString().hashCode();
-    result = 31 * result + (partitionerParamsHashCode ^ (partitionerParamsHashCode >>> 32));
-    result = 31 * result + (amplificationFactor ^ (amplificationFactor >>> 32));
-    return result;
+    return Objects.hash(partitionerConfig);
   }
 
   @JsonIgnore
   public PartitionerConfig clone(){
-    return new PartitionerConfig(partitionerClass, partitionerParams, amplificationFactor);
+    return new PartitionerConfig(getPartitionerClass(), getPartitionerParams(), getAmplificationFactor());
   }
 }

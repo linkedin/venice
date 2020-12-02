@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.routerapi.ReplicaState;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -94,7 +95,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
     int versionNumber = 1;
     String topic = Version.composeKafkaTopic(storeName, versionNumber);
     OfflinePushStatus offlinePushStatus = getMockPushStatus(topic).get(0);
-    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
             OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     store.setLeaderFollowerModelEnabled(true);
@@ -114,7 +115,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
     storeName = "testDeletedStoreVersion";
     topic = Version.composeKafkaTopic(storeName, versionNumber);
     offlinePushStatus = getMockPushStatus(topic).get(0);
-    store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+    store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
             OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     store.setLeaderFollowerModelEnabled(true);

@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -142,7 +143,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
   }
 
   private Store getDummyStore(String storeName, List<Integer> versions, long rcuQuota){
-    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
         ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     for (int versionNumber : versions){
       Version version = new Version(storeName, versionNumber, Version.composeKafkaTopic(storeName, versionNumber));

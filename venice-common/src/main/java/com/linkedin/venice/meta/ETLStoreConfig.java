@@ -1,5 +1,7 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
+import java.util.Objects;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -9,83 +11,79 @@ import org.codehaus.jackson.annotate.JsonProperty;
  * A container of ETL Enabled Store related configurations.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class ETLStoreConfig {
-
+public class ETLStoreConfig implements DataModelBackedStructure<StoreETLConfig> {
   /**
-   * If enabled regular ETL or future version ETL, this account name is part of path for
-   * where the ETLed snapshots will go. for example, for user account veniceetl001,
-   * snapshots will be published to HDFS /jobs/veniceetl001/storeName
+   * The internal data model for {@link ETLStoreConfig}.
    */
-  private String etledUserProxyAccount;
-
-  /**
-   * Whether or not enable regular version ETL for this store.
-   */
-  private boolean regularVersionETLEnabled;
-
-  /**
-   * Whether or not enable future version ETL - the version that might come online in future - for this store.
-   */
-  private boolean futureVersionETLEnabled;
+  private final StoreETLConfig etlConfig;
 
   public ETLStoreConfig(
       @JsonProperty("etledUserProxyAccount") String etledUserProxyAccount,
       @JsonProperty("regularVersionETLEnabled") boolean regularVersionETLEnabled,
       @JsonProperty("futureVersionETLEnabled") boolean futureVersionETLEnabled
   ) {
-    this.etledUserProxyAccount = etledUserProxyAccount;
-    this.regularVersionETLEnabled = regularVersionETLEnabled;
-    this.futureVersionETLEnabled = futureVersionETLEnabled;
+    this.etlConfig = new StoreETLConfig();
+    this.etlConfig.etledUserProxyAccount = etledUserProxyAccount;
+    this.etlConfig.regularVersionETLEnabled = regularVersionETLEnabled;
+    this.etlConfig.futureVersionETLEnabled = futureVersionETLEnabled;
   }
 
   public ETLStoreConfig() {
     this("", false, false);
   }
+
+  ETLStoreConfig(StoreETLConfig config) {
+    this.etlConfig = config;
+  }
+
   public String getEtledUserProxyAccount() {
-    return etledUserProxyAccount;
+    return this.etlConfig.etledUserProxyAccount.toString();
   }
 
   public void setEtledUserProxyAccount(String etledUserProxyAccount) {
-    this.etledUserProxyAccount = etledUserProxyAccount;
+    this.etlConfig.etledUserProxyAccount = etledUserProxyAccount;
   }
 
   public boolean isRegularVersionETLEnabled() {
-    return regularVersionETLEnabled;
+    return this.etlConfig.regularVersionETLEnabled;
   }
 
   public void setRegularVersionETLEnabled(boolean regularVersionETLEnabled) {
-    this.regularVersionETLEnabled = regularVersionETLEnabled;
+    this.etlConfig.regularVersionETLEnabled = regularVersionETLEnabled;
   }
 
   public boolean isFutureVersionETLEnabled() {
-    return futureVersionETLEnabled;
+    return this.etlConfig.futureVersionETLEnabled;
   }
 
   public void setFutureVersionETLEnabled(boolean futureVersionETLEnabled) {
-    this.futureVersionETLEnabled = futureVersionETLEnabled;
+    this.etlConfig.futureVersionETLEnabled = futureVersionETLEnabled;
+  }
+
+  @Override
+  public StoreETLConfig dataModel() {
+    return this.etlConfig;
   }
 
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
     ETLStoreConfig that = (ETLStoreConfig) o;
-    if (!etledUserProxyAccount.equals(that.getEtledUserProxyAccount())) return false;
-    if (!regularVersionETLEnabled == that.regularVersionETLEnabled) return false;
-    return futureVersionETLEnabled == that.futureVersionETLEnabled;
+    return etlConfig.equals(that.etlConfig);
   }
 
   @Override
   public int hashCode() {
-    int result = etledUserProxyAccount.hashCode();
-    result = 31 * result + (regularVersionETLEnabled ? 1 : 0);
-    result = 31 * result + (futureVersionETLEnabled ? 1 : 0);
-    return result;
+    return Objects.hash(etlConfig);
   }
 
   @JsonIgnore
   public ETLStoreConfig clone(){
-    return new ETLStoreConfig(etledUserProxyAccount, regularVersionETLEnabled, futureVersionETLEnabled);
+    return new ETLStoreConfig(getEtledUserProxyAccount(), isRegularVersionETLEnabled(), isFutureVersionETLEnabled());
   }
 }

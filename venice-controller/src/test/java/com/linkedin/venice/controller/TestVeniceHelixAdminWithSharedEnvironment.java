@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
@@ -1039,7 +1040,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     List<Store> stores = new ArrayList<>();
     for (int storeNumber = 1; storeNumber <= NUMBER_OF_STORES; storeNumber++) {
       String storeName = TestUtils.getUniqueString("store-" + storeNumber);
-      Store store = new Store(storeName, storeOwner, System.currentTimeMillis(), PersistenceType.ROCKS_DB,
+      Store store = new ZKStore(storeName, storeOwner, System.currentTimeMillis(), PersistenceType.ROCKS_DB,
           RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 

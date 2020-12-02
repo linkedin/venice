@@ -22,6 +22,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -255,8 +256,11 @@ public class TestUtils {
   }
 
   public static Store createTestStore(String name, String owner, long createdTime) {
-      return new Store(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
+      Store store = new ZKStore(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
           ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+      // Set the default timestamp to make sure every creation will return the same Store object.
+      store.setLatestVersionPromoteToCurrentTimestamp(-1);
+      return store;
   }
 
   public interface NonDeterministicAssertion {
@@ -378,7 +382,7 @@ public class TestUtils {
   }
 
   public static Store getRandomStore() {
-    return new Store(TestUtils.getUniqueString("RandomStore"),
+    return new ZKStore(TestUtils.getUniqueString("RandomStore"),
         TestUtils.getUniqueString("RandomOwner"),
         System.currentTimeMillis(),
         PersistenceType.ROCKS_DB,

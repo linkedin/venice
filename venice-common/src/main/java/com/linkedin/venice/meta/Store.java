@@ -1,52 +1,49 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.concurrent.TimeUnit;
-import org.codehaus.jackson.annotate.JsonProperty;
+import java.util.stream.Collectors;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
- * Class defines the store of Venice.
- * <p>
- * This class is NOT thread safe. Concurrency request to Store instance should be controlled in repository level.
- * When adding fields to this method, make sure to update equals, hashcode, clone,
- * and make sure json serialization still works
- *
- * When you want to add a simple field to Store metadata, you just need to create getter/setter for the new field.
- * When you try to add a method starting with 'get', the default json serialization will do serialization by this
- * method, which could produce some unexpected serialization result, so if it is not for serialization purpose, please
- * specify {@link org.codehaus.jackson.annotate.JsonIgnore} to ignore the method, whose name is starting with 'get'.
- *
- * TODO: we need to refactor this class to separate Store operations from Store POJO, which is being used by JSON
- * TODO: Since metadata keeps increasing, maybe we would like to refactor it to builder pattern.
- * TODO: It's handy to make {@link #versions} as a hash map.
+ * This is an abstraction of metadata maintained per Store.
  */
-public class Store {
-  public static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
-  public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PREFIX + "%s";
-  public static int DEFAULT_REPLICATION_FACTOR = 3;
-
-  //Only for testing
-  public static void setDefaultReplicationFactor(int defaultReplicationFactor) {
-    DEFAULT_REPLICATION_FACTOR = defaultReplicationFactor;
-  }
-
+public abstract class Store {
   /**
    * Special version number indicates none of version is available to read.
    */
   public static final int NON_EXISTING_VERSION = 0;
 
-  public static final int IGNORE_VERSION = -1;
+  /**
+   * Default value of numVersionPreserve, by default we should use cluster level config instead of store level config.
+   */
+  public static int NUM_VERSION_PRESERVE_NOT_SET = 0;
 
-  public static final int BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = 24;
+  public static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
+  public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PREFIX + "%s";
+  public static int DEFAULT_REPLICATION_FACTOR = 3;
+  //Only for testing
+  public static void setDefaultReplicationFactor(int defaultReplicationFactor) {
+    DEFAULT_REPLICATION_FACTOR = defaultReplicationFactor;
+  }
+
   /**
    * Default storage quota 20GB
    */
@@ -58,262 +55,19 @@ public class Store {
    */
   public static long DEFAULT_READ_QUOTA = 1800;
 
-  /**
-   * Default value of numVersionPreserve, by default we should use cluster level config instead of store level config.
-   */
-  public static int NUM_VERSION_PRESERVE_NOT_SET = 0;
-  /**
-   * Store name.
-   */
-  private final String name;
-  /**
-   * Owner of this store.
-   */
-  private String owner;
-  /**
-   * time when this store was created.
-   */
-  private final long createdTime;
-  /**
-   * The number of version which is used currently.
-   */
-  private int currentVersion = NON_EXISTING_VERSION;
-  /**
-   * Default partition count for all of versions in this store. Once first version become online, the number will be
-   * assigned.
-   */
-  private int partitionCount = 0;
-  /**
-   * If a store is disabled from writing, new version can not be created for it.
-   */
-  private boolean enableWrites = true;
-  /**
-   * If a store is disabled from being read, none of versions under this store could serve read requests.
-   */
-  private boolean enableReads = true;
-  /**
-   * Maximum capacity a store version is able to have
-   */
-  private long storageQuotaInByte;
-  /**
-   * Type of persistence storage engine.
-   */
-  private PersistenceType persistenceType;
-  /**
-   * How to route the key to partition.
-   */
-  private final RoutingStrategy routingStrategy;
-  /**
-   * How to read data from multiple replications.
-   */
-  private final ReadStrategy readStrategy;
-  /**
-   * When doing off-line push, how to decide the data is ready to serve.
-   */
-  private final OfflinePushStrategy offLinePushStrategy;
-  /**
-   * List of non-retired versions.
-   * It's currently sorted and there is code run under the assumption that the last element in the list is the largest.
-   * check out {VeniceHelixAdmin#getIncrementalPushVersion}
-   * Please make it in mind if you want to change this logic
-   */
-  private List<Version> versions;
-
-  /**
-   * The largest version number ever used before for this store.
-   */
-  private int largestUsedVersionNumber = 0;
-
-  /**
-   * Quota for read request hit this store. Measurement is capacity unit.
-   */
-  private long readQuotaInCU = 0;
-
-  /**
-   * Properties related to Hybrid Store behavior. If absent (null), then the store is not hybrid.
-   */
-  private HybridStoreConfig hybridStoreConfig;
-
-  /**
-   * Store-level ACL switch. When disabled, Venice Router should accept every request.
-   */
-  private boolean accessControlled = true;
-
-  /**
-   * strategies used to compress/decompress Record's value
-   */
-  private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-
-  /**
-   * Enable/Disable client-side record decompression (default: true)
-   */
-  private boolean clientDecompressionEnabled = true;
-
-  /**
-   * Whether current store supports large value (typically more than 1MB).
-   * By default, the chunking feature is disabled.
-   */
-  private boolean chunkingEnabled = false;
-
-  /**
-   * Batch get key number limit, and Venice will use cluster-level config if it is not positive.
-   */
-  private int batchGetLimit = -1;
-
-  /**
-   * How many versions this store preserve at most. By default it's 0 means we use the cluster level config to
-   * determine how many version is preserved.
-   */
-  private int numVersionsToPreserve = NUM_VERSION_PRESERVE_NOT_SET;
-
-  /**
-   * a flag to see if the store supports incremental push or not
-   */
-  private boolean incrementalPushEnabled = false;
-
-  /**
-   * Whether or not the store is in the process of migration.
-   */
-  private boolean migrating = false;
-
-  /**
-   * Whether or not write-path computation feature is enabled for this store
-   */
-  private boolean writeComputationEnabled = false;
-
-  /**
-   * Whether read-path computation is enabled for this store.
-   */
-  private boolean readComputationEnabled = false;
-
-  /**
-   * Maximum number of hours allowed for the store to transition from bootstrap to online state.
-   */
-  private int bootstrapToOnlineTimeoutInHours = BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
-
-  /** Whether or not to use leader follower state transition model
-   * for upcoming version.
-   */
-  private boolean leaderFollowerModelEnabled = false;
-
-  /**
-   * Whether or not native should be enabled for this store.  Will only successfully
-   * apply if leaderFollowerModelEnabled is also true either in this update or a previous version of the store
-   */
-  private boolean nativeReplicationEnabled = false;
-
-  /**
-   * Address to the kafka broker which holds the source of truth topic for this store version.
-   */
-  private String pushStreamSourceAddress = "";
-
-  /**
-   * Strategies to store backup versions.
-   */
-  private BackupStrategy backupStrategy = BackupStrategy.DELETE_ON_NEW_PUSH_START;
-
-  /**
-   * Whether or not value schema auto registration enabled from push job for this store.
-   */
-  private boolean schemaAutoRegisteFromPushJobEnabled = false;
-
-  /**
-   * For read compute stores with auto super-set schema enabled, stores the latest super-set value schema ID.
-   */
-  private int latestSuperSetValueSchemaId = -1;
-
-  /**
-   * Whether or not storage disk quota is enabled for a hybrid store. This store config cannot be enabled until the
-   * routers and servers in the corresponding cluster are upgraded to the right version: 0.2.249 or above for routers and
-   * servers.
-   */
-  private boolean hybridStoreDiskQuotaEnabled = false;
-
-  /**
-   * Whether or not the store metadata system store is enabled for this store.
-   */
-  private boolean storeMetadataSystemStoreEnabled = false;
-
-  /**
-   * Properties related to ETL Store behavior.
-   */
-  private ETLStoreConfig etlStoreConfig = new ETLStoreConfig();
-  private PartitionerConfig partitionerConfig;
-
-  /**
-   * Incremental Push Policy to reconcile with real time pushes.
-   */
-  private IncrementalPushPolicy incrementalPushPolicy = IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC;
-
-  /**
-   * This time is used to track the time when a new version is promoted to current version.
-   * For now, it is mostly to decide whether a backup version can be removed or not based on retention.
-   * For the existing store before this code change, it will be set to be current timestamp.
-   */
-  private long latestVersionPromoteToCurrentTimestamp = System.currentTimeMillis();
-
-  /**
-   * Backup retention time, and if it is not set (-1), Venice Controller will use the default configured retention.
-   * Check {@link com.linkedin.venice.ConfigKeys#CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS}.
-   */
-  private long backupVersionRetentionMs = -1;
-
-  /**
-   * Default retention time used when creating a new RealTime Topic.
-   */
-  private long defaultRTRetentionTime = TimeUnit.DAYS.toMillis(5);
-
-  /**
-   * the number of replica each store version will hold.
-   */
-  private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
-
-  /**
-   * Whether or not the store is a duplicate store in the process of migration.
-   */
-  private boolean migrationDuplicateStore = false;
-
-  /**
-   * The source fabric name to be uses in native replication. Remote consumption will happen from kafka in this fabric.
-   */
-  private String nativeReplicationSourceFabric = "";
-
-  private boolean daVinciPushStatusStoreEnabled = false;
-
-  public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
-      RoutingStrategy routingStrategy, ReadStrategy readStrategy,
-      OfflinePushStrategy offlinePushStrategy) {
-    this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
-        NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null,
-        new PartitionerConfig()); // Every store comes with default partitioner settings.
+  public static void setDefaultStorageQuota(long storageQuota) {
+    Store.DEFAULT_STORAGE_QUOTA = storageQuota;
   }
 
-  public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
-      RoutingStrategy routingStrategy, ReadStrategy readStrategy,
-      OfflinePushStrategy offlinePushStrategy, int currentVersion,
-      long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig, PartitionerConfig partitionerConfig) {
-    if (!isValidStoreName(name)) {
-      throw new VeniceException("Invalid store name: " + name);
-    }
-    this.name = name;
-    this.owner = owner;
-    this.createdTime = createdTime;
-    this.persistenceType = persistenceType;
-    this.routingStrategy = routingStrategy;
-    this.readStrategy = readStrategy;
-    this.offLinePushStrategy = offlinePushStrategy;
-    this.versions = new ArrayList<>();
-    this.storageQuotaInByte = storageQuotaInByte;
-    this.currentVersion = currentVersion;
-    this.readQuotaInCU = readQuotaInCU;
-    this.hybridStoreConfig = hybridStoreConfig;
-    // This makes sure when deserializing existing stores from ZK, we will use default partitioner setting.
-    if (partitionerConfig == null) {
-      this.partitionerConfig = new PartitionerConfig();
-    } else {
-      this.partitionerConfig = partitionerConfig;
-    }
+  public static void setDefaultReadQuota(long readQuota) {
+    Store.DEFAULT_READ_QUOTA = readQuota;
   }
+
+  public static final int IGNORE_VERSION = -1;
+
+  public static final int BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = 24;
+
+  public static long DEFAULT_RT_RETENTION_TIME = TimeUnit.DAYS.toMillis(5);
 
   /**
    * Store name rules:
@@ -327,25 +81,285 @@ public class Store {
     return matcher.matches() && !name.contains("--");
   }
 
-  public String getName() {
-    return name;
+
+  /**
+   * This function is used to pre-fill the default value defined in schema.
+   * So far, it only support the followings:
+   * 1. Only top-level fields are supported.
+   * 2. All the primitive types are supported.
+   * 3. For union, only `null` default is supported.
+   * 4. For array/map, only empty list/map are supported.
+   *
+   * Other than the above, this function will throw exception.
+   *
+   * TODO: once the whole stack migrates to the modern avro version (avro-1.7+), we could leverage
+   * SpecificRecord builder to prefill the default value, which will be much more powerful.
+   * @param recordType
+   * @param <T>
+   * @return
+   */
+  static <T extends GenericRecord> T prefillAvroRecordWithDefaultValue(T recordType) {
+    Schema schema = recordType.getSchema();
+    for (Schema.Field field : schema.getFields()) {
+      if (field.defaultValue() != null) {
+        // has default
+        Object defaultValue = AvroCompatibilityHelper.getSpecificDefaultValue(field);
+        Schema.Type fieldType = field.schema().getType();
+        switch (fieldType) {
+          case NULL:
+            throw new VeniceException("Default value for `null` type is not expected");
+          case BOOLEAN:
+          case INT:
+          case LONG:
+          case FLOAT:
+          case DOUBLE:
+          case STRING:
+            recordType.put(field.name(), defaultValue);
+            break;
+          case UNION:
+            if (null == defaultValue) {
+              recordType.put(field.name(), null);
+            } else {
+              throw new VeniceException("Non 'null' default value is not supported for union type: " + field.name());
+            }
+            break;
+          case ARRAY:
+            Collection collection = (Collection)defaultValue;
+            if (collection.isEmpty()) {
+              recordType.put(field.name(), new ArrayList<>());
+            } else {
+              throw new VeniceException("Non 'empty array' default value is not supported for array type: " + field.name());
+            }
+            break;
+          case MAP:
+            Map map = (Map)defaultValue;
+            if (map.isEmpty()) {
+              recordType.put(field.name(), new HashMap<>());
+            } else {
+              throw new VeniceException("Non 'empty map' default value is not supported for map type: " + field.name());
+            }
+            break;
+          case ENUM:
+          case FIXED:
+          case BYTES:
+          case RECORD:
+            throw new VeniceException("Default value for field: " + field.name() + " with type: " + fieldType + " is not supported");
+        }
+      }
+    }
+
+    return recordType;
   }
 
-  public String getOwner() {
-    return owner;
+  /**
+   * This field is to let current class talk to the inherited classes for version related operations.
+   */
+  private Supplier<List<StoreVersion>> storeVersionsSupplier;
+
+  /**
+   * This function should be invoked only once.
+   */
+  protected synchronized void setupVersionSupplier(Supplier<List<StoreVersion>> versionsSupplier) {
+    if (this.storeVersionsSupplier != null) {
+      throw new VeniceException("Field: 'storeVersionsSupplier' shouldn't be setup more than once");
+    }
+    this.storeVersionsSupplier = versionsSupplier;
   }
 
-  public void setOwner(String owner) {
-    this.owner = owner;
+  private void checkVersionSupplier() {
+    if (this.storeVersionsSupplier == null) {
+      throw new VeniceException("Field: 'storeVersionsSupplier' hasn't been setup yet");
+    }
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public long getCreatedTime() {
-    return createdTime;
+  public abstract String getName();
+
+  public abstract String getOwner();
+
+  public abstract void setOwner(String owner);
+
+  public abstract long getCreatedTime();
+
+  public abstract int getCurrentVersion();
+
+  public abstract void setCurrentVersion(int currentVersion);
+
+  public abstract void setCurrentVersionWithoutCheck(int currentVersion);
+
+  public abstract PersistenceType getPersistenceType();
+
+  public abstract void setPersistenceType(PersistenceType persistenceType);
+
+  public abstract RoutingStrategy getRoutingStrategy();
+
+  public abstract ReadStrategy getReadStrategy();
+
+  public abstract OfflinePushStrategy getOffLinePushStrategy();
+
+  public abstract int getLargestUsedVersionNumber();
+
+  public abstract void setLargestUsedVersionNumber(int largestUsedVersionNumber);
+
+  public abstract long getStorageQuotaInByte();
+
+  public abstract void setStorageQuotaInByte(long storageQuotaInByte);
+
+  public abstract int getPartitionCount();
+
+  public abstract void setPartitionCount(int partitionCount);
+
+  public abstract PartitionerConfig getPartitionerConfig();
+
+  public abstract void setPartitionerConfig(PartitionerConfig value);
+
+  public abstract boolean isEnableWrites();
+
+  public abstract void setEnableWrites(boolean enableWrites);
+
+  public abstract boolean isEnableReads();
+
+  public abstract void setEnableReads(boolean enableReads);
+
+  public abstract long getReadQuotaInCU();
+
+  public abstract void setReadQuotaInCU(long readQuotaInCU);
+
+  public abstract HybridStoreConfig getHybridStoreConfig();
+
+  public abstract void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig);
+
+  public abstract boolean isHybrid();
+
+  public abstract CompressionStrategy getCompressionStrategy();
+
+  public abstract void setCompressionStrategy(CompressionStrategy compressionStrategy);
+
+  public abstract boolean getClientDecompressionEnabled();
+
+  public abstract void setClientDecompressionEnabled(boolean clientDecompressionEnabled);
+
+  public abstract boolean isChunkingEnabled();
+
+  public abstract void setChunkingEnabled(boolean chunkingEnabled);
+
+  public abstract int getBatchGetLimit();
+
+  public abstract void setBatchGetLimit(int batchGetLimit);
+
+  public abstract boolean isIncrementalPushEnabled();
+
+  public abstract void setIncrementalPushEnabled(boolean incrementalPushEnabled);
+
+  public abstract boolean isAccessControlled();
+
+  public abstract void setAccessControlled(boolean accessControlled);
+
+  public abstract boolean isMigrating();
+
+  public abstract void setMigrating(boolean migrating);
+
+  public abstract int getNumVersionsToPreserve();
+
+  public abstract void setNumVersionsToPreserve(int numVersionsToPreserve);
+
+  public abstract boolean isWriteComputationEnabled();
+
+  public abstract void setWriteComputationEnabled(boolean writeComputationEnabled);
+
+  public abstract boolean isReadComputationEnabled();
+
+  public abstract void setReadComputationEnabled(boolean readComputationEnabled);
+
+  public abstract int getBootstrapToOnlineTimeoutInHours();
+
+  public abstract void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours);
+
+  public abstract boolean isLeaderFollowerModelEnabled();
+
+  public abstract void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled);
+
+  public abstract String getPushStreamSourceAddress();
+
+  public abstract void setPushStreamSourceAddress(String sourceAddress);
+
+  public abstract boolean isNativeReplicationEnabled();
+
+  public abstract void setNativeReplicationEnabled(boolean nativeReplicationEnabled);
+
+  public abstract BackupStrategy getBackupStrategy();
+
+  public abstract void setBackupStrategy(BackupStrategy value);
+
+  public abstract boolean isSchemaAutoRegisterFromPushJobEnabled();
+
+  public abstract void setSchemaAutoRegisterFromPushJobEnabled(boolean value);
+
+  public abstract int getLatestSuperSetValueSchemaId();
+
+  public abstract void setLatestSuperSetValueSchemaId(int valueSchemaId);
+
+  public abstract boolean isHybridStoreDiskQuotaEnabled();
+
+  public abstract void setHybridStoreDiskQuotaEnabled(boolean enabled);
+
+  public abstract ETLStoreConfig getEtlStoreConfig();
+
+  public abstract void setEtlStoreConfig(ETLStoreConfig etlStoreConfig);
+
+  public abstract boolean isStoreMetadataSystemStoreEnabled();
+
+  public abstract void setStoreMetadataSystemStoreEnabled(boolean storeMetadataSystemStoreEnabled);
+
+  public abstract IncrementalPushPolicy getIncrementalPushPolicy();
+
+  public abstract void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);
+
+  public abstract long getLatestVersionPromoteToCurrentTimestamp();
+
+  public abstract void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp);
+
+  public abstract long getBackupVersionRetentionMs();
+
+  public abstract void setBackupVersionRetentionMs(long backupVersionRetentionMs);
+
+  public abstract long getRetentionTime();
+
+  public abstract int getReplicationFactor();
+
+  public abstract void setReplicationFactor(int replicationFactor);
+
+  public abstract boolean isMigrationDuplicateStore();
+
+  public abstract void setMigrationDuplicateStore(boolean migrationDuplicateStore);
+
+  public abstract String getNativeReplicationSourceFabric();
+
+  public abstract void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric);
+
+  public abstract Map<String, SystemStoreAttributes> getSystemStores();
+
+  public abstract void setSystemStores(Map<String, SystemStoreAttributes> systemStores);
+
+  protected abstract void putSystemStore(VeniceSystemStoreType systemStoreType, SystemStoreAttributes systemStoreAttributes);
+
+  public abstract boolean isDaVinciPushStatusStoreEnabled();
+
+  public abstract void setDaVinciPushStatusStoreEnabled(boolean daVinciPushStatusStoreEnabled);
+
+  public abstract Store cloneStore();
+
+  public List<Version> getVersions() {
+    checkVersionSupplier();
+    if (storeVersionsSupplier.get().isEmpty()) {
+      return Collections.emptyList();
+    }
+    return storeVersionsSupplier.get().stream().map(sv -> new Version(sv)).collect(Collectors.toList());
   }
 
-  public int getCurrentVersion() {
-    return currentVersion;
+  public void setVersions(List<Version> versions) {
+    checkVersionSupplier();
+    storeVersionsSupplier.get().clear();
+    versions.forEach(v -> storeVersionsSupplier.get().add(v.dataModel()));
   }
 
   public Optional<CompressionStrategy> getVersionCompressionStrategy(int versionNumber) {
@@ -356,394 +370,26 @@ public class Store {
     return getVersion(versionNumber).map(version -> version.getCompressionStrategy());
   }
 
-  /**
-   * Set current serving version number of this store. If store is disabled to write, thrown {@link
-   * StoreDisabledException}.
-   */
-  public void setCurrentVersion(int currentVersion) {
-    checkDisableStoreWrite("setStoreCurrentVersion", currentVersion);
-    setCurrentVersionWithoutCheck(currentVersion);
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  @JsonProperty("currentVersion")
-  public void setCurrentVersionWithoutCheck(int currentVersion){
-    this.currentVersion =  currentVersion;
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public PersistenceType getPersistenceType() {
-    return persistenceType;
-  }
-
-  public void setPersistenceType(PersistenceType persistenceType) {
-    this.persistenceType = persistenceType;
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public RoutingStrategy getRoutingStrategy() {
-    return routingStrategy;
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public ReadStrategy getReadStrategy() {
-    return readStrategy;
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public OfflinePushStrategy getOffLinePushStrategy() {
-    return offLinePushStrategy;
-  }
-
-  public List<Version> getVersions() {
-    return Collections.unmodifiableList(this.versions);
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public void setVersions(List<Version> versions) {
-    this.versions = versions;
-    //Backward capability for the old store in ZK.
-    if (largestUsedVersionNumber == 0 && !versions.isEmpty()) {
-      largestUsedVersionNumber = versions.get(versions.size() - 1).getNumber();
-    }
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public int getLargestUsedVersionNumber() {
-    return largestUsedVersionNumber;
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
-    this.largestUsedVersionNumber = largestUsedVersionNumber;
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public long getStorageQuotaInByte() {
-    //This is a safeguard in case that some old stores do not have storage quota field
-    return (storageQuotaInByte <= 0 && storageQuotaInByte != UNLIMITED_STORAGE_QUOTA)
-        ? DEFAULT_STORAGE_QUOTA : storageQuotaInByte;
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public void setStorageQuotaInByte(long storageQuotaInByte) {
-    this.storageQuotaInByte = storageQuotaInByte;
-  }
-
-  public int getPartitionCount() {
-    return partitionCount;
-  }
-
-  public void setPartitionCount(int partitionCount) {
-    this.partitionCount = partitionCount;
-  }
-
-  public PartitionerConfig getPartitionerConfig() {
-    return partitionerConfig;
-  }
-
-  public void setPartitionerConfig(PartitionerConfig value) {
-    this.partitionerConfig = value;
-  }
-
-  public boolean isEnableWrites() {
-    return enableWrites;
-  }
-
-  public void setEnableWrites(boolean enableWrites) {
-    this.enableWrites = enableWrites;
-    if (this.enableWrites) {
-      setPushedVersionsOnline();
-    }
-  }
-
-  public boolean isEnableReads() {
-    return enableReads;
-  }
-
-  public void setEnableReads(boolean enableReads) {
-    this.enableReads = enableReads;
-  }
-
-  public long getReadQuotaInCU() {
-    // In case the store haven't been assigned a quota, use this value as the default quota instead of using 0.
-    // If the store was created before we releasing quota feature, JSON framework wil give 0 as the default value
-    // while deserializing the store from ZK.
-    return readQuotaInCU <= 0 ? DEFAULT_READ_QUOTA : readQuotaInCU;
-  }
-
-  public void setReadQuotaInCU(long readQuotaInCU) {
-    this.readQuotaInCU = readQuotaInCU;
-  }
-
-  public HybridStoreConfig getHybridStoreConfig() {
-    return hybridStoreConfig;
-  }
-
-  public void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
-    this.hybridStoreConfig = hybridStoreConfig;
-  }
-
-  public boolean isHybrid() {
-    return null != hybridStoreConfig;
-  }
-
-  public CompressionStrategy getCompressionStrategy() {
-    return compressionStrategy;
-  }
-
-  public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
-    this.compressionStrategy = compressionStrategy;
-  }
-
-  public boolean getClientDecompressionEnabled() {
-    return clientDecompressionEnabled;
-  }
-
-  public void setClientDecompressionEnabled(boolean clientDecompressionEnabled) {
-    this.clientDecompressionEnabled = clientDecompressionEnabled;
-  }
-
-  public boolean isChunkingEnabled() {
-    return chunkingEnabled;
-  }
-
-  public void setChunkingEnabled(boolean chunkingEnabled) {
-    this.chunkingEnabled = chunkingEnabled;
-  }
-
-  public int getBatchGetLimit() {
-    return batchGetLimit;
-  }
-
-  public void setBatchGetLimit(int batchGetLimit) {
-    this.batchGetLimit = batchGetLimit;
-  }
-
-  public boolean isIncrementalPushEnabled() {
-    return incrementalPushEnabled;
-  }
-
-  public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
-    this.incrementalPushEnabled = incrementalPushEnabled;
-  }
-
-  public static void setDefaultStorageQuota(long storageQuota) {
-    Store.DEFAULT_STORAGE_QUOTA = storageQuota;
-  }
-
-  public static void setDefaultReadQuota(long readQuota) {
-    Store.DEFAULT_READ_QUOTA = readQuota;
-  }
-
-  /**
-   * @deprecated The store level accessControlled flag is no longer valid to be used to skip ACL checks.
-   */
-  public boolean isAccessControlled() {
-    return accessControlled;
-  }
-
-  /**
-   * @deprecated The store level accessControlled flag is no longer valid to be used to skip ACL checks.
-   */
-  public void setAccessControlled(boolean accessControlled) {
-    this.accessControlled = accessControlled;
-  }
-
-  public boolean isMigrating() {
-    return migrating;
-  }
-
-  public void setMigrating(boolean migrating) {
-    this.migrating = migrating;
-  }
-
-  public int getNumVersionsToPreserve() {
-    return numVersionsToPreserve;
-  }
-
-  public void setNumVersionsToPreserve(int numVersionsToPreserve) {
-    this.numVersionsToPreserve = numVersionsToPreserve;
-  }
-
-  public boolean isWriteComputationEnabled() {
-    return writeComputationEnabled;
-  }
-
-  public void setWriteComputationEnabled(boolean writeComputationEnabled) {
-    this.writeComputationEnabled = writeComputationEnabled;
-  }
-
-  public boolean isReadComputationEnabled() { return readComputationEnabled; }
-
-  public void setReadComputationEnabled(boolean readComputationEnabled) {
-    this.readComputationEnabled = readComputationEnabled;
-  }
-
-  public int getBootstrapToOnlineTimeoutInHours() {
-    return bootstrapToOnlineTimeoutInHours;
-  }
-
-  public void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours) {
-    this.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
-  }
-
-  public boolean isLeaderFollowerModelEnabled() {
-    return leaderFollowerModelEnabled;
-  }
-
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
-  }
-
-
-  public String getPushStreamSourceAddress() {
-    return this.pushStreamSourceAddress;
-  }
-
-  public void setPushStreamSourceAddress(String sourceAddress) {
-    this.pushStreamSourceAddress = sourceAddress;
-  }
-
-  public boolean isNativeReplicationEnabled() {
-    return this.nativeReplicationEnabled;
-  }
-
-  public void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
-    this.nativeReplicationEnabled = nativeReplicationEnabled;
-  }
-
   public void setBufferReplayForHybridForVersion(int versionNum, boolean enabled) {
     Optional<Version> version = getVersion(versionNum);
     if (! version.isPresent()) {
-      throw new VeniceException("Unknown version: " + versionNum + " in store: " + name);
+      throw new VeniceException("Unknown version: " + versionNum + " in store: " + getName());
     }
     version.get().setBufferReplayEnabledForHybrid(enabled);
   }
 
-  public BackupStrategy getBackupStrategy() {
-    return backupStrategy;
-  }
-
-  public void setBackupStrategy(BackupStrategy value) {
-    backupStrategy = value;
-  }
-
-  public boolean isSchemaAutoRegisterFromPushJobEnabled() {
-    return schemaAutoRegisteFromPushJobEnabled;
-  }
-
-  public void setSchemaAutoRegisterFromPushJobEnabled(boolean value) {
-    schemaAutoRegisteFromPushJobEnabled = value;
-  }
-
-  public int getLatestSuperSetValueSchemaId() {
-    return latestSuperSetValueSchemaId;
-  }
-
-  public void setLatestSuperSetValueSchemaId(int valueSchemaId) {
-    latestSuperSetValueSchemaId = valueSchemaId;
-  }
-
-  public boolean isHybridStoreDiskQuotaEnabled() {
-    return hybridStoreDiskQuotaEnabled;
-  }
-
-  public void setHybridStoreDiskQuotaEnabled(boolean enabled) {
-    hybridStoreDiskQuotaEnabled = enabled;
-  }
-
-  public ETLStoreConfig getEtlStoreConfig() {
-    return etlStoreConfig;
-  }
-
-  public void setEtlStoreConfig(ETLStoreConfig etlStoreConfig) {
-    this.etlStoreConfig = etlStoreConfig;
-  }
-
-  public boolean isStoreMetadataSystemStoreEnabled() {
-    return storeMetadataSystemStoreEnabled;
-  }
-
-  public void setStoreMetadataSystemStoreEnabled(boolean storeMetadataSystemStoreEnabled) {
-    this.storeMetadataSystemStoreEnabled = storeMetadataSystemStoreEnabled;
-  }
-
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return incrementalPushPolicy;
-  }
-
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.incrementalPushPolicy = incrementalPushPolicy;
-  }
-
-  public long getLatestVersionPromoteToCurrentTimestamp() {
-    return latestVersionPromoteToCurrentTimestamp;
-  }
-
-  public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
-    this.latestVersionPromoteToCurrentTimestamp = latestVersionPromoteToCurrentTimestamp;
-  }
-
-  public long getBackupVersionRetentionMs() {
-    return backupVersionRetentionMs;
-  }
-
-  /**
-   +   * Get the retention time for the RT Topic. If there exists a HybridStoreConfig, return the
-   +   * retention time from the config file. Otherwise, if write compute is enabled, then return the
-   +   * default retention time.
-   +   *
-   +   * @return the retention time for the RT topic, in milliseconds.
-   +   */
-  public long getRetentionTime() {
-    if (this.getHybridStoreConfig() != null) {
-      return this.getHybridStoreConfig().getRetentionTimeInMs();
-    } else {
-      return defaultRTRetentionTime;
-    }
-  }
-
-
-  public void setBackupVersionRetentionMs(long backupVersionRetentionMs) {
-    this.backupVersionRetentionMs = backupVersionRetentionMs;
-  }
-
-  public int getReplicationFactor() {
-    return replicationFactor;
-  }
-
-  public void setReplicationFactor(int replicationFactor) {
-    this.replicationFactor = replicationFactor;
-  }
-
-  public boolean isMigrationDuplicateStore() {
-    return migrationDuplicateStore;
-  }
-
-  public void setMigrationDuplicateStore(boolean migrationDuplicateStore) {
-    this.migrationDuplicateStore = migrationDuplicateStore;
-  }
-
-  public String getNativeReplicationSourceFabric() {
-    return this.nativeReplicationSourceFabric;
-  }
-
-  public void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
-    this.nativeReplicationSourceFabric = nativeReplicationSourceFabric;
-  }
-
-
-  /**
-   * Add a version into store.
-   *
-   * @param version
-   */
-  public void addVersion(Version version){
+  public void addVersion(Version version) {
     addVersion(version, true, false);
   }
-  private void forceAddVersion(Version version, boolean isClonedVersion){
+
+  protected void forceAddVersion(Version version, boolean isClonedVersion){
     addVersion(version, false, isClonedVersion);
+  }
+
+  protected void checkDisableStoreWrite(String action, int version) {
+    if (!isEnableWrites()) {
+      throw new StoreDisabledException(getName(), action, version);
+    }
   }
 
   /**
@@ -756,18 +402,19 @@ public class Store {
    *                        config should be the same as store config.
    */
   private void addVersion(Version version, boolean checkDisableWrite, boolean isClonedVersion) {
+    checkVersionSupplier();
     if (checkDisableWrite) {
       checkDisableStoreWrite("add", version.getNumber());
     }
-    if (!name.equals(version.getStoreName())) {
+    if (!getName().equals(version.getStoreName())) {
       throw new VeniceException("Version does not belong to this store.");
     }
     int index = 0;
-    for (; index < versions.size(); index++) {
-      if (versions.get(index).getNumber() == version.getNumber()) {
-        throw new VeniceException("Version is repeated. Store: " + name + " Version: " + version.getNumber());
+    for (; index < storeVersionsSupplier.get().size(); index++) {
+      if (storeVersionsSupplier.get().get(index).number == version.getNumber()) {
+        throw new VeniceException("Version is repeated. Store: " + getName() + " Version: " + version.getNumber());
       }
-      if (versions.get(index).getNumber() > version.getNumber()) {
+      if (storeVersionsSupplier.get().get(index).number > version.getNumber()) {
         break;
       }
     }
@@ -775,47 +422,47 @@ public class Store {
     if (!isClonedVersion) {
       // For new version, apply store level config on it.
       //update version compression type
-      version.setCompressionStrategy(compressionStrategy);
+      version.setCompressionStrategy(getCompressionStrategy());
 
       //update version Helix state model
-      version.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
+      version.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
 
-      version.setChunkingEnabled(chunkingEnabled);
+      version.setChunkingEnabled(isChunkingEnabled());
 
-      version.setPartitionerConfig(partitionerConfig);
+      version.setPartitionerConfig(getPartitionerConfig());
 
-      version.setNativeReplicationEnabled(nativeReplicationEnabled);
+      version.setNativeReplicationEnabled(isNativeReplicationEnabled());
 
-      version.setIncrementalPushPolicy(incrementalPushPolicy);
+      version.setIncrementalPushPolicy(getIncrementalPushPolicy());
 
-      version.setReplicationFactor(replicationFactor);
+      version.setReplicationFactor(getReplicationFactor());
 
-      version.setNativeReplicationSourceFabric(nativeReplicationSourceFabric);
+      version.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     }
 
-    versions.add(index, version);
-    if (version.getNumber() > largestUsedVersionNumber) {
-      largestUsedVersionNumber = version.getNumber();
+    storeVersionsSupplier.get().add(index, version.dataModel());
+    if (version.getNumber() > getLargestUsedVersionNumber()) {
+      setLargestUsedVersionNumber(version.getNumber());
     }
   }
 
-  /**
-   * Delete a version from a store.
-   *
-   * @param versionNumber
-   */
   public Version deleteVersion(int versionNumber) {
-    for (int i = 0; i < versions.size(); i++) {
-      if (versions.get(i).getNumber() == versionNumber) {
-        return versions.remove(i);
+    checkVersionSupplier();
+    for (int i = 0; i < storeVersionsSupplier.get().size(); i++) {
+      Version version = new Version(storeVersionsSupplier.get().get(i));
+      if (version.getNumber() == versionNumber) {
+        storeVersionsSupplier.get().remove(i);
+        return version;
       }
     }
     return null;
   }
 
   public boolean containsVersion(int versionNumber) {
-    for (int i = 0; i < versions.size(); i++) {
-      if (versions.get(i).getNumber() == versionNumber) {
+    checkVersionSupplier();
+    for (int i = 0; i < storeVersionsSupplier.get().size(); i++) {
+      Version version = new Version(storeVersionsSupplier.get().get(i));
+      if (version.getNumber() == versionNumber) {
         return true;
       }
     }
@@ -823,12 +470,14 @@ public class Store {
   }
 
   public void updateVersionStatus(int versionNumber, VersionStatus status) {
+    checkVersionSupplier();
     if (status.equals(VersionStatus.ONLINE)) {
       checkDisableStoreWrite("become ONLINE", versionNumber);
     }
-    for (int i = versions.size() - 1; i >= 0; i--) {
-      if (versions.get(i).getNumber() == versionNumber) {
-        versions.get(i).setStatus(status);
+    for (int i = storeVersionsSupplier.get().size() - 1; i >= 0; i--) {
+      Version version = new Version(storeVersionsSupplier.get().get(i));
+      if (version.getNumber() == versionNumber) {
+        version.setStatus(status);
         return;
       }
     }
@@ -852,7 +501,14 @@ public class Store {
   }
 
   public Optional<Version> getVersion(int versionNumber) {
-    return versions.stream().filter(version -> version.getNumber() == versionNumber).findAny();
+    checkVersionSupplier();
+    for (StoreVersion storeVersion : storeVersionsSupplier.get()) {
+      Version version = new Version(storeVersion);
+      if (version.getNumber() == versionNumber) {
+        return Optional.of(version);
+      }
+    }
+    return Optional.empty();
   }
 
   public VersionStatus getVersionStatus(int versionNumber) {
@@ -865,9 +521,9 @@ public class Store {
   }
 
   private Version increaseVersion(String pushJobId, boolean createNewVersion) {
-    int versionNumber = largestUsedVersionNumber + 1;
+    int versionNumber = getLargestUsedVersionNumber() + 1;
     checkDisableStoreWrite("increase", versionNumber);
-    Version version = new Version(name, versionNumber, pushJobId);
+    Version version = new Version(getName(), versionNumber, pushJobId);
     if (createNewVersion) {
       addVersion(version);
       return version.cloneVersion();
@@ -877,9 +533,10 @@ public class Store {
   }
 
   public List<Version> retrieveVersionsToDelete(int clusterNumVersionsToPreserve) {
+    checkVersionSupplier();
     int curNumVersionsToPreserve = clusterNumVersionsToPreserve;
-    if (numVersionsToPreserve != NUM_VERSION_PRESERVE_NOT_SET) {
-      curNumVersionsToPreserve = numVersionsToPreserve;
+    if (getNumVersionsToPreserve() != NUM_VERSION_PRESERVE_NOT_SET) {
+      curNumVersionsToPreserve = getNumVersionsToPreserve();
     }
     // when numVersionsToPreserve is less than 1, it usually means a config issue.
     // Setting it to zero, will cause the store to be deleted as soon as push completes.
@@ -887,12 +544,13 @@ public class Store {
       throw new IllegalArgumentException("At least 1 version should be preserved. Parameter " + curNumVersionsToPreserve);
     }
 
-    if(versions.size() == 0) {
+    int versionCnt = storeVersionsSupplier.get().size();
+    if(versionCnt == 0) {
       return new ArrayList<>();
     }
 
     // The code assumes that Versions are sorted in increasing order by addVersion and increaseVersion
-    int lastElementIndex = versions.size() - 1;
+    int lastElementIndex = versionCnt - 1;
     List<Version> versionsToDelete = new ArrayList<>();
 
     /**
@@ -903,9 +561,9 @@ public class Store {
      *     c) STARTED versions if its not the last one and the store is not migrating.
      */
     for (int i = lastElementIndex; i >= 0; i--) {
-      Version version = versions.get(i);
+      Version version = new Version(storeVersionsSupplier.get().get(i));
 
-      if (version.getNumber() == currentVersion) { // currentVersion is always preserved
+      if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
         curNumVersionsToPreserve--;
       } else if (VersionStatus.canDelete(version.getStatus())) {  // ERROR versions are always deleted
         versionsToDelete.add(version);
@@ -928,200 +586,23 @@ public class Store {
   }
 
   public boolean isSystemStore() {
-    return getName().startsWith(SYSTEM_STORE_NAME_PREFIX);
+    return isSystemStore(getName());
+  }
+
+  public static boolean isSystemStore(String storeName) {
+    return storeName.startsWith(SYSTEM_STORE_NAME_PREFIX);
   }
 
   public void fixMissingFields() {
-    for (Version version : versions) {
+    checkVersionSupplier();
+    for (StoreVersion storeVersion : storeVersionsSupplier.get()) {
+      Version version = new Version(storeVersion);
       if (version.getPartitionerConfig() == null) {
-        version.setPartitionerConfig(partitionerConfig);
+        version.setPartitionerConfig(getPartitionerConfig());
       }
       if (version.getPartitionCount() == 0) {
-        version.setPartitionCount(partitionCount);
+        version.setPartitionCount(getPartitionCount());
       }
-    }
-  }
-  /**
-   * Set all of PUSHED version to ONLINE once store is enabled to write.
-   */
-  private void setPushedVersionsOnline() {
-    // TODO, if the PUSHED version is the latest vesion, after store is enabled to write, shall we put this version as the current version?
-    versions.stream().filter(version -> version.getStatus().equals(VersionStatus.PUSHED)).forEach(version -> {
-      updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
-    });
-  }
-
-  public boolean isDaVinciPushStatusStoreEnabled() {
-    return daVinciPushStatusStoreEnabled;
-  }
-
-  public void setDaVinciPushStatusStoreEnabled(boolean daVinciPushStatusStoreEnabled) {
-    this.daVinciPushStatusStoreEnabled = daVinciPushStatusStoreEnabled;
-  }
-
-  @Override
-  public int hashCode() {
-    int result = name.hashCode();
-    result = 31 * result + owner.hashCode();
-    result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
-    result = 31 * result + currentVersion;
-    result = 31 * result + partitionCount;
-    result = 31 * result + (enableWrites ? 1 : 0);
-    result = 31 * result + (enableReads ? 1 : 0);
-    result = 31 * result + (int) (storageQuotaInByte ^ (storageQuotaInByte >>> 32));
-    result = 31 * result + persistenceType.hashCode();
-    result = 31 * result + routingStrategy.hashCode();
-    result = 31 * result + readStrategy.hashCode();
-    result = 31 * result + offLinePushStrategy.hashCode();
-    result = 31 * result + versions.hashCode();
-    result = 31 * result + largestUsedVersionNumber;
-    result = 31 * result + (int) (readQuotaInCU ^ (readQuotaInCU >>> 32));
-    result = 31 * result + (hybridStoreConfig != null ? hybridStoreConfig.hashCode() : 0);
-    result = 31 * result + (accessControlled ? 1 : 0);
-    result = 31 * result + (compressionStrategy.hashCode());
-    result = 31 * result + (clientDecompressionEnabled ? 1 : 0);
-    result = 31 * result + (chunkingEnabled ? 1 : 0);
-    result = 31 * result + batchGetLimit;
-    result = 31 * result + numVersionsToPreserve;
-    result = 31 * result + (incrementalPushEnabled ? 1 : 0);
-    result = 31 * result + (migrating ? 1 : 0);
-    result = 31 * result + (writeComputationEnabled ? 1 : 0);
-    result = 31 * result + (readComputationEnabled ? 1 : 0);
-    result = 31 * result + bootstrapToOnlineTimeoutInHours;
-    result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
-    result = 31 * result + (nativeReplicationEnabled ? 1 : 0);
-    result = 31 * result + backupStrategy.hashCode();
-    result = 31 * result + (schemaAutoRegisteFromPushJobEnabled ? 1 : 0);
-    result = 31 * result + latestSuperSetValueSchemaId;
-    result = 31 * result + (hybridStoreDiskQuotaEnabled ? 1 : 0);
-    result = 31 * result + (etlStoreConfig != null ? etlStoreConfig.hashCode() : 0);
-    result = 31 * result + (partitionerConfig != null ? partitionerConfig.hashCode() : 0);
-    result = 31 * result + (storeMetadataSystemStoreEnabled ? 1 : 0);
-    result = 31 * result + incrementalPushPolicy.hashCode();
-    result = 31 * result + (int) (backupVersionRetentionMs ^ (backupVersionRetentionMs >>> 32));
-    result = 31 * result + replicationFactor;
-    result = 31 * result + (migrationDuplicateStore ? 1 : 0);
-    result = 31 * result + nativeReplicationSourceFabric.hashCode();
-    result = 31 * result + (daVinciPushStatusStoreEnabled ? 1 : 0);
-    return result;
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-
-    Store store = (Store) o;
-
-    if (createdTime != store.createdTime) return false;
-    if (currentVersion != store.currentVersion) return false;
-    if (partitionCount != store.partitionCount) return false;
-    if (enableWrites != store.enableWrites) return false;
-    if (enableReads != store.enableReads) return false;
-    if (storageQuotaInByte != store.storageQuotaInByte) return false;
-    if (largestUsedVersionNumber != store.largestUsedVersionNumber) return false;
-    if (readQuotaInCU != store.readQuotaInCU) return false;
-    if (!name.equals(store.name)) return false;
-    if (!owner.equals(store.owner)) return false;
-    if (persistenceType != store.persistenceType) return false;
-    if (routingStrategy != store.routingStrategy) return false;
-    if (readStrategy != store.readStrategy) return false;
-    if (offLinePushStrategy != store.offLinePushStrategy) return false;
-    if (!versions.equals(store.versions)) return false;
-    if (accessControlled != store.accessControlled) return false;
-    if (compressionStrategy != store.compressionStrategy) return false;
-    if (clientDecompressionEnabled != store.clientDecompressionEnabled) return false;
-    if (chunkingEnabled != store.chunkingEnabled) return false;
-    if (batchGetLimit != store.batchGetLimit) return false;
-    if (numVersionsToPreserve != store.numVersionsToPreserve) return false;
-    if (incrementalPushEnabled != store.incrementalPushEnabled) return false;
-    if (migrating != store.migrating) return false;
-    if (writeComputationEnabled != store.writeComputationEnabled) return false;
-    if (readComputationEnabled != store.readComputationEnabled) return false;
-    if (bootstrapToOnlineTimeoutInHours != store.bootstrapToOnlineTimeoutInHours) return false;
-    if (leaderFollowerModelEnabled != store.leaderFollowerModelEnabled) return false;
-    if (nativeReplicationEnabled != store.nativeReplicationEnabled) return false;
-    if (backupStrategy != store.backupStrategy) return false;
-    if (schemaAutoRegisteFromPushJobEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
-    if (latestSuperSetValueSchemaId != store.latestSuperSetValueSchemaId) return false;
-    if (hybridStoreDiskQuotaEnabled != store.hybridStoreDiskQuotaEnabled) return false;
-    if (!partitionerConfig.equals(store.partitionerConfig)) return false;
-    if (storeMetadataSystemStoreEnabled != store.storeMetadataSystemStoreEnabled) return false;
-    if (incrementalPushPolicy != store.incrementalPushPolicy) return false;
-    if (backupVersionRetentionMs != store.backupVersionRetentionMs) return false;
-    if (replicationFactor != store.replicationFactor) return false;
-    if (migrationDuplicateStore != store.migrationDuplicateStore) return false;
-    if (!nativeReplicationSourceFabric.equals(store.nativeReplicationSourceFabric)) return false;
-    if (daVinciPushStatusStoreEnabled != store.daVinciPushStatusStoreEnabled) return false;
-    return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
-        && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
-  }
-
-  /**
-   * Cloned a new store based on current data in this store.
-   *
-   * @return cloned store.
-   */
-  public Store cloneStore() {
-    Store clonedStore =
-        new Store(name,
-                  owner,
-                  createdTime,
-                  persistenceType,
-                  routingStrategy,
-                  readStrategy,
-                  offLinePushStrategy,
-                  currentVersion,
-                  storageQuotaInByte,
-                  readQuotaInCU,
-                  null == hybridStoreConfig ? null : hybridStoreConfig.clone(),
-                  null == partitionerConfig ? null : partitionerConfig.clone());
-    clonedStore.setEnableReads(enableReads);
-    clonedStore.setEnableWrites(enableWrites);
-    clonedStore.setPartitionCount(partitionCount);
-    clonedStore.setAccessControlled(accessControlled);
-    clonedStore.setCompressionStrategy(compressionStrategy);
-    clonedStore.setClientDecompressionEnabled(clientDecompressionEnabled);
-    clonedStore.setChunkingEnabled(chunkingEnabled);
-    clonedStore.setBatchGetLimit(batchGetLimit);
-    clonedStore.setNumVersionsToPreserve(numVersionsToPreserve);
-    clonedStore.setIncrementalPushEnabled(incrementalPushEnabled);
-    clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-    clonedStore.setMigrating(migrating);
-    clonedStore.setWriteComputationEnabled(writeComputationEnabled);
-    clonedStore.setReadComputationEnabled(readComputationEnabled);
-    clonedStore.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
-    clonedStore.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
-    clonedStore.setNativeReplicationEnabled(nativeReplicationEnabled);
-    clonedStore.setBackupStrategy(backupStrategy);
-    clonedStore.setSchemaAutoRegisterFromPushJobEnabled(schemaAutoRegisteFromPushJobEnabled);
-    clonedStore.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
-    clonedStore.setHybridStoreDiskQuotaEnabled(hybridStoreDiskQuotaEnabled);
-    clonedStore.setEtlStoreConfig(etlStoreConfig);
-    clonedStore.setStoreMetadataSystemStoreEnabled(storeMetadataSystemStoreEnabled);
-    clonedStore.setIncrementalPushPolicy(incrementalPushPolicy);
-    clonedStore.setBackupVersionRetentionMs(backupVersionRetentionMs);
-    clonedStore.setReplicationFactor(replicationFactor);
-    clonedStore.setMigrationDuplicateStore(migrationDuplicateStore);
-    clonedStore.setNativeReplicationSourceFabric(nativeReplicationSourceFabric);
-    clonedStore.setDaVinciPushStatusStoreEnabled(daVinciPushStatusStoreEnabled);
-    for (Version v : this.versions) {
-      clonedStore.forceAddVersion(v.cloneVersion(), true);
-    }
-
-    /**
-     * Add version can overwrite the value of {@link largestUsedVersionNumber}, so in order to clone the
-     * object properly, it's important to call the {@link #setLargestUsedVersionNumber(int)} setter after
-     * calling {@link #forceAddVersion(Version)}.
-     */
-    clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-
-    return clonedStore;
-  }
-
-  private void checkDisableStoreWrite(String action, int version) {
-    if (!enableWrites) {
-      throw new StoreDisabledException(name, action, version);
     }
   }
 }

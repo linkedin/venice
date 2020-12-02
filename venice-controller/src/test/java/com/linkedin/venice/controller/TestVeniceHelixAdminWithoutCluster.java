@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.TestUtils;
 
 import java.util.Optional;
@@ -20,7 +21,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   @Test
   public void canFindStartedVersionInStore(){
     String storeName = TestUtils.getUniqueString("store");
-    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
         ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     store.increaseVersion("123");
     Version version = store.getVersions().get(0);
@@ -35,7 +36,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void findStartedVersionIgnoresPushId() {
     String pushId = TestUtils.getUniqueString("pushid");
     String storeName = TestUtils.getUniqueString("store");
-    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
         ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     store.increaseVersion(pushId);
     Version version = store.getVersions().get(0);
