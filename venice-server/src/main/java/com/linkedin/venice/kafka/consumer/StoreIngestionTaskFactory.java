@@ -3,7 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -64,7 +64,7 @@ public class StoreIngestionTaskFactory {
           builder.unorderedRecordsThrottler,
           builder.schemaRepo,
           builder.metadataRepo,
-          builder.topicManager,
+          builder.topicManagerRepository,
           builder.ingestionStats,
           builder.versionedDIVStats,
           builder.versionedStorageIngestionStats,
@@ -99,7 +99,7 @@ public class StoreIngestionTaskFactory {
           builder.unorderedRecordsThrottler,
           builder.schemaRepo,
           builder.metadataRepo,
-          builder.topicManager,
+          builder.topicManagerRepository,
           builder.ingestionStats,
           builder.versionedDIVStats,
           builder.versionedStorageIngestionStats,
@@ -146,7 +146,7 @@ public class StoreIngestionTaskFactory {
     private EventThrottler unorderedRecordsThrottler;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
-    private TopicManager topicManager;
+    private TopicManagerRepository topicManagerRepository;
     private AggStoreIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedStorageIngestionStats versionedStorageIngestionStats;
@@ -249,9 +249,9 @@ public class StoreIngestionTaskFactory {
       return this;
     }
 
-    public Builder setTopicManager(TopicManager topicManager) {
+    public Builder setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
       if (!built) {
-        this.topicManager = topicManager;
+        this.topicManagerRepository = topicManagerRepository;
       }
       return this;
     }

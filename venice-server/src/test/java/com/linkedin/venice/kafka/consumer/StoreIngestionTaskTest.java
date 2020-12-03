@@ -11,6 +11,7 @@ import com.linkedin.venice.helix.LeaderFollowerStateModelNotifier;
 import com.linkedin.venice.helix.OnlineOfflineStateModelNotifier;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -157,6 +158,7 @@ public class StoreIngestionTaskTest {
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
   private KafkaConsumerWrapper mockKafkaConsumer;
   private TopicManager mockTopicManager;
+  private TopicManagerRepository mockTopicManagerRepository;
   private AggStoreIngestionStats mockStoreIngestionStats;
   private AggVersionedDIVStats mockVersionedDIVStats;
   private AggVersionedStorageIngestionStats mockVersionedStorageIngestionStats;
@@ -256,7 +258,11 @@ public class StoreIngestionTaskTest {
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
+
     mockTopicManager = mock(TopicManager.class);
+    mockTopicManagerRepository = mock(TopicManagerRepository.class);
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager();
+
     mockStoreIngestionStats = mock(AggStoreIngestionStats.class);
     mockVersionedDIVStats = mock(AggVersionedDIVStats.class);
     mockVersionedStorageIngestionStats = mock(AggVersionedStorageIngestionStats.class);
@@ -407,7 +413,7 @@ public class StoreIngestionTaskTest {
         .setUnorderedRecordsThrottler(mockUnorderedRecordsThrottler)
         .setSchemaRepository(mockSchemaRepo)
         .setMetadataRepository(mockMetadataRepo)
-        .setTopicManager(mockTopicManager)
+        .setTopicManagerRepository(mockTopicManagerRepository)
         .setStoreIngestionStats(mockStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
         .setVersionedStorageIngestionStats(mockVersionedStorageIngestionStats)
