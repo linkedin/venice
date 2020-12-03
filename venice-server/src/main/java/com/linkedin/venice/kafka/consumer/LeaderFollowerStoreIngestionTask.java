@@ -9,7 +9,7 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -29,7 +29,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
@@ -136,7 +135,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       EventThrottler unorderedRecordsThrottler,
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreRepository metadataRepo,
-      TopicManager topicManager,
+      TopicManagerRepository topicManagerRepository,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
@@ -170,7 +169,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         unorderedRecordsThrottler,
         schemaRepo,
         metadataRepo,
-        topicManager,
+        topicManagerRepository,
         storeIngestionStats,
         versionedDIVStats,
         versionedStorageIngestionStats,
@@ -453,7 +452,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffset();
             if (upstreamStartOffset < 0) {
               if (topicSwitch.rewindStartTimestamp > 0) {
-                upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
+                upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
                 if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
                   // subscribe will seek to the next offset
                   upstreamStartOffset -= 1;
@@ -542,33 +541,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     /**
      * Currently just check whether the sourceKafkaServers list inside TopicSwitch control message only contains
-     * one Kafka server url and whether it's equal to the Kafka server url we use for consumer and producer.
+     * one Kafka server url. If native replication is enabled, kafka server url in TopicSwitch control message
+     * might be different from the url in consumer.
      *
-     * In the future, when we support consuming from one or multiple remote Kafka servers, we need to modify
-     * the code here.
+     * TODO: When we support consuming from multiple remote Kafka servers, we need to remove the single url check.
      */
     List<CharSequence> kafkaServerUrls = topicSwitch.sourceKafkaServers;
     if (kafkaServerUrls.size() != 1) {
       throw new VeniceException("More than one Kafka server urls in TopicSwitch control message, "
           + "TopicSwitch.sourceKafkaServers: " + kafkaServerUrls);
     }
-     if (!serverConfig.getKafkaBootstrapServers().equals(kafkaServerUrls.get(0).toString())) {
-       logger.warn("Kafka server url in TopicSwitch control message is different from the url in consumer");
-       /**
-        * Kafka is migrating the vip servers; we should stop comparing the kafka url used by controller with the url used by servers;
-        * otherwise, we require a synchronized deployment between controllers and servers, which is almost infeasible.
-        *
-        * TODO: start checking the url after the Kafka VIP migration; or maybe don't check the url until Actice/Active replication.
-        */
-       // throw new VeniceException("Kafka server url in TopicSwitch control message is different from the url in consumer");
-     }
     notificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState);
 
     // Calculate the start offset based on start timestamp
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
     if (topicSwitch.rewindStartTimestamp > 0) {
-      upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
+      upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
       if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
         upstreamStartOffset -= 1;
       }

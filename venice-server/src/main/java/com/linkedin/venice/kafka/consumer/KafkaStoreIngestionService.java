@@ -7,7 +7,7 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -181,7 +181,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         false,
         EventThrottler.BLOCK_STRATEGY);
 
-    TopicManager topicManager = new TopicManager(veniceConsumerFactory);
+    TopicManagerRepository topicManagerRepository = new TopicManagerRepository(
+        veniceConsumerFactory.getKafkaBootstrapServers(),
+        veniceConsumerFactory.getKafkaZkAddress(),
+        veniceConsumerFactory);
 
     VeniceNotifier notifier = new LogNotifier();
     this.onlineOfflineNotifiers.add(notifier);
@@ -276,7 +279,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setUnorderedRecordsThrottler(unorderedRecordsThrottler)
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
-        .setTopicManager(topicManager)
+        .setTopicManagerRepository(topicManagerRepository)
         .setStoreIngestionStats(ingestionStats)
         .setVersionedDIVStats(versionedDIVStats)
         .setVersionedStorageIngestionStats(versionedStorageIngestionStats)

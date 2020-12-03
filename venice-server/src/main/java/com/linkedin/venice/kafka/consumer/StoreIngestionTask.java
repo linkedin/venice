@@ -15,7 +15,7 @@ import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -137,7 +137,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   protected final StorageMetadataService storageMetadataService;
-  protected final TopicManager topicManager;
+  protected final TopicManagerRepository topicManagerRepository;
   protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
   protected final EventThrottler bandwidthThrottler;
   protected final EventThrottler recordsThrottler;
@@ -273,7 +273,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       EventThrottler unorderedRecordsThrottler,
       ReadOnlySchemaRepository schemaRepository,
       ReadOnlyStoreRepository storeRepository,
-      TopicManager topicManager,
+      TopicManagerRepository topicManagerRepository,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
@@ -320,8 +320,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Could be accessed from multiple threads since there are multiple worker threads.
     this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
-    this.topicManager = topicManager;
-    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(topicManager, storeConfig.getTopicOffsetCheckIntervalMs());
+    this.topicManagerRepository = topicManagerRepository;
+    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(topicManagerRepository, storeConfig.getTopicOffsetCheckIntervalMs());
 
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
@@ -395,7 +395,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           this,
           storageEngine,
           storeRepository.getStoreOrThrow(storeName), kafkaVersionTopic,
-          topicManager.getPartitions(kafkaVersionTopic).size(),
+          topicManagerRepository.getTopicManager().getPartitions(kafkaVersionTopic).size(),
           partitionConsumptionStateMap));
       this.storeRepository.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
       this.subscribedPartitionToSize = Optional.of(new HashMap<>());
@@ -1818,7 +1818,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *
        * If it is not this case, we need to revisit this logic since this operation is expensive.
        */
-      if (! topicManager.isTopicCompactionEnabled(consumerRecord.topic())) {
+      if (!topicManagerRepository.getTopicManager().isTopicCompactionEnabled(consumerRecord.topic())) {
         /**
          * Not enabled, then bubble up the exception.
          * We couldn't cache this in {@link topicWithLogCompaction} since the log compaction could be enabled in the same topic later.
@@ -2426,14 +2426,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected class CachedKafkaMetadataGetter {
     private final long ttl;
-    private final TopicManager topicManager;
+    private final TopicManagerRepository topicManagerRepository;
     private final Map<String, Pair<Long, Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
     private final Map<Pair<String, Integer>, Pair<Long, Long>> offsetCache = new VeniceConcurrentHashMap<>();
     private final Map<Pair<String, Integer>, Pair<Long, Long>> lastProducerTimestampCache = new VeniceConcurrentHashMap<>();
 
-    CachedKafkaMetadataGetter(TopicManager topicManager, long timeToLiveMs) {
+    CachedKafkaMetadataGetter(TopicManagerRepository topicManagerRepository, long timeToLiveMs) {
       this.ttl = MILLISECONDS.toNanos(timeToLiveMs);
-      this.topicManager = topicManager;
+      this.topicManagerRepository = topicManagerRepository;
     }
 
     long getOffset(String topicName, int partitionId) {
@@ -2447,7 +2447,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       entry = offsetCache.compute(key, (k, oldValue) ->
           (oldValue != null && oldValue.getFirst() > now) ?
-              oldValue : new Pair<>(now + ttl, topicManager.getLatestOffsetAndRetry(topicName, partitionId, 10)));
+              oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager().getLatestOffsetAndRetry(topicName, partitionId, 10)));
       return entry.getSecond();
     }
 
@@ -2462,7 +2462,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       entry = lastProducerTimestampCache.compute(key, (k, oldValue) ->
           (oldValue != null && oldValue.getFirst() > now) ?
-              oldValue : new Pair<>(now + ttl, topicManager.getLatestProducerTimestampAndRetry(topicName, partitionId, 10)));
+              oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager().getLatestProducerTimestampAndRetry(topicName, partitionId, 10)));
       return entry.getSecond();
     }
 
@@ -2476,7 +2476,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       entry = topicExistenceCache.compute(topicName, (k, oldValue) ->
           (oldValue != null && oldValue.getFirst() > now) ?
-              oldValue : new Pair<>(now + ttl, topicManager.containsTopic(topicName)));
+              oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager().containsTopic(topicName)));
       return entry.getSecond();
     }
   }

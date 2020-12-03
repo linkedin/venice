@@ -7,7 +7,7 @@ import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -57,7 +57,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       EventThrottler unorderedRecordsThrottler,
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreRepository storeRepo,
-      TopicManager topicManager,
+      TopicManagerRepository topicManagerRepository,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
@@ -88,7 +88,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         unorderedRecordsThrottler,
         schemaRepo,
         storeRepo,
-        topicManager,
+        topicManagerRepository,
         storeIngestionStats,
         versionedDIVStats,
         versionedStorageIngestionStats,
