@@ -130,10 +130,13 @@ public class ControllerClient implements Closeable {
    * @param wcEnabled Whether write compute is enabled for this push job or not
    * @param partitioners partitioner class names in a string seperated by comma
    * @param compressionDictionary Base64 encoded dictionary to be used to perform dictionary compression
+   * @param batchStartingFabric An identifier of the data center which is used in native replication to determine
+   *                       the Kafka URL
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, PushType pushType,
-      String pushJobId, boolean sendStartOfPush, boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary) {
+      String pushJobId, boolean sendStartOfPush, boolean sorted, boolean wcEnabled, Optional<String> partitioners,
+      Optional<String> compressionDictionary, Optional<String> batchStartingFabric) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -143,7 +146,9 @@ public class ControllerClient implements Closeable {
         .add(PUSH_IN_SORTED_ORDER, sorted)
         .add(IS_WRITE_COMPUTE_ENABLED, wcEnabled)
         .add(PARTITIONERS, partitioners)
-        .add(COMPRESSION_DICTIONARY, compressionDictionary);
+        .add(COMPRESSION_DICTIONARY, compressionDictionary)
+        .add(BATCH_STARTING_FABRIC, batchStartingFabric);
+
 
     return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
   }

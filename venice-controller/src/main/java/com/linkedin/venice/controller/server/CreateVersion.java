@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -34,8 +33,6 @@ import static com.linkedin.venice.meta.Version.PushType;
  * This class will add a new version to the given store.
  */
 public class CreateVersion extends AbstractRoute {
-  private static final Logger logger = Logger.getLogger(CreateVersion.class);
-
   private final boolean checkReadMethodForKafka;
 
   public CreateVersion(Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka) {
@@ -165,6 +162,8 @@ public class CreateVersion extends AbstractRoute {
           isWriteComputeEnabled = Utils.parseBooleanFromString(wcEnabledParam, IS_WRITE_COMPUTE_ENABLED);
         }
 
+        Optional<String> batchStartingFabric = Optional.ofNullable(request.queryParams(BATCH_STARTING_FABRIC));
+
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
@@ -176,7 +175,7 @@ public class CreateVersion extends AbstractRoute {
 
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted, dictionaryStr);
+                   pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.
@@ -383,8 +382,8 @@ public class CreateVersion extends AbstractRoute {
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
-        Version version =
-            admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
+        Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId,
+            partitionNum, replicationFactor);
         int versionNumber = version.getNumber();
 
         responseObject.setCluster(clusterName);

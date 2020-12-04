@@ -41,7 +41,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
-public class TestPushJobWithNativeReplication {
+public class  TestPushJobWithNativeReplication {
   private static final int TEST_TIMEOUT = 90_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
@@ -110,6 +110,7 @@ public class TestPushJobWithNativeReplication {
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+
     String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
     /**
@@ -134,7 +135,7 @@ public class TestPushJobWithNativeReplication {
         Assert.assertEquals(version, 1);
       }
 
-      // Verify the data in the second child fabric which consumes remotely
+      //Verify the data in the second child fabric which consumes remotely
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
       String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
       try(AvroGenericStoreClient<String, Object> client =

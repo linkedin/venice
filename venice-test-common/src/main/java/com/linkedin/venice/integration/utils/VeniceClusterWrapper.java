@@ -684,7 +684,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       // Create new version
       VersionCreationResponse newVersion =
           controllerClient.requestTopicForWrites(storeName, storeSize, Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(), false, false, false, Optional.empty(), Optional.empty());
+              Version.guidBasedDummyPushId(), false, false, false, Optional.empty(),
+              Optional.empty(), Optional.empty());
       if (newVersion.isError()) {
         throw new VeniceException(newVersion.getError());
       }
@@ -717,6 +718,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               // therefore, it's safe to assume that it'll be written in arbitrary order, rather than sorted...
               false,
               false,
+              Optional.empty(),
               Optional.empty(),
               Optional.empty());
       if (newVersion.isError()) {
@@ -796,6 +798,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           true,
           false,
           false,
+          Optional.empty(),
           Optional.empty(),
           Optional.empty());
       if (response.isError()) {

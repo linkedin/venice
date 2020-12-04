@@ -110,12 +110,15 @@ public interface Admin extends AutoCloseable, Closeable {
      * first task triggers a new Version, all subsequent tasks identify with the same jobPushId, and should be provided
      * with the same Version object.
      */
-    default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor) {
-        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, Version.PushType.BATCH, false, false, null);
+    default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
+        int numberOfPartitions, int replicationFactor) {
+        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
+            Version.PushType.BATCH, false, false, null, Optional.empty());
     }
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
-        int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary);
+        int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary,
+        Optional<String> batchStartingFabric);
 
     String getRealTimeTopic(String clusterName, String storeName);
 
@@ -272,7 +275,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric);
 
-    String getNativeReplicationSourceFabric(String clusterName, Store store);
+    String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> batchStartingFabric);
 
     /**
      * Return whether ssl is enabled for the given store for push.

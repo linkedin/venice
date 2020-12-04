@@ -133,6 +133,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   @Override
   protected void internalStop() throws Exception {
     CompletableFuture.runAsync(() -> clusters.values().stream().forEach(IOUtils::closeQuietly));
+    brooklinWrapper.close();
+    kafkaBrokerWrapper.close();
   }
 
   @Override
