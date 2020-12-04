@@ -118,6 +118,7 @@ public class StoreBufferService extends AbstractVeniceService {
 
     @Override
     public void run() {
+      LOGGER.info("Starting StoreBufferDrainer Thread....");
       while (isRunning.get()) {
         QueueNode node = null;
         try {
@@ -136,7 +137,8 @@ public class StoreBufferService extends AbstractVeniceService {
           if (producedRecord != null) {
             producedRecord.completePersistedToDBFuture(null);
           }
-        } catch (Exception e) {
+        } catch (Throwable e) {
+          LOGGER.error("Received throwable in drainer thread:  ", e);
           String consumerRecordString = consumerRecord.toString();
           if (consumerRecordString.length() > 1024) {
             // Careful not to flood the logs with too much content...
@@ -148,9 +150,14 @@ public class StoreBufferService extends AbstractVeniceService {
           /**
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.
            */
-          ingestionTask.setLastDrainerException(e);
-          if (producedRecord != null) {
-            producedRecord.completePersistedToDBFuture(e);
+          if (e instanceof Exception) {
+            Exception ee = (Exception)e;
+            ingestionTask.setLastDrainerException(ee);
+            if (producedRecord != null) {
+              producedRecord.completePersistedToDBFuture(ee);
+            }
+          } else {
+            break;
           }
         }
       }
