@@ -1361,7 +1361,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     ps.resetProcessedRecordSizeSinceLastSync();
-    logger.info("Synced offset: " + offsetRecord.getOffset() + " for " + topic + " of partition: " + partition);
+    String msg = "Offset synced for partition " + partition + " of topic " + topic + ": ";
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+      logger.info(msg + offsetRecord.getOffset());
+    }
   }
 
   public void setLastDrainerException(Exception e) {
