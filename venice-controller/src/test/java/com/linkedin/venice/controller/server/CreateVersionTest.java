@@ -163,7 +163,8 @@ public class CreateVersionTest {
     // Setting up a version that doesn't have the incremental policy set as INCREMENTAL_PUSH_SAME_AS_REAL_TIME
     Version version = new Version(storeName, 1, pushJobId1);
     version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
-    doReturn(version).when(admin).incrementVersionIdempotent(clusterName, storeName, pushJobId1, 0, 0, Version.PushType.INCREMENTAL, false, false, null);
+    doReturn(version).when(admin).incrementVersionIdempotent(clusterName, storeName, pushJobId1, 0, 0,
+        Version.PushType.INCREMENTAL, false, false, null, Optional.empty());
 
     // Mock a spark response
     Response response = mock(Response.class);

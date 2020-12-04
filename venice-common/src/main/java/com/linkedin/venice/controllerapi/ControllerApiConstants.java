@@ -6,6 +6,7 @@ public class ControllerApiConstants {
   public static final String CLUSTER = "cluster_name";
   public static final String CLUSTER_SRC = "cluster_name_src";
   public static final String CLUSTER_DEST = "cluster_name_dest";
+  public static final String BATCH_STARTING_FABRIC = "batch_starting_fabric";
 
   public static final String NAME = "store_name";
   public static final String OWNER = "owner";
@@ -115,5 +116,4 @@ public class ControllerApiConstants {
   public static final String MIGRATION_DUPLICATE_STORE = "migration_duplicate_store";
 
   public static final String NATIVE_REPLICATION_SOURCE_FABRIC = "native_replication_source_fabric";
-
 }

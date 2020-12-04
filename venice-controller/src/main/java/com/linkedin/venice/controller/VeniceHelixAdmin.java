@@ -1094,7 +1094,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
                 getReplicationFactor(clusterName, storeName), true, false, false,
-                true, pushType, null, remoteKafkaBootstrapServers);
+                true, pushType, null, remoteKafkaBootstrapServers, Optional.empty());
         }
     }
 
@@ -1148,7 +1148,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     public Version addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType,
-        String compressionDictionary, String remoteKafkaBootstrapServers) {
+        String compressionDictionary, String remoteKafkaBootstrapServers, Optional<String> batchStartingFabric) {
         Store store = getStore(clusterName, storeName);
         if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
@@ -1157,7 +1157,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return existingVersionToUse.orElseGet(
             () -> addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
                 false, sendStartOfPush, sorted, false, pushType,
-                compressionDictionary, remoteKafkaBootstrapServers));
+                compressionDictionary, remoteKafkaBootstrapServers, batchStartingFabric));
     }
 
     /**
@@ -1217,7 +1217,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, int replicationFactor, boolean startIngestion, boolean sendStartOfPush,
         boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType, String compressionDictionary,
-        String remoteKafkaBootstrapServers) {
+        String remoteKafkaBootstrapServers, Optional<String> batchStartingFabric) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
         }
@@ -1335,7 +1335,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                              *    specified. Store level config has the highest priority because it can be used to fail
                              *    over a push.
                              */
-                            String sourceFabric = getNativeReplicationSourceFabric(clusterName, store);
+                            String sourceFabric = getNativeReplicationSourceFabric(clusterName, store, batchStartingFabric);
                             sourceKafkaBootstrapServersAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
                             String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
                             if (sourceKafkaBootstrapServers == null) {
@@ -1522,7 +1522,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
-        String compressionDictionary) {
+        String compressionDictionary, Optional<String> batchStartingFabric) {
         checkControllerMastership(clusterName);
         Store store = getStore(clusterName, storeName);
         if (store != null) {
@@ -1536,7 +1536,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         return pushType.isIncremental() ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                true, sendStartOfPush, sorted, false, pushType, compressionDictionary, null);
+                true, sendStartOfPush, sorted, false, pushType,
+                compressionDictionary, null, batchStartingFabric);
     }
 
     /**
@@ -3576,12 +3577,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public String getNativeReplicationSourceFabric(String clusterName, Store store) {
+    public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> batchStartingFabric) {
         //Store level source fabric config has higher priority over cluster level source fabric config.
         String sourceFabric = store.getNativeReplicationSourceFabric();
+        if (batchStartingFabric.isPresent() && (sourceFabric == null || sourceFabric.isEmpty())) {
+            sourceFabric = batchStartingFabric.get();
+        }
+
         if (sourceFabric == null || sourceFabric.isEmpty()) {
             sourceFabric = multiClusterConfigs.getConfigForCluster(clusterName).getNativeReplicationSourceFabric();
         }
+
         return sourceFabric;
     }
     @Override

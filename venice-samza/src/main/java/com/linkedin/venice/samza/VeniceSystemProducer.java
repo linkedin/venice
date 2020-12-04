@@ -59,7 +59,6 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 public class VeniceSystemProducer implements SystemProducer {
   private static final Logger LOGGER = Logger.getLogger(VeniceSystemProducer.class);
-  private static  String FSBASE_PATH;
 
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
   private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
@@ -213,6 +212,7 @@ public class VeniceSystemProducer implements SystemProducer {
             false, // Samza jobs, including batch ones, are expected to write data out of order
             false,
             partitioners,
+            Optional.empty(),
             Optional.empty()
         )
     );

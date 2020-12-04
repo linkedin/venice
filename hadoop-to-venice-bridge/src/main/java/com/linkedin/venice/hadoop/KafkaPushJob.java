@@ -141,6 +141,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   public static final String VENICE_DISCOVER_URL_PROP = "venice.discover.urls";
 
+  public static final String BATCH_STARTING_FABRIC = "batch.starting.fabric";
+
   public static final String ENABLE_WRITE_COMPUTE = "venice.write.compute.enable";
   public static final String ENABLE_PUSH = "venice.push.enable";
   public static final String ENABLE_SSL = "venice.ssl.enable";
@@ -162,7 +164,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public static final String KAFKA_URL_PROP = "venice.kafka.url";
   public static final String TOPIC_PROP = "venice.kafka.topic";
 
-  public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
   protected static final String HADOOP_PREFIX = "hadoop-conf.";
 
   protected static final String SSL_PREFIX = "ssl";
@@ -316,6 +317,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     String veniceControllerUrl;
     String veniceRouterUrl;
     String storeName;
+    String batchStartingFabric;
     int batchNumBytes;
     // TODO: Map only code should be removed; it's incompatible with sorted keys
     boolean isMapOnly;
@@ -453,6 +455,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
      */
     pushJobSetting.enableSsl = props.getBoolean(ENABLE_SSL, false);
     pushJobSetting.sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+    if (props.containsKey(BATCH_STARTING_FABRIC)) {
+      pushJobSetting.batchStartingFabric = props.getString(BATCH_STARTING_FABRIC);
+    }
     pushJobSetting.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSetting.isMapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
     pushJobSetting.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
@@ -1111,7 +1116,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     versionTopicInfo = new VersionTopicInfo();
     VersionCreationResponse versionCreationResponse = controllerClient.retryableRequest(setting.controllerRetries,
           c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
-              askControllerToSendControlMessage, sorted, finalWriteComputeEnabled, partitioners, dictionary));
+              askControllerToSendControlMessage, sorted, finalWriteComputeEnabled, partitioners, dictionary,
+              Optional.ofNullable(setting.batchStartingFabric)));
 
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl

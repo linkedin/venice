@@ -353,7 +353,8 @@ public class VeniceParentHelixAdmin implements Admin {
       if (store.getVersions().isEmpty()) {
         int replicationFactor = getReplicationFactor(clusterName, storeName);
         Version version =
-            incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitionCount, replicationFactor);
+            incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitionCount,
+                replicationFactor);
         writeEndOfPush(clusterName, storeName, version.getNumber(), true);
         store = getStore(clusterName, storeName);
         if (store.getVersions().isEmpty()) {
@@ -773,7 +774,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
-      boolean sorted, String compressionDictionary) {
+      boolean sorted, String compressionDictionary, Optional<String> batchStartingFabric) {
 
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
     if (currentPushTopic.isPresent()) {
@@ -812,7 +813,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     Version newVersion = pushType.isIncremental() ? veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName)
         : veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            sendStartOfPush, sorted, pushType, compressionDictionary, null);
+            sendStartOfPush, sorted, pushType, compressionDictionary, null, batchStartingFabric);
     if (!pushType.isIncremental()) {
       acquireLock(clusterName, storeName);
       try {
@@ -1764,8 +1765,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public String getNativeReplicationSourceFabric(String clusterName, Store store) {
-    return veniceHelixAdmin.getNativeReplicationSourceFabric(clusterName, store);
+  public String getNativeReplicationSourceFabric(String clusterName, Store store, Optional<String> batchStartingFabric) {
+    return veniceHelixAdmin.getNativeReplicationSourceFabric(clusterName, store, batchStartingFabric);
   }
 
   @Override
