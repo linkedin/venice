@@ -37,11 +37,6 @@ public class PartitionPushStatusNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void endOfPushReceived(String topic, int partitionId, long offset, String message) {
-    accessor.updateReplicaStatus(topic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED);
-  }
-
-  @Override
   public void quotaViolated(String topic, int partitionId, long offset, String message) {
     accessor.updateHybridQuotaReplicaStatus(topic, partitionId, HybridStoreQuotaStatus.QUOTA_VIOLATED);
   }
