@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import io.github.classgraph.ClassGraph;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,7 +10,6 @@ import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.net.ServerSocket;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -47,11 +47,17 @@ public final class ForkedJavaProcess extends Process {
     // Argument preparation
     String javaBin = Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString();
     String originalClassPath = System.getProperty("java.class.path");
-    Set<String> addedJarPaths = Arrays.stream(originalClassPath.split(":")).filter(p -> p.endsWith(".jar")).collect(
-        Collectors.toSet());
     StringBuilder classpath = new StringBuilder(originalClassPath);
     // Using set to remove duplicate classpath folders to avoid argument list too long error.
     Set<String> classPathDirs = new HashSet<>();
+
+    // Get all jar file paths and extract their parent folders.
+    List<URL> urls = new ClassGraph().scan().getClasspathURLs();
+    for (URL url : urls) {
+      String jarFilePath = url.getPath();
+      classPathDirs.add(jarFilePath.substring(0, jarFilePath.lastIndexOf('/')));
+    }
+
     // Adding classpath from current context classloader.
     Enumeration<URL> roots = Thread.currentThread().getContextClassLoader().getResources("");
     while (roots.hasMoreElements()) {
