@@ -2,6 +2,7 @@ package com.linkedin.venice.ingestion.handler;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.venice.CommonConfigKeys;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.schema.SchemaReader;
@@ -36,6 +37,8 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.security.DefaultSSLFactory;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -66,6 +69,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
 import static com.linkedin.venice.ingestion.IngestionUtils.*;
 
@@ -167,12 +171,33 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
      * should not try to open it. The remaining ingestion tasks will open the storage engines.
      */
     propertyBuilder.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, "false");
-
     VeniceProperties veniceProperties = propertyBuilder.build();
     VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties, veniceProperties);
     ingestionService.setConfigLoader(configLoader);
 
-    D2Client d2Client = new D2ClientBuilder().setZkHosts(configLoader.getVeniceClusterConfig().getZookeeperAddress()).build();
+    // Initialize D2Client.
+    SSLFactory sslFactory;
+    D2Client d2Client;
+    String d2ZkHosts = veniceProperties.getString(D2_CLIENT_ZK_HOSTS_ADDRESS, "");
+    if (veniceProperties.getBoolean(CommonConfigKeys.SSL_ENABLED, false)) {
+      try {
+        /**
+         * TODO: DefaultSSLFactory is a copy of the ssl factory implementation in a version of container lib,
+         * we should construct the same SSL Factory being used in the main process with help of ReflectionUtils.
+         */
+        sslFactory = new DefaultSSLFactory(veniceProperties.toProperties());
+      } catch (Exception e) {
+        throw new VeniceException("Encounter exception in constructing DefaultSSLFactory", e);
+      }
+      d2Client = new D2ClientBuilder()
+          .setZkHosts(d2ZkHosts)
+          .setIsSSLEnabled(true)
+          .setSSLParameters(sslFactory.getSSLParameters())
+          .setSSLContext(sslFactory.getSSLContext())
+          .build();
+    } else {
+      d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts).build();
+    }
     startD2Client(d2Client);
 
     // Create the client config.
