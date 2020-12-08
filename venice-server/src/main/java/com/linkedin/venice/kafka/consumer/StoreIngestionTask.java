@@ -35,6 +35,7 @@ import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -42,6 +43,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -58,6 +61,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -260,6 +264,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final boolean suppressLiveUpdates;
 
+  // Used to construct VenicePartitioner
+  private final VenicePartitioner venicePartitioner;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -291,7 +298,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      boolean isWriteComputationEnabled) {
+      boolean isWriteComputationEnabled,
+      VenicePartitioner venicePartitioner) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -377,6 +385,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.partitionStateSerializer = partitionStateSerializer;
 
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
+
+    this.venicePartitioner = venicePartitioner;
   }
 
   protected void validateState() {
@@ -1905,7 +1915,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (null == veniceWriter) {
           Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
           if (storeVersionState.isPresent()) {
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked);
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner);
           } else {
             /**
              * In general, a partition in version topic follows this pattern:
@@ -1916,7 +1926,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
              * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
              * different in some test cases which reuse the same VeniceWriter.
              */
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic);
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner);
           }
         }
       }

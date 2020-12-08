@@ -18,6 +18,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
@@ -74,7 +75,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       int partitionId,
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      VenicePartitioner venicePartitioner) {
     super(
         writerFactory,
         consumerFactory,
@@ -106,7 +108,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         cacheWarmingThreadPool,
         startReportingReadyToServeTimestamp,
         partitionStateSerializer,
-        false);
+        false,
+        venicePartitioner);
   }
 
   @Override

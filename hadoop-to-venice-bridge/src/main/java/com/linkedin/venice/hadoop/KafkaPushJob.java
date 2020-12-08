@@ -23,6 +23,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
@@ -35,6 +36,7 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -1122,8 +1124,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (null == this.veniceWriter) {
       // Initialize VeniceWriter
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(versionTopicInfo));
-
-      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic);
+      Properties partitionerProperties = new Properties();
+      partitionerProperties.putAll(versionTopicInfo.partitionerParams);
+      VenicePartitioner venicePartitioner =
+          PartitionUtils.getVenicePartitioner(
+              versionTopicInfo.partitionerClass,
+              versionTopicInfo.amplificationFactor,
+              new VeniceProperties(partitionerProperties));
+      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter =
+          veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic, venicePartitioner);
       logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
       this.veniceWriter = newVeniceWriter;
     }
@@ -1135,9 +1144,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
       veniceWriterProperties.setProperty(PARTITIONER_CLASS, versionTopicInfo.partitionerClass);
-      for (Map.Entry<String, String> entry : versionTopicInfo.partitionerParams.entrySet()) {
-        veniceWriterProperties.setProperty(entry.getKey(), entry.getValue());
-      }
+      veniceWriterProperties.putAll(versionTopicInfo.partitionerParams);
       veniceWriterProperties.setProperty(AMPLIFICATION_FACTOR, String.valueOf(versionTopicInfo.amplificationFactor));
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));

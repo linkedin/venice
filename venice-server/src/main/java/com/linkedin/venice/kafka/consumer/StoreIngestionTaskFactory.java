@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
@@ -48,7 +49,8 @@ public class StoreIngestionTaskFactory {
       boolean isNativeReplicationEnabled,
       String nativeReplicationSourceAddress,
       int partitionId,
-      boolean isWriteComputationEnabled
+      boolean isWriteComputationEnabled,
+      VenicePartitioner venicePartitioner
   ) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(
@@ -84,7 +86,8 @@ public class StoreIngestionTaskFactory {
           builder.cacheWarmingThreadPool,
           builder.startReportingReadyToServeTimestamp,
           builder.partitionStateSerializer,
-          isWriteComputationEnabled);
+          isWriteComputationEnabled,
+          venicePartitioner);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -116,7 +119,8 @@ public class StoreIngestionTaskFactory {
           partitionId,
           builder.cacheWarmingThreadPool,
           builder.startReportingReadyToServeTimestamp,
-          builder.partitionStateSerializer);
+          builder.partitionStateSerializer,
+          venicePartitioner);
     }
   }
 

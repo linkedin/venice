@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -199,17 +200,21 @@ public class TestUtils {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
-    for (Map.Entry<String, String> entry : response.getPartitionerParams().entrySet()) {
-      props.setProperty(entry.getKey(), entry.getValue());
-    }
+    props.putAll(response.getPartitionerParams());
     props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
     VeniceWriterFactory writerFactory = new VeniceWriterFactory(props);
 
     String kafkaTopic = response.getKafkaTopic();
+    Properties partitionerProperties = new Properties();
+    partitionerProperties.putAll(response.getPartitionerParams());
+    VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
+        response.getPartitionerClass(),
+        response.getAmplificationFactor(),
+        new VeniceProperties(partitionerProperties));
     try (
         VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
-        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer)) {
+        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer, venicePartitioner)) {
 
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
       writer.broadcastStartOfPush(Collections.emptyMap());
