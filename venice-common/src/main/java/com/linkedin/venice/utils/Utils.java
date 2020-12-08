@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.RandomAccess;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -143,6 +144,15 @@ public class Utils {
       throw new IllegalArgumentException("This object MUST be non-null.");
     }
     return t;
+  }
+
+  /**
+   * Run "function" on "t" if "t" is not null
+   */
+  public static <T> void computeIfNotNull(T t, Consumer<T> function) {
+    if (null != t) {
+      function.accept(t);
+    }
   }
 
   /**
