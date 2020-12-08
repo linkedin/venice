@@ -248,7 +248,7 @@ public class SystemStoreTest {
    * Alternatively, to break the test into smaller ones is to enforce execution order or dependency of tests since if
    * the Zk shared store tests fail then tests related to materializing the metadata store will definitely fail as well.
    */
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testMetadataStore() throws Exception {
     // Create a new Venice store and materialize the corresponding metadata system store
     String regularVeniceStoreName = TestUtils.getUniqueString("regular_store");
@@ -428,6 +428,7 @@ public class SystemStoreTest {
             .put(SERVER_INGESTION_MODE, ISOLATED)
             .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
             .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
+            .put(D2_CLIENT_ZK_HOSTS_ADDRESS, venice.getZk().getAddress())
             .build();
     metricsRepository = new MetricsRepository();
     daVinciConfig = new DaVinciConfig();
