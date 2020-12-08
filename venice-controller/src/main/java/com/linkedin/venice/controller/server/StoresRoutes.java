@@ -535,7 +535,8 @@ public class StoresRoutes extends AbstractRoute {
         storeCandidates.forEach(store -> admin.setLeaderFollowerModelEnabled(cluster, store.getName(), isLFEnabled));
 
         veniceResponse.setCluster(cluster);
-        veniceResponse.setStores((String []) storeCandidates.toArray());
+
+        veniceResponse.setStores(storeCandidates.stream().map(Store::getName).toArray(String[]::new));
       }
     };
   }
