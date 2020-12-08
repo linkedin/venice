@@ -9,7 +9,9 @@ import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -159,7 +161,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, mapReduceJobId.getId());
       VeniceWriterFactory factory = new VeniceWriterFactory(writerProps);
       boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING);
-      veniceWriter = factory.createBasicVeniceWriter(props.getString(TOPIC_PROP), chunkingEnabled);
+      VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
+      veniceWriter = factory.createBasicVeniceWriter(props.getString(TOPIC_PROP), chunkingEnabled, partitioner);
     }
     if (null == previousReporter || !previousReporter.equals(reporter)) {
       callback = new KafkaMessageCallback(reporter);

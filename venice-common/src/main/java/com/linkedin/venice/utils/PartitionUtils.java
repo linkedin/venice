@@ -79,7 +79,9 @@ public class PartitionUtils {
 
   public static VenicePartitioner getVenicePartitioner(PartitionerConfig config) {
     Properties params = new Properties();
-    params.putAll(config.getPartitionerParams());
+    if (config.getPartitionerParams() != null) {
+      params.putAll(config.getPartitionerParams());
+    }
     return getVenicePartitioner(
         config.getPartitionerClass(),
         config.getAmplificationFactor(),

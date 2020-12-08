@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -18,6 +19,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -35,6 +38,7 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -345,6 +349,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
     }
 
+    VenicePartitioner venicePartitioner;
+    PartitionerConfig partitionerConfig = version.get().getPartitionerConfig();
+    if (partitionerConfig == null) {
+      venicePartitioner = new DefaultVenicePartitioner();
+    } else {
+      venicePartitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
+    }
+
     final Store finalStore = store;
     BooleanSupplier isStoreVersionCurrent = () -> finalStore.getCurrentVersion() == storeVersion;
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
@@ -356,7 +368,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String nativeReplicationSourceAddress = version.get().getPushStreamSourceAddress();
     return ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModel, kafkaProperties, isStoreVersionCurrent,
         hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStoreConfig, bufferReplayEnabledForHybrid,
-        nativeReplicationEnabled, nativeReplicationSourceAddress, partitionId, store.isWriteComputationEnabled());
+        nativeReplicationEnabled, nativeReplicationSourceAddress, partitionId, store.isWriteComputationEnabled(), venicePartitioner);
   }
 
   private void shutdownExecutorService(ExecutorService executorService, boolean force) {

@@ -28,6 +28,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
@@ -155,7 +156,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      boolean isWriteComputationEnabled) {
+      boolean isWriteComputationEnabled,
+      VenicePartitioner venicePartitioner) {
     super(
         writerFactory,
         consumerFactory,
@@ -187,7 +189,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheWarmingThreadPool,
         startReportingReadyToServeTimestamp,
         partitionStateSerializer,
-        isWriteComputationEnabled);
+        isWriteComputationEnabled,
+        venicePartitioner);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;

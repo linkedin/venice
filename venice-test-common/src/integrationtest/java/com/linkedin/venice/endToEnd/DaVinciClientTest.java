@@ -27,6 +27,7 @@ import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
@@ -43,6 +44,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -57,6 +59,7 @@ import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import org.testng.internal.thread.ThreadTimeoutException;
 
@@ -76,7 +79,10 @@ public class DaVinciClientTest {
   @BeforeClass
   public void setup() {
     Utils.thisIsLocalhost();
-    cluster = ServiceFactory.getVeniceCluster(1, 1, 1);
+    Properties extraProperties = new Properties();
+    extraProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
+        100, false, false, extraProperties);
   }
 
   @AfterClass
@@ -319,14 +325,14 @@ public class DaVinciClientTest {
     }
   }
 
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testHybridStore() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testHybridStore(boolean isLeaderFollowerModelEnabled) throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
     String storeName = TestUtils.getUniqueString("store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
             .setPartitionCount(partitionCount)
             .setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setPartitionerParams(
