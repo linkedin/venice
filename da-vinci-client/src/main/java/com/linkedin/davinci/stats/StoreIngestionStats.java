@@ -21,14 +21,11 @@ import static com.linkedin.davinci.stats.StatsErrorCode.*;
 public class StoreIngestionStats extends AbstractVeniceStats {
   private StoreIngestionTask storeIngestionTask;
 
-  // Bytes processed by the store ingestion task as a rate
-  private final Sensor bytesConsumedSensor;
   /*
    * Bytes read from Kafka by store ingestion task as a total. This metric includes bytes read for all store versions
    * allocated in a storage node reported with its uncompressed data size.
    */
   private final Sensor bytesReadFromKafkaAsUncompressedSizeSensor;
-  private final Sensor recordsConsumedSensor;
   private final Sensor storageQuotaUsedSensor;
   // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk quota allowed.
   private final Sensor diskQuotaSensor;
@@ -105,9 +102,7 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     super(metricsRepository, storeName);
     this.storeIngestionTask = null;
 
-    bytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
     bytesReadFromKafkaAsUncompressedSizeSensor = registerSensor("bytes_read_from_kafka_as_uncompressed_size", new Rate(), new Total());
-    recordsConsumedSensor = registerSensor("records_consumed", new Rate());
     diskQuotaSensor = registerSensor("global_store_disk_quota_allowed",
                                       new Gauge(() -> diskQuotaAllowedGauge), new Max());
 
@@ -165,16 +160,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     return storeIngestionTask;
   }
 
-  public void recordBytesConsumed(long bytes) {
-    bytesConsumedSensor.record(bytes);
-  }
-
   public void recordBytesReadFromKafkaAsUncompressedSize(long bytes) {
     bytesReadFromKafkaAsUncompressedSizeSensor.record(bytes);
-  }
-
-  public void recordRecordsConsumed(int count) {
-    recordsConsumedSensor.record(count);
   }
 
   public void recordStorageQuotaUsed(double quotaUsed) {

@@ -6,7 +6,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.AbstractVeniceAggVersionedStats;
 import com.linkedin.venice.stats.AbstractVeniceStatsReporter;
 import com.linkedin.venice.stats.Gauge;
+import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Rate;
 import java.util.function.Supplier;
 import org.apache.log4j.Logger;
 
@@ -21,6 +25,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     AggVersionedStorageIngestionStats.StorageIngestionStats,
     AggVersionedStorageIngestionStats.StorageIngestionStatsReporter> {
   private static final Logger LOGGER = Logger.getLogger(AggVersionedStorageIngestionStats.class);
+
+  private static final String RECORDS_CONSUMED_METRIC_NAME = "records_consumed";
+  private static final String BYTES_CONSUMED_METRIC_NAME = "bytes_consumed";
 
   public AggVersionedStorageIngestionStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
     super(metricsRepository, storeRepository, StorageIngestionStats::new, StorageIngestionStatsReporter::new);
@@ -56,10 +63,39 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     getStats(storeName, version).setIngestionTaskErroredGauge(0);
   }
 
+  public void recordRecordsConsumed(String storeName, int version, int count) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordRecordsConsumed(count));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordRecordsConsumed(count));
+  }
+
+  public void recordBytesConsumed(String storeName, int version, long bytes) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordBytesConsumed(bytes));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordBytesConsumed(bytes));
+  }
+
   static class StorageIngestionStats {
+    private static final MetricConfig METRIC_CONFIG = new MetricConfig();
+    private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
+
     private StoreIngestionTask ingestionTask;
     private long rtTopicOffsetLagOverThreshold = INACTIVE_STORE_INGESTION_TASK.code;
     private int ingestionTaskErroredGauge = 0;
+
+    private final Rate recordsConsumedRate;
+    private final Rate bytesConsumedRate;
+
+    private final Sensor recordsConsumedSensor;
+    private final Sensor bytesConsumedSensor;
+
+    public StorageIngestionStats()  {
+      recordsConsumedRate = new Rate();
+      recordsConsumedSensor = localMetricRepository.sensor(RECORDS_CONSUMED_METRIC_NAME);
+      recordsConsumedSensor.add(RECORDS_CONSUMED_METRIC_NAME + recordsConsumedRate.getClass().getSimpleName(), recordsConsumedRate);
+
+      bytesConsumedRate = new Rate();
+      bytesConsumedSensor = localMetricRepository.sensor(BYTES_CONSUMED_METRIC_NAME);
+      bytesConsumedSensor.add(BYTES_CONSUMED_METRIC_NAME + bytesConsumedRate.getClass().getSimpleName(), bytesConsumedRate);
+    }
 
     public void setIngestionTask(StoreIngestionTask ingestionTask) { this.ingestionTask = ingestionTask; }
 
@@ -110,6 +146,22 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       }
       return ingestionTask.getWriteComputeErrorCode();
     }
+
+    public double getRecordsConsumed() {
+      return recordsConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordRecordsConsumed(double value) {
+      recordsConsumedSensor.record(value);
+    }
+
+    public double getBytesConsumed() {
+      return bytesConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordBytesConsumed(double value) {
+      bytesConsumedSensor.record(value);
+    }
   }
 
   static class StorageIngestionStatsReporter extends AbstractVeniceStatsReporter<StorageIngestionStats> {
@@ -126,6 +178,11 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
           (double) getStats().getFollowerOffsetLag()));
       registerSensor("write_compute_operation_failure", new IngestionStatsGauge(this,
           () -> (double) getStats().getWriteComputeErrorCode()));
+
+      registerSensor(RECORDS_CONSUMED_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed()));
+      registerSensor(BYTES_CONSUMED_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getBytesConsumed()));
     }
 
     // Only register these stats if the store is hybrid.

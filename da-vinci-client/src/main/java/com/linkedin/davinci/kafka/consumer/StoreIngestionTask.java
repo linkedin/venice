@@ -1334,10 +1334,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionState.isEndOfPushReceived()) {
       int processedRecordSize = partitionConsumptionState.getProcessedRecordSize();
       // Report metrics
-      if (emitMetrics.get()) {
-        storeIngestionStats.recordBytesConsumed(storeName, processedRecordSize);
-        storeIngestionStats.recordRecordsConsumed(storeName, processedRecordNum);
-      }
+      versionedStorageIngestionStats.recordBytesConsumed(storeName, versionNumber, processedRecordSize);
+      versionedStorageIngestionStats.recordRecordsConsumed(storeName, versionNumber, processedRecordNum);
 
       partitionConsumptionState.resetProcessedRecordNum();
       partitionConsumptionState.resetProcessedRecordSize();
