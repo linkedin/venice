@@ -23,6 +23,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
@@ -55,6 +56,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
@@ -253,7 +255,7 @@ public class SystemStoreTest {
    * Alternatively, to break the test into smaller ones is to enforce execution order or dependency of tests since if
    * the Zk shared store tests fail then tests related to materializing the metadata store will definitely fail as well.
    */
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testMetadataStore() throws Exception {
     // Create a new Venice store and materialize the corresponding metadata system store
     String regularVeniceStoreName = TestUtils.getUniqueString("regular_store");
@@ -392,14 +394,39 @@ public class SystemStoreTest {
     storeRepository.refresh();
     assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.get(), "ReadOnly Repo refresh()");
 
+    // Dematerialize the metadata store version and it should be cleaned up properly.
+    controllerResponse = parentControllerClient.dematerializeMetadataStoreVersion(regularVeniceStoreName,
+        metadataStoreVersionNumber);
+    assertFalse(controllerResponse.isError(), "Failed to dematerialize metadata store version");
+    assertFalse(parentController.getVeniceAdmin().getStore(clusterName, regularVeniceStoreName).isStoreMetadataSystemStoreEnabled());
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
+      assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
+    });
+
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testDaVinciIngestionWithMetadataStore() throws Exception {
+    // Create a new Venice store and materialize the corresponding metadata system store
+    String regularVeniceStoreName = TestUtils.getUniqueString("regular_store_daVinci_ingestion");
+    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularVeniceStoreName, "test",
+        STRING_SCHEMA, USER_SCHEMA_STRING);
+    assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
+    String metadataStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
+    // The corresponding metadata store should be materialized automatically.
+    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
+        Optional.empty());
+
     // Prepare a new version with a dummy key-value pair.
-    GenericRecord expectedValueRecord = new GenericData.Record(Schema.parse(USER_SCHEMA_STRING_WITH_DEFAULT));
+    GenericRecord expectedValueRecord = new GenericData.Record(Schema.parse(USER_SCHEMA_STRING));
     expectedValueRecord.put("id", "testId");
     expectedValueRecord.put("name", "testName");
     expectedValueRecord.put("age", 1);
     venice.createVersion(regularVeniceStoreName,
         STRING_SCHEMA,
-        USER_SCHEMA_STRING_WITH_DEFAULT,
+        USER_SCHEMA_STRING,
         Stream.of(new AbstractMap.SimpleEntry<>("testKey", expectedValueRecord))
     );
 
@@ -418,8 +445,7 @@ public class SystemStoreTest {
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig, "test")) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
-      GenericRecord actualValueRecord = client.get("testKey").get();
-      assertEquals(actualValueRecord, expectedValueRecord);
+      assertEquals(client.get("testKey").get(), expectedValueRecord);
       client.unsubscribeAll();
     }
 
@@ -427,14 +453,14 @@ public class SystemStoreTest {
     int servicePort = getFreePort();
     // Test Da Vinci client ingestion with both system store && ingestion isolation
     backendConfig = new PropertyBuilder()
-            .put(DATA_BASE_PATH, baseDataPath)
-            .put(PERSISTENCE_TYPE, ROCKS_DB)
-            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-            .put(SERVER_INGESTION_MODE, ISOLATED)
-            .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
-            .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
-            .put(D2_CLIENT_ZK_HOSTS_ADDRESS, venice.getZk().getAddress())
-            .build();
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(SERVER_INGESTION_MODE, ISOLATED)
+        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
+        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, venice.getZk().getAddress())
+        .build();
     metricsRepository = new MetricsRepository();
     daVinciConfig = new DaVinciConfig();
     daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
@@ -442,23 +468,9 @@ public class SystemStoreTest {
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig, "test")) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
-      GenericRecord actualValueRecord = client.get("testKey").get();
-      assertEquals(actualValueRecord, expectedValueRecord);
+      assertEquals(client.get("testKey").get(), expectedValueRecord);
       client.unsubscribeAll();
     }
-
-    // Dematerialize the metadata store version and it should be cleaned up properly.
-    controllerResponse = parentControllerClient.dematerializeMetadataStoreVersion(regularVeniceStoreName,
-        metadataStoreVersionNumber);
-    assertFalse(controllerResponse.isError(), "Failed to dematerialize metadata store version");
-    assertFalse(parentController.getVeniceAdmin().getStore(clusterName, regularVeniceStoreName).isStoreMetadataSystemStoreEnabled());
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
-      assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
-      assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin()
-          .isTopicTruncated(Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName))));
-    });
-
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
@@ -542,7 +554,41 @@ public class SystemStoreTest {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
       assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
+      assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(
+          Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName))));
     });
+  }
+
+  @Test(timeOut =  60 * Time.MS_PER_SECOND)
+  public void testReMaterializeMetadataSystemStore() throws ExecutionException {
+    // Create a new Venice store with metadata system store materialized.
+    String regularVeniceStoreName = TestUtils.getUniqueString("regular_store_to_re_materialize");
+    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularVeniceStoreName, "test",
+        STRING_SCHEMA, STRING_SCHEMA);
+    assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
+    String metadataStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
+    // The corresponding metadata store should be materialized automatically.
+    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
+        Optional.empty());
+    // Dematerialize the metadata system store.
+    assertFalse(parentControllerClient.dematerializeMetadataStoreVersion(regularVeniceStoreName,
+        metadataStoreVersionNumber).isError());
+    verifyKillMessageInParticipantStore(metadataStoreTopic, true);
+    // Re-materialize the metadata system store and the kill message should be deleted from the participant store.
+    TopicManager topicManager = venice.getMasterVeniceController().getVeniceAdmin().getTopicManager();
+    topicManager.ensureTopicIsDeletedAndBlock(metadataStoreTopic);
+    assertFalse(parentControllerClient.materializeMetadataStoreVersion(regularVeniceStoreName,
+        metadataStoreVersionNumber).isError());
+    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
+        Optional.empty());
+    verifyKillMessageInParticipantStore(metadataStoreTopic, false);
+    // Re-materialize the metadata system store again and no errors should occur.
+    assertFalse(parentControllerClient.materializeMetadataStoreVersion(regularVeniceStoreName,
+        metadataStoreVersionNumber).isError());
+    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
+        Optional.empty());
+    assertEquals(venice.getMasterVeniceController().getAdminConsumerServiceByCluster(clusterName).getFailingOffset(), -1);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

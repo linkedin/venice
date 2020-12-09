@@ -3870,30 +3870,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled() &&
             participantMessageStoreRTTMap.containsKey(clusterName)) {
-            VeniceWriter writer =
-                participantMessageWriterMap.computeIfAbsent(clusterName, k -> {
-                    int attempts = 0;
-                    boolean verified = false;
-                    String topic = participantMessageStoreRTTMap.get(clusterName);
-                    while (attempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
-                        if (getTopicManager().containsTopicAndAllPartitionsAreOnline(topic)) {
-                            verified = true;
-                            logger.info("Participant message store RTT topic set to " + topic + " for cluster "
-                                + clusterName);
-                            break;
-                        }
-                        attempts++;
-                        Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
-                    }
-                    if (!verified) {
-                        throw new VeniceException("Can't find the expected topic " + topic
-                            + " for participant message store "
-                            + VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
-                    }
-                    return getVeniceWriterFactory().createVeniceWriter(topic,
-                        new VeniceAvroKafkaSerializer(ParticipantMessageKey.SCHEMA$.toString()),
-                        new VeniceAvroKafkaSerializer(ParticipantMessageValue.SCHEMA$.toString()));
-            });
+            VeniceWriter writer = getParticipantStoreWriter(clusterName);
             ParticipantMessageType killPushJobType = ParticipantMessageType.KILL_PUSH_JOB;
             ParticipantMessageKey key = new ParticipantMessageKey();
             key.resourceName = kafkaTopic;
@@ -3905,6 +3882,32 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             value.messageUnion = message;
             writer.put(key, value, PARTICIPANT_MESSAGE_STORE_SCHEMA_ID);
         }
+    }
+
+    private VeniceWriter getParticipantStoreWriter(String clusterName) {
+        return participantMessageWriterMap.computeIfAbsent(clusterName, k -> {
+                int attempts = 0;
+                boolean verified = false;
+                String topic = participantMessageStoreRTTMap.get(clusterName);
+                while (attempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
+                    if (getTopicManager().containsTopicAndAllPartitionsAreOnline(topic)) {
+                        verified = true;
+                        logger.info("Participant message store RTT topic set to " + topic + " for cluster "
+                            + clusterName);
+                        break;
+                    }
+                    attempts++;
+                    Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
+                }
+                if (!verified) {
+                    throw new VeniceException("Can't find the expected topic " + topic
+                        + " for participant message store "
+                        + VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
+                }
+                return getVeniceWriterFactory().createVeniceWriter(topic,
+                    new VeniceAvroKafkaSerializer(ParticipantMessageKey.SCHEMA$.toString()),
+                    new VeniceAvroKafkaSerializer(ParticipantMessageValue.SCHEMA$.toString()));
+        });
     }
 
     @Override
@@ -4309,8 +4312,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceRetriableException("Waiting for previously materialized RT to be deleted for store: "
                 + metadataStoreName);
         }
-        createSystemStoreResources(clusterName, storeName, metadataStoreVersionNumber, zkSharedStoreMetadata, VeniceSystemStoreType.METADATA_STORE);
-        writeEndOfPush(clusterName, metadataStoreName, metadataStoreVersionNumber, true);
+        if (isResourceStillAlive(metadataVTName)) {
+            logger.info("Metadata system store version: " + metadataVTName + " already exists will just rewrite metadata to RT");
+        } else {
+            // Write null to the participant store for a clean slate in case this version was materialized previously.
+            ParticipantMessageKey key = new ParticipantMessageKey();
+            key.resourceName = metadataVTName;
+            key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
+            getParticipantStoreWriter(clusterName).delete(key, null, PARTICIPANT_MESSAGE_STORE_SCHEMA_ID);
+            createSystemStoreResources(clusterName, storeName, metadataStoreVersionNumber, zkSharedStoreMetadata,
+                VeniceSystemStoreType.METADATA_STORE);
+            writeEndOfPush(clusterName, metadataStoreName, metadataStoreVersionNumber, true);
+        }
         getRealTimeTopic(clusterName, metadataStoreName);
         metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, veniceStore);
         metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, veniceStore.getVersions(),
