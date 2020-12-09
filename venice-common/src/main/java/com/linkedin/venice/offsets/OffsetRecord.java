@@ -63,6 +63,8 @@ public class OffsetRecord {
     emptyPartitionState.startOfBufferReplayDestinationOffset = null;
     emptyPartitionState.databaseInfo = new HashMap<>();
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
+    // Assign an empty map. Otherwise, NPE will be thrown during serialization.
+    emptyPartitionState.upstreamOffsetMap = new HashMap<>();
     return emptyPartitionState;
   }
 

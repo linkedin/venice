@@ -60,8 +60,16 @@
     }, {
       "name": "leaderOffset",
       "type": "long",
-      "doc": "The last Kafka offset consumed successfully in this partition from the leader topic",
+      "doc": "The last Kafka offset consumed successfully in this partition from the leader topic. TODO: remove this field once upstreamOffsetMap is used everywhere.",
       "default": -1
+    }, {
+      "name": "upstreamOffsetMap",
+      "type": {
+        "type": "map",
+        "values": "long"
+      },
+      "doc": "A map of upstream Kafka bootstrap server url -> the last Kafka offset consumed from upstream topic.",
+      "default": {}
     }, {
       "name": "leaderGUID",
       "type": [
