@@ -71,9 +71,10 @@ public abstract class StateModelNotifier implements VeniceNotifier {
 
   @Override
   public void completed(String resourceName, int partitionId, long offset, String message) {
-    if (getLatch(resourceName, partitionId) != null) {
+    CountDownLatch latch = getLatch(resourceName, partitionId);
+    if (latch != null) {
       stateModelToSuccessMap.put(getStateModelIdentification(resourceName, partitionId), true);
-      getLatch(resourceName, partitionId).countDown();
+      latch.countDown();
     } else {
       logger.info("No latch is found for resource:" + resourceName + " partition:" + partitionId);
     }
@@ -81,8 +82,25 @@ public abstract class StateModelNotifier implements VeniceNotifier {
 
   @Override
   public void error(String resourceName, int partitionId, String message, Exception ex) {
-    if (getLatch(resourceName, partitionId) != null) {
-      getLatch(resourceName, partitionId).countDown();
+    CountDownLatch latch = getLatch(resourceName, partitionId);
+    if (latch != null) {
+      latch.countDown();
+    } else {
+      logger.info("No latch is found for resource:" + resourceName + " partition:" + partitionId);
+    }
+  }
+
+  @Override
+  public void stopped(String resourceName, int partitionId, long offset) {
+    /**
+     * Must remove the state model from the model-to-success map first before releasing the latch;
+     * otherwise, error will happen in {@link #waitConsumptionCompleted} if latch is released but
+     * consumption is not completed.
+     */
+    stateModelToSuccessMap.remove(getStateModelIdentification(resourceName, partitionId));
+    CountDownLatch latch = getLatch(resourceName, partitionId);
+    if (latch != null) {
+      latch.countDown();
     } else {
       logger.info("No latch is found for resource:" + resourceName + " partition:" + partitionId);
     }

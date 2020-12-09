@@ -63,7 +63,7 @@ public class LogNotifier implements VeniceNotifier {
   private String logMessage(String header, String kafkaTopic, int partitionId, Long offset, String message) {
     return String.format("%s for store %s partitionId %d%s%s", header, kafkaTopic, partitionId,
         offset == null ? "" : " offset " + offset,
-        message.isEmpty()? "" : " message " + message);
+        (message == null || message.isEmpty())? "" : " message " + message);
   }
 
   @Override
@@ -74,5 +74,10 @@ public class LogNotifier implements VeniceNotifier {
   @Override
   public void error(String kafkaTopic, int partitionId, String message, Exception ex) {
     logger.error(logMessage("Push errored", kafkaTopic, partitionId, null, message), ex);
+  }
+
+  @Override
+  public void stopped(String kafkaTopic, int partitionId, long offset) {
+    logger.info(logMessage("Consumption stopped", kafkaTopic, partitionId, offset, null));
   }
 }

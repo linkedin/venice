@@ -1152,6 +1152,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         waitForAllMessageToBeProcessedFromTopicPartition(topic, partition, consumptionState);
 
         /**
+         * If state transition model is still hanging on waiting for the released latch, but unsubscription happens,
+         * we should make a call to state model to release the latch.
+         *
+         * In normal case, if a state model is pending on completing a transition message, no new transition message
+         * will be sent, meaning UNSUBSCRIBE won't happen if the model is waiting for the latch to release (push complete
+         * or fail); however, if ZK disconnection/reconnection happens, state transition will be reset while the latch
+         * is still not released; in this case, reset should make sure to restore all internal states, including
+         * releasing latch.
+         */
+        if (consumptionState != null) {
+          notificationDispatcher.reportStopped(consumptionState);
+        }
+
+        /**
          * Since the processing of the buffered messages are using {@link #partitionConsumptionStateMap} and
          * {@link #kafkaDataValidationService}, we would like to drain all the buffered messages before cleaning up those
          * two variables to avoid the race condition.

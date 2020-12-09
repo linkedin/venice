@@ -127,4 +127,8 @@ public interface VeniceNotifier {
    * Report an error, during the consumption for a Partitions and store. The error may or may not be fatal.
    */
   default void error(String kafkaTopic, int partitionId, String message, Exception e) {}
+
+  default void stopped(String kafkaTopic, int partitionId, long offset) {
+    // no-op
+  }
 }

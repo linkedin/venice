@@ -280,4 +280,12 @@ class IngestionNotificationDispatcher {
       });
     }
   }
+
+  void reportStopped(PartitionConsumptionState pcs) {
+    report(pcs, "STOPPED",
+        notifier -> {
+          notifier.stopped(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset());
+        },
+        () -> true);
+  }
 }
