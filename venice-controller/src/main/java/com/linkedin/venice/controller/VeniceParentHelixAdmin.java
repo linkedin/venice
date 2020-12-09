@@ -509,7 +509,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!VeniceSystemStoreUtils.isSystemStore(storeName) &&
           multiClusterConfigs.getConfigForCluster(clusterName).isMetadataSystemStoreAutoMaterializeEnabled()) {
         Store zkSharedStore = getStore(clusterName, VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName));
-        if (zkSharedStore != null) {
+        if (zkSharedStore != null && zkSharedStore.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
           materializeMetadataStoreVersion(clusterName, storeName, zkSharedStore.getCurrentVersion());
         }
       }
