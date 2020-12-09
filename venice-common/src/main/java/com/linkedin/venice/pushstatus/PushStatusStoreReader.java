@@ -40,7 +40,7 @@ public class PushStatusStoreReader implements AutoCloseable {
       if (pushStatusValue == null) {
         return Collections.emptyMap();
       } else {
-        logger.error("[impulse] instances: " + pushStatusValue.instances);
+        logger.info(storeName + "/" + partitionId + " Instance Statuses: " + pushStatusValue.instances);
         return pushStatusValue.instances;
       }
     } catch (Exception e) {
