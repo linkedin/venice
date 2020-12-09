@@ -60,7 +60,6 @@ public class VeniceSystemStoreUtils {
     UpdateStoreQueryParams defaultParams = new UpdateStoreQueryParams();
     defaultParams
         .setPartitionCount(DEFAULT_SYSTEM_STORE_PARTITION_COUNT)
-        .setLeaderFollowerModel(true)
         .setHybridOffsetLagThreshold(DEFAULT_SYSTEM_STORE_LAG_THRESHOLD)
         .setHybridRewindSeconds(DEFAULT_SYSTEM_STORE_REWIND_SECONDS);
     return defaultParams;
