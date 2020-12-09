@@ -1047,12 +1047,18 @@ public class TestHybrid {
           TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
             Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1));
 
-          for (int i = 0; i < 10; i++) {
-            String key = Integer.toString(i);
-            Object value = client.get(key).get();
-            Assert.assertNotNull(value);
-            Assert.assertEquals(value.toString(), "stream_" + key);
-          }
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+            try {
+              for (int i = 0; i < 10; i++) {
+                String key = Integer.toString(i);
+                Object value = client.get(key).get();
+                Assert.assertNotNull(value);
+                Assert.assertEquals(value.toString(), "stream_" + key);
+              }
+            } catch (Exception e) {
+              throw new VeniceException(e);
+            }
+          });
 
           //stop the SN (leader) and write more messages
           VeniceServerWrapper serverWrapper = veniceClusterWrapper.getVeniceServers().get(0);
@@ -1070,12 +1076,18 @@ public class TestHybrid {
           TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
             Assert.assertNotNull(routingDataRepo.getLeaderInstance(resourceName, 0)));
 
-          for (int i = 10; i < 20; i++) {
-            String key = Integer.toString(i);
-            Object value = client.get(key).get();
-            Assert.assertNotNull(value);
-            Assert.assertEquals(value.toString(), "stream_" + key);
-          }
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+            try {
+              for (int i = 10; i < 20; i++) {
+                String key = Integer.toString(i);
+                Object value = client.get(key).get();
+                Assert.assertNotNull(value);
+                Assert.assertEquals(value.toString(), "stream_" + key);
+              }
+            } catch (Exception e) {
+              throw new VeniceException(e);
+            }
+          });
         }
       }
     }
