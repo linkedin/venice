@@ -12,9 +12,9 @@ import java.util.Set;
 */
 public class ComplementSet<T> {
   private boolean isComplement;
-  private Collection<T> elements;
+  private Set<T> elements;
 
-  protected ComplementSet(boolean isComplement, Collection<T> elements) {
+  protected ComplementSet(boolean isComplement, Set<T> elements) {
     this.isComplement = isComplement;
     this.elements = elements;
   }
@@ -22,7 +22,7 @@ public class ComplementSet<T> {
   /**
    * This API will reuse the input "elements" which cannot be unmodifiable.
    */
-  public static <T> ComplementSet<T> wrap(Collection<T> elements) {
+  public static <T> ComplementSet<T> wrap(Set<T> elements) {
     return new ComplementSet<>(false, elements);
   }
 
@@ -34,9 +34,7 @@ public class ComplementSet<T> {
     /**
      * Copy data from input to a new collection in case the input collection is unmodifiable.
      */
-    Set<T> clonedElements = new HashSet<>(elements.size());
-    clonedElements.addAll(elements);
-    return new ComplementSet<>(false, clonedElements);
+    return wrap(new HashSet<>(elements));
   }
 
   public static <T> ComplementSet<T> emptySet() {
@@ -56,6 +54,10 @@ public class ComplementSet<T> {
       return elements.isEmpty() ? "ALL" : "ALL EXCEPT " + elements;
     }
     return elements.toString();
+  }
+
+  public boolean isEmpty() {
+    return !isComplement && elements.isEmpty();
   }
 
   public void clear() {

@@ -1,8 +1,5 @@
 package com.linkedin.davinci.repository;
 
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -24,11 +21,17 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+
+import org.apache.avro.Schema;
+
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
-import org.apache.avro.Schema;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
@@ -62,7 +65,7 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
     daVinciClientFactory = new CachingDaVinciClientFactory(clientConfig.getD2Client(),
         Optional.ofNullable(clientConfig.getMetricsRepository())
             .orElse(TehutiUtils.getMetricsRepository("davinci-client")), backendConfig);
-    daVinciConfig.setRocksDBMemoryLimit(DEFAULT_DA_VINCI_CLIENT_ROCKS_DB_MEMORY_LIMIT);
+    daVinciConfig.setMemoryLimit(DEFAULT_DA_VINCI_CLIENT_ROCKS_DB_MEMORY_LIMIT);
   }
 
   @Override

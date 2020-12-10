@@ -1,6 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.exceptions.VeniceException;

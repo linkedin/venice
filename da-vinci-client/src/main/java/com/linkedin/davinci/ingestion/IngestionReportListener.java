@@ -1,6 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.channel.IngestionReportChannelInitializer;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;

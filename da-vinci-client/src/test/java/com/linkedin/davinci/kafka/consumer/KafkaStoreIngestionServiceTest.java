@@ -17,7 +17,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;

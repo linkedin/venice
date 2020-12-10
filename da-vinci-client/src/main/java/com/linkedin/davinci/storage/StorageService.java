@@ -1,6 +1,6 @@
 package com.linkedin.davinci.storage;
 
-import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;

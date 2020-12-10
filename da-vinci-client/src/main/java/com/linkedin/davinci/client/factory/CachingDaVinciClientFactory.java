@@ -3,7 +3,6 @@ package com.linkedin.davinci.client.factory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -19,6 +18,8 @@ import org.apache.log4j.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 
 public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCloseable {
@@ -28,19 +29,19 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
   protected final D2Client d2Client;
   protected final MetricsRepository metricsRepository;
   protected final VeniceProperties backendConfig;
+  protected final Optional<Set<String>> managedClients;
   protected final Map<String, DaVinciClient> clients = new HashMap<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
-  protected final String instanceName;
 
-  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository, VeniceProperties backendConfig, String appName) {
+  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository, VeniceProperties backendConfig) {
+    this(d2Client, metricsRepository, backendConfig, Optional.empty());
+  }
+
+  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository, VeniceProperties backendConfig, Optional<Set<String>> managedClients) {
     this.d2Client = d2Client;
     this.metricsRepository = metricsRepository;
     this.backendConfig = backendConfig;
-    this.instanceName = Utils.getHostName() + "/" + appName;
-  }
-
-  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository, VeniceProperties backendConfig) {
-    this(d2Client, metricsRepository, backendConfig, "test");
+    this.managedClients = managedClients;
   }
 
   @Override
@@ -66,12 +67,12 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
   }
 
   @Override
-  public  <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, DaVinciConfig config) {
+  public <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, DaVinciConfig config) {
     return getClient(storeName, config, null, AvroGenericDaVinciClient::new, AvroGenericDaVinciClient.class, false);
   }
 
   @Override
-  public  <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(String storeName, DaVinciConfig config) {
+  public <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(String storeName, DaVinciConfig config) {
     return getClient(storeName, config, null, AvroGenericDaVinciClient::new, AvroGenericDaVinciClient.class, true);
   }
 
@@ -86,7 +87,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
   }
 
   protected interface DaVinciClientConstructor {
-    DaVinciClient apply(DaVinciConfig config, ClientConfig clientConfig, VeniceProperties backendConfig, String instanceName);
+    DaVinciClient apply(DaVinciConfig config, ClientConfig clientConfig, VeniceProperties backendConfig, Optional<Set<String>> managedClients);
   }
 
   protected synchronized DaVinciClient getClient(
@@ -121,7 +122,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
               .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
               .setMetricsRepository(metricsRepository)
               .setSpecificValueClass(valueClass);
-      DaVinciClient newClient = clientConstructor.apply(config, clientConfig, backendConfig, instanceName);
+      DaVinciClient newClient = clientConstructor.apply(config, clientConfig, backendConfig, managedClients);
       if (startClient) {
         newClient.start();
       }

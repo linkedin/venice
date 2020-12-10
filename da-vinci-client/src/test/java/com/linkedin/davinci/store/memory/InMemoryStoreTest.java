@@ -1,7 +1,7 @@
 package com.linkedin.davinci.store.memory;
 
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.store.AbstractStoreTest;
 import org.testng.annotations.Test;
 

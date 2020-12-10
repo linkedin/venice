@@ -1,19 +1,5 @@
 package com.linkedin.davinci;
 
-import com.linkedin.davinci.ingestion.IngestionReportListener;
-import com.linkedin.davinci.ingestion.IngestionRequestClient;
-import com.linkedin.davinci.ingestion.IngestionStorageMetadataService;
-import com.linkedin.davinci.ingestion.IngestionUtils;
-import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.storage.StorageEngineMetadataService;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -40,12 +26,36 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.ComplementSet;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import com.linkedin.davinci.config.StoreBackendConfig;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.ingestion.IngestionReportListener;
+import com.linkedin.davinci.ingestion.IngestionRequestClient;
+import com.linkedin.davinci.ingestion.IngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.IngestionUtils;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
+
 import java.io.Closeable;
 import java.util.Collections;
 import java.util.Comparator;
@@ -53,11 +63,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static java.lang.Thread.*;
@@ -65,7 +73,6 @@ import static java.lang.Thread.*;
 
 public class DaVinciBackend implements Closeable {
   private static final Logger logger = Logger.getLogger(DaVinciBackend.class);
-  private static final int DEFAULT_PUSH_STATUS_HEARTBEAT_PERIOD_IN_SECONDS = 10;
 
   private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;
@@ -75,43 +82,39 @@ public class DaVinciBackend implements Closeable {
   private final RocksDBMemoryStats rocksDBMemoryStats;
   private final StorageService storageService;
   private final KafkaStoreIngestionService ingestionService;
-  private final ExecutorService executor = Executors.newSingleThreadExecutor();
+  private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
-  private final long pushStatusStoreHeartbeatIntervalInSeconds;
+  private final StorageMetadataService storageMetadataService;
+  private final PushStatusStoreWriter pushStatusStoreWriter;
 
-  private StorageMetadataService storageMetadataService;
   private IngestionRequestClient ingestionRequestClient;
   private IngestionReportListener ingestionReportListener;
   private VeniceNotifier isolatedIngestionListener;
   private Process isolatedIngestionService;
-  private PushStatusStoreWriter pushStatusStoreWriter;
 
-  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, String instanceName,
-      VeniceProperties backendConfig) {
+  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, Optional<Set<String>> managedClients) {
+    VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
     this.configLoader = configLoader;
-    this.pushStatusStoreHeartbeatIntervalInSeconds =
-        backendConfig.getLong(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_PERIOD_IN_SECONDS);
+    metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
+                            .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
 
-    metricsRepository =
-        Optional.ofNullable(clientConfig.getMetricsRepository())
-            .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
-
-    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    zkClient = ZkClientFactory.newZkClient(configLoader.getVeniceClusterConfig().getZookeeperAddress());
-    zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, ".davinci-zk-client"));
-
-    String clusterName = configLoader.getVeniceClusterConfig().getClusterName();
     ClusterInfoProvider clusterInfoProvider;
-
-    if (backendConfig.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false)) {
-      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository =
-          MetadataStoreBasedStoreRepository.getInstance(clientConfig, backendConfig);
+    VeniceProperties backendProps = backendConfig.getClusterProperties();
+    if (backendProps.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false)) {
+      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository = MetadataStoreBasedStoreRepository.getInstance(clientConfig, backendProps);
       clusterInfoProvider = metadataStoreBasedStoreRepository;
       storeRepository = metadataStoreBasedStoreRepository;
       schemaRepository = metadataStoreBasedStoreRepository;
+      zkClient = null;
     } else {
+      String clusterName = backendConfig.getClusterName();
       clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
+
+      HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+      zkClient = ZkClientFactory.newZkClient(backendConfig.getZookeeperAddress());
+      zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, ".davinci-zk-client"));
+
       storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
       storeRepository.refresh();
 
@@ -120,32 +123,34 @@ public class DaVinciBackend implements Closeable {
     }
 
     SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
-    SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
-    final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+        ClientConfig.cloneConfig(clientConfig)
+            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
-    final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
-    storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
 
-    AggVersionedStorageEngineStats
-        storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
-    rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
-        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
+    SchemaReader versionStateSchemaReader = ClientFactory.getSchemaReader(
+        ClientConfig.cloneConfig(clientConfig)
+            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+    InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    storeVersionStateSerializer.setSchemaReader(versionStateSchemaReader);
+
+    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
+    rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled() ?
+        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
     storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);
     storageService.start();
 
-    VeniceWriterFactory factory = new VeniceWriterFactory(configLoader.getCombinedProperties().toProperties());
-
-    pushStatusStoreWriter = new PushStatusStoreWriter(factory, schemaRepository, instanceName);
+    VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
+    String instanceName = Utils.getHostName() + "_" + Utils.getPid();
+    pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, schemaRepository, instanceName);
 
     SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
             .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
 
     // TODO: May need to reorder the object to make it looks cleaner.
-    storageMetadataService = configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)
-        ? new IngestionStorageMetadataService(configLoader.getVeniceServerConfig().getIngestionServicePort(), partitionStateSerializer)
+    storageMetadataService = backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)
+        ? new IngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer)
         : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
 
     ingestionService = new KafkaStoreIngestionService(
@@ -162,15 +167,23 @@ public class DaVinciBackend implements Closeable {
         partitionStateSerializer);
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
-    Map<String, Pair<Version, Set<Integer>>> bootstrapStoreNameToVersionPartitionsMap = new HashMap<>();
-    // Start ingestion service in child process and ingestion listener service.
+
+    /**
+     * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
+     * record all store versions that are up-to-date and close all storage engines. This will make sure child process
+     * can open RocksDB stores.
+     */
+    Map<Version, Set<Integer>> bootstrapVersions = new HashMap<>();
+    bootstrap(managedClients, bootstrapVersions);
+
     if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      /**
-       * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
-       * record all store versions that are up-to-date and close all storage engines. This will make sure child process
-       * can open RocksDB stores.
-       */
-      bootstrap(bootstrapStoreNameToVersionPartitionsMap);
+      // Close all opened store engines so child process can open them.
+      StorageEngineRepository engineRepository = storageService.getStorageEngineRepository();
+      logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines before cleanup.");
+      for (AbstractStorageEngine storageEngine : engineRepository.getAllLocalStorageEngines()) {
+        storageService.closeStorageEngine(storageEngine.getName());
+      }
+      logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
 
       // Initialize isolated ingestion service.
       int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
@@ -182,11 +195,16 @@ public class DaVinciBackend implements Closeable {
       // Isolated ingestion listener handles status report from isolated ingestion service.
       isolatedIngestionListener = new VeniceNotifier() {
         @Override
-        public void completed(String kafkaTopic, int partitionId, long offset) {
+        public void completed(String kafkaTopic, int partitionId, long offset, String message) {
           VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
           if (versionBackend != null) {
-            versionBackend.completeSubPartitionByIsolatedIngestionService(partitionId);
+            versionBackend.completeSubPartitionSubscription(partitionId);
           }
+        }
+
+        @Override
+        public void error(String kafkaTopic, int partitionId, String message, Exception e) {
+          ingestionListener.error(kafkaTopic, partitionId, message, e);
         }
       };
 
@@ -198,88 +216,95 @@ public class DaVinciBackend implements Closeable {
         ingestionReportListener.setConfigLoader(configLoader);
         ingestionReportListener.startInner();
       } catch (Exception e) {
-        throw new VeniceException("Unable to start ingestion report listener with exception.", e);
+        throw new VeniceException("Unable to start ingestion report listener.", e);
       }
 
-
       // Send out subscribe requests to child process to complete bootstrap process.
-      bootstrapWithIngestionIsolation(bootstrapStoreNameToVersionPartitionsMap);
-    } else {
-      bootstrap(bootstrapStoreNameToVersionPartitionsMap);
+      completeBootstrapRemotely(bootstrapVersions);
     }
+
     storeRepository.registerStoreDataChangedListener(storeChangeListener);
   }
 
-  protected synchronized void bootstrap(Map<String, Pair<Version, Set<Integer>>> bootstrapStoreNameToVersionPartitionsMap) {
+  protected synchronized void bootstrap(Optional<Set<String>> managedClients, Map<Version, Set<Integer>> bootstrapVersions) {
     for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
       String kafkaTopicName = storageEngine.getName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
 
       if (storeByNameMap.containsKey(storeName)) {
-        // We have discovered the current version for the store, so we will delete all other local versions.
+        // The latest version has been already discovered, so all other local versions will be deleted.
+        logger.info("Deleting obsolete local version " + kafkaTopicName);
         storageService.removeStorageEngine(kafkaTopicName);
         continue;
       }
 
       try {
         storeRepository.subscribe(storeName);
+      } catch (VeniceNoStoreException e) {
+        // The version does not exist in Venice anymore, so it will be deleted.
+        logger.info("Deleting invalid local version " + kafkaTopicName);
+        storageService.removeStorageEngine(kafkaTopicName);
+        continue;
       } catch (InterruptedException e) {
-        logger.info("Subscribe method is interrupted " + e.getMessage());
-        Thread.currentThread().interrupt();
+        logger.info("StoreRepository::subscribe was interrupted", e);
+        currentThread().interrupt();
       }
+
       Version version = getLatestVersion(storeName).orElse(null);
       if (version == null || !version.kafkaTopicName().equals(kafkaTopicName)) {
+        // The version is not the latest, so it will be deleted.
         logger.info("Deleting obsolete local version " + kafkaTopicName);
-        // If the version is not the latest, it should be removed.
-        storageService.removeStorageEngine(kafkaTopicName);
         storeRepository.unsubscribe(storeName);
+        storageService.removeStorageEngine(kafkaTopicName);
         continue;
       }
 
-      logger.info("Bootstrapping local version " + kafkaTopicName);
-      StoreBackend store = getStoreOrThrow(storeName);
+      StoreBackend storeBackend = getStoreOrThrow(storeName);
+      if (managedClients.isPresent()) {
+        if (storeBackend.isManaged() && !managedClients.get().contains(storeName)) {
+          logger.info("Deleting unused managed version " + kafkaTopicName);
+          storeBackend.delete();
+          storageService.removeStorageEngine(kafkaTopicName);
+          continue;
+        }
+      }
+
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-      Set<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
+      Set<Integer> subPartitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
+      logger.info("Bootstrapping partitions " + subPartitions + " of local version " + kafkaTopicName);
+
       if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-        logger.info("Will bootstrap store " + storeName + " with version " + version.kafkaTopicName() + " with partitions: " + partitions);
-        // If ingestion isolation is turned on, we will not subscribe to versions immediately, but instead stores all versions of interest.
-        bootstrapStoreNameToVersionPartitionsMap.put(storeName, new Pair<>(version, partitions));
+        // If ingestion isolation is turned on, we will not subscribe to versions immediately, but instead save all versions of interest.
+        bootstrapVersions.put(version, subPartitions);
       } else {
-        store.subscribe(ComplementSet.wrap(partitions), Optional.of(version));
+        storeBackend.subscribe(ComplementSet.wrap(subPartitions), Optional.of(version));
       }
     }
 
-    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED) &&
-        (!configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists())) {
-      // Close all opened store engines so child process can open them.
-      logger.info(
-          "Storage service has " + storageService.getStorageEngineRepository().getAllLocalStorageEngines().size() + " storage engine before clean up.");
-      for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
-        storageService.closeStorageEngine(storageEngine.getName());
+    String baseDataPath = configLoader.getVeniceServerConfig().getDataBasePath();
+    for (String storeName : StoreBackendConfig.listConfigs(baseDataPath)) {
+      if (!storeByNameMap.containsKey(storeName)) {
+        new StoreBackendConfig(baseDataPath, storeName).delete();
       }
-      logger.info(
-          "Storage service has " + storageService.getStorageEngineRepository().getAllLocalStorageEngines().size() + " storage engine after clean up.");
     }
   }
 
-  // bootstrapWithIngestionIsolation sends out store subscribe request to isolated ingestion service to complete bootstrap.
-  protected synchronized void bootstrapWithIngestionIsolation(Map<String, Pair<Version, Set<Integer>>> bootstrapStoreNameToVersionPartitionsMap) {
-    bootstrapStoreNameToVersionPartitionsMap.forEach((name, versionPartitionPair) -> {
-      StoreBackend store = getStoreOrThrow(name);
-      Version bootstrapVersion = versionPartitionPair.getFirst();
-      versionPartitionPair.getSecond().forEach(partitionId -> {
-        ingestionReportListener.addVersionPartitionToIngestionMap(bootstrapVersion.kafkaTopicName(), partitionId);
-      });
-      logger.info("Bootstrap sending subscribe request to isolated ingestion service: " + name + " " + bootstrapVersion + " " + versionPartitionPair.getSecond().toString());
-      store.subscribe(ComplementSet.wrap(versionPartitionPair.getSecond()), Optional.of(bootstrapVersion));
+  protected synchronized void completeBootstrapRemotely(Map<Version, Set<Integer>> bootstrapVersions) {
+    bootstrapVersions.forEach((version, subPartitions) -> {
+      logger.info("Bootstrapping partitions " + subPartitions + " of " + version.kafkaTopicName() + " via isolated ingestion service.");
+      StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
+      for (Integer subPartition : subPartitions) {
+        ingestionReportListener.addVersionPartitionToIngestionMap(version.kafkaTopicName(), subPartition);
+      }
+      storeBackend.subscribe(ComplementSet.wrap(subPartitions), Optional.of(version));
     });
   }
 
   @Override
   public synchronized void close() {
     storeRepository.unregisterStoreDataChangedListener(storeChangeListener);
-    for (StoreBackend store : storeByNameMap.values()) {
-      store.close();
+    for (StoreBackend storeBackend : storeByNameMap.values()) {
+      storeBackend.close();
     }
     storeByNameMap.clear();
     versionByTopicMap.clear();
@@ -309,7 +334,9 @@ public class DaVinciBackend implements Closeable {
         ingestionService.stop();
       }
       storageService.stop();
-      zkClient.close();
+      if (zkClient != null) {
+        zkClient.close();
+      }
       metricsRepository.close();
       storeRepository.clear();
       schemaRepository.clear();
@@ -323,7 +350,7 @@ public class DaVinciBackend implements Closeable {
     return storeByNameMap.computeIfAbsent(storeName, k -> new StoreBackend(this, storeName));
   }
 
-  ExecutorService getExecutor() {
+  ScheduledExecutorService getExecutor() {
     return executor;
   }
 
@@ -345,10 +372,6 @@ public class DaVinciBackend implements Closeable {
 
   StorageService getStorageService() {
     return storageService;
-  }
-
-  StorageMetadataService getStorageMetadataService() {
-    return storageMetadataService;
   }
 
   public IngestionReportListener getIngestionReportListener() {
@@ -377,10 +400,6 @@ public class DaVinciBackend implements Closeable {
     return pushStatusStoreWriter;
   }
 
-  public long getPushStatusStoreHeartbeatIntervalInSeconds() {
-    return pushStatusStoreHeartbeatIntervalInSeconds;
-  }
-
   Optional<Version> getLatestVersion(String storeName) {
     try {
       return getLatestVersion(storeRepository.getStoreOrThrow(storeName));
@@ -391,6 +410,18 @@ public class DaVinciBackend implements Closeable {
 
   static Optional<Version> getLatestVersion(Store store) {
     return store.getVersions().stream().max(Comparator.comparing(Version::getNumber));
+  }
+
+  protected void reportPushStatus(String kafkaTopic, int subPartition, ExecutionStatus status) {
+    reportPushStatus(kafkaTopic, subPartition, status, Optional.empty());
+  }
+
+  protected void reportPushStatus(String kafkaTopic, int subPartition, ExecutionStatus status, Optional<String> incrementalPushVersion) {
+    VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+    if (versionBackend != null && versionBackend.isReportingPushStatus()) {
+      Version version = versionBackend.getVersion();
+      pushStatusStoreWriter.writePushStatus(version.getStoreName(), version.getNumber(), subPartition, status, incrementalPushVersion);
+    }
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
@@ -414,41 +445,34 @@ public class DaVinciBackend implements Closeable {
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
-    public void completed(String kafkaTopic, int partitionId, long offset) {
+    public void completed(String kafkaTopic, int partitionId, long offset, String message) {
       VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
       if (versionBackend != null) {
         versionBackend.completeSubPartition(partitionId);
+        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
       }
-      reportStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
     }
 
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
       VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
       if (versionBackend != null) {
-        versionBackend.completeErrorSubPartition(partitionId, e);
+        versionBackend.completeSubPartitionExceptionally(partitionId, e);
+        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
       }
-      reportStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
     }
 
     @Override
-    public void started(String kafkaTopic, int partitionId) {
-      reportStatus(kafkaTopic, partitionId, ExecutionStatus.STARTED);
+    public void started(String kafkaTopic, int partitionId, String message) {
+      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+      if (versionBackend != null) {
+        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.STARTED, Optional.empty());
+        versionBackend.tryStartHeartbeat();
+      }
     }
 
     @Override
-    public void endOfPushReceived(String kafkaTopic, int partitionId, long offset) {
-      reportStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED);
-    }
-
-    @Override
-    public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset) {
-      reportStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED);
-    }
-
-    @Override
-    public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      reportStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(message));
+    public void restarted(String kafkaTopic, int partitionId, long offset, String message) {
       VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
       if (versionBackend != null) {
         versionBackend.tryStartHeartbeat();
@@ -456,25 +480,30 @@ public class DaVinciBackend implements Closeable {
     }
 
     @Override
-    public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      reportStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(message));
+    public void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+      reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED);
+    }
+
+    @Override
+    public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
+      reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED);
+    }
+
+    @Override
+    public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
       VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
       if (versionBackend != null) {
-        versionBackend.tryStopHeartbeat();
+        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(incrementalPushVersion));
+        versionBackend.tryStartHeartbeat();
       }
     }
 
-    private void reportStatus(String kafkaTopic, int partitionId, ExecutionStatus status) {
-      reportStatus(kafkaTopic, partitionId, status, Optional.empty());
-    }
-
-    private void reportStatus(String kafkaTopic, int partitionId, ExecutionStatus status, Optional<String> incrementalPushVersion) {
+    @Override
+    public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
       VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
       if (versionBackend != null) {
-        if (versionBackend.isPushStatusStoreEnabled()) {
-          Version version = versionBackend.getVersion();
-          pushStatusStoreWriter.writePushStatus(version.getStoreName(), version.getNumber(), partitionId, status, incrementalPushVersion);
-        }
+        versionBackend.tryStopHeartbeat();
+        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(incrementalPushVersion));
       }
     }
   };

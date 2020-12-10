@@ -4,7 +4,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.CommonConfigKeys;
 import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
-import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.schema.SchemaReader;

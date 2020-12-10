@@ -1342,7 +1342,7 @@ public class ConfigKeys {
   /**
    * Interval for Da Vinci clients to send heartbeats.
    */
-  public static final String PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_SECONDS = "push.status.store.heartbeat.interval.seconds";
+  public static final String PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS = "push.status.store.heartbeat.interval.seconds";
 
   /**
    * The expiration timeout. If an instance not sending heartbeats for over the expiration

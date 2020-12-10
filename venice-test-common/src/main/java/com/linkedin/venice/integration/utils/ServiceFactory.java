@@ -1,8 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.davinci.client.AvroGenericDaVinciClient;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -17,15 +14,22 @@ import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
 
 /**
  * A factory for generating Venice services and external service instances
@@ -534,7 +538,7 @@ public class ServiceFactory {
     String errorMessage = "If you see this message, something went horribly wrong.";
 
     for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
-      int freePort = IntegrationTestUtils.getFreePort();
+      int freePort = Utils.getFreePort();
       try {
         return getService(serviceName, serviceProvider, freePort);
       } catch (Exception e) {
@@ -613,7 +617,7 @@ public class ServiceFactory {
         .defaultGenericClientConfig(storeName)
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
-    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Utils.getHostName() + "/test");
+    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Optional.empty());
     client.start();
     return client;
   }
@@ -629,7 +633,7 @@ public class ServiceFactory {
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(zkAddress);
 
-    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(new DaVinciConfig(), clientConfig, backendConfig, Utils.getHostName() + "/test");
+    DaVinciClient<K, V> client = new AvroGenericDaVinciClient<>(new DaVinciConfig(), clientConfig, backendConfig, Optional.empty());
     client.start();
     return client;
   }

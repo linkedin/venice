@@ -6,10 +6,10 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -22,23 +22,6 @@ import static com.linkedin.venice.ConfigKeys.*;
  */
 public class IntegrationTestUtils {
   static final int MAX_ASYNC_START_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
-
-  /**
-   * WARNING: The code which generates the free port and uses it must always be called within
-   * a try/catch and a loop. There is no guarantee that the port returned will still be
-   * available at the time it is used. This is best-effort only.
-   *
-   * N.B.: Visibility is package-private on purpose.
-   *
-   * @return a free port to be used by tests.
-   */
-  static int getFreePort() {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
-    } catch(IOException e) {
-      throw new RuntimeException(e);
-    }
-  }
 
   /**
    * N.B.: Visibility is package-private on purpose.
@@ -108,7 +91,7 @@ public class IntegrationTestUtils {
         content.store(writer, "Config file: " + fileName);
       }
     } catch (IOException e) {
-      throw new VeniceException("Fot an IOExpcetion while trying to create or write to the file: " + propsFile.getAbsolutePath(), e);
+      throw new VeniceException("Got an IOExpcetion while trying to create or write to the file: " + propsFile.getAbsolutePath(), e);
     }
     return propsFile;
   }

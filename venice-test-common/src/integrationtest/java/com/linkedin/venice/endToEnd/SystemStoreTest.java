@@ -1,10 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -22,8 +17,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
@@ -47,10 +42,25 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
+
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.IOException;
-import java.net.ServerSocket;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
+
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.Map;
@@ -61,14 +71,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.log4j.Logger;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
@@ -440,17 +442,17 @@ public class SystemStoreTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     long memoryLimit = 1024 * 1024 * 1024; // 1GB
-    daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
+    daVinciConfig.setMemoryLimit(memoryLimit);
     D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig, "test")) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
       assertEquals(client.get("testKey").get(), expectedValueRecord);
       client.unsubscribeAll();
     }
 
-    int applicationListenerPort = getFreePort();
-    int servicePort = getFreePort();
+    int applicationListenerPort = Utils.getFreePort();
+    int servicePort = Utils.getFreePort();
     // Test Da Vinci client ingestion with both system store && ingestion isolation
     backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, baseDataPath)
@@ -463,9 +465,9 @@ public class SystemStoreTest {
         .build();
     metricsRepository = new MetricsRepository();
     daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
+    daVinciConfig.setMemoryLimit(memoryLimit);
     daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig, "test")) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
       assertEquals(client.get("testKey").get(), expectedValueRecord);
@@ -505,7 +507,7 @@ public class SystemStoreTest {
         .put(CLIENT_METADATA_SYSTEM_STORE_VERSION, metadataStoreVersionNumber)
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setRocksDBMemoryLimit(1024 * 1024 * 1024);
+    daVinciConfig.setMemoryLimit(1024 * 1024 * 1024);
     D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2, new MetricsRepository(), backendConfig)) {
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(regularVeniceStore, daVinciConfig);
@@ -691,13 +693,5 @@ public class SystemStoreTest {
 
   private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, boolean newStore) {
     return getNewStoreVersion(controllerClient, TestUtils.getUniqueString("test-kill"), newStore);
-  }
-
-  private int getFreePort() {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
-    } catch(IOException e) {
-      throw new RuntimeException(e);
-    }
   }
 }
