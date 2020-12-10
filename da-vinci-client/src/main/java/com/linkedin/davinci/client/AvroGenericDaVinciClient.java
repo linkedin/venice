@@ -1,10 +1,5 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.VeniceConfigLoader;
-import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
-import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
@@ -23,7 +18,11 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.VersionBackend;
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
@@ -36,6 +35,7 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -47,32 +47,34 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClient.class);
 
-  protected final DaVinciConfig daVinciConfig;
-  protected final ClientConfig clientConfig;
-  protected final VeniceProperties backendConfig;
-  // instanceName = {hostName}/{appName}
-  protected final String instanceName;
+  private static class ReusableObjects {
+    final ByteBuffer rawValue = ByteBuffer.allocate(1024 * 1024);
+    final BinaryDecoder binaryDecoder = DecoderFactory.defaultFactory().createBinaryDecoder(new byte[16], null);
+    final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
+    final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+  }
+  private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
+
+  private final DaVinciConfig daVinciConfig;
+  private final ClientConfig clientConfig;
+  private final VeniceProperties backendConfig;
+  private final Optional<Set<String>> managedClients;
+  private final AtomicBoolean isReady = new AtomicBoolean(false);
 
   private RecordSerializer<K> keySerializer;
   private AvroGenericStoreClient<K, V> veniceClient;
   private StoreBackend storeBackend;
   private static ReferenceCounted<DaVinciBackend> daVinciBackend;
 
-  private static class ReusableObjects {
-    final ByteBuffer reusedRawValue = ByteBuffer.allocate(1024 * 1024);
-    final BinaryDecoder binaryDecoder = DecoderFactory.defaultFactory().createBinaryDecoder(new byte[16], null);
-    final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
-    final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-  }
-
-  private final AtomicBoolean isReady = new AtomicBoolean(false);
-  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
-
-  public AvroGenericDaVinciClient(DaVinciConfig daVinciConfig, ClientConfig clientConfig, VeniceProperties backendConfig, String instanceName) {
+  public AvroGenericDaVinciClient(
+      DaVinciConfig daVinciConfig,
+      ClientConfig clientConfig,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients) {
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.backendConfig = backendConfig;
-    this.instanceName = instanceName;
+    this.managedClients = managedClients;
   }
 
   @Override
@@ -101,7 +103,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     throwIfNotReady();
-    return storeBackend.subscribe(ComplementSet.newSet(partitions));
+    return storeBackend.subscribe(ComplementSet.wrap(partitions));
   }
 
   @Override
@@ -113,7 +115,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   @Override
   public void unsubscribe(Set<Integer> partitions) {
     throwIfNotReady();
-    storeBackend.unsubscribe(ComplementSet.newSet(partitions));
+    storeBackend.unsubscribe(ComplementSet.wrap(partitions));
   }
 
   @Override
@@ -122,7 +124,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<V> get(K key, V reusedValue) {
+  public CompletableFuture<V> get(K key, V reusableValue) {
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
@@ -144,8 +146,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
             keyBytes,
             getChunkingAdapter(),
             reusableObjects.binaryDecoder,
-            reusableObjects.reusedRawValue,
-            reusedValue);
+            reusableObjects.rawValue,
+            reusableValue);
         return CompletableFuture.completedFuture(value);
       }
 
@@ -187,7 +189,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
               keyBytes,
               getChunkingAdapter(),
               reusableObjects.binaryDecoder,
-              reusableObjects.reusedRawValue,
+              reusableObjects.rawValue,
               null); // TODO: Consider supporting object re-use for batch get as well.
           // The result should only contain entries for the keys that have a value associated with them
           if (value != null) {
@@ -259,37 +261,37 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     String kafkaZkAddress = discoveryResponse.getKafkaZkAddress();
     String kafkaBootstrapServers = discoveryResponse.getKafkaBootstrapServers();
     if (zkAddress == null) {
-      zkAddress = backendConfig.getString(ConfigKeys.ZOOKEEPER_ADDRESS);
+      zkAddress = backendConfig.getString(ZOOKEEPER_ADDRESS);
     }
     if (kafkaZkAddress == null) {
-      kafkaZkAddress = backendConfig.getString(ConfigKeys.KAFKA_ZK_ADDRESS);
+      kafkaZkAddress = backendConfig.getString(KAFKA_ZK_ADDRESS);
     }
     if (kafkaBootstrapServers == null) {
-      kafkaBootstrapServers = backendConfig.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+      kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
     }
-    boolean liveUpdateSuppressionEnabled = backendConfig.getBoolean(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, false)
-                                           || daVinciConfig.isLiveUpdatesSuppressionEnabled();
+    boolean suppressLiveUpdates = daVinciConfig.isSuppressingLiveUpdates()
+        || backendConfig.getBoolean(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, false);
+
     VeniceProperties config = new PropertyBuilder()
             /** Allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
-            .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
-            .put(ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL, false)
+            .put(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
+            .put(SERVER_ENABLE_KAFKA_OPENSSL, false)
             .put(backendConfig.toProperties())
-            .put(ConfigKeys.CLUSTER_NAME, clusterName)
-            .put(ConfigKeys.ZOOKEEPER_ADDRESS, zkAddress)
-            .put(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress)
-            .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
+            .put(CLUSTER_NAME, clusterName)
+            .put(ZOOKEEPER_ADDRESS, zkAddress)
+            .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
+            .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
             .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
                 daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
-            .put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, liveUpdateSuppressionEnabled)
+            .put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, suppressLiveUpdates)
             .build();
     logger.info("backendConfig=" + config.toString(true));
     return new VeniceConfigLoader(config, config);
   }
 
-  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
-      String instanceName, VeniceProperties backendConfig) {
+  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, Optional<Set<String>> managedClients) {
     if (daVinciBackend == null) {
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, instanceName, backendConfig), backend -> {
+      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients), backend -> {
         daVinciBackend = null;
         backend.close();
       });
@@ -305,10 +307,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
     logger.info("Starting Da Vinci client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader, instanceName, backendConfig);
+    initBackend(clientConfig, configLoader, managedClients);
+
     try {
       storeBackend = daVinciBackend.get().getStoreOrThrow(getStoreName());
-      daVinciBackend.get().registerRocksDBMemoryLimit(getStoreName(), daVinciConfig.getRocksDBMemoryLimit());
+      if (managedClients.isPresent()) {
+        storeBackend.setManaged(daVinciConfig.isManaged());
+      }
+      storeBackend.setMemoryLimit(daVinciConfig.getMemoryLimit());
 
       Schema keySchema = daVinciBackend.get().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
       keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);

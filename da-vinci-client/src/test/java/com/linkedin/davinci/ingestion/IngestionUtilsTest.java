@@ -1,8 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.ingestion.IngestionService;
-import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -15,12 +14,12 @@ public class IngestionUtilsTest {
 
   @Test
   public void testReleaseTargetPortBinding() throws Exception {
-    Process forkedIngestionServiceProcess = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(SERVICE_PORT));
+    ForkedJavaProcess forkedIngestionServiceProcess = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(SERVICE_PORT));
     waitPortBinding(SERVICE_PORT, MAX_ATTEMPT);
     Assert.assertEquals(forkedIngestionServiceProcess.isAlive(), true);
 
     long processId = Long.parseLong(constructStringFromInputStream(executeShellCommand(new String[]{"lsof", "-t", "-i", ":" + SERVICE_PORT})));
-    Assert.assertEquals(processId, ((ForkedJavaProcess)forkedIngestionServiceProcess).getPidOfRawProcess());
+    Assert.assertEquals(processId, forkedIngestionServiceProcess.getPid());
 
     String fullProcessName = constructStringFromInputStream(executeShellCommand(new String[]{"ps", "-p",
         String.valueOf(processId), "-o", "command"}));

@@ -4,7 +4,7 @@ import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.VeniceProperties;

@@ -26,6 +26,7 @@ public class SubscriptionBasedStoreRepository extends HelixReadOnlyStoreReposito
       subscription.add(storeName);
       Store store = refreshOneStore(storeName);
       if (store == null) {
+        subscription.remove(storeName);
         throw new VeniceNoStoreException(storeName, clusterName);
       }
     } finally {

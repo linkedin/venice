@@ -17,13 +17,13 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 
-import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -43,6 +43,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -278,9 +279,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       return;
     }
 
-    veniceClusterProcess = ForkedJavaProcess.exec(
-        VeniceClusterWrapper.class, clusterInfoFilePath
-    );
+    veniceClusterProcess = ForkedJavaProcess.exec(VeniceClusterWrapper.class, clusterInfoFilePath);
 
     try {
       // wait some time to make sure all the services have started in the forked process

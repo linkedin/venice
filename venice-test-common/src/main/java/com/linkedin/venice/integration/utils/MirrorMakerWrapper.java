@@ -1,18 +1,23 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.mirrormaker.IdentityNewConsumerRebalanceListener;
-import com.linkedin.mirrormaker.IdentityPartitioningMessageHandler;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
-import java.io.File;
-import java.util.Properties;
-import java.util.concurrent.TimeUnit;
+
+import com.linkedin.mirrormaker.IdentityNewConsumerRebalanceListener;
+import com.linkedin.mirrormaker.IdentityPartitioningMessageHandler;
+
 import kafka.tools.MirrorMaker;
+
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.log4j.Logger;
+
+import java.io.File;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 public class MirrorMakerWrapper extends ProcessWrapper {
   public static final Logger logger = Logger.getLogger(MirrorMakerWrapper.class);

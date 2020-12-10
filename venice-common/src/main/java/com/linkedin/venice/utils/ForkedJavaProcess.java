@@ -1,6 +1,10 @@
 package com.linkedin.venice.utils;
 
 import io.github.classgraph.ClassGraph;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -8,7 +12,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
-import java.net.ServerSocket;
 import java.net.URL;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -19,36 +22,63 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
 
 
 /**
  * Adapted from https://stackoverflow.com/a/723914/791758
  */
 public final class ForkedJavaProcess extends Process {
+  private static final Logger logger = Logger.getLogger(ForkedJavaProcess.class);
 
   /**
    * Debug mode is only intended for debugging individual forked processes, as it will block the forked JVM until
    * the debugger is attached. Debug mode is not intended to be used as part of the regular suite.
    */
   private static final boolean debug = false;
-  private static final Logger classLogger = Logger.getLogger(ForkedJavaProcess.class);
 
-  private final ExecutorService executorService;
   private final Process process;
   private final Thread processReaper;
-  private final Logger logger;
-  private final AtomicBoolean destroyCalled = new AtomicBoolean();
+  private final ExecutorService executorService;
+  private final AtomicBoolean isDestroyed = new AtomicBoolean();
 
-  public static Process exec(Class klass, String... params) throws IOException, InterruptedException {
-    // Argument preparation
-    String javaBin = Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString();
-    String originalClassPath = System.getProperty("java.class.path");
-    StringBuilder classpath = new StringBuilder(originalClassPath);
-    // Using set to remove duplicate classpath folders to avoid argument list too long error.
+  public static ForkedJavaProcess exec(Class appClass, String... args) throws IOException, InterruptedException {
+    logger.info("Forking " + appClass.getSimpleName() + " with arguments " + Arrays.asList(args));
+
+    List<String> command = new ArrayList<>();
+    command.add(Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString());
+    command.add("-cp");
+    command.add(buildClassPath());
+    command.add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
+
+    /**
+     * Add log4j2 configuration file. This config will inherit the log4j2 config file from parent process and set up correct logging level.
+     */
+    for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+      if (arg.contains("log4j2.configuration")) {
+        String log4jConfigFilePath = arg.split("=")[1];
+        command.add("-Dlog4j2.configuration=" + log4jConfigFilePath);
+        command.add("-Dlog4j2.configurationFile=" + log4jConfigFilePath);
+      }
+    }
+
+    int debugPort = -1;
+    if (debug) {
+      debugPort = Utils.getFreePort();
+      command.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=" + debugPort);
+    }
+
+    command.add(appClass.getCanonicalName());
+    command.addAll(Arrays.asList(args));
+
+    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+    Logger logger = Logger.getLogger(appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + ", debugPort=" + debugPort);
+    return new ForkedJavaProcess(process, logger);
+  }
+
+  private static String buildClassPath() throws IOException {
+    // Using set to remove duplicate classPath folders to avoid argument list too long error.
     Set<String> classPathDirs = new HashSet<>();
 
     // Get all jar file paths and extract their parent folders.
@@ -58,78 +88,38 @@ public final class ForkedJavaProcess extends Process {
       classPathDirs.add(jarFilePath.substring(0, jarFilePath.lastIndexOf('/')));
     }
 
-    // Adding classpath from current context classloader.
+    // Adding classPath from current context classloader.
     Enumeration<URL> roots = Thread.currentThread().getContextClassLoader().getResources("");
     while (roots.hasMoreElements()) {
       String classPathRootDir = roots.nextElement().getPath();
       classPathDirs.add(classPathRootDir);
     }
 
+    String originalClassPath = System.getProperty("java.class.path");
+    StringBuilder classPath = new StringBuilder(originalClassPath);
     for (String classPathDir : classPathDirs) {
-      classLogger.info("Adding class path dir: " + classPathDir);
-      classpath.append(":").append(classPathDir).append("/*");
+      logger.debug("Adding class path directory:  " + classPathDir);
+      classPath.append(":").append(classPathDir).append("/*");
     }
 
-    String tempFolder = System.getProperty("java.io.tmpdir");
-    classLogger.info("Getting current tmp folder: " + tempFolder);
-
-    String className = klass.getCanonicalName();
-    List<String> args = new ArrayList<>();
-    args.addAll(Arrays.asList(javaBin, "-cp", classpath.toString(), "-Djava.io.tmpdir=" + tempFolder));
-
-    /**
-     * Add log4j2 configuration file. This config will inherit the log4j2 config file from parent process and set up correct logging level.
-     */
-    for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
-      if (arg.contains("log4j2.configuration")) {
-        String log4jConfigFilePath = arg.split("=")[1];
-        args.add("-Dlog4j2.configuration=" + log4jConfigFilePath);
-        args.add("-Dlog4j2.configurationFile=" + log4jConfigFilePath);
-      }
-    }
-    int debugPort = -1;
-    if (debug) {
-      debugPort = getFreePort();
-      args.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=" + debugPort);
-    }
-    args.add(className);
-    args.addAll(Arrays.asList(params));
-    classLogger.info("Original classpath length: " + originalClassPath.length());
-    classLogger.info("Updated classpath length: " + classpath.length());
-
-    // Actual process forking
-    ProcessBuilder builder = new ProcessBuilder(args).redirectErrorStream(true);
-    Process rawProcess = builder.start();
-
-    // Logging shenanigans
-    long pid = getPidOfProcess(rawProcess);
-    String loggerName = "Forked process [" + klass.getSimpleName();
-    if (pid > -1) {
-      loggerName += ", PID " + pid;
-    }
-    if (debug) {
-      loggerName += ", debugPort " + debugPort;
-    }
-    loggerName += "]";
-    Logger logger = Logger.getLogger(loggerName);
-    logger.info("Process forked with params: " + Arrays.stream(params).collect(Collectors.joining(" ")));
-
-    return new ForkedJavaProcess(rawProcess, logger);
+    logger.debug("Original class path length: " + originalClassPath.length());
+    logger.debug("Updated class path length: " + classPath.length());
+    return classPath.toString();
   }
 
   /**
    * Construction should happen via {@link #exec(Class, String...)}
    */
   private ForkedJavaProcess(Process process, Logger logger) {
-    this.processReaper = new Thread(() -> process.destroyForcibly());
+    this.process = process;
+    this.processReaper = new Thread(this::destroy);
     Runtime.getRuntime().addShutdownHook(processReaper);
 
-    this.process = process;
-    this.logger = logger;
     this.executorService = Executors.newSingleThreadExecutor();
     executorService.submit(() -> {
+      logger.info("Started logging standard output of the forked process.");
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-        while (true) {
+        for (;;) {
           String line = reader.readLine();
           if (line != null) {
             logger.info(line);
@@ -138,14 +128,52 @@ public final class ForkedJavaProcess extends Process {
           }
         }
       } catch (IOException e) {
-        if (!destroyCalled.get()) {
-          logger.error("Got an unexpected IOException in LoggingProcess.", e);
+        if (!isDestroyed.get()) {
+          logger.error("Got an unexpected IOException in forked process logging task.", e);
         }
       } catch (InterruptedException e) {
-        logger.error("Got an InterruptedException in LoggingProcess.", e);
         Thread.currentThread().interrupt();
       }
     });
+  }
+
+  @Override
+  public void destroy() {
+    if (isDestroyed.getAndSet(true)) {
+      logger.info("Ignoring duplicate destroy attempt.");
+      return;
+    }
+
+    logger.info("Destroying forked process.");
+    long startTime = System.currentTimeMillis();
+    Runtime.getRuntime().removeShutdownHook(processReaper);
+
+    try {
+      process.destroy();
+      if (!process.waitFor(30, TimeUnit.SECONDS)) {
+        process.destroyForcibly();
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+
+    } finally {
+      executorService.shutdownNow();
+      /**
+       * Apparently, we can leak FDs if we don't manually close these streams.
+       *
+       * Source: http://www.ryanchapin.com/fv-b-4-689/Too-Many-Open-Files-Errors-When-Using-Runtime-exec---or-ProcessBuilder-start---to-Execute-A-Process.html
+       */
+      IOUtils.closeQuietly(process.getInputStream());
+      IOUtils.closeQuietly(process.getOutputStream());
+      IOUtils.closeQuietly(process.getErrorStream());
+
+      long elapsedTime = System.currentTimeMillis() - startTime;
+      if (process.isAlive()) {
+        logger.warn("Unable to terminate forked process after " + elapsedTime + "ms.");
+      } else {
+        logger.info("Forked process exited with code " + process.exitValue() + " after " + elapsedTime + "ms.");
+      }
+    }
   }
 
   /**
@@ -155,7 +183,6 @@ public final class ForkedJavaProcess extends Process {
    */
   private static synchronized long getPidOfProcess(Process p) {
     long pid = -1;
-
     try {
       if (p.getClass().getName().equals("java.lang.UNIXProcess")) {
         Field f = p.getClass().getDeclaredField("pid");
@@ -169,8 +196,8 @@ public final class ForkedJavaProcess extends Process {
     return pid;
   }
 
-  public long getPidOfRawProcess() {
-    return ForkedJavaProcess.getPidOfProcess(this.process);
+  public long getPid() {
+    return getPidOfProcess(process);
   }
 
   @Override
@@ -196,52 +223,5 @@ public final class ForkedJavaProcess extends Process {
   @Override
   public int exitValue() {
     return process.exitValue();
-  }
-
-  @Override
-  public void destroy() {
-    logger.info(getClass().getSimpleName() + ".destroy() called.");
-    long killStartTime = System.currentTimeMillis();
-    long maxTime = killStartTime + 30 * Time.MS_PER_SECOND;
-    destroyCalled.set(true);
-    process.destroyForcibly();
-    Runtime.getRuntime().removeShutdownHook(processReaper);
-
-    /**
-     * Apparently, we can leak FDs if we don't manually close these streams.
-     *
-     * Source: http://www.ryanchapin.com/fv-b-4-689/Too-Many-Open-Files-Errors-When-Using-Runtime-exec---or-ProcessBuilder-start---to-Execute-A-Process.html
-     */
-    IOUtils.closeQuietly(process.getInputStream());
-    IOUtils.closeQuietly(process.getOutputStream());
-    IOUtils.closeQuietly(process.getErrorStream());
-
-    int attempt = 1;
-    while (System.currentTimeMillis() < maxTime) {
-      try {
-        int exitValue = process.exitValue();
-        long elapsedTime = System.currentTimeMillis() - killStartTime;
-        logger.info(process.getClass().getSimpleName() + ".destroy() called called. "
-                + "Exit value was: " + exitValue + " after " + attempt + " attempt(s) (" + elapsedTime + " ms).");
-        break;
-      } catch (IllegalThreadStateException e) {
-        attempt++;
-        try {
-          Thread.sleep(100);
-        } catch (InterruptedException e1) {
-          logger.warn("Sleep interrupted while trying to kill process.");
-          break;
-        }
-      }
-    }
-    executorService.shutdownNow();
-  }
-
-  static int getFreePort() {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
-    } catch(IOException e) {
-      throw new RuntimeException(e);
-    }
   }
 }

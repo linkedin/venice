@@ -1,14 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
-import com.linkedin.davinci.VeniceConfigLoader;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -16,16 +10,24 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.io.IOException;
+
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Optional;
-import java.util.Properties;
+
 import org.apache.commons.io.FileUtils;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 
 import java.io.File;
+import java.io.IOException;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.common.protocol.SecurityProtocol;
+
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
 
 
 /**
@@ -86,10 +88,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       clusterProps.storeFlattened(clusterConfigFile);
 
       // Generate server.properties in config directory
-      int listenPort = IntegrationTestUtils.getFreePort();
+      int listenPort = Utils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder()
           .put(LISTENER_PORT, listenPort)
-          .put(ADMIN_PORT, IntegrationTestUtils.getFreePort())
+          .put(ADMIN_PORT, Utils.getFreePort())
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
           .put(ENABLE_SERVER_WHITE_LIST, enableServerWhitelist)
           .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)

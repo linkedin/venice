@@ -2,29 +2,37 @@ package com.linkedin.davinci.client;
 
 
 public class DaVinciConfig {
+  private boolean isManaged = false;
   private StorageClass storageClass = StorageClass.DISK_BACKED_MEMORY;
   private RemoteReadPolicy remoteReadPolicy = RemoteReadPolicy.FAIL_FAST;
-  private long rocksDBMemoryLimit = 0; // 0 means unlimited memory
+  private long memoryLimit = 0; // 0 means unlimited memory
+
   /**
    * If true, ingestion will freeze once the partition is ready to serve,
    * or ingestion will not start if local data exists.
    */
   private boolean suppressLiveUpdates = false;
 
+
   public DaVinciConfig() {
   }
 
-  public DaVinciConfig(
-      StorageClass storageClass,
-      RemoteReadPolicy remoteReadPolicy,
-      long rocksDBMemoryLimit) {
-    this.storageClass = storageClass;
-    this.remoteReadPolicy = remoteReadPolicy;
-    this.rocksDBMemoryLimit = rocksDBMemoryLimit;
+  public DaVinciConfig clone() {
+    return new DaVinciConfig()
+               .setManaged(isManaged())
+               .setStorageClass(getStorageClass())
+               .setRemoteReadPolicy(getRemoteReadPolicy())
+               .setMemoryLimit(getMemoryLimit())
+               .setSuppressLiveUpdates(isSuppressingLiveUpdates());
   }
 
-  public DaVinciConfig clone() {
-    return new DaVinciConfig(storageClass, remoteReadPolicy, rocksDBMemoryLimit);
+  public boolean isManaged() {
+    return isManaged;
+  }
+
+  public DaVinciConfig setManaged(boolean isManaged) {
+    this.isManaged = isManaged;
+    return this;
   }
 
   public StorageClass getStorageClass() {
@@ -37,7 +45,7 @@ public class DaVinciConfig {
   }
 
   public RemoteReadPolicy getRemoteReadPolicy() {
-    return this.remoteReadPolicy;
+    return remoteReadPolicy;
   }
 
   public DaVinciConfig setRemoteReadPolicy(RemoteReadPolicy remoteReadPolicy) {
@@ -45,22 +53,24 @@ public class DaVinciConfig {
     return this;
   }
 
-  public long getRocksDBMemoryLimit() {
-    return rocksDBMemoryLimit;
+  public long getMemoryLimit() {
+    return memoryLimit;
   }
 
-  public void setRocksDBMemoryLimit(long rocksDBMemoryLimit) {
-    this.rocksDBMemoryLimit = rocksDBMemoryLimit;
+  public DaVinciConfig setMemoryLimit(long memoryLimit) {
+    this.memoryLimit = memoryLimit;
+    return this;
   }
 
-  public boolean isLiveUpdatesSuppressionEnabled() {
+  public boolean isSuppressingLiveUpdates() {
     return suppressLiveUpdates;
   }
 
   /**
    * Freeze ingestion if ready to serve or local data exists
    */
-  public void setLiveUpdatesSuppressionEnabled(boolean enabled) {
-    suppressLiveUpdates = enabled;
+  public DaVinciConfig setSuppressLiveUpdates(boolean suppressLiveUpdates) {
+    this.suppressLiveUpdates = suppressLiveUpdates;
+    return this;
   }
 }

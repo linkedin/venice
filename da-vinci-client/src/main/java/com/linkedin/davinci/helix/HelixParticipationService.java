@@ -16,7 +16,7 @@ import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
-import com.linkedin.davinci.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;

@@ -1,8 +1,5 @@
-package com.linkedin.davinci;
+package com.linkedin.davinci.config;
 
-import com.linkedin.davinci.config.VeniceClusterConfig;
-import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;

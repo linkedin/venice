@@ -1,7 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
@@ -17,13 +15,16 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
-import java.util.Optional;
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.server.factory.D2Server;
+
 import org.apache.kafka.common.protocol.SecurityProtocol;
+import org.apache.log4j.Logger;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.log4j.Logger;
+import java.util.Optional;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -63,8 +64,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       VeniceProperties extraProps, String clusterToD2, boolean sslToKafka, boolean d2Enabled, Optional<AuthorizerService> authorizerService) {
     return (serviceName, port, dataDirectory) -> {
       List<VeniceProperties> propertiesList = new ArrayList<>();
-      int adminPort = IntegrationTestUtils.getFreePort();
-      int adminSecurePort = IntegrationTestUtils.getFreePort();
+      int adminPort = Utils.getFreePort();
+      int adminSecurePort = Utils.getFreePort();
 
       Store.setDefaultReplicationFactor(replicationFactor);
       for(String clusterName:clusterNames) {

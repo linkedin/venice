@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import com.google.common.base.Splitter;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -8,14 +7,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 
-import java.nio.file.Files;
-import java.util.AbstractList;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.RandomAccess;
-import java.util.Set;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import com.google.common.base.Splitter;
+
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -28,20 +21,26 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
-import java.net.URL;
-import java.net.URLClassLoader;
+import java.net.ServerSocket;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.RandomAccess;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static com.linkedin.venice.HttpConstants.*;
 
@@ -568,6 +567,23 @@ public class Utils {
     return prettyNumber + LARGE_NUMBER_SUFFIXES[suffixIndex];
   }
 
+  /**
+   * WARNING: The code which generates the free port and uses it must always be called within
+   * a try/catch and a loop. There is no guarantee that the port returned will still be
+   * available at the time it is used. This is best-effort only.
+   *
+   * N.B.: Visibility is package-private on purpose.
+   *
+   * @return a free port to be used by tests.
+   */
+  public static int getFreePort() {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
+    } catch(IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   private static class TimeUnitInfo {
     String suffix;
     int multiplier;
@@ -635,13 +651,13 @@ public class Utils {
 
       if (index < 1) {
         LOGGER.warn("Failed to determine pid");
-        return "N/A";
+        return "NA";
       }
 
       return Long.toString(Long.parseLong(jvmName.substring(0, index)));
     } catch (Exception e) {
       LOGGER.warn("Failed to determine pid", e);
-      return "N/A";
+      return "NA";
     }
   }
 
