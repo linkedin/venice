@@ -9,7 +9,6 @@ import com.linkedin.ddsstorage.router.api.Scatter;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -41,11 +40,8 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -89,6 +85,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final AggHostHealthStats aggHostHealthStats;
   private final long routerUnhealthyPendingConnThresholdPerRoute;
 
+  private boolean isStateFullHealthCheckEnabled;
+
   private final RecordSerializer<MultiGetResponseRecordV1> multiGetResponseRecordSerializer =
       SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
 
@@ -105,6 +103,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       AggHostHealthStats aggHostHealthStats) {
     this.routerConfig = config;
     this.routerUnhealthyPendingConnThresholdPerRoute = routerConfig.getRouterUnhealthyPendingConnThresholdPerRoute();
+    this.isStateFullHealthCheckEnabled = routerConfig.isStatefulRouterHealthCheckEnabled();
     this.storeRepository = storeRepository;
     this.routerStats = routerStats;
     this.perRouteStatsByType = new RouterStats<>(requestType -> new RouteHttpStats(metricsRepository, requestType));
@@ -203,28 +202,28 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       AsyncPromise<HttpResponseStatus> retryFuture) throws RouterException {
 
     String storeName = path.getStoreName();
-    String snID = storageNode.getNodeId();
+    String hostName = storageNode.getHost();
     RequestType requestType = path.getRequestType();
 
     long startTime = System.nanoTime();
     TimedCompletableFuture<PortableHttpResponse>
         responseFuture = new TimedCompletableFuture<>(System.currentTimeMillis(), storageNode.getNodeId());
 
-    ReentrantLock lock = storageNodeLockMap.computeIfAbsent(snID, id ->  new ReentrantLock());
+    ReentrantLock lock = storageNodeLockMap.computeIfAbsent(hostName, id ->  new ReentrantLock());
     lock.lock();
     try {
-      long pendingRequestCount = routerStats.getPendingRequestCount(storageNode.getNodeId());
-      if (routerConfig.isStatefulRouterHealthCheckEnabled()
-          && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
+      long pendingRequestCount = routerStats.getPendingRequestCount(storageNode.getNodeId());;
+
+      if (isStateFullHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
         // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which increases the unhealthy request metric.
         if (!retryFuture.isCancelled()) {
           retryFuture.setSuccess(INTERNAL_SERVER_ERROR);
-          responseFuture.completeExceptionally(new VeniceException("Triggering error retry, too many pending request to storage node :" + snID));
+          responseFuture.completeExceptionally(new VeniceException("Triggering error retry, too many pending request to storage node :" + hostName));
           perStoreStatsByType.getStatsByType(path.getRequestType()).recordErrorRetryAttemptTriggeredByPendingRequestCheck(storeName);
           return responseFuture;
         } else {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName),
-              Optional.of(requestType), SERVICE_UNAVAILABLE, "Too many pending request to storage node : " + snID);
+              Optional.of(requestType), SERVICE_UNAVAILABLE, "Too many pending request to storage node : " + hostName);
         }
       }
       routerStats.recordPendingRequest(storageNode.getNodeId());

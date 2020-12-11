@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
+import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
@@ -30,15 +31,13 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   private RouteHttpRequestStats routeHttpRequestStats;
   private final AggHostHealthStats aggHostHealthStats;
 
-  public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, StorageNodeClient storageNodeClient,
-      RouteHttpRequestStats routeHttpRequestStats, boolean statefulRouterHealthCheckEnabled,
-      int maxPendingConnectionPerHost, int routerPendingConnResumeThreshold,
-      long fullPendingQueueServerOORMs, AggHostHealthStats aggHostHealthStats) {
+  public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, StorageNodeClient storageNodeClient, VeniceRouterConfig config,
+      RouteHttpRequestStats routeHttpRequestStats, AggHostHealthStats aggHostHealthStats) {
     this.routeHttpRequestStats = routeHttpRequestStats;
-    this.statefulRouterHealthCheckEnabled = statefulRouterHealthCheckEnabled;
-    this.maxPendingConnectionPerHost = maxPendingConnectionPerHost;
-    this.routerPendingConnResumeThreshold = routerPendingConnResumeThreshold;
-    this.fullPendingQueueServerOORMs = fullPendingQueueServerOORMs;
+    this.statefulRouterHealthCheckEnabled = config.isStatefulRouterHealthCheckEnabled();
+    this.maxPendingConnectionPerHost = config.getRouterUnhealthyPendingConnThresholdPerRoute();
+    this.routerPendingConnResumeThreshold = config.getRouterPendingConnResumeThresholdPerRoute();
+    this.fullPendingQueueServerOORMs = config.getFullPendingQueueServerOORMs();
     this.liveInstanceMonitor = liveInstanceMonitor;
     this.storageNodeClient = storageNodeClient;
     this.aggHostHealthStats = aggHostHealthStats;
