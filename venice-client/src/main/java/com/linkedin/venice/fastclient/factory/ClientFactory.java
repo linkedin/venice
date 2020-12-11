@@ -9,11 +9,22 @@ import com.linkedin.venice.fastclient.DualReadAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.DualReadAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroSpecificStoreClient;
+import com.linkedin.venice.fastclient.meta.HelixBasedStoreMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import org.apache.avro.specific.SpecificRecord;
 
 
 public class ClientFactory {
+
+  // Use Helix based store metadata for integration/perf test for now
+  public static <K, V> AvroGenericStoreClient<K, V> getGenericStoreClient(ClientConfig clientConfig) {
+    return getGenericStoreClient(new HelixBasedStoreMetadata(clientConfig), clientConfig);
+  }
+
+  // Use Helix based store metadata for integration/perf test for now
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getSpecificStoreClient(ClientConfig clientConfig) {
+    return getSpecificStoreClient(new HelixBasedStoreMetadata(clientConfig), clientConfig);
+  }
 
   /**
    * TODO: once the implementation of {@link StoreMetadata} is ready, we won't need to pass the param: {@param storeMetadata}

@@ -42,6 +42,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long routingUnavailableRequestCounterResetDelayMS;
   private final int routingPendingRequestCounterInstanceBlockThreshold;
 
+  // For perf test purpose
+  private final String veniceZKAddress;
+  private final String clusterName;
+
   private ClientConfig(String storeName,
       Client r2Client,
       MetricsRepository metricsRepository,
@@ -56,7 +60,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long routingQuotaExceededRequestCounterResetDelayMS,
       long routingErrorRequestCounterResetDelayMS,
       long routingUnavailableRequestCounterResetDelayMS,
-      int routingPendingRequestCounterInstanceBlockThreshold) {
+      int routingPendingRequestCounterInstanceBlockThreshold,
+      String veniceZKAddress,
+      String clusterName) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -92,6 +98,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         routingUnavailableRequestCounterResetDelayMS : TimeUnit.MINUTES.toMicros(1); // 1 min
     this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold > 0 ?
         routingPendingRequestCounterInstanceBlockThreshold : 50;
+
+    this.veniceZKAddress = veniceZKAddress;
+    this.clusterName = clusterName;
   }
 
   public String getStoreName() {
@@ -158,6 +167,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return routingPendingRequestCounterInstanceBlockThreshold;
   }
 
+  public String getVeniceZKAddress() {
+    return veniceZKAddress;
+  }
+
+  public String getClusterName() {
+    return clusterName;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -175,6 +192,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long routingErrorRequestCounterResetDelayMS = -1;
     private long routingUnavailableRequestCounterResetDelayMS = -1;
     private int routingPendingRequestCounterInstanceBlockThreshold = -1;
+
+    // For perf test purpose
+    private String veniceZKAddress;
+    private String clusterName;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -252,6 +273,37 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setVeniceZKAddress(String zkAddress) {
+      this.veniceZKAddress = zkAddress;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setClusterName(String clusterName) {
+      this.clusterName = clusterName;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> clone() {
+      return new ClientConfigBuilder()
+          .setStoreName(storeName)
+          .setR2Client(r2Client)
+          .setMetricsRepository(metricsRepository)
+          .setStatsPrefix(statsPrefix)
+          .setSpeculativeQueryEnabled(speculativeQueryEnabled)
+          .setSpecificValueClass(specificValueClass)
+          .setDeserializationExecutor(deserializationExecutor)
+          .setDualReadEnabled(dualReadEnabled)
+          .setGenericThinClient(genericThinClient)
+          .setSpecificThinClient(specificThinClient)
+          .setRoutingLeakedRequestCleanupThresholdMS(routingLeakedRequestCleanupThresholdMS)
+          .setRoutingQuotaExceededRequestCounterResetDelayMS(routingQuotaExceededRequestCounterResetDelayMS)
+          .setRoutingErrorRequestCounterResetDelayMS(routingErrorRequestCounterResetDelayMS)
+          .setRoutingUnavailableRequestCounterResetDelayMS(routingUnavailableRequestCounterResetDelayMS)
+          .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
+          .setVeniceZKAddress(veniceZKAddress)
+          .setClusterName(clusterName);
+    }
+
     public ClientConfig<K, V, T> build() {
       return new ClientConfig<>(storeName,
           r2Client,
@@ -267,7 +319,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingQuotaExceededRequestCounterResetDelayMS,
           routingErrorRequestCounterResetDelayMS,
           routingUnavailableRequestCounterResetDelayMS,
-          routingPendingRequestCounterInstanceBlockThreshold);
+          routingPendingRequestCounterInstanceBlockThreshold,
+          veniceZKAddress,
+          clusterName);
     }
   }
 }
