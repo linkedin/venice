@@ -217,10 +217,16 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   @Override
   public void start() throws VeniceClientException {
+    metadata.start();
   }
 
   @Override
   public void close() {
+    try {
+      metadata.close();
+    } catch (Exception e) {
+      throw new VeniceClientException("Failed to close store metadata", e);
+    }
   }
 
   @Override

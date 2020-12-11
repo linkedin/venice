@@ -35,4 +35,6 @@ public interface StoreMetadata extends SchemaRetriever {
   CompletableFuture<HttpStatus> sendRequestToInstance(String instance, int version, int partitionId);
 
   InstanceHealthMonitor getInstanceHealthMonitor();
+
+  void start();
 }

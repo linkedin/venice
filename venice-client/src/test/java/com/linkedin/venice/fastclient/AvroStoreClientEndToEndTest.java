@@ -33,6 +33,7 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -115,45 +116,75 @@ public class AvroStoreClientEndToEndTest {
     }
   }
 
+  private void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, Optional<StoreMetadata> metadata)
+      throws Exception {
+    // always specify a different MetricsRepository to avoid conflict.
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    // Test generic store client first
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient;
+    if (metadata.isPresent()) {
+      genericFastClient = ClientFactory.getGenericStoreClient(metadata.get(), clientConfigBuilder.build());
+    } else {
+      genericFastClient = ClientFactory.getGenericStoreClient(clientConfigBuilder.build());
+    }
+    for (int i = 0; i < recordCnt; ++i) {
+      String key = keyPrefix + i;
+      GenericRecord value = genericFastClient.get(key).get();
+      assertEquals(value.get(VALUE_FIELD_NAME), new Integer(i));
+    }
+    genericFastClient.close();
+    // Test specific store client
+    ClientConfig.ClientConfigBuilder specificClientConfigBuilder = clientConfigBuilder.clone()
+        .setSpecificValueClass(TestValueSchema.class)
+        .setMetricsRepository(new MetricsRepository()); // To avoid metric registration conflict.
+    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient;
+    if (metadata.isPresent()) {
+      specificFastClient = ClientFactory.getSpecificStoreClient(metadata.get(), specificClientConfigBuilder.build());
+    } else {
+      specificFastClient = ClientFactory.getSpecificStoreClient(specificClientConfigBuilder.build());
+    }
+    for (int i = 0; i < recordCnt; ++i) {
+      String key = keyPrefix + i;
+      TestValueSchema value = specificFastClient.get(key).get();
+      assertEquals(value.int_field, i);
+    }
+    specificFastClient.close();
+  }
+
   @Test
   public void testSingleGetWithoutDualRead() throws Exception {
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
 
-    // Test generic store client
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
     clientConfigBuilder.setStoreName(storeName);
     clientConfigBuilder.setR2Client(r2Client);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
 
-
     ClientConfig clientConfig = clientConfigBuilder.build();
-    StoreMetadata storeMetadata = new HelixBasedStoreMetadata(
+    StoreMetadata storeMetadata = new RouterBasedStoreMetadata(
         routerWrapper.getMetaDataRepository(),
         routerWrapper.getSchemaRepository(),
         routerWrapper.getOnlineInstanceFinder(),
         storeName,
         clientConfig
     );
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient = ClientFactory.getGenericStoreClient(storeMetadata, clientConfig);
-    for (int i = 0; i < recordCnt; ++i) {
-      String key = keyPrefix + i;
-      GenericRecord value = genericFastClient.get(key).get();
-      assertEquals(value.get(VALUE_FIELD_NAME), new Integer(i));
-    }
-    // Test specific store client
-    clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
+
+    runTest(clientConfigBuilder, Optional.of(storeMetadata));
+  }
+
+  @Test
+  public void testSingleGetWithoutDualReadWithHelixBasedMetadataImpl() throws Exception {
+    // Test generic store client
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
     clientConfigBuilder.setStoreName(storeName);
     clientConfigBuilder.setR2Client(r2Client);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    clientConfigBuilder.setSpecificValueClass(TestValueSchema.class);
-    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = ClientFactory.getSpecificStoreClient(storeMetadata, clientConfigBuilder.build());
-    for (int i = 0; i < recordCnt; ++i) {
-      String key = keyPrefix + i;
-      TestValueSchema value = specificFastClient.get(key).get();
-      assertEquals(value.int_field, i);
-    }
+    clientConfigBuilder.setVeniceZKAddress(veniceCluster.getZk().getAddress());
+    clientConfigBuilder.setClusterName(veniceCluster.getClusterName());
+
+    runTest(clientConfigBuilder, Optional.empty());
   }
 
   @Test
@@ -167,17 +198,18 @@ public class AvroStoreClientEndToEndTest {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setDualReadEnabled(true);
-    clientConfigBuilder.setGenericThinClient(getGenericThinClient());
+    AvroGenericStoreClient<String, GenericRecord> genericThinClient = getGenericThinClient();
+    clientConfigBuilder.setGenericThinClient(genericThinClient);
+    AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = getSpecificThinClient();
+    clientConfigBuilder.setSpecificThinClient(specificThinClient);
 
     ClientConfig clientConfig = clientConfigBuilder.build();
-    StoreMetadata storeMetadata = new HelixBasedStoreMetadata(routerWrapper.getMetaDataRepository(), routerWrapper.getSchemaRepository(),
+    StoreMetadata storeMetadata = new RouterBasedStoreMetadata(routerWrapper.getMetaDataRepository(), routerWrapper.getSchemaRepository(),
         routerWrapper.getOnlineInstanceFinder(), storeName, clientConfig);
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient = ClientFactory.getGenericStoreClient(storeMetadata, clientConfig);
-    for (int i = 0; i < recordCnt; ++i) {
-      String key = keyPrefix + i;
-      GenericRecord value = genericFastClient.get(key).get();
-      assertEquals(value.get(VALUE_FIELD_NAME), new Integer(i));
-    }
+    runTest(clientConfigBuilder, Optional.of(storeMetadata));
+
+    genericThinClient.close();
+    specificThinClient.close();
   }
 
   private AvroGenericStoreClient<String, GenericRecord> getGenericThinClient() {
@@ -188,13 +220,22 @@ public class AvroStoreClientEndToEndTest {
     );
   }
 
-  private static class HelixBasedStoreMetadata extends AbstractStoreMetadata {
+  private AvroSpecificStoreClient<String, TestValueSchema> getSpecificThinClient() {
+    return com.linkedin.venice.client.store.ClientFactory.getAndStartSpecificAvroClient(
+        com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
+            .setSpecificValueClass(TestValueSchema.class)
+            .setVeniceURL(veniceCluster.getRandomRouterSslURL())
+            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
+    );
+  }
+
+  private static class RouterBasedStoreMetadata extends AbstractStoreMetadata {
     private final HelixReadOnlyStoreRepository storeRepository;
     private final HelixReadOnlySchemaRepository schemaRepository;
     private final OnlineInstanceFinder onlineInstanceFinder;
     private final String storeName;
 
-    public HelixBasedStoreMetadata(HelixReadOnlyStoreRepository storeRepository,
+    public RouterBasedStoreMetadata(HelixReadOnlyStoreRepository storeRepository,
         HelixReadOnlySchemaRepository schemaRepository,
         OnlineInstanceFinder onlineInstanceFinder,
         String storeName,
@@ -204,11 +245,6 @@ public class AvroStoreClientEndToEndTest {
       this.schemaRepository = schemaRepository;
       this.onlineInstanceFinder = onlineInstanceFinder;
       this.storeName = storeName;
-    }
-
-    @Override
-    public String getStoreName() {
-      return storeName;
     }
 
     @Override
@@ -230,15 +266,15 @@ public class AvroStoreClientEndToEndTest {
     }
 
     @Override
-    public int getPartitionId(int version, byte[] key) {
-      return getPartitionId(version, ByteBuffer.wrap(key));
-    }
-
-    @Override
     public List<String> getReplicas(int version, int partitionId) {
       String resource = Version.composeKafkaTopic(storeName, version);
       List<Instance> instances = onlineInstanceFinder.getReadyToServeInstances(resource, partitionId);
       return instances.stream().map(instance -> instance.getUrl(true)).collect(Collectors.toList());
+    }
+
+    @Override
+    public void start() {
+      // do nothing
     }
 
     @Override
