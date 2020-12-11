@@ -26,6 +26,13 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.validation.Segment;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
@@ -39,8 +46,10 @@ import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -49,25 +58,37 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.commons.httpclient.HttpStatus;
+import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.CustomizedStateConfig;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.kafka.clients.producer.Callback;
 import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
@@ -78,6 +99,7 @@ import org.testng.annotations.Test;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -1220,6 +1242,182 @@ public class TestHybrid {
     }
   }
 
+  @Test(dataProvider = "isLeaderFollowerModelEnabled", timeOut = 60 * Time.MS_PER_SECOND)
+  public void testDuplicatedMessagesWontBePersisted(boolean isLeaderFollowerModelEnabled) throws Exception {
+    Properties extraProperties = new Properties();
+    if (isLeaderFollowerModelEnabled) {
+      extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    }
+
+    SystemProducer veniceProducer = null;
+
+    // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,
+        2, 1000000, false, false, extraProperties)) {
+      // Added a server with shared consumer enabled.
+      Properties serverPropertiesWithSharedConsumer = new Properties();
+      serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
+      extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
+      extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+      venice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+
+      logger.info("Finished creating VeniceClusterWrapper");
+
+      long streamingRewindSeconds = 10L;
+      long streamingMessageLag = 2L;
+
+      String storeName = TestUtils.getUniqueString("hybrid-store");
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+
+      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+          TopicManager topicManager = new TopicManager(
+              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+              100,
+              MIN_COMPACTION_LAG,
+              TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+
+        // Have 1 partition only, so that all keys are produced to the same partition
+        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setHybridRewindSeconds(streamingRewindSeconds)
+            .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+            .setPartitionCount(1)
+        );
+
+        Assert.assertFalse(response.isError());
+
+        //Do an H2V push
+        runH2V(h2vProperties, 1, controllerClient);
+
+        /**
+         * The following k/v pairs will be sent to RT, with the same producer GUID:
+         * <key1, value1, Sequence number: 1>, <key1, value2, seq: 2>, <key1, value1, seq: 1 (Duplicated message)>, <key2, value1, seq: 3>
+         * First check key2=value1, which confirms all messages above have been consumed by servers; then check key1=value2 to confirm
+         * that duplicated message will not be persisted into disk
+         */
+        String key1 = "duplicated_message_test_key_1";
+        String value1 = "duplicated_message_test_value_1";
+        String value2 = "duplicated_message_test_value_2";
+        String key2 = "duplicated_message_test_key_2";
+        Properties veniceWriterProperties = new Properties();
+        veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+        AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
+        AvroGenericDeserializer<String> stringDeserializer = new AvroGenericDeserializer<>(Schema.parse(STRING_SCHEMA), Schema.parse(STRING_SCHEMA));
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(Version.composeRealTimeTopic(storeName))) {
+          // Send <key1, value1, seq: 1>
+          Pair<KafkaKey, KafkaMessageEnvelope> record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
+              stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 1, -1);
+          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
+              new CompletableFuture<>()), 0, -1);
+
+          // Send <key1, value2, seq: 2>
+          record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
+              stringSerializer.serialize(value2), 1, realTimeTopicWriter.getProducerGUID(), 100, 2, -1);
+          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
+              new CompletableFuture<>()), 0, -1);
+
+          // Send <key1, value1, seq: 1 (Duplicated message)>
+          record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
+              stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 1, -1);
+          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
+              new CompletableFuture<>()), 0, -1);
+
+          // Send <key2, value1, seq: 3>
+          record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key2),
+              stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 3, -1);
+          realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
+              new CompletableFuture<>()), 0, -1);
+        }
+
+        CloseableHttpAsyncClient storageNodeClient = HttpAsyncClients.createDefault();
+        storageNodeClient.start();
+        Base64.Encoder encoder = Base64.getUrlEncoder();
+        // Check both leader and follower hosts
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          for (VeniceServerWrapper server : venice.getVeniceServers()) {
+            /**
+             * Check key2=value1 first, it means all messages sent to RT has been consumed already
+             */
+            StringBuilder sb = new StringBuilder().append("http://")
+                .append(server.getAddress())
+                .append("/")
+                .append(TYPE_STORAGE)
+                .append("/")
+                .append(Version.composeKafkaTopic(storeName, 1))
+                .append("/")
+                .append(0)
+                .append("/")
+                .append(encoder.encodeToString(stringSerializer.serialize(key2)))
+                .append("?f=b64");
+            HttpGet getReq = new HttpGet(sb.toString());
+            HttpResponse storageNodeResponse = storageNodeClient.execute(getReq, null).get();
+            try (InputStream bodyStream = storageNodeClient.execute(getReq, null).get().getEntity().getContent()) {
+              byte[] body = IOUtils.toByteArray(bodyStream);
+              Assert.assertEquals(storageNodeResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+                  "Response did not return 200: " + new String(body));
+              Object value = stringDeserializer.deserialize(null, body);
+              Assert.assertEquals(value.toString(), value1);
+            }
+
+            /**
+             * If key1=value1, it means duplicated message has been persisted, so key1 must equal to value2
+             */
+            sb = new StringBuilder().append("http://")
+                .append(server.getAddress())
+                .append("/")
+                .append(TYPE_STORAGE)
+                .append("/")
+                .append(Version.composeKafkaTopic(storeName, 1))
+                .append("/")
+                .append(0)
+                .append("/")
+                .append(encoder.encodeToString(stringSerializer.serialize(key1)))
+                .append("?f=b64");
+            getReq = new HttpGet(sb.toString());
+            storageNodeResponse = storageNodeClient.execute(getReq, null).get();
+            try (InputStream bodyStream = storageNodeClient.execute(getReq, null).get().getEntity().getContent()) {
+              byte[] body = IOUtils.toByteArray(bodyStream);
+              Assert.assertEquals(storageNodeResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+                  "Response did not return 200: " + new String(body));
+              Object value = stringDeserializer.deserialize(null, body);
+              Assert.assertEquals(value.toString(), value2);
+            }
+          }
+        });
+      }
+    } finally {
+      if (null != veniceProducer) {
+        veniceProducer.stop();
+      }
+    }
+  }
+
+  private static Pair<KafkaKey, KafkaMessageEnvelope> getKafkaKeyAndValueEnvelope(byte[] keyBytes, byte[] valueBytes,
+      int valueSchemaId, GUID producerGUID, int segmentNumber, int sequenceNumber, long upstreamOffset) {
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
+    Put putPayload = new Put();
+    putPayload.putValue = ByteBuffer.wrap(valueBytes);
+    putPayload.schemaId = valueSchemaId;
+
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.messageType = MessageType.PUT.getValue();
+    kafkaValue.payloadUnion = putPayload;
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = producerGUID;
+    producerMetadata.segmentNumber = segmentNumber;
+    producerMetadata.messageSequenceNumber = sequenceNumber;
+    producerMetadata.messageTimestamp = System.currentTimeMillis();
+    producerMetadata.upstreamOffset = upstreamOffset;
+    kafkaValue.producerMetadata = producerMetadata;
+
+    return Pair.create(kafkaKey, kafkaValue);
+  }
   /**
    * Blocking, waits for new version to go online
    */
