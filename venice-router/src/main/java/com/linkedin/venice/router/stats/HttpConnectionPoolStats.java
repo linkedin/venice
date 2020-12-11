@@ -123,13 +123,21 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
     }
   }
 
-
   public void recordConnectionLeaseRequestLatency(long latency) {
     connectionLeaseRequestLatency.record(latency);
   }
 
   public void recordPendingRequestCount(long pendingRequestCount) {
     this.pendingRequestCount.record(pendingRequestCount);
+  }
+
+  public long getPendingRequestCount(String hostname) {
+    RouteHttpConnectionPoolStats poolStats = routeConnectionPoolStatsMap.get(hostname);
+    // Initial few requests will not have per route map populated. return 0
+    if (poolStats == null) {
+      return 0;
+    }
+    return poolStats.getPendingRequestCount();
   }
 
   class RouteHttpConnectionPoolStats extends AbstractVeniceStats {
@@ -173,6 +181,10 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
       registerSensor("pending_connection_request_count", new Gauge(
           () -> getRouteAggStats(poolStats -> poolStats.getPending())
       ));
+    }
+
+    public Long getPendingRequestCount() {
+      return getRouteAggStats(PoolStats::getPending);
     }
 
     private Long getRouteAggStats(Function<PoolStats, Integer> func) {

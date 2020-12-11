@@ -1,11 +1,15 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.*;
+
 
 public class RouteHttpRequestStatsTest {
 
@@ -18,7 +22,7 @@ public class RouteHttpRequestStatsTest {
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
 
-    stats = new RouteHttpRequestStats(metrics);
+    stats = new RouteHttpRequestStats(metrics, mock(StorageNodeClient.class), false);
   }
 
   @Test

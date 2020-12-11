@@ -339,8 +339,6 @@ public class RouterServer extends AbstractVeniceService {
     timeoutProcessor = new TimeoutProcessor(registry, true, 1);
     Map<String, Object> serverSocketOptions = null;
 
-    RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository);
-
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     Class<? extends Channel> channelClass;
@@ -372,9 +370,11 @@ public class RouterServer extends AbstractVeniceService {
         throw new VeniceException("Router client type " + config.getStorageNodeClientType().toString() + " is not supported!");
     }
 
-    VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, storageNodeClient,routeHttpRequestStats,
-        config.isStatefulRouterHealthCheckEnabled(), config.getRouterUnhealthyPendingConnThresholdPerRoute(),
-        config.getRouterPendingConnResumeThresholdPerRoute(), config.getFullPendingQueueServerOORMs(), aggHostHealthStats);
+    RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository,storageNodeClient,
+        config.isRouterConnManagerPendingCounterEnabled());
+
+    VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, storageNodeClient, config,
+        routeHttpRequestStats, aggHostHealthStats);
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository,
         routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats, aggHostHealthStats);
     scatterGatherMode = new VeniceDelegateMode(config, routerStats, routeHttpRequestStats);

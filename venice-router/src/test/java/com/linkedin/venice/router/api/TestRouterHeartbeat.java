@@ -62,11 +62,12 @@ public class TestRouterHeartbeat {
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
+    VeniceRouterConfig config = mockVeniceRouterConfig();
+
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), config, routeHttpRequestStats, mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
-    VeniceRouterConfig config = mockVeniceRouterConfig();
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
     heartbeat.start();
 
@@ -94,9 +95,10 @@ public class TestRouterHeartbeat {
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
-
     VeniceRouterConfig config = mockVeniceRouterConfig();
+
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), config, routeHttpRequestStats, mock(AggHostHealthStats.class));
+
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
     heartbeat.start();
 
@@ -124,11 +126,12 @@ public class TestRouterHeartbeat {
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
+    VeniceRouterConfig config = mockVeniceRouterConfig();
+
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), config, routeHttpRequestStats,  mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
-    VeniceRouterConfig config = mockVeniceRouterConfig();
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
     heartbeat.start();
     Thread.sleep(1000);

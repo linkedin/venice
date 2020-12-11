@@ -160,7 +160,7 @@ public class TestHostFinder {
 
     Set<String> unhealthyHostsSet = getMockSetWithRealFunctionality();
     // mock VeniceHostHealth
-    VeniceHostHealthTest healthMon = new VeniceHostHealthTest(mockLiveInstanceMonitor, routeHttpRequestStats);
+    VeniceHostHealthTest healthMon = new VeniceHostHealthTest(mockLiveInstanceMonitor, routeHttpRequestStats, mockVeniceRouterConfig());
     healthMon.setUnhealthyHostSet(unhealthyHostsSet);
 
     // mock VeniceHostFinder
@@ -231,8 +231,8 @@ public class TestHostFinder {
    * keep track of whether some APIs inside the set have been invoked.
    */
   private class VeniceHostHealthTest extends VeniceHostHealth {
-    public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats) {
-      super(liveInstanceMonitor, mockStorageNodeClient(true), routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
+    public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats, VeniceRouterConfig config) {
+      super(liveInstanceMonitor, mockStorageNodeClient(true), config,  routeHttpRequestStats,  mock(AggHostHealthStats.class));
     }
 
     /**

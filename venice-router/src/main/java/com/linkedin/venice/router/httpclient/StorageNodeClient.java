@@ -41,4 +41,8 @@ public interface StorageNodeClient extends Closeable {
   default boolean isInstanceReadyToServe(String instanceId)  {
     return true;
   }
+
+  default long getPoolStatsPendingConnection(String insanceId) {
+    return 0;
+  }
 }

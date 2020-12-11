@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.stats;
 
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsUtils;
@@ -21,22 +22,28 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class RouteHttpRequestStats {
   private final MetricsRepository metricsRepository;
+  private final StorageNodeClient storageNodeClient;
+  private final boolean isConnManagerPendingConnEnabled;
   private final Map<String, InternalHostStats> routeStatsMap = new VeniceConcurrentHashMap<>();
 
-  public RouteHttpRequestStats(MetricsRepository metricsRepository) {
+  public RouteHttpRequestStats(MetricsRepository metricsRepository, StorageNodeClient storageNodeClient, boolean isConnManagerPendingConnEnabled) {
       this.metricsRepository = metricsRepository;
+      this.storageNodeClient = storageNodeClient;
+      this.isConnManagerPendingConnEnabled = isConnManagerPendingConnEnabled;
     }
 
   public void recordPendingRequest(String hostName) {
-    InternalHostStats
-        stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
-    stats.recordPendingRequestCount();
+    if (!isConnManagerPendingConnEnabled) {
+      InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
+      stats.recordPendingRequestCount();
+    }
   }
 
   public void recordFinishedRequest(String hostName) {
-    InternalHostStats
-        stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
-    stats.recordFinishedRequestCount();
+    if (!isConnManagerPendingConnEnabled) {
+      InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
+      stats.recordFinishedRequestCount();
+    }
   }
 
   public void recordUnhealthyQueueDuration(String hostName, double duration) {
@@ -46,6 +53,9 @@ public class RouteHttpRequestStats {
   }
 
   public long getPendingRequestCount(String hostName) {
+    if (isConnManagerPendingConnEnabled) {
+      return storageNodeClient.getPoolStatsPendingConnection(hostName);
+    }
     InternalHostStats stat = routeStatsMap.get(hostName);
     if (stat == null) {
       return 0;

@@ -125,6 +125,10 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     }
   }
 
+  public long getPoolStatsPendingConnection(String hostname) {
+    return poolStats.getPendingRequestCount(hostname);
+  }
+
   @Override
   public void start() {
     if (perNodeClientEnabled) {
