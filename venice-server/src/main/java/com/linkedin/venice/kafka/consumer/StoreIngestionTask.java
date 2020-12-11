@@ -35,7 +35,6 @@ import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -43,7 +42,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
@@ -61,7 +59,6 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -710,14 +707,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       waitReadyToProcessRecord(record);
       processedRecord.add(record);
       long kafkaProduceStartTimeInNS = System.nanoTime();
-      if (!hasProducedToKafka(record)) {
-        long queuePutStartTimeInNS = System.nanoTime();
-        storeBufferService.putConsumerRecord(record, this, null); // blocking call
-        elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
-        ++recordQueuedToDrainer;
-      } else {
-        elapsedTimeForProducingToKafka += LatencyUtils.getLatencyInMS(kafkaProduceStartTimeInNS);
-        ++recordProducedToKafka;
+      switch (delegateConsumerRecord(record)) {
+        case QUEUED_TO_DRAINER:
+          long queuePutStartTimeInNS = System.nanoTime();
+          storeBufferService.putConsumerRecord(record, this, null); // blocking call
+          elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
+          ++recordQueuedToDrainer;
+          break;
+        case PRODUCED_TO_KAFKA:
+          elapsedTimeForProducingToKafka += LatencyUtils.getLatencyInMS(kafkaProduceStartTimeInNS);
+          ++recordProducedToKafka;
+          break;
+        case DUPLICATE_MESSAGE:
+          /**
+           * DuplicatedDataException can be thrown when leader is consuming from RT and is running DIV check on the message
+           * before producing it to VT. Still record the time spent on trying to produce to Kafka, but should not update
+           * the counter for records that have been produced to Kafka
+           */
+          elapsedTimeForProducingToKafka += LatencyUtils.getLatencyInMS(kafkaProduceStartTimeInNS);
+          break;
+        default:
+          throw new VeniceException(consumerTaskId + " received unknown DelegateConsumerRecordResult enum for topic "
+              + record.topic() + " partition " + record.partition());
       }
       totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
       // Update the latest message consumption time
@@ -1140,6 +1151,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (consumptionState != null) {
           consumerUnSubscribe(topic, consumptionState);
         }
+
         // Drain the buffered message by last subscription.
         waitForAllMessageToBeProcessedFromTopicPartition(topic, partition, consumptionState);
 
@@ -1609,7 +1621,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
         /**
-         * Nothing to do here as all of the processing is being done in {@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}.
+         * Nothing to do here as all of the processing is being done in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(ConsumerRecord)}.
          */
         break;
       case START_OF_BUFFER_REPLAY:
@@ -1666,7 +1678,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *  2. L/F model: Follower: All messages received from any topic. ProducedRecord will be null.
        *  3. L/F model: Leader: All messages received from VT before it switches to consume from RT.
        *
-       * DIV happens in consumer thread in following case {@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}
+       * DIV happens in consumer thread in following case {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(ConsumerRecord)}
        *  4. L/F model: Leader: All messages received from RT.
        *
        *  Specific notes for Leader:
@@ -1675,7 +1687,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *      executed properly and in order becuase we queue this pair <consumerRecord, producerRecord> from kafka callback thread only.
        *      If there were any problems with callback thread then that will be caught by this DIV here.
        *
-       *  2. For DIV non pass-through mode (RT messages) we are doing DIV in {@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}
+       *  2. For DIV non pass-through mode (RT messages) we are doing DIV in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(ConsumerRecord)}
        *      in consumer thread and no further DIV happens for the producedRecord. The main challenege to do DIV for producedRecord
        *      here is that VeniceWriter internally produces SOS/EOS for non-passthrough mode which is not fed into our DIV pipiline currently.
        *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer calllback like pass through mode.
@@ -2521,25 +2533,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      *
      * The code should only be effective in L/F model Leader instances as lastFuture should be null in all other scenarios.
      */
-    try {
-      Future<Void> lastFuture = partitionConsumptionState.getLastLeaderPersistFuture();
-      if (lastFuture != null) {
-        long synchronizeStartTimeInNS = System.nanoTime();
-        lastFuture.get();
-        storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName,
-            LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
+    if (partitionConsumptionState != null) {
+      try {
+        Future<Void> lastFuture = partitionConsumptionState.getLastLeaderPersistFuture();
+        if (lastFuture != null) {
+          long synchronizeStartTimeInNS = System.nanoTime();
+          lastFuture.get();
+          storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
+        }
+      } catch (Exception e) {
+        logger.error(
+            "Got exception while waiting for the latest producer future to be completed " + " for topic: " + topic + " partition: " + partition, e);
+        //No need to fail the push job; just record the failure.
+        versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
       }
-    } catch (Exception e) {
-      logger.error(
-          "Got exception while waiting for the latest producer future to be completed " + " for topic: " + topic
-              + " partition: " + partition, e);
-      //No need to fail the push job; just record the failure.
-      versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
     }
 
   }
 
-  protected boolean hasProducedToKafka(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
-    return false;
+  protected DelegateConsumerRecordResult delegateConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+    return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+  }
+
+  /**
+   * This enum represents all potential results after calling {@link #delegateConsumerRecord(ConsumerRecord)}.
+   */
+  protected enum DelegateConsumerRecordResult {
+    /**
+     * The consumer record has been produced to local version topic by leader.
+     */
+    PRODUCED_TO_KAFKA,
+    /**
+     * The consumer record has been put into drainer queue; the following cases will result in putting to drainer directly:
+     * 1. Online/Offline ingestion task
+     * 2. Follower replicas
+     * 3. Leader is consuming from local version topics
+     */
+    QUEUED_TO_DRAINER,
+    /**
+     * The consumer record is a duplicated message.
+     */
+    DUPLICATE_MESSAGE
   }
 }

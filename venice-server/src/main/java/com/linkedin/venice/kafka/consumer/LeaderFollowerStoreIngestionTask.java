@@ -976,7 +976,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * @return true if the message was produced to kafka, Otherwise false.
    */
   @Override
-  protected boolean hasProducedToKafka(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+  protected DelegateConsumerRecordResult delegateConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
     int partition = consumerRecord.partition();
 
     boolean produceToLocalKafka = false;
@@ -1005,7 +1005,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * (i) it's a follower or (ii) leader is consuming from VT
        */
       if (!produceToLocalKafka) {
-        return false;
+        return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
       }
 
       //If we are here the message must be produced to local kafka or silently consumed.
@@ -1046,10 +1046,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           logger.info(errorMessage + " versionTopic: " + kafkaVersionTopic
               + ", however since EOP is already received so consumption will continue.");
         } catch (DuplicateDataException e) {
+          /**
+           * Skip duplicated messages; leader must not produce duplicated messages from RT to VT, because leader will
+           * override the DIV info for messages from RT; as a result, both leaders and followers will persisted duplicated
+           * messages to disk, and potentially rewind a k/v pair to an old value.
+           */
           versionedDIVStats.recordDuplicateMsg(storeName, versionNumber);
           if (logger.isDebugEnabled()) {
             logger.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
           }
+          return DelegateConsumerRecordResult.DUPLICATE_MESSAGE;
         }
       }
 
@@ -1333,13 +1339,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
         }
       }
+      return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
     } catch (Exception e) {
       throw new VeniceException(
           consumerTaskId + " HasProducedToKafka: exception for message received from  Topic: " + consumerRecord.topic()
               + " Partition: " + consumerRecord.partition() + ", Offset: " + consumerRecord.offset() + ". Bubbling up.",
           e);
-    } finally {
-      return produceToLocalKafka;
     }
   }
 
@@ -1479,9 +1484,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
         } catch (Exception oe) {
           boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-          logger.error(consumerTaskId + " received exception in kafka callback thread EOP recevied: " + endOfPushReceived + " Topic: " + sourceConsumerRecord.topic() + " Partition: "
+          logger.error(consumerTaskId + " received exception in kafka callback thread; EOP received: " + endOfPushReceived + " Topic: " + sourceConsumerRecord.topic() + " Partition: "
               + sourceConsumerRecord.partition() + ", Offset: " + sourceConsumerRecord.offset() + " exception: ", e);
-          //If EOP is not receievd yet, set the ingestiontask exception so that ingestion will fail eventually.
+          //If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
           if (!endOfPushReceived) {
             ingestionTask.setLastProducerException(oe);
           }
