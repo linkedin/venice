@@ -21,6 +21,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 
 
 /**
@@ -63,7 +64,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_MAX_OUTGOING_CONNECTION, 10)
           // To speed up test
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
-          .put(MAX_READ_CAPCITY, 1000000000)
+          .put(MAX_READ_CAPCITY, DEFAULT_PER_ROUTER_READ_QUOTA)
           .put(properties);
 
       // setup d2 config first

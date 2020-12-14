@@ -118,6 +118,8 @@ import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
 
 /**
  * This class is a wrapper of {@link VeniceHelixAdmin}, which will be used in parent controller.
@@ -131,7 +133,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
   private static final long SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS = 3000;
   private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 10;
-  private static final int PER_ROUTER_READ_QUOTA = 20_000_000;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
@@ -1274,7 +1275,7 @@ public class VeniceParentHelixAdmin implements Admin {
         VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
         ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
         int routerCount = routersClusterManager.getLiveRoutersCount();
-        if (Math.max(PER_ROUTER_READ_QUOTA, routerCount * PER_ROUTER_READ_QUOTA) < readQuotaInCU.get()) {
+        if (Math.max(DEFAULT_PER_ROUTER_READ_QUOTA, routerCount * DEFAULT_PER_ROUTER_READ_QUOTA) < readQuotaInCU.get()) {
           throw new VeniceException("Cannot update read quota for store " + storeName + " in cluster "
               + clusterName + ". Read quota " + readQuotaInCU.get() + " requested is more than the cluster quota.");
         }
