@@ -56,6 +56,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.router.httpclient.StorageNodeClientType.*;
 
@@ -112,7 +113,7 @@ public class TestStreaming {
     // enable compute
     veniceCluster.useControllerClient(c -> c.updateStore(storeName, new UpdateStoreQueryParams()
         .setReadComputationEnabled(true)
-        .setReadQuotaInCU(1000000000)
+        .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
     ));
 
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;

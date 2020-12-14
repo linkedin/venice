@@ -47,6 +47,7 @@ import org.apache.hadoop.io.Text;
 import org.testng.Assert;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
@@ -818,7 +819,7 @@ public class TestPushUtils {
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setCompressionStrategy(compressionStrategy)
         .setBatchGetLimit(2000)
-        .setReadQuotaInCU(1000000000)
+        .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
         .setChunkingEnabled(chunkingEnabled)
         .setIncrementalPushEnabled(incrementalPushEnabled);
 
