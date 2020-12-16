@@ -41,6 +41,21 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
     logger.info("Received ingestion task report " + report + " from ingestion service.");
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
+
+    // Sync up offset record & store version state before report ingestion complete to parent process.
+    if (ingestionReportListener.getStorageMetadataService() != null) {
+      if (report.offsetRecord != null) {
+        OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecord.array(), partitionStateSerializer);
+        ingestionReportListener.getStorageMetadataService().putOffsetRecord(topicName, partitionId, offsetRecord);
+        logger.info("Updated offsetRecord for (topic, partition): " + topicName + " " + partitionId + " " + offsetRecord.toString());
+      }
+      if (report.storeVersionState != null) {
+        StoreVersionState storeVersionState = IngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
+        ingestionReportListener.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
+        logger.info("Updated storeVersionState for topic: " + topicName + " " + storeVersionState.toString());
+      }
+    }
+
     // Relay the notification to parent service's listener.
     if (ingestionReportListener.getIngestionNotifier() != null) {
       if (report.isComplete) {
@@ -54,18 +69,7 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
       }
     }
 
-    if (ingestionReportListener.getStorageMetadataService() != null) {
-      if (report.offsetRecord != null) {
-        OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecord.array(), partitionStateSerializer);
-        ingestionReportListener.getStorageMetadataService().putOffsetRecord(topicName, partitionId, offsetRecord);
-        logger.info("Updated offsetRecord for (topic, partition): " + topicName + " " + partitionId + " " + offsetRecord.toString());
-      }
-      if (report.storeVersionState != null) {
-        StoreVersionState storeVersionState = IngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
-        ingestionReportListener.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
-        logger.info("Updated storeVersionState for topic: " + topicName + " " + storeVersionState.toString());
-      }
-    }
+
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, "OK!"));
   }
 
