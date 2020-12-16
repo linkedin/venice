@@ -271,7 +271,7 @@ public class DaVinciBackend implements Closeable {
       versionPartitionPair.getSecond().forEach(partitionId -> {
         ingestionReportListener.addVersionPartitionToIngestionMap(bootstrapVersion.kafkaTopicName(), partitionId);
       });
-      logger.info("Bootstrap sending subscribe request to isolated ingestion service" + name + " " + bootstrapVersion + " " + versionPartitionPair.getSecond().toString());
+      logger.info("Bootstrap sending subscribe request to isolated ingestion service: " + name + " " + bootstrapVersion + " " + versionPartitionPair.getSecond().toString());
       store.subscribe(ComplementSet.wrap(versionPartitionPair.getSecond()), Optional.of(bootstrapVersion));
     });
   }

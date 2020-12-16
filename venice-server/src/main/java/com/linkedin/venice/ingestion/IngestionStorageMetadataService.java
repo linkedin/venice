@@ -65,9 +65,7 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
 
   @Override
   public void clearStoreVersionState(String topicName) {
-    if (logger.isDebugEnabled()) {
-      logger.debug("Clearing StoreVersionState for " + topicName);
-    }
+    logger.info("Clearing StoreVersionState for " + topicName);
     topicStoreVersionStateMap.remove(topicName);
     // Sync update with metadata partition opened by ingestion process.
     IngestionStorageMetadata ingestionStorageMetadata = new IngestionStorageMetadata();
@@ -79,9 +77,6 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
 
   @Override
   public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
-    if (logger.isDebugEnabled()) {
-      logger.debug("Getting StoreVersionState for " + topicName);
-    }
     if (topicStoreVersionStateMap.containsKey(topicName)) {
       return Optional.of(topicStoreVersionStateMap.get(topicName));
     } else {
@@ -103,9 +98,7 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    if (logger.isDebugEnabled()) {
-      logger.debug("Clearing OffsetRecord for " + topicName + " " + partitionId);
-    }
+    logger.info("Clearing OffsetRecord for " + topicName + " " + partitionId);
     if (topicPartitionOffsetRecordMap.containsKey(topicName)) {
       Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
       partitionOffsetRecordMap.remove(partitionId);
@@ -122,9 +115,6 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
 
   @Override
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
-    if (logger.isDebugEnabled()) {
-      logger.debug("Getting OffsetRecord for " + topicName + " " + partitionId);
-    }
     if (topicPartitionOffsetRecordMap.containsKey(topicName)) {
       Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
       return partitionOffsetRecordMap.getOrDefault(partitionId, new OffsetRecord(partitionStateSerializer));
@@ -136,9 +126,7 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
    * putOffsetRecord will only put OffsetRecord into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putOffsetRecord(String topicName, int partitionId, OffsetRecord record) {
-    if (logger.isDebugEnabled()) {
-      logger.debug("Updating OffsetRecord for " + topicName + " " + partitionId);
-    }
+    logger.info("Updating OffsetRecord for " + topicName + " " + partitionId + " " + record.getOffset());
     Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
     partitionOffsetRecordMap.put(partitionId, record);
     topicPartitionOffsetRecordMap.put(topicName, partitionOffsetRecordMap);
