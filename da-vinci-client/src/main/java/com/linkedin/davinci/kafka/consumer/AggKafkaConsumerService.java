@@ -24,6 +24,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final KafkaClientFactory consumerFactory;
   private final int numOfConsumersPerKafkaCluster;
   private final long readCycleDelayMs;
+  private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final EventThrottler bandwidthThrottler;
   private final EventThrottler recordsThrottler;
   private final KafkaConsumerServiceStats stats;
@@ -35,6 +36,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
+    this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.stats = new KafkaConsumerServiceStats(metricsRepository);
@@ -61,7 +63,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     return kafkaServerToConsumerService.computeIfAbsent(kafkaUrl, url ->
         new KafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
-            bandwidthThrottler, recordsThrottler, stats));
+            bandwidthThrottler, recordsThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS));
   }
 
   /**

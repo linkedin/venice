@@ -5,6 +5,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.HashSet;
@@ -38,6 +40,26 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    */
   private final int sanitizeTopicSubscriptionAfterPollTimes;
   private int pollTimesSinceLastSanitization = 0;
+
+  /**
+   * This is used to control how much time we should wait before cleaning up the corresponding ingestion task
+   * when an non-existing topic is discovered.
+   * The reason to introduce this config is that `consumer#listTopics` could only guarantee eventual consistency, so
+   * `consumer#listTopics` not returning the topic doesn't mean the topic doesn't exist in Kafka.
+   * If `consumer#listTopics` still doesn't return the topic after the configured delay, Venice SN will unsubscribe the topic,
+   * and fail the corresponding ingestion job.
+   */
+  private final long nonExistingTopicCleanupDelayMS;
+  /**
+   * This field is to maintain a mapping between the non-existing topic and the discovered time for the first time.
+   * The function: {@link #sanitizeConsumerSubscription()} can add a new topic to this map if it discovers
+   * a new non-existing topic.
+   * There are two ways to clean up one entry from this map:
+   * 1. The non-existing topic starts showing up.
+   * 2. The non-existing period lasts longer than {@link #nonExistingTopicCleanupDelayMS}, and the corresponding task
+   *    will fail.
+   */
+  private final Map<String, Long> nonExistingTopicDiscoverTimestampMap = new VeniceConcurrentHashMap<>();
   /**
    * This set is used to store the topics without corresponding ingestion tasks in each poll request.
    */
@@ -71,16 +93,27 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    */
   private volatile long pollTimes = 0 ;
 
+  private final Time time;
 
-  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service) {
-    this(delegate, service, 1000);
+
+  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service, final long nonExistingTopicCleanupDelayMS) {
+    this(delegate, service, 1000, nonExistingTopicCleanupDelayMS);
   }
 
-  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service, int sanitizeTopicSubscriptionAfterPollTimes) {
+  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
+      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS) {
+    this(delegate, service, sanitizeTopicSubscriptionAfterPollTimes, nonExistingTopicCleanupDelayMS, new SystemTime());
+  }
+
+  SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
+      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, Time time) {
     this.delegate = delegate;
     this.kafkaConsumerService = service;
     this.sanitizeTopicSubscriptionAfterPollTimes = sanitizeTopicSubscriptionAfterPollTimes;
+    this.nonExistingTopicCleanupDelayMS = nonExistingTopicCleanupDelayMS;
+    this.time = time;
   }
+
 
   /**
    * If {@param isClosed} is true, this function will update the {@link #currentAssignment} to be empty.
@@ -101,7 +134,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   /**
    * There is an additional goal of this function which is to make sure that all the records consumed for this {topic,partition} prior to
-   * calling unsubscribe here is produced to drainer service. {@link KafkaConsumerService.ConsumptionTask#run()} calls
+   * calling unsubscribe here is produced to drainer service. {@literal KafkaConsumerService.ConsumptionTask#run()} calls
    * {@link SharedKafkaConsumer#poll(long)} and produceToStoreBufferService sequentially. So waiting for at least one more
    * invocation of {@link SharedKafkaConsumer#poll(long)} achieves the above objective.
    */
@@ -163,22 +196,66 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
       return;
     }
     Map<String, List<PartitionInfo>> existingTopicPartitions = listTopics();
-    Set<String> deletedTopics = new HashSet<>();
+    Set<String> nonExistingTopics = new HashSet<>();
+    long currentTimestamp = time.getMilliseconds();
     assignment.forEach( tp -> {
-      if (!existingTopicPartitions.containsKey(tp.topic())) {
-        deletedTopics.add(tp.topic());
+      String topic = tp.topic();
+      if (!existingTopicPartitions.containsKey(topic)) {
+        nonExistingTopics.add(topic);
+      } else {
+        /**
+         * Check whether we should remove any topic from {@link #nonExistingTopicDiscoverTimestampMap} detected previously.
+         * Since this logic will be executed before comparing the diff with the delay threshold, so it is possible that
+         * even the delay is exhausted here, we will still resume the ingestion.
+         */
+        if (nonExistingTopicDiscoverTimestampMap.containsKey(topic)) {
+          long detectedTimestamp = nonExistingTopicDiscoverTimestampMap.remove(topic);
+          long diff = currentTimestamp - detectedTimestamp;
+          LOGGER.info("The non-existing topic detected previously: " + topic + " show up after " + diff + " ms. "
+              + "and it will be removed from `nonExistingTopicDiscoverTimestampMap`");
+        }
       }
     });
-    if (!deletedTopics.isEmpty()) {
-      LOGGER.error("Detected the following deleted topics, and will unsubscribe them: " + deletedTopics);
-      deletedTopics.forEach( topic -> {
+    Set<String> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
+    if (!nonExistingTopics.isEmpty()) {
+      LOGGER.error("Detected the following non-existing topics: " + nonExistingTopics);
+      nonExistingTopics.forEach( topic -> {
+        Long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.get(topic);
         StoreIngestionTask task = getIngestionTaskForTopic(topic);
         if (task != null) {
-          task.setLastConsumerException(new VeniceException("Topic: " + topic + " got deleted"));
+          if (null == firstDetectedTimestamp) {
+            // The first time to detect this non-existing topic.
+            nonExistingTopicDiscoverTimestampMap.put(topic, currentTimestamp);
+            firstDetectedTimestamp = currentTimestamp;
+          }
+          /**
+           * Calculate the delay, and compare it with {@link nonExistingTopicCleanupDelayMS},
+           * if the delay is over the threshold, will fail the attached ingestion task
+           */
+          long diff = currentTimestamp - firstDetectedTimestamp;
+          if (diff >= nonExistingTopicCleanupDelayMS) {
+            LOGGER.error("The non-existing topic hasn't showed up after " + diff +
+                " ms, so we will fail the attached ingestion task");
+            task.setLastConsumerException(new VeniceException("Topic: " + topic + " got deleted"));
+            nonExistingTopicDiscoverTimestampMap.remove(topic);
+          } else {
+            /**
+             * We shouldn't unsubscribe the non-existing topic now since currently the delay hasn't been exhausted yet.
+             */
+            topicsToUnsubscribe.remove(topic);
+          }
+        } else {
+          // defensive coding
+          LOGGER.error("Detected an non-existing topic: " + topic + ", which is present in consumer assignment, but without any attached ingestion task");
+          if (firstDetectedTimestamp != null) {
+            LOGGER.info("There is no associated ingestion task with this non-existing topic: " + topic +
+                ", so it will be" + " removed from `nonExistingTopicDiscoverTimestampMap` directly");
+            nonExistingTopicDiscoverTimestampMap.remove(topic);
+          }
         }
       });
-      close(deletedTopics);
-      kafkaConsumerService.getStats().recordDetectedDeletedTopicNum(deletedTopics.size());
+      close(topicsToUnsubscribe);
+      kafkaConsumerService.getStats().recordDetectedDeletedTopicNum(nonExistingTopics.size());
     }
   }
 

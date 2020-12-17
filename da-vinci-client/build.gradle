@@ -16,4 +16,6 @@ dependencies {
   implementation libraries.helix
   implementation libraries.kafka
 
+  testImplementation project(':venice-test-common')
+  testImplementation libraries.kafkaClientsTest
 }

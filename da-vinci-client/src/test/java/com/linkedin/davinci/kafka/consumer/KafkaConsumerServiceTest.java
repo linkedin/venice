@@ -11,6 +11,7 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -35,7 +36,8 @@ public class KafkaConsumerServiceTest {
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
 
     KafkaConsumerService consumerService = new KafkaConsumerService(factory, properties, 1000l,
-        2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaConsumerServiceStats.class));
+        2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaConsumerServiceStats.class),
+        TimeUnit.MINUTES.toMillis(1));
 
     String storeName = TestUtils.getUniqueString("test_consumer_service");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);
