@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.IndexedRecord;
@@ -16,8 +17,9 @@ public class VeniceAvroMapper extends AbstractVeniceMapper<AvroWrapper<IndexedRe
     String keyField = props.getString(KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP);
     String topicName = props.getString(TOPIC_PROP);
-    boolean isSourceETL = props.getBoolean(SOURCE_ETL, false);
+    String etlValueTransformationStr = props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name());
+    ETLValueSchemaTransformation etlValueSchemaTransformation = ETLValueSchemaTransformation.valueOf(etlValueTransformationStr);
 
-    this.veniceRecordReader = new VeniceAvroRecordReader(topicName, fileSchema, keyField, valueField, isSourceETL);
+    this.veniceRecordReader = new VeniceAvroRecordReader(topicName, fileSchema, keyField, valueField, etlValueSchemaTransformation);
   }
 }

@@ -503,7 +503,7 @@ public abstract class TestBatch {
     }, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
   }
 
-  @Test(timeOut = TEST_TIMEOUT, invocationCount = 3)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testBatchFromETL() throws Exception {
     testBatchStore(inputDir -> {
       Schema recordSchema = writeETLFileWithUserSchema(inputDir, false);
@@ -522,6 +522,80 @@ public abstract class TestBatch {
         value.put("name", "test_name_" + i);
 
         Assert.assertEquals(avroClient.get(key).get().toString(), value.toString());
+      }
+
+      for (int i = 51; i <= 100; i ++) {
+        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+        key.put("id", Integer.toString(i));
+
+        Assert.assertEquals(avroClient.get(key).get(), null);
+      }
+    }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchFromETLWithForUnionWithNullSchema() throws Exception {
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeETLFileWithUnionWithNullSchema(inputDir, false);
+      return new Pair<>(Schema.parse(ETL_KEY_SCHEMA_STRING), Schema.parse(ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL));
+    }, properties -> {
+      properties.setProperty(KEY_FIELD_PROP, "key");
+      properties.setProperty(VALUE_FIELD_PROP, "value");
+      properties.setProperty(SOURCE_ETL, "true");
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      // test single get
+      for (int i = 1; i <= 25; i ++) {
+        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+        key.put("id", Integer.toString(i));
+
+        Assert.assertEquals(avroClient.get(key).get().toString(), "string_" + i);
+      }
+
+      for (int i = 26; i <= 50; i ++) {
+        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+        key.put("id", Integer.toString(i));
+
+        Assert.assertEquals(avroClient.get(key).get(), i);
+      }
+
+      for (int i = 51; i <= 100; i ++) {
+        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+        key.put("id", Integer.toString(i));
+
+        Assert.assertEquals(avroClient.get(key).get(), null);
+      }
+    }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchFromETLWithForUnionWithoutNullSchema() throws Exception {
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeETLFileWithUnionWithoutNullSchema(inputDir, false);
+      return new Pair<>(Schema.parse(ETL_KEY_SCHEMA_STRING), Schema.parse(ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL));
+    }, properties -> {
+      properties.setProperty(KEY_FIELD_PROP, "key");
+      properties.setProperty(VALUE_FIELD_PROP, "value");
+      properties.setProperty(SOURCE_ETL, "true");
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      // test single get
+      for (int i = 1; i <= 25; i ++) {
+        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+        key.put("id", Integer.toString(i));
+
+        Assert.assertEquals(avroClient.get(key).get().toString(), "string_" + i);
+      }
+
+      for (int i = 26; i <= 50; i ++) {
+        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+        key.put("id", Integer.toString(i));
+
+        Assert.assertEquals(avroClient.get(key).get(), i);
       }
 
       for (int i = 51; i <= 100; i ++) {

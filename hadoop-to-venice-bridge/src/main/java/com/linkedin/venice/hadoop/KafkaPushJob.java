@@ -8,10 +8,12 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
@@ -125,6 +127,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public final static String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
   public final static String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
   public final static String SOURCE_ETL = "source.etl";
+  public final static String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -333,8 +336,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     boolean sendControlMessagesDirectly;
     boolean isSourceETL;
     boolean enableWriteCompute;
+    ETLValueSchemaTransformation etlValueSchemaTransformation;
   }
-  private PushJobSetting pushJobSetting;
+  protected PushJobSetting pushJobSetting;
 
   protected class VersionTopicInfo {
     // Kafka topic for new data push
@@ -529,6 +533,16 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       this.inputDirectory = getInputURI(this.props);
 
       this.storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
+
+      if (pushJobSetting.isSourceETL) {
+        MultiSchemaResponse allValueSchemaResponses = this.controllerClient.getAllValueSchema(pushJobSetting.storeName);
+        MultiSchemaResponse.Schema[] allValueSchemas = allValueSchemaResponses.getSchemas();
+        Schema lastValueSchema = Schema.parse(allValueSchemas[allValueSchemas.length - 1].getSchemaStr());
+
+        pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation.fromSchema(lastValueSchema);
+      } else {
+        pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation.NONE;
+      }
 
       // Check data size
       // TODO: do we actually need this information?
@@ -1447,7 +1461,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         "record-queue-time-avg,request-latency-avg,record-send-rate,byte-rate"));
 
     conf.set(ZSTD_COMPRESSION_LEVEL, props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
-    conf.setBoolean(SOURCE_ETL, pushJobSetting.isSourceETL);
+    conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
   }
 
   protected void setupInputFormatConf(JobConf jobConf, SchemaInfo schemaInfo, String inputDirectory) {
@@ -1517,6 +1531,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     logger.info("Is incremental push: " + pushJobSetting.isIncrementalPush);
     logger.info("Is duplicated key allowed: " + pushJobSetting.isDuplicateKeyAllowed);
     logger.info("Is source ETL data: " + pushJobSetting.isSourceETL);
+    logger.info("ETL value schema transformation : " + pushJobSetting.etlValueSchemaTransformation);
   }
   /**
    * Do not change this method argument type.
@@ -1585,7 +1600,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     String keyField = props.getString(KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP);
-    VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(null, keyField, valueField, fs, path, pushJobSetting.isSourceETL);
+    VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(null, keyField, valueField, fs, path, pushJobSetting.etlValueSchemaTransformation);
 
     // If dictionary compression is enabled for version, read the records to get training samples
     if (buildDictionary && storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
