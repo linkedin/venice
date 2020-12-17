@@ -253,6 +253,10 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         try {
           readRequestThrottler.mayThrottleRead(storeName, keyCount * readRequestThrottler.getReadCapacity(), Optional.of(veniceInstance.getNodeId()));
         } catch (QuotaExceededException e) {
+          /**
+           * Exception thrown here won't go through {@link VeniceResponseAggregator}, and DDS lib will return an error response
+           * with the corresponding response status directly.
+           */
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
               TOO_MANY_REQUESTS, "Quota exceeded for '" + storeName + "' while serving a " + venicePath.getRequestType()
                   + " request! msg: " + e.getMessage());

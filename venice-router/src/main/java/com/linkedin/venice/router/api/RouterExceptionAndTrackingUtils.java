@@ -103,10 +103,8 @@ public class RouterExceptionAndTrackingUtils {
       stats.recordBadRequest(storeName.orElse(null));
     } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
       if (storeName.isPresent()) {
-        if (requestType.isPresent() && !requestType.get().equals(RequestType.SINGLE_GET)) {
+        if (requestType.isPresent()) {
           /**
-           * Single gets are already getting recorded in {@link VeniceResponseAggregator}.
-           *
            * Once we stop throwing quota exceptions from within the {@link VeniceDelegateMode} then we can
            * process everything through {@link VeniceResponseAggregator} and remove the metric tracking
            * from here.
