@@ -213,6 +213,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final String systemSchemaClusterName;
 
+  private final long sharedConsumerNonExistingTopicCleanupDelayMS;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
@@ -322,6 +324,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     freezeIngestionIfReadyToServeOrLocalDataExists = serverProperties.getBoolean(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, false);
 
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
+    sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties.getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10)); // default 10 mins
   }
 
   public int getListenerPort() {
@@ -601,5 +604,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getSystemSchemaClusterName() {
     return systemSchemaClusterName;
+  }
+
+  public long getSharedConsumerNonExistingTopicCleanupDelayMS() {
+    return sharedConsumerNonExistingTopicCleanupDelayMS;
   }
 }

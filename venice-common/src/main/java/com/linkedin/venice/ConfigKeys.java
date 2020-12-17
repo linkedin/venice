@@ -488,6 +488,16 @@ public class ConfigKeys {
   public static final String SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED = "server.rocksdb.storage.config.check.enabled";
 
   /**
+   * This config is used to control how much time we should wait before cleaning up the corresponding ingestion task
+   * when an non-existing topic is discovered.
+   * The reason to introduce this config is that `consumer#listTopics` could only guarantee eventual consistency, so
+   * `consumer#listTopics` not returning the topic doesn't mean the topic doesn't exist in Kafka.
+   * If `consumer#listTopics` still doesn't return the topic after the configured delay, Venice SN will unsubscribe the topic,
+   * and fail the corresponding ingestion job.
+   */
+  public static final String SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS = "server.shared.cosnumer.non.existing.topic.cleanup.delay.ms";
+
+  /**
    * This config will determine whether live update will be suppressed. When the feature is turned on, ingestion will stop
    * once a partition is ready to serve; after Da Vinci client restarts or server restarts, if local data exists, ingestion
    * will not start in Da Vinci or report ready-to-serve immediately without ingesting new data in Venice.
