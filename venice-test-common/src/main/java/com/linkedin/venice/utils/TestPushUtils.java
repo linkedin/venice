@@ -6,6 +6,8 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.etl.ETLUtils;
+import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -91,44 +93,9 @@ public class TestPushUtils {
       "    \"version\":10\n" +
       "}";
 
-  public static final String ETL_SCHEMA_STRING = "{\n" +
-      "    \"type\":\"record\",\n" +
-      "    \"name\":\"storeName_v1\",\n" +
-      "    \"namespace\":\"KAFKA\",\n" +
-      "    \"fields\":[\n" +
-      "        {\n" +
-      "            \"name\":\"key\",\n" +
-      "            \"type\":" + ETL_KEY_SCHEMA_STRING + ",\n" +
-      "            \"doc\":\"Raw bytes of the key\",\n" +
-      "            \"attributes_json\":\"{\\\"delta\\\":false,\\\"pk\\\":true,\\\"type\\\":\\\"record\\\"}\"\n" +
-      "        },\n" +
-      "        {\n" +
-      "            \"name\":\"value\",\n" +
-      "            \"type\":[\n" +
-      "                \"null\",\n" + ETL_VALUE_SCHEMA_STRING +
-      "            ],\n" +
-      "            \"doc\":\"Raw bytes of the value\",\n" +
-      "            \"attributes_json\":\"{\\\"delta\\\":false,\\\"pk\\\":false,\\\"type\\\":\\\"union\\\"}\"\n" +
-      "        },\n" +
-      "        {\n" +
-      "            \"name\":\"offset\",\n" +
-      "            \"type\":\"long\",\n" +
-      "            \"doc\":\"The offset of this record in Kafka\",\n" +
-      "            \"attributes_json\":\"{\\\"delta\\\":true,\\\"pk\\\":false,\\\"type\\\":\\\"long\\\"}\"\n" +
-      "        },\n" +
-      "        {\n" +
-      "            \"name\":\"DELETED_TS\",\n" +
-      "            \"type\":[\n" +
-      "                \"null\",\n" +
-      "                \"long\"\n" +
-      "            ],\n" +
-      "            \"doc\":\"If the current record is a PUT, this field will be null; if it's a DELETE, this field will be the offset of the record in Kafka\",\n" +
-      "            \"default\":null,\n" +
-      "            \"attributes_json\":\"{\\\"delta\\\":false,\\\"pk\\\":false,\\\"type\\\":\\\"union\\\"}\"\n" +
-      "        }\n" +
-      "    ],\n" +
-      "    \"attributes_json\":\"{\\\"instance\\\":\\\"gobblin\\\",\\\"dumpdate\\\":1596776399999,\\\"isFull\\\":false,\\\"begin_date\\\":1596772800000,\\\"end_date\\\":1596776399999,\\\"total_records\\\":-1,\\\"isSharded\\\":false,\\\"isSecured\\\":false,\\\"permission_group\\\":\\\"\\\",\\\"datasource_colo\\\":\\\"prod-ltx1\\\",\\\"table_type\\\":\\\"SNAPSHOT_APPEND\\\",\\\"isDBChange\\\":true,\\\"validation_high_water\\\":-1,\\\"validation_drop_date\\\":-1,\\\"deleted_records\\\":0,\\\"full_dropdate\\\":0,\\\"base_dropdate\\\":1596700799999,\\\"lumos_operation\\\":\\\"QSB\\\",\\\"lumos_process_time\\\":1596780124566}\"\n" +
-      "}";
+  public static final String ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL = "[\"int\", \"string\"]";
+
+  public static final String ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL = "[\"int\", \"string\", \"null\"]";
 
   public static final String USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT = "{" +
       "  \"namespace\" : \"example.avro\",  " +
@@ -300,7 +267,7 @@ public class TestPushUtils {
       fileName = "simple_etl_user";
     }
 
-    return writeAvroFile(parentDir, fileName, ETL_SCHEMA_STRING,
+    return writeAvroFile(parentDir, fileName, getETLStoreSchemaString(ETL_KEY_SCHEMA_STRING, ETL_VALUE_SCHEMA_STRING),
         (recordSchema, writer) -> {
           String name = "test_name_";
           for (int i = 1; i <= 50; ++i) {
@@ -311,6 +278,11 @@ public class TestPushUtils {
 
             key.put("id", Integer.toString(i));
             value.put("name", name + i);
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long)0);
+            user.put("metadata", new HashMap<>());
 
             user.put("key", key);
             user.put("value", value);
@@ -327,6 +299,11 @@ public class TestPushUtils {
 
             key.put("id", Integer.toString(i));
 
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long)0);
+            user.put("metadata", new HashMap<>());
+
             user.put("key", key);
             user.put("value", null);
             user.put("offset", (long)i);
@@ -336,6 +313,153 @@ public class TestPushUtils {
           }
         });
   }
+
+  public static Schema writeETLFileWithUnionWithNullSchema(File parentDir, boolean fileNameWithAvroSuffix)
+      throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_etl_union_with_null.avro";
+    } else {
+      fileName = "simple_etl_union_with_null";
+    }
+
+    return writeAvroFile(parentDir, fileName, getETLStoreSchemaString(ETL_KEY_SCHEMA_STRING, ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL),
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= 25; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+            key.put("id", Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long)0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", "string_" + i);
+            user.put("offset", (long)i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 26; i <= 50; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+            key.put("id", Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long)0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", i);
+            user.put("offset", (long)i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 51; i <= 100; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+            key.put("id", Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long)0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", null);
+            user.put("offset", (long)i);
+            user.put("DELETED_TS", (long)i);
+
+            writer.append(user);
+          }
+        });
+  }
+
+  public static Schema writeETLFileWithUnionWithoutNullSchema(File parentDir, boolean fileNameWithAvroSuffix)
+      throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_etl_union_without_null.avro";
+    } else {
+      fileName = "simple_etl_union_without_null";
+    }
+
+    return writeAvroFile(parentDir, fileName, getETLStoreSchemaString(ETL_KEY_SCHEMA_STRING, ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL),
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= 25; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+            key.put("id", Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long)0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", "string_" + i);
+            user.put("offset", (long)i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 26; i <= 50; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+            key.put("id", Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long)0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", i);
+            user.put("offset", (long)i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 51; i <= 100; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
+
+            key.put("id", Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long)0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", null);
+            user.put("offset", (long)i);
+            user.put("DELETED_TS", (long)i);
+
+            writer.append(user);
+          }
+        });
+  }
+
 
   public static Schema writeAlternateSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
       throws IOException {
@@ -934,6 +1058,69 @@ public class TestPushUtils {
     ControllerResponse controllerResponse = controllerClient.retryableRequest(5, c -> c.updateStore(
           storeName, params));
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
+  }
+
+  public static String getETLStoreSchemaString(String keySchema, String valueSchema) {
+    String finalValueSchema = ETLUtils.transformValueSchemaForETL(Schema.parse(valueSchema)).toString();
+    return "{\n" +
+      "  \"type\": \"record\",\n" +
+      "  \"name\": \"storeName_v1\",\n" +
+      "  \"namespace\": \"com.linkedin.gobblin.venice.model\",\n" +
+      "  \"fields\": [\n" +
+      "    {\n" +
+      "      \"name\": \"opalSegmentIdPart\",\n" +
+      "      \"type\": \"int\",\n" +
+      "      \"doc\": \"Opal segment id partition\"\n" +
+      "    },\n" +
+      "    {\n" +
+      "      \"name\": \"opalSegmentIdSeq\",\n" +
+      "      \"type\": \"int\",\n" +
+      "      \"doc\": \"Opal segment id sequence\"\n" +
+      "    },\n" +
+      "    {\n" +
+      "      \"name\": \"opalSegmentOffset\",\n" +
+      "      \"type\": \"long\",\n" +
+      "      \"doc\": \"Opal segment offset\"\n" +
+      "    },\n" +
+      "    {\n" +
+      "      \"name\": \"key\",\n" +
+      "      \"type\":" + keySchema + ",\n" +
+      "      \"doc\": \"Raw bytes of the key\"\n" +
+      "    },\n" +
+      "    {\n" +
+      "      \"name\": \"value\",\n" +
+      "      \"type\":" + finalValueSchema + ",\n" +
+      "      \"doc\": \"Raw bytes of the value\"\n" +
+      "    },\n" +
+      "    {\n" +
+      "      \"name\": \"offset\",\n" +
+      "      \"type\": \"long\",\n" +
+      "      \"doc\": \"The offset of this record in Kafka\"\n" +
+      "    },\n" +
+      "    {\n" +
+      "      \"name\": \"DELETED_TS\",\n" +
+      "      \"type\": [\n" +
+      "        \"null\",\n" +
+      "        \"long\"\n" +
+      "      ],\n" +
+      "      \"doc\": \"If the current record is a PUT, this field will be null; if it's a DELETE, this field will be the offset of the record in Kafka\",\n" +
+      "      \"default\": null\n" +
+      "    },\n" +
+      "    {\n" +
+      "      \"name\": \"metadata\",\n" +
+      "      \"type\": {\n" +
+      "        \"type\": \"map\",\n" +
+      "        \"values\": {\n" +
+      "          \"type\": \"string\",\n" +
+      "          \"avro.java.string\": \"String\"\n" +
+      "        },\n" +
+      "        \"avro.java.string\": \"String\"\n" +
+      "      },\n" +
+      "      \"doc\": \"Metadata of the record; currently it contains the schemaId of the record\",\n" +
+      "      \"default\": {}\n" +
+      "    }\n" +
+      "  ]\n" +
+      "}";
   }
 
 }

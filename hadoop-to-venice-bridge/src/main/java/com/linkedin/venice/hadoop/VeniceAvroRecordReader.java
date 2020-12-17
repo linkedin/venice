@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.etl.ETLUtils;
+import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -10,6 +12,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
@@ -33,7 +36,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
   private Schema storeSchema;
   private Schema fileSchema;
 
-  private boolean isSourceETL;
+  private ETLValueSchemaTransformation etlValueSchemaTransformation;
 
   /**
    * This constructor is used when data is read from HDFS.
@@ -42,9 +45,9 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
    * @param valueFieldStr Field name of the value field
    * @param fs File system where the source data exists
    * @param hdfsPath Path of the avro file in the File system
-   * @param isSourceETL If the input source is output of Venice ETL. This will strip the value field of the union schema
+   * @param etlValueSchemaTransformation The type of transformation that was applied to this schema during ETL. When source data set is not an ETL job, use NONE.
    */
-  public VeniceAvroRecordReader(String topicName, String keyFieldStr, String valueFieldStr, FileSystem fs, Path hdfsPath, boolean isSourceETL) {
+  public VeniceAvroRecordReader(String topicName, String keyFieldStr, String valueFieldStr, FileSystem fs, Path hdfsPath, ETLValueSchemaTransformation etlValueSchemaTransformation) {
     super(topicName);
     if (fs != null && hdfsPath != null) {
       try {
@@ -56,7 +59,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
             + "the file exists and the data is in Avro format.", e);
       }
     }
-    this.isSourceETL = isSourceETL;
+    this.etlValueSchemaTransformation = etlValueSchemaTransformation;
     setupSchema(keyFieldStr, valueFieldStr);
   }
 
@@ -66,12 +69,12 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
    * @param fileSchema Schema of the source files
    * @param keyFieldStr Field name of the key field
    * @param valueFieldStr Field name of the value field
-   * @param isSourceETL If the input source is output of Venice ETL. This will strip the value field of the union schema
+   * @param etlValueSchemaTransformation The type of transformation that was applied to this schema during ETL. When source data set is not an ETL job, use NONE.
    */
-  public VeniceAvroRecordReader(String topicName, Schema fileSchema, String keyFieldStr, String valueFieldStr, boolean isSourceETL) {
+  public VeniceAvroRecordReader(String topicName, Schema fileSchema, String keyFieldStr, String valueFieldStr, ETLValueSchemaTransformation etlValueSchemaTransformation) {
     super(topicName);
     this.fileSchema = fileSchema;
-    this.isSourceETL = isSourceETL;
+    this.etlValueSchemaTransformation = etlValueSchemaTransformation;
     setupSchema(keyFieldStr, valueFieldStr);
   }
 
@@ -87,7 +90,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
       throw new VeniceSchemaFieldNotFoundException(valueFieldStr, "Could not find field: " + valueFieldStr + " from " + fileSchema.toString());
     }
 
-    if (isSourceETL) {
+    if (!etlValueSchemaTransformation.equals(ETLValueSchemaTransformation.NONE)) {
       List<Schema.Field> storeSchemaFields = new LinkedList<>();
 
       for (Schema.Field fileField : fileSchema.getFields()) {
@@ -98,7 +101,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
         // data, we strip the schema of the value field of the union type, leaving just the original value schema thus
         // passing the schema validation.
         if (fileField.name().equals(valueFieldStr)) {
-          fieldSchema = VsonAvroSchemaAdapter.stripFromUnion(fieldSchema);
+          fieldSchema = ETLUtils.getValueSchemaFromETLValueSchema(fieldSchema, etlValueSchemaTransformation);
         }
         storeSchemaFields.add(new Schema.Field(fileField.name(), fieldSchema, fileField.doc(), fileField.defaultValue(), fileField.order()));
       }
