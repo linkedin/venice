@@ -327,7 +327,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
                 } else {
                   ingestionService.reportIngestionError(result);
                 }
-              }
+              }, ingestionService.getIngestionExecutor()
           );
           partitionFutureMap.put(partitionId, future);
           ingestionService.topicPartitionIngestionFuture.putIfAbsent(topicName, partitionFutureMap);
