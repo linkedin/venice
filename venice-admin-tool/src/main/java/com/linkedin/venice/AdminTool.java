@@ -373,6 +373,9 @@ public class AdminTool {
         case DEMATERIALIZE_METADATA_STORE_VERSION:
           dematerializeMetadataStoreVersion(cmd);
           break;
+        case CREATE_DAVINCI_PUSH_STATUS_STORE:
+          createDaVinciPushStatusStore(cmd);
+          break;
         case NEW_STORE_ACL:
           createNewStoreWithAcl(cmd);
           break;
@@ -1433,6 +1436,12 @@ public class AdminTool {
     String veniceStoreName = getRequiredArgument(cmd, Arg.STORE);
     int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION), Arg.VERSION.name());
     ControllerResponse response = controllerClient.dematerializeMetadataStoreVersion(veniceStoreName, version);
+    printObject(response);
+  }
+
+  private static void createDaVinciPushStatusStore(CommandLine cmd) {
+    String veniceStoreName = getRequiredArgument(cmd, Arg.STORE);
+    ControllerResponse response = controllerClient.createDaVinciPushStatusStore(veniceStoreName);
     printObject(response);
   }
 

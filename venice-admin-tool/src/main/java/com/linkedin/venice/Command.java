@@ -174,6 +174,8 @@ public enum Command {
       new Arg[] {URL, CLUSTER, STORE, VERSION}),
   DEMATERIALIZE_METADATA_STORE_VERSION("dematerialize-metadata-store-version", "Dematerialize the metadata system store for an existing Venice store",
       new Arg[] {URL, CLUSTER, STORE, VERSION}),
+  CREATE_DAVINCI_PUSH_STATUS_STORE("create-davinci-push-status-store", "Create a Da Vinci push status store for an existing Venice store",
+      new Arg[] {URL, CLUSTER, STORE}),
   NEW_STORE_ACL("new-store-acl", "Create a new store with ACL permissions set",
       new Arg[]{URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA, ACL_PERMS},
       new Arg[]{OWNER, VSON_STORE}),
