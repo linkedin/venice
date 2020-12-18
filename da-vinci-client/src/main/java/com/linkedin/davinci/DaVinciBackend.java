@@ -249,7 +249,8 @@ public class DaVinciBackend implements Closeable {
       }
     }
 
-    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
+    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED) &&
+        (!configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists())) {
       // Close all opened store engines so child process can open them.
       logger.info(
           "Storage service has " + storageService.getStorageEngineRepository().getAllLocalStorageEngines().size() + " storage engine before clean up.");
