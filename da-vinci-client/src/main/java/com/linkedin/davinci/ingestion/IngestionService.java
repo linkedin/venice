@@ -30,9 +30,13 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.IngestionUtils.*;
+import static java.lang.Thread.*;
 
 
 /**
@@ -43,8 +47,9 @@ public class IngestionService extends AbstractVeniceService {
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
-  private ChannelFuture serverFuture;
+  private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(10);
 
+  private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
   private VeniceConfigLoader configLoader = null;
   private SubscriptionBasedReadOnlyStoreRepository storeRepository = null;
@@ -55,6 +60,7 @@ public class IngestionService extends AbstractVeniceService {
   private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private boolean isInitiated = false;
+
 
   private final int servicePort;
   private IngestionRequestClient reportClient;
@@ -115,6 +121,15 @@ public class IngestionService extends AbstractVeniceService {
       storageService.stop();
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Ingestion Service", e);
+    }
+
+    ingestionExecutor.shutdown();
+    try {
+      if (!ingestionExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+        ingestionExecutor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      currentThread().interrupt();
     }
   }
 
@@ -199,6 +214,10 @@ public class IngestionService extends AbstractVeniceService {
     return storeVersionStateSerializer;
   }
 
+  public ExecutorService getIngestionExecutor() {
+    return ingestionExecutor;
+  }
+
   public void reportIngestionCompletion(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
@@ -207,7 +226,7 @@ public class IngestionService extends AbstractVeniceService {
 
     VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
     // Make sure partition is not consuming so we can safely close the rocksdb partition
-    getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 10, 10);
+    getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, 60);
     getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
     logger.info("Closed partition: " + partitionId + " of topic: " + topicName);
 
