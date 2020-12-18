@@ -73,7 +73,7 @@ public class VeniceServer {
   private final Optional<DynamicAccessController> storeAccessController;
   private final Optional<ClientConfig> clientConfigForConsumer;
   private final AtomicBoolean isStarted;
-  private final List<AbstractVeniceService> services;
+  private List<AbstractVeniceService> services;
 
   private StorageService storageService;
   private StorageMetadataService storageMetadataService;
@@ -132,7 +132,6 @@ public class VeniceServer {
     this.routerAccessController = routerAccessController;
     this.storeAccessController = storeAccessController;
     this.clientConfigForConsumer = clientConfigForConsumer;
-    this.services = createServices();
   }
 
   /**
@@ -332,6 +331,12 @@ public class VeniceServer {
     if (!isntStarted) {
       throw new IllegalStateException("Service is already started!");
     }
+    /**
+     * Move all the service creation here since {@link #storeAccessController} can only be initialized
+     * in this function since internally it depends on d2 client to finish the initialization, and d2 client
+     * is not started in the constructor.
+     */
+    this.services = createServices();
     // TODO - Efficient way to lock java heap
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
