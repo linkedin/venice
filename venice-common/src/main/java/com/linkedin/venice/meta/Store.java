@@ -19,7 +19,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.specific.SpecificRecord;
 
 
 /**
@@ -98,7 +98,7 @@ public abstract class Store {
    * @param <T>
    * @return
    */
-  static <T extends GenericRecord> T prefillAvroRecordWithDefaultValue(T recordType) {
+  static <T extends SpecificRecord> T prefillAvroRecordWithDefaultValue(T recordType) {
     Schema schema = recordType.getSchema();
     for (Schema.Field field : schema.getFields()) {
       if (field.defaultValue() != null) {
@@ -114,11 +114,11 @@ public abstract class Store {
           case FLOAT:
           case DOUBLE:
           case STRING:
-            recordType.put(field.name(), defaultValue);
+            recordType.put(field.pos(), defaultValue);
             break;
           case UNION:
             if (null == defaultValue) {
-              recordType.put(field.name(), null);
+              recordType.put(field.pos(), null);
             } else {
               throw new VeniceException("Non 'null' default value is not supported for union type: " + field.name());
             }
@@ -126,7 +126,7 @@ public abstract class Store {
           case ARRAY:
             Collection collection = (Collection)defaultValue;
             if (collection.isEmpty()) {
-              recordType.put(field.name(), new ArrayList<>());
+              recordType.put(field.pos(), new ArrayList<>());
             } else {
               throw new VeniceException("Non 'empty array' default value is not supported for array type: " + field.name());
             }
@@ -134,7 +134,7 @@ public abstract class Store {
           case MAP:
             Map map = (Map)defaultValue;
             if (map.isEmpty()) {
-              recordType.put(field.name(), new HashMap<>());
+              recordType.put(field.pos(), new HashMap<>());
             } else {
               throw new VeniceException("Non 'empty map' default value is not supported for map type: " + field.name());
             }
