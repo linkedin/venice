@@ -44,7 +44,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   public synchronized void loadAllStats() {
     metadataRepository.getAllStores().forEach(store -> {
       addStore(store.getName());
-      updateStatsVersionInfo(store);
+      updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
     });
   }
 
@@ -67,7 +67,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       if (null == store) {
         throw new VeniceException("Unknown store: " + storeName);
       }
-      updateStatsVersionInfo(store);
+      updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
     }
 
     return aggStats.get(storeName);
@@ -82,15 +82,13 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     }
   }
 
-  private void updateStatsVersionInfo(Store store) {
-    VeniceVersionedStats<STATS, STATS_REPORTER> versionedDIVStats = getVersionedStats(store.getName());
+  protected void updateStatsVersionInfo(String storeName, List<Version> existingVersions, int newCurrentVersion) {
+    VeniceVersionedStats<STATS, STATS_REPORTER> versionedDIVStats = getVersionedStats(storeName);
 
-    int newCurrentVersion = store.getCurrentVersion();
     if (newCurrentVersion != versionedDIVStats.getCurrentVersion()) {
       versionedDIVStats.setCurrentVersion(newCurrentVersion);
     }
 
-    List<Version> existingVersions = store.getVersions();
     List<Integer> existingVersionNumbers =
         existingVersions.stream().map(Version::getNumber).collect(Collectors.toList());
 
@@ -115,7 +113,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
         if (futureVersion != NON_EXISTING_VERSION) {
           logger.warn(
-              "Multiple versions have been marked as STARTED PUSHING. " + "There might be a parallel push. Store: " + store.getName());
+              "Multiple versions have been marked as STARTED PUSHING. " + "There might be a parallel push. Store: " + storeName);
         }
 
         //in case there is a parallel push, record the largest version as future version
@@ -126,7 +124,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
         //check past version
         if (status == VersionStatus.ONLINE && versionNum != newCurrentVersion) {
           if (backupVersion != 0) {
-            logger.warn("There are more than 1 backup versions. Something might be wrong." + "Store: " + store.getName());
+            logger.warn("There are more than 1 backup versions. Something might be wrong." + "Store: " + storeName);
           }
 
           backupVersion = versionNum;
@@ -158,6 +156,6 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
   @Override
   public void handleStoreChanged(Store store) {
-    updateStatsVersionInfo(store);
+    updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
   }
 }

@@ -454,6 +454,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, partition, nextSeqNum()));
   }
 
+  /**
+   * Get the Store for this ingestion task. Short term solution for funneling versioned stats of zk shared system stores.
+   */
+  public Store getIngestionStore() {
+    return storeRepository.getStoreOrThrow(storeName);
+  }
+
   public abstract void promoteToLeader(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
   public abstract void demoteToStandby(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
 

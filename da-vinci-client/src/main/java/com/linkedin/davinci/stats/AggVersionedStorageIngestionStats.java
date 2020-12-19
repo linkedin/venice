@@ -1,7 +1,10 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.AbstractVeniceAggVersionedStats;
 import com.linkedin.venice.stats.AbstractVeniceStatsReporter;
@@ -37,6 +40,16 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     if (!Version.isVersionTopicOrStreamReprocessingTopic(storeVersionTopic)) {
       LOGGER.warn("Invalid store version topic name: " + storeVersionTopic);
       return;
+    }
+    VeniceSystemStoreType systemStoreType =
+        VeniceSystemStoreUtils.getSystemStoreType(Version.parseStoreFromKafkaTopicName(storeVersionTopic));
+    if (systemStoreType != null && systemStoreType.isStoreZkShared()) {
+      // TODO This is only a temporary solution to funnel the stats to the right versions (current, backup, future).
+      // Once multi-version support is available the stats version info should be updated by the handleStoreChanged of
+      // the corresponding Venice store instead.
+      Store zkSharedStore = ingestionTask.getIngestionStore();
+      updateStatsVersionInfo(Version.parseStoreFromKafkaTopicName(storeVersionTopic), zkSharedStore.getVersions(),
+          zkSharedStore.getCurrentVersion());
     }
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
     int version = Version.parseVersionFromKafkaTopicName(storeVersionTopic);
