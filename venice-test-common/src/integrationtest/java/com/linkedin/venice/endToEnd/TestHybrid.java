@@ -1284,15 +1284,7 @@ public class TestHybrid {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
       Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
 
-      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
-          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          TopicManager topicManager = new TopicManager(
-              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-              100,
-              MIN_COMPACTION_LAG,
-              TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
-
+      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties)) {
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
             .setHybridRewindSeconds(streamingRewindSeconds)
@@ -1399,6 +1391,103 @@ public class TestHybrid {
               Object value = stringDeserializer.deserialize(null, body);
               Assert.assertEquals(value.toString(), value2);
             }
+          }
+        });
+      }
+    } finally {
+      if (null != veniceProducer) {
+        veniceProducer.stop();
+      }
+    }
+  }
+
+  @Test(dataProvider = "isLeaderFollowerModelEnabled", timeOut = 60 * Time.MS_PER_SECOND)
+  public void testHybridDIVEnhancement(boolean isLeaderFollowerModelEnabled) throws Exception {
+    Properties extraProperties = new Properties();
+    if (isLeaderFollowerModelEnabled) {
+      extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    }
+
+    SystemProducer veniceProducer = null;
+
+    // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,
+        2, 1000000, false, false, extraProperties)) {
+      // Added a server with shared consumer enabled.
+      Properties serverPropertiesWithSharedConsumer = new Properties();
+      serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
+      extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
+      extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+      venice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+
+      logger.info("Finished creating VeniceClusterWrapper");
+
+      long streamingRewindSeconds = 10L;
+      long streamingMessageLag = 2L;
+
+      String storeName = TestUtils.getUniqueString("hybrid-store");
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+
+      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+          TopicManager topicManager = new TopicManager(
+              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+              100,
+              MIN_COMPACTION_LAG,
+              TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+
+        // Have 1 partition only, so that all keys are produced to the same partition
+        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setHybridRewindSeconds(streamingRewindSeconds)
+            .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+            .setPartitionCount(1)
+        );
+
+        Assert.assertFalse(response.isError());
+
+        //Do an H2V push
+        runH2V(h2vProperties, 1, controllerClient);
+
+        /**
+         * The following k/v pairs will be sent to RT, with the same producer GUID:
+         * <key1, value1, Sequence number: 1>, <key1, value2, seq: 2>, <key1, value1, seq: 1 (Duplicated message)>, <key2, value1, seq: 3>
+         * First check key2=value1, which confirms all messages above have been consumed by servers; then check key1=value2 to confirm
+         * that duplicated message will not be persisted into disk
+         */
+        String key1 = "duplicated_message_test_key_1";
+        String value1 = "duplicated_message_test_value_1";
+        String value2 = "duplicated_message_test_value_2";
+        String key2 = "duplicated_message_test_key_2";
+        Properties veniceWriterProperties = new Properties();
+        veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+        /**
+         * Set max segment elapsed time to 0 to enforce creating small segments aggressively
+         */
+        veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
+        AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
+        AvroGenericDeserializer<String> stringDeserializer = new AvroGenericDeserializer<>(Schema.parse(STRING_SCHEMA), Schema.parse(STRING_SCHEMA));
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(Version.composeRealTimeTopic(storeName))) {
+          for (int i = 1; i <= 100; i++) {
+            realTimeTopicWriter.put(stringSerializer.serialize(String.valueOf(i)), stringSerializer.serialize("hybrid_DIV_enhancement_" + i), 1);
+          }
+        }
+
+        // Check both leader and follower hosts
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            for (int i = 1; i <= 100; i++) {
+              String key = Integer.toString(i);
+              Object value = client.get(key).get();
+              assertNotNull(value, "Key " + i + " should not be missing!");
+              assertEquals(value.toString(), "hybrid_DIV_enhancement_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
           }
         });
       }
