@@ -524,4 +524,17 @@ public interface Admin extends AutoCloseable, Closeable {
      * @param storeName
      */
     void deleteAclForStore(String clusterName, String storeName);
+
+    /**
+     * Check whether the controller works as a parent controller
+     * @return true if it works as a parent controller. Otherwise, return false.
+     */
+    boolean isParent();
+
+    /**
+     * Get child datacenter to child controller url mapping
+     * @param clusterName
+     * @return A map of child datacenter -> child controller url
+     */
+    Map<String, String> getChildDataCenterControllerUrlMap(String clusterName);
 }

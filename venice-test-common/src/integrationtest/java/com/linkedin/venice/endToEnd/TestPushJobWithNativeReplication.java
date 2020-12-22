@@ -16,28 +16,36 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.samza.config.MapConfig;
+import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
@@ -222,5 +230,59 @@ public class  TestPushJobWithNativeReplication {
         }
       }
     });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testNativeReplicationForHybrid() throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    File inputDir = getTempDataDirectory();
+    VeniceControllerWrapper parentController =
+            parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+
+    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 10);
+    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
+            .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setLeaderFollowerModel(true)
+            .setNativeReplicationEnabled(true)
+            .setHybridRewindSeconds(10)
+            .setHybridOffsetLagThreshold(10);
+
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+
+    // Write batch data
+    KafkaPushJob job = new KafkaPushJob("Test push job", props);
+    job.run();
+
+    // Write Samza data (aggregated mode)
+    SystemProducer veniceProducer = null;
+    try {
+      Map<String, String> samzaConfig = new HashMap<>();
+      String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
+      samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+      samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+      samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
+      samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
+      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
+      samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+      samzaConfig.put(SSL_ENABLED, "false");
+      VeniceSystemFactory factory = new VeniceSystemFactory();
+      veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+      veniceProducer.start();
+
+      //Verify the kafka URL being returned to Samza is the same as dc-0 kafka url.
+      Assert.assertEquals(((VeniceSystemProducer)veniceProducer).getKafkaBootstrapServers(),
+              childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
+      }
+    }
   }
 }

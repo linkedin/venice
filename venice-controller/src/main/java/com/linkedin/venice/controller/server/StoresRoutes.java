@@ -4,7 +4,6 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
-import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -25,7 +24,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -159,12 +157,6 @@ public class StoresRoutes extends AbstractRoute {
           return;
         }
 
-        // return child controller(s) url to admin-tool monitor if this is parent controller
-        if (admin.getClass().isAssignableFrom(VeniceParentHelixAdmin.class)) {
-          Map<String, String> childClusterMap = ((VeniceParentHelixAdmin) admin).getChildClusterMap(destClusterName);
-          veniceResponse.setChildClusterMap(childClusterMap);
-        }
-
         admin.migrateStore(srcClusterName, destClusterName, storeName);
       }
     };
@@ -222,12 +214,6 @@ public class StoresRoutes extends AbstractRoute {
           String storeName = request.queryParams(NAME);
 
           veniceResponse.setName(storeName);
-
-          // return child controller(s) url to admin-tool monitor if this is parent controller
-          if (admin.getClass().isAssignableFrom(VeniceParentHelixAdmin.class)) {
-            Map<String, String> childClusterMap = ((VeniceParentHelixAdmin) admin).getChildClusterMap(destClusterName);
-            veniceResponse.setChildClusterMap(childClusterMap);
-          }
 
           String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
           veniceResponse.setSrcClusterName(clusterDiscovered);

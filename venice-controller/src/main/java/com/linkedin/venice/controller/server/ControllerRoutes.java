@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import java.util.Map;
@@ -50,8 +49,8 @@ public class ControllerRoutes extends AbstractRoute {
 
         veniceResponse.setCluster(clusterName);
 
-        if (admin.getClass().isAssignableFrom(VeniceParentHelixAdmin.class)) {
-          Map<String, String> childControllerUrls = ((VeniceParentHelixAdmin) admin).getChildClusterMap(clusterName);
+        if (admin.isParent()) {
+          Map<String, String> childControllerUrls = admin.getChildDataCenterControllerUrlMap(clusterName);
           veniceResponse.setChildClusterMap(childControllerUrls);
         }
       }

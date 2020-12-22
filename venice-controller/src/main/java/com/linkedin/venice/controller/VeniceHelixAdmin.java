@@ -104,6 +104,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -4491,5 +4492,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             && (hybridStoreConfig.getRewindTimeInSeconds() >= 0
                 || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
                 || hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
+    }
+
+    @Override
+    public boolean isParent() {
+        return multiClusterConfigs.isParent();
+    }
+
+    @Override
+    public Map<String, String> getChildDataCenterControllerUrlMap(String clusterName) {
+        /**
+         * According to {@link VeniceControllerConfig#VeniceControllerConfig(VeniceProperties)}, the map is empty
+         * if this is a child controller.
+         */
+        return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterControllerUrlMap();
     }
 }

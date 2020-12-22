@@ -101,6 +101,7 @@ public class VeniceSystemProducer implements SystemProducer {
   private D2ControllerClient controllerClient;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
   private String topicName;
+  private String kafkaBootstrapServers;
 
   private boolean isWriteComputeEnabled = false;
 
@@ -218,6 +219,7 @@ public class VeniceSystemProducer implements SystemProducer {
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + versionCreationResponse);
     this.topicName = versionCreationResponse.getKafkaTopic();
+    this.kafkaBootstrapServers = versionCreationResponse.getKafkaBootstrapServers();
 
     StoreResponse storeResponse = (StoreResponse) controllerRequestWithRetry(
         () -> this.controllerClient.getStore(storeName));
@@ -496,5 +498,12 @@ public class VeniceSystemProducer implements SystemProducer {
     if (pushMonitor.isPresent()) {
       pushMonitor.get().setStreamReprocessingExitMode(exitMode);
     }
+  }
+
+  /**
+   * Only used by tests
+   */
+  public String getKafkaBootstrapServers() {
+    return this.kafkaBootstrapServers;
   }
 }
