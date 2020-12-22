@@ -95,6 +95,7 @@ public enum Arg {
   FABRIC("fabric", "fa", true, "Which fabric to complete store migration."),
   DEFAULT_CONFIGS("default-configs", "dc", false, "Use default store configs (intended for system stores)"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
+  LOG_METADATA("log-metedata", "lm", false, "Only log the metadata for each kafka message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC("native-replication-source-fabric", "nrsf", true, "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."),
   PRINCIPAL("principal", "p", true, "Principal to add/modify/delete ACLs");
 

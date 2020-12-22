@@ -967,9 +967,14 @@ public class AdminTool {
       maxConsumeAttempts = Integer.valueOf(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
     }
 
-    new KafkaTopicDumper(
+    KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
         controllerClient, consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount, parentDir, maxConsumeAttempts)
-        .fetch().dumpToFile();
+        .fetch();
+    if (cmd.hasOption(Arg.LOG_METADATA.toString())) {
+      kafkaTopicDumper.logMetadata();
+    } else {
+      kafkaTopicDumper.dumpToFile();
+    }
   }
 
   private static void migrateStore(CommandLine cmd) {
