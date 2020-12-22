@@ -1,7 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 
-public class StoreMigrationResponse extends ChildAwareResponse {
+public class StoreMigrationResponse extends ControllerResponse {
   private String srcClusterName;
 
   public String getSrcClusterName() {

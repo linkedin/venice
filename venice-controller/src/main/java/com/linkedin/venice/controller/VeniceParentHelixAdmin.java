@@ -2115,11 +2115,6 @@ public class VeniceParentHelixAdmin implements Admin {
     sendAdminMessageAndWaitForConsumed(srcClusterName, storeName, message);
   }
 
-  public Map<String, String> getChildClusterMap(String clusterName) {
-    // key: datacenter, value: child controller url
-    return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterControllerUrlMap();
-  }
-
   @Override
   public Version newZkSharedStoreVersion(String clusterName, String zkSharedStoreName) {
     Version newVersion = veniceHelixAdmin.newZkSharedStoreVersion(clusterName, zkSharedStoreName);
@@ -2423,4 +2418,13 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  @Override
+  public boolean isParent() {
+    return veniceHelixAdmin.isParent();
+  }
+
+  @Override
+  public Map<String, String> getChildDataCenterControllerUrlMap(String clusterName) {
+    return veniceHelixAdmin.getChildDataCenterControllerUrlMap(clusterName);
+  }
 }
