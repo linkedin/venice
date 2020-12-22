@@ -229,4 +229,29 @@ public class KafkaTopicDumper {
       logger.error("Failed when flushing avro file");
     }
   }
+
+  /**
+   * Log the metadata for each kafka message.
+   */
+  public void logMetadata() {
+    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : kafkaRecordList) {
+      try {
+        KafkaKey kafkaKey = record.key();
+        KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
+
+        ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
+
+        String msg = kafkaKey.isControlMessage() ? ControlMessageType.valueOf((ControlMessage) kafkaMessageEnvelope.payloadUnion)
+            .toString() : MessageType.valueOf(kafkaMessageEnvelope).toString();
+        logger.info("KafkaOffset: " + record.offset() + " ControlMsg: " + (kafkaKey.isControlMessage() ? "Yes" : "No")
+            + " msgType: " + msg + " ProducerMetadata:(" + "guid: " + producerMetadata.producerGUID.toString()
+            + " seq: " + producerMetadata.messageSequenceNumber + " segment: " + producerMetadata.segmentNumber
+            + " upstreamOffset: " + producerMetadata.upstreamOffset + ") footer hostname: " + (
+            kafkaMessageEnvelope.leaderMetadataFooter == null ? "" : kafkaMessageEnvelope.leaderMetadataFooter.hostName)
+            + " footer offset: " + (kafkaMessageEnvelope.leaderMetadataFooter == null ? "" : kafkaMessageEnvelope.leaderMetadataFooter.upstreamOffset));
+      } catch (Exception e) {
+        logger.error("Failed when building record for offset " + record.offset(), e);
+      }
+    }
+  }
 }
