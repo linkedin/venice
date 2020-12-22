@@ -2,28 +2,21 @@ package com.linkedin.venice;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.VeniceKafkaDecodedRecord;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.File;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -40,9 +33,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.record.TimestampType;
 import org.apache.log4j.Logger;
-import org.codehaus.jackson.node.JsonNodeFactory;
-
 
 public class KafkaTopicDumper {
   private static final Logger logger = Logger.getLogger(KafkaTopicDumper.class);
@@ -51,9 +43,11 @@ public class KafkaTopicDumper {
   public static final String VENICE_ETL_OFFSET_FIELD = "offset";
   public static final String VENICE_ETL_DELETED_TS_FIELD = "DELETED_TS";
   public static final String VENICE_ETL_METADATA_FIELD = "metadata";
-  public static final String VENICE_ETL_SCHEMAID_FIELD = "schemaId";
 
-  private ControllerClient controllerClient;
+  public static final String VENICE_ETL_BROKER_TIMESTAMP_FIELD = "brokerTimestamp";
+  public static final String VENICE_ETL_PRODUCER_TIMESTAMP_FIELD = "producerTimestamp";
+  public static final String VENICE_ETL_PARTITION_FIELD = "partition";
+
   private String storeName;
   private String topicName;
   private int partition;
@@ -69,8 +63,11 @@ public class KafkaTopicDumper {
 
   public KafkaTopicDumper(ControllerClient controllerClient, Properties consumerProps, String topic, int partitionNumber,  int startingOffset, int messageCount, String parentDir, int maxConsumeAttempts) {
     this.max_consume_attempts = maxConsumeAttempts;
-    this.controllerClient = controllerClient;
-    this.storeName = Version.parseStoreFromKafkaTopicName(topic);
+    if (Version.isVersionTopic(topic)) {
+      this.storeName = Version.parseStoreFromKafkaTopicName(topic);
+    } else {
+      this.storeName = Version.parseStoreFromRealTimeTopic(topic);
+    }
     this.topicName = topic;
     this.partition = partitionNumber;
     this.parentDirectory = parentDir;
@@ -87,13 +84,17 @@ public class KafkaTopicDumper {
     this.consumer = new KafkaConsumer(consumerProps);
 
     TopicPartition partition = new TopicPartition(topic, partitionNumber);
-    consumer.assign(Collections.singletonList(partition));
-    consumer.seek(partition, startingOffset);
-    Map<TopicPartition, Long> partitionToEndOffset = consumer.endOffsets(Collections.singletonList(partition));
-    logger.info("End offset for partition " + partition.partition() + " is " + partitionToEndOffset.get(partition));
+    List<TopicPartition> partitions = Collections.singletonList(partition);
+    consumer.assign(partitions);
+    Map<TopicPartition, Long> partitionToBeginningOffset = consumer.beginningOffsets(partitions);
+    long computedStartingOffset = Math.max(partitionToBeginningOffset.get(partition), startingOffset);
+    logger.info("Starting from offset: " + computedStartingOffset);
+    consumer.seek(partition, computedStartingOffset);
+    Map<TopicPartition, Long> partitionToEndOffset = consumer.endOffsets(partitions);
     this.endOffset = partitionToEndOffset.get(partition);
+    logger.info("End offset for partition " + partition.partition() + " is " + this.endOffset);
     if (messageCount < 0) {
-      this.messageCount = partitionToEndOffset.get(partition);
+      this.messageCount = this.endOffset;
     } else {
       this.messageCount = messageCount;
     }
@@ -152,13 +153,11 @@ public class KafkaTopicDumper {
       } else if (field.name().equals(VENICE_ETL_VALUE_FIELD)) {
         outputSchemaFields.add(new Schema.Field(field.name(), Schema.createUnion(
             Arrays.asList(Schema.create(Schema.Type.NULL), Schema.parse(this.latestValueSchemaStr))), field.doc(), field.defaultValue(), field.order()));
-      } else if (!field.name().equals(VENICE_ETL_METADATA_FIELD)) {
-        // any fields except key, value and metadata will be added using the original schemas, like the offset field and the DELETED_TS field
+      } else {
+        // any fields except key and value will be added using the original schemas, like the offset field and the DELETED_TS field
         outputSchemaFields.add(new Schema.Field(field.name(), field.schema(), field.doc(), field.defaultValue(), field.order()));
       }
     }
-    // add partition information
-    outputSchemaFields.add(new Schema.Field("partitionId", Schema.create(Schema.Type.INT), "", JsonNodeFactory.instance.numberNode(-1)));
     Schema outputSchema = Schema.createRecord("KafkaRecord", "", "none", false);
     outputSchema.setFields(outputSchemaFields);
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(outputSchema);
@@ -194,17 +193,24 @@ public class KafkaTopicDumper {
         convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.offset());
 
         byte[] keyBytes = kafkaKey.getKey();
-        Decoder keyDecoder = decoderFactory.createBinaryDecoder(kafkaKey.getKey(), null);
+        Decoder keyDecoder = decoderFactory.createBinaryDecoder(keyBytes, null);
         Object keyRecord = keyReader.read(null, keyDecoder);
         convertedRecord.put(VENICE_ETL_KEY_FIELD, keyRecord);
-        convertedRecord.put("partitionId", record.partition());
+        Map<CharSequence, CharSequence> metadataMap = new HashMap<>();
+
+        metadataMap.put(VENICE_ETL_PARTITION_FIELD, String.valueOf(record.partition()));
+        metadataMap.put(VENICE_ETL_PRODUCER_TIMESTAMP_FIELD, String.valueOf(kafkaMessageEnvelope.producerMetadata.messageTimestamp));
+        metadataMap.put(VENICE_ETL_BROKER_TIMESTAMP_FIELD, String.valueOf(TimestampType.LOG_APPEND_TIME.equals(record.timestampType()) ? record.timestamp() : 0));
+
+        convertedRecord.put(VENICE_ETL_METADATA_FIELD, metadataMap);
+
         switch (MessageType.valueOf(kafkaMessageEnvelope)) {
           case PUT:
             // put message
             Put put = (Put) kafkaMessageEnvelope.payloadUnion;
             ByteBuffer putValue = put.putValue;
             int schemaId = put.schemaId;
-            Decoder valueDecoder = decoderFactory.createBinaryDecoder(ByteUtils.extractByteArray(put.putValue), null);
+            Decoder valueDecoder = decoderFactory.createBinaryDecoder(ByteUtils.extractByteArray(putValue), null);
             Object valueRecord = valueReaders[schemaId - 1].read(null, valueDecoder);
             convertedRecord.put(VENICE_ETL_VALUE_FIELD, valueRecord);
             break;
