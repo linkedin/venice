@@ -1,5 +1,6 @@
 package com.linkedin.venice.samza;
 
+import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -70,6 +71,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   // D2 service name for parent cluster
   public static final String VENICE_PARENT_D2_SERVICE = "VeniceParentController";
 
+  public static final String APP_RUNNING_FABRIC = "com.linkedin.app.env";
   /**
    * A global static counter to track how many factory one process would create.
    * In general, one factory is enough for one application; otherwise, if there are
@@ -118,9 +120,9 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
   // Extra `Config` parameter is to ease the internal implementation
   protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
-      Version.PushType venicePushType, String samzaJobId, Config config,
+      Version.PushType venicePushType, String samzaJobId, String runningFabric, Config config,
       Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
-    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, this,
+    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, runningFabric, this,
         sslFactory, partitioners);
   }
 
@@ -174,6 +176,20 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     LOGGER.info(VENICE_PARENT_D2_ZK_HOSTS + ": " + veniceParentZKHosts);
     LOGGER.info(D2_ZK_HOSTS_PROPERTY + ": " + localVeniceZKHosts);
 
+    String runningFabric = config.get(APP_RUNNING_FABRIC);
+    LOGGER.info("Running Fabric from config: " + runningFabric);
+    if (runningFabric == null) {
+      runningFabric = System.getProperty(APP_RUNNING_FABRIC);
+      LOGGER.info("Running Fabric from environment: " + runningFabric);
+      if (runningFabric != null) {
+        runningFabric = runningFabric.toLowerCase();
+      }
+    }
+    if (runningFabric != null && runningFabric.contains("corp")) {
+      runningFabric = NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
+    }
+    LOGGER.info("Final Running Fabric: " + runningFabric);
+
     String veniceD2ZKHost;
     String veniceD2Service;
     if (veniceAggregate) {
@@ -185,7 +201,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     }
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
     SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType,
-        samzaJobId, config, sslFactory, partitioners);
+        samzaJobId, runningFabric, config, sslFactory, partitioners);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }
