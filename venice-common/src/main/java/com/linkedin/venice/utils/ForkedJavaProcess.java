@@ -1,23 +1,24 @@
 package com.linkedin.venice.utils;
 
 import io.github.classgraph.ClassGraph;
+import io.github.classgraph.ScanResult;
+import nonapi.io.github.classgraph.utils.JarUtils;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
-import java.net.URL;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Enumeration;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -48,22 +49,31 @@ public final class ForkedJavaProcess extends Process {
 
     List<String> command = new ArrayList<>();
     command.add(Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString());
-    command.add("-cp");
-    command.add(buildClassPath());
     command.add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
 
     /**
      * Add log4j2 configuration file. This config will inherit the log4j2 config file from parent process and set up correct logging level.
      */
     for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
-      if (arg.contains("log4j2.configuration")) {
-        String log4jConfigFilePath = arg.split("=")[1];
-        command.add("-Dlog4j2.configuration=" + log4jConfigFilePath);
-        command.add("-Dlog4j2.configurationFile=" + log4jConfigFilePath);
+      if (arg.startsWith("-Dlog4j2")) {
+        command.add(arg);
       }
     }
 
-    int debugPort = -1;
+    try (ScanResult scanResult = new ClassGraph().scan()) {
+      Set<File> classpathDirs = new LinkedHashSet<>();
+      for (File file : scanResult.getClasspathFiles()) {
+        if (file.isDirectory() || file.getName().equals("*") || file.getAbsolutePath().contains(".gradle")) {
+          classpathDirs.add(file);
+        } else {
+          classpathDirs.add(new File(file.getParentFile(), "*"));
+        }
+      }
+      command.add("-cp");
+      command.add(JarUtils.pathElementsToPathStr(classpathDirs));
+    }
+
+    int debugPort = 0;
     if (debug) {
       debugPort = Utils.getFreePort();
       command.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=" + debugPort);
@@ -73,38 +83,8 @@ public final class ForkedJavaProcess extends Process {
     command.addAll(Arrays.asList(args));
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    Logger logger = Logger.getLogger(appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + ", debugPort=" + debugPort);
+    Logger logger = Logger.getLogger(appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + (debug ? ", debugPort=" + debugPort : ""));
     return new ForkedJavaProcess(process, logger);
-  }
-
-  private static String buildClassPath() throws IOException {
-    // Using set to remove duplicate classPath folders to avoid argument list too long error.
-    Set<String> classPathDirs = new HashSet<>();
-
-    // Get all jar file paths and extract their parent folders.
-    List<URL> urls = new ClassGraph().scan().getClasspathURLs();
-    for (URL url : urls) {
-      String jarFilePath = url.getPath();
-      classPathDirs.add(jarFilePath.substring(0, jarFilePath.lastIndexOf('/')));
-    }
-
-    // Adding classPath from current context classloader.
-    Enumeration<URL> roots = Thread.currentThread().getContextClassLoader().getResources("");
-    while (roots.hasMoreElements()) {
-      String classPathRootDir = roots.nextElement().getPath();
-      classPathDirs.add(classPathRootDir);
-    }
-
-    String originalClassPath = System.getProperty("java.class.path");
-    StringBuilder classPath = new StringBuilder(originalClassPath);
-    for (String classPathDir : classPathDirs) {
-      logger.debug("Adding class path directory:  " + classPathDir);
-      classPath.append(":").append(classPathDir).append("/*");
-    }
-
-    logger.debug("Original class path length: " + originalClassPath.length());
-    logger.debug("Updated class path length: " + classPath.length());
-    return classPath.toString();
   }
 
   /**
@@ -133,6 +113,8 @@ public final class ForkedJavaProcess extends Process {
         }
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
+      } finally {
+        logger.info("Stopped logging standard output of the forked process.");
       }
     });
   }
@@ -150,7 +132,7 @@ public final class ForkedJavaProcess extends Process {
 
     try {
       process.destroy();
-      if (!process.waitFor(30, TimeUnit.SECONDS)) {
+      if (!process.waitFor(60, TimeUnit.SECONDS)) {
         process.destroyForcibly();
       }
     } catch (InterruptedException e) {
