@@ -56,4 +56,6 @@ public class VeniceConstants {
   // URI: /hybrid_store_quota/storeName
   public static final String TYPE_HYBRID_STORE_QUOTA = "hybrid_store_quota";
   // End of router request path
+
+  public static final String NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC = "prod-lva1";
 }

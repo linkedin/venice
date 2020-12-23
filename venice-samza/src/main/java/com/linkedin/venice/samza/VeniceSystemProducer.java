@@ -86,6 +86,7 @@ public class VeniceSystemProducer implements SystemProducer {
   private final Optional<String> partitioners;
   private final Time time;
   private final String fsBasePath;
+  private String runningFabric = null;
 
 
   // Mutable, lazily initialized, state
@@ -112,25 +113,30 @@ public class VeniceSystemProducer implements SystemProducer {
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory,
+      Version.PushType pushType, String samzaJobId, String runningFabric, VeniceSystemFactory factory,
       Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
-    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, factory,
+    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, runningFabric, factory,
         sslFactory, partitioners, SystemTime.INSTANCE);
   }
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory,
+      Version.PushType pushType, String samzaJobId, String runningFabric, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory,
       Optional<String> partitioners, Time time) {
     this.veniceD2ZKHost = veniceD2ZKHost;
     this.d2ServiceName = d2ServiceName;
     this.storeName = storeName;
     this.pushType = pushType;
     this.samzaJobId = samzaJobId;
+    this.runningFabric = runningFabric;
     this.factory = factory;
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
     this.time = time;
     this.fsBasePath = "./tmp/d2/" + storeName;
+  }
+
+  public String getRunningFabric() {
+    return this.runningFabric;
   }
 
   protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier) {
@@ -214,7 +220,7 @@ public class VeniceSystemProducer implements SystemProducer {
             false,
             partitioners,
             Optional.empty(),
-            Optional.empty()
+            Optional.ofNullable(runningFabric)
         )
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + versionCreationResponse);

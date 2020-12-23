@@ -1,5 +1,6 @@
 package com.linkedin.venice.samza;
 
+import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -13,12 +14,14 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 
 import com.linkedin.venice.utils.Utils;
+import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.SamzaException;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -31,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
 
@@ -228,6 +232,39 @@ public class VeniceSystemFactoryTest {
       Object actualValue = client.get(readKey).get();
       assertEquals(actualValue, expectedValue,
           "Expected [" + expectedValue + "] of type " + expectedValue.getClass() + " but found [" + actualValue + "] of type " + actualValue.getClass());
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testGetProducerRunningFabric() throws Exception {
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    Map<String, String> samzaConfig = getSamzaProducerConfig(cluster, "test-store-sr", Version.PushType.STREAM_REPROCESSING);
+
+    //null runningFabric
+    SystemProducer producer1 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    if (producer1 instanceof VeniceSystemProducer) {
+      assertEquals(((VeniceSystemProducer)producer1).getRunningFabric(), null);
+    }
+
+    //set runningFabric through system Config
+    System.setProperty("com.linkedin.app.env", "dc-1");
+    SystemProducer producer2 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    if (producer2 instanceof VeniceSystemProducer) {
+      assertEquals(((VeniceSystemProducer)producer2).getRunningFabric(), "dc-1");
+    }
+
+    //set runningFabric through samza Config.
+    samzaConfig.put("com.linkedin.app.env", "dc-0");
+    SystemProducer producer3 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    if (producer3 instanceof VeniceSystemProducer) {
+      assertEquals(((VeniceSystemProducer)producer3).getRunningFabric(), "dc-0");
+    }
+
+    //set runningFabric to corp.
+    samzaConfig.put("com.linkedin.app.env", "corp-lva1");
+    SystemProducer producer4 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    if (producer4 instanceof VeniceSystemProducer) {
+      assertEquals(((VeniceSystemProducer)producer4).getRunningFabric(), VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC);
     }
   }
 }
