@@ -66,7 +66,7 @@ public final class ForkedJavaProcess extends Process {
         if (file.isDirectory() || file.getName().equals("*") || file.getAbsolutePath().contains(".gradle")) {
           classpathDirs.add(file);
         } else {
-          classpathDirs.add(new File(file.getParentFile(), "*"));
+          classpathDirs.add(new File(file.getParent(), "*"));
         }
       }
       command.add("-cp");

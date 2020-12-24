@@ -8,6 +8,7 @@ import org.apache.log4j.Logger;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A class used for wrapping external systems and Venice components and
@@ -24,29 +25,39 @@ public abstract class ProcessWrapper implements Closeable {
   // Add a flag to avoid stopping a service that it's not running.
   private boolean isRunning;
 
-  private boolean closeCalled = false;
-  private boolean closeSucceeded = false;
-  private final Exception constructionStack;
+  private final Exception constructionCallstack;
+  private final AtomicBoolean closeCalled = new AtomicBoolean();
+  private final AtomicBoolean closeSucceeded = new AtomicBoolean();
 
   ProcessWrapper(String serviceName, File dataDirectory) {
     this.serviceName = serviceName;
     this.dataDirectory = dataDirectory;
-    this.constructionStack = new VeniceException("Exception only for the sake of recording the construction stack");
+
+    this.constructionCallstack = new VeniceException("Exception only for the sake of recording the construction stack");
     // We eliminate test framework stack trace elements, since they are not relevant to our leak debugging
-    StackTraceElement[] stackTraceElements = this.constructionStack.getStackTrace();
+    StackTraceElement[] stackTraceElements = this.constructionCallstack.getStackTrace();
     int firstUselessElement = -1;
     for (int i = 0; i < stackTraceElements.length; i++) {
-      if (!stackTraceElements[i].getClassName().startsWith("com.linkedin.venice")) {
+      if (!stackTraceElements[i].getClassName().startsWith("com.linkedin")) {
         firstUselessElement = i;
         break;
       }
     }
-    StackTraceElement[] prunedStackTraceElements = new StackTraceElement[firstUselessElement];
-    for (int i = 0; i < prunedStackTraceElements.length; i++) {
-      prunedStackTraceElements[i] = stackTraceElements[i];
+    if (firstUselessElement > 0) {
+      StackTraceElement[] prunedStackTraceElements = new StackTraceElement[firstUselessElement];
+      for (int i = 0; i < prunedStackTraceElements.length; i++) {
+        prunedStackTraceElements[i] = stackTraceElements[i];
+      }
+      this.constructionCallstack.setStackTrace(prunedStackTraceElements);
     }
-    this.constructionStack.setStackTrace(prunedStackTraceElements);
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> closeAudit("JVM shutdown time")));
+
+    /**
+     * Since {@link ZKServerWrapper} is using singleton mode, currently, there is no way to close it explicitly, but at exit.
+     * So no need to report the following error for {@link ZkServerWrapper}, and this hook will be in charge of closing it properly.
+     */
+    if (!(getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.useSingleton)) {
+      Runtime.getRuntime().addShutdownHook(new Thread(() -> closeAudit("JVM shutdown time")));
+    }
   }
 
   /**
@@ -112,8 +123,7 @@ public abstract class ProcessWrapper implements Closeable {
 
   protected abstract void internalStop() throws Exception;
 
-  protected synchronized void restart()
-      throws Exception {
+  protected synchronized void restart() throws Exception {
     if (!isRunning) {
       newProcess();
       start();
@@ -132,11 +142,11 @@ public abstract class ProcessWrapper implements Closeable {
     return isRunning;
   }
 
-  public void close() {
-    closeCalled = true;
+  public synchronized void close() {
+    closeCalled.set(true);
     try {
       stop();
-      closeSucceeded = true;
+      closeSucceeded.set(true);
     } catch (Exception e) {
       LOGGER.error("Failed to shutdown " + serviceName + " service running at " + getAddressForLogging(), e);
     }
@@ -150,18 +160,10 @@ public abstract class ProcessWrapper implements Closeable {
   }
 
   private void closeAudit(String context) {
-    if (!closeCalled) {
-      if (!(this.getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.useSingleton)) {
-        /**
-         * Since {@link ZKServerWrapper} is using singleton mode, currently, there is no way to close it explicitly, but at exit.
-         * So no need to report the following error for {@link ZkServerWrapper}, and this hook will be in charge of closing it properly.
-         */
-        System.err.println(context + ": " + this.getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
-      }
-      close();
-      System.out.println(this.getClass().getSimpleName() + " closed successfully");
-    } else if (!closeSucceeded) {
-      System.err.println(context + ": " + this.getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionStack));
+    if (!closeCalled.get()) {
+      System.out.println(getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionCallstack));
+    } else if (!closeSucceeded.get()) {
+      System.err.println(context + ": " + getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionCallstack));
     }
   }
 }
