@@ -449,7 +449,7 @@ public class ConfigKeys {
   /**
    * Whether to enable storage engine to restore existing metadata partition during creation.
    */
-  public static final String SERVER_RESTORE_METADATA_PARTITION_ENABLED = "server.restore.data.partition.enabled";
+  public static final String SERVER_RESTORE_METADATA_PARTITION_ENABLED = "server.restore.metadata.partition.enabled";
 
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
