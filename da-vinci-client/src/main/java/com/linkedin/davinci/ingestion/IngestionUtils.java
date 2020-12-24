@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import com.google.common.base.Charsets;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
@@ -249,6 +250,11 @@ public class IngestionUtils {
       InitializationConfigs initializationConfigs = new InitializationConfigs();
       initializationConfigs.aggregatedConfigs = new HashMap<>();
       configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
+      // Block restoring on disk store data as it has been restored on the main process when live update suppression is enabled.
+      if (configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists()) {
+        initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, "false");
+        initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_METADATA_PARTITION_ENABLED, "false");
+      }
       logger.info("Sending initialization aggregatedConfigs to child process: " + initializationConfigs.aggregatedConfigs);
       byte[] content = serializeInitializationConfigs(initializationConfigs);
       HttpRequest httpRequest = ingestionRequestClient.buildHttpRequest(IngestionAction.INIT, content);

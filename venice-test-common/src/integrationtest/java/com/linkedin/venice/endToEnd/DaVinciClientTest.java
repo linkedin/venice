@@ -594,8 +594,8 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testLiveUpdateSuppression() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testLiveUpdateSuppression(boolean enableIngestionIsolation) throws Exception {
     final String storeName = TestUtils.getUniqueString("store");
     cluster.useControllerClient(client -> {
       NewStoreResponse response = client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
@@ -621,12 +621,16 @@ public class DaVinciClientTest {
     D2ClientUtils.startClient(d2Client);
 
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
-
+    int applicationListenerPort = Utils.getFreePort();
+    int servicePort = Utils.getFreePort();
     // Enable live update suppression
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, "true")
+        .put(SERVER_INGESTION_MODE, enableIngestionIsolation ? ISOLATED : BUILT_IN)
+        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .build();
 
     VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);

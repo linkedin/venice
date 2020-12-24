@@ -177,13 +177,16 @@ public class DaVinciBackend implements Closeable {
     bootstrap(managedClients, bootstrapVersions);
 
     if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      // Close all opened store engines so child process can open them.
-      StorageEngineRepository engineRepository = storageService.getStorageEngineRepository();
-      logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines before cleanup.");
-      for (AbstractStorageEngine storageEngine : engineRepository.getAllLocalStorageEngines()) {
-        storageService.closeStorageEngine(storageEngine.getName());
+      // We will close all storage engines only when live update suppression is NOT turned on.
+      if (!configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists()) {
+        // Close all opened store engines so child process can open them.
+        StorageEngineRepository engineRepository = storageService.getStorageEngineRepository();
+        logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines before cleanup.");
+        for (AbstractStorageEngine storageEngine : engineRepository.getAllLocalStorageEngines()) {
+          storageService.closeStorageEngine(storageEngine.getName());
+        }
+        logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
       }
-      logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
 
       // Initialize isolated ingestion service.
       int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
