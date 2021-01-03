@@ -68,11 +68,25 @@ public class PartitionAssignment {
     return topic;
   }
 
+  @Override
   public String toString() {
     return this.getClass().getSimpleName() + " {"
         + "\n\ttopic: " + topic + ", "
         + "\n\texpectedNumberOfPartitions: " + expectedNumberOfPartitions + ", "
         + "\n\tidToPartitionMap: " + idToPartitionMap.toString()
         + "\n}";
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+
+    if (obj instanceof PartitionAssignment) {
+      return idToPartitionMap.equals(((PartitionAssignment) obj).idToPartitionMap);
+    }
+
+    return false;
   }
 }

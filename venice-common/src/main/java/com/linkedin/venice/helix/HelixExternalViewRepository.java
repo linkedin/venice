@@ -23,6 +23,8 @@ import org.apache.helix.model.IdealState;
 import org.apache.helix.spectator.RoutingTableSnapshot;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
+
 
 /**
  * Extend HelixBaseRoutingRepository to leverage external view data.
@@ -178,24 +180,23 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
             }
             newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
         }
-        Set<String> deletedResourceNames;
+        ResourceAssignmentChanges updates;
         synchronized (resourceAssignment) {
             // Update the live instances as well. Helix updates live instances in this routing data changed event.
             this.liveInstancesMap = Collections.unmodifiableMap(liveInstanceSnapshot);
-            deletedResourceNames = resourceAssignment.compareAndGetDeletedResources(newResourceAssignment);
-            resourceAssignment.refreshAssignment(newResourceAssignment);
+            updates = resourceAssignment.updateResourceAssignment(newResourceAssignment);
             logger.info("Updated resource assignment and live instances.");
         }
         logger.info("External view is changed.");
         // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notify all listeners.
         // And assume that the listener would compare and decide how to handle this event.
-        for (String kafkaTopic : resourceAssignment.getAssignedResources()) {
+        for (String kafkaTopic : updates.getUpdatedResources()) {
             PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
             listenerManager.trigger(kafkaTopic, listener -> listener.onExternalViewChange(partitionAssignment));
         }
 
         //Notify events to the listeners which listen on deleted resources.
-        for (String kafkaTopic : deletedResourceNames) {
+        for (String kafkaTopic : updates.getDeletedResource()) {
             listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataDeleted(kafkaTopic));
         }
     }

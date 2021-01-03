@@ -50,14 +50,57 @@ public class ResourceAssignment {
     }
   }
 
-  protected void refreshAssignment(ResourceAssignment newAssignment) {
+  /**
+   * Calculate resource assignment changes between the current one and the given one
+   * and also swap the current assignment to the given one in the end
+   *
+   * @param newAssignment the given resource assignment
+   * @return the changes between 2 assignments
+   */
+  public ResourceAssignmentChanges updateResourceAssignment(ResourceAssignment newAssignment) {
+    Set<String> deletedResources = compareAndGetDeletedResources(newAssignment);
+    Set<String> updatedResources = compareAndGetUpdatedResources(newAssignment);
+
+    resourceToAssignmentsMap = newAssignment.resourceToAssignmentsMap;
+
+    return new ResourceAssignmentChanges(deletedResources, updatedResources);
+  }
+
+  @Deprecated
+  public void refreshAssignment(ResourceAssignment newAssignment) {
     resourceToAssignmentsMap = newAssignment.resourceToAssignmentsMap;
   }
 
-  protected Set<String> compareAndGetDeletedResources(ResourceAssignment newAssignment) {
+  Set<String> compareAndGetDeletedResources(ResourceAssignment newAssignment) {
     return resourceToAssignmentsMap.keySet()
         .stream()
         .filter(originalResources -> !newAssignment.containsResource(originalResources))
         .collect(Collectors.toSet());
+  }
+
+  Set<String> compareAndGetUpdatedResources(ResourceAssignment newAssignment) {
+    return newAssignment.getAssignedResources()
+        .stream()
+        .filter(newResource -> !containsResource(newResource)
+            || getPartitionAssignment(newResource).hashCode() != newAssignment.getPartitionAssignment(newResource).hashCode())
+        .collect(Collectors.toSet());
+  }
+
+  public static class ResourceAssignmentChanges {
+    Set<String> deletedResources;
+    Set<String> updatedResources;
+
+    ResourceAssignmentChanges(Set<String> deletedResources, Set<String> updatedResources) {
+      this.deletedResources = deletedResources;
+      this.updatedResources = updatedResources;
+    }
+
+    public Set<String> getDeletedResource() {
+      return deletedResources;
+    }
+
+    public Set<String> getUpdatedResources() {
+      return updatedResources;
+    }
   }
 }
