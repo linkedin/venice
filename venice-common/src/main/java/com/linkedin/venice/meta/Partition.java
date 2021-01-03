@@ -84,9 +84,8 @@ public class Partition {
 
   public Map<Instance, String> getInstanceToStateMap() {
     Map<Instance, String> instanceToStateMap = new HashMap<>();
-    stateToInstancesMap.forEach((helixState, instanceList) -> {
-      instanceList.forEach(instance -> instanceToStateMap.put(instance, helixState));
-    });
+    stateToInstancesMap.forEach((helixState, instanceList) ->
+      instanceList.forEach(instance -> instanceToStateMap.put(instance, helixState)));
 
     return instanceToStateMap;
   }
@@ -127,7 +126,21 @@ public class Partition {
     return id;
   }
 
+  @Override
   public String toString() {
     return this.getClass().getSimpleName() + " {id: " + id + ", stateToInstancesMap: " + stateToInstancesMap + "}";
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+
+    if (obj instanceof Partition) {
+      return stateToInstancesMap.equals(((Partition) obj).stateToInstancesMap);
+    }
+
+    return false;
   }
 }

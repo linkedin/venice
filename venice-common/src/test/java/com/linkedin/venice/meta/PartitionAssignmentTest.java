@@ -11,7 +11,6 @@ import org.testng.annotations.Test;
 
 
 public class PartitionAssignmentTest {
-  private List<Instance> emptyList = Collections.emptyList();
   @Test
   public void testAddAndGetPartition() {
     int partitionCount = 3;
