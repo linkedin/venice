@@ -500,7 +500,7 @@ public class AdminExecutionTask implements Callable<Void> {
         admin.materializeMetadataStoreVersion(clusterName,
             VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName), versionNumber);
       } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-        admin.createDaVinciPushStatusStore(clusterName, VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(clusterName));
+        admin.createDaVinciPushStatusStore(clusterName, VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName));
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,

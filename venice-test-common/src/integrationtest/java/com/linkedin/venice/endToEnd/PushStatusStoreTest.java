@@ -7,14 +7,18 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.pushstatus.PushStatusValue;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.Properties;
-import org.apache.avro.Schema;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.commons.io.IOUtils;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -24,10 +28,13 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
 
 
 public class PushStatusStoreTest {
   private VeniceClusterWrapper cluster;
+  private VeniceControllerWrapper parentController;
+  private ControllerClient parentControllerClient;
 
   @BeforeClass
   public void setup() {
@@ -43,35 +50,37 @@ public class PushStatusStoreTest {
         false,
         false,
         extraProperties);
+    Properties controllerConfig = new Properties();
+    parentController =
+        ServiceFactory.getVeniceParentController(cluster.getClusterName(), ServiceFactory.getZkServer().getAddress(), cluster.getKafka(),
+            cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
+            new VeniceProperties(controllerConfig), false);
+    parentControllerClient = new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
   }
 
   @AfterClass
   public void cleanup() {
     IOUtils.closeQuietly(cluster);
+    IOUtils.closeQuietly(parentController);
+    parentControllerClient.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testKafkaPushJob() throws Exception {
     String storeName = TestUtils.getUniqueString("store");
     String owner = "test";
     String zkSharedPushStatusStoreName = VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(cluster.getClusterName());
-    String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
-    ControllerClient controllerClient = cluster.getControllerClient();
-    controllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner);
-    controllerClient.updateStore(zkSharedPushStatusStoreName, new UpdateStoreQueryParams()
+    parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner);
+    parentControllerClient.updateStore(zkSharedPushStatusStoreName, new UpdateStoreQueryParams()
         .setLeaderFollowerModel(true)
         .setWriteComputationEnabled(true)
         .setHybridRewindSeconds(10)
         .setHybridOffsetLagThreshold(10));
-    controllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName);
-    controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA).isError();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+    parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName);
+    parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA).isError();
+    parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
-    controllerClient.createDaVinciPushStatusStore(storeName);
-    int valueSchemaId = controllerClient.getValueSchemaID(pushStatusStoreName, PushStatusValue.SCHEMA$.toString()).getId();
-    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(PushStatusValue.SCHEMA$.toString()).getTypes().get(0);
-    controllerClient.addDerivedSchema(pushStatusStoreName, valueSchemaId,
-        writeComputeSchema.toString());
+    parentControllerClient.createDaVinciPushStatusStore(storeName);
 
     // Produce input data.
     File inputDir = getTempDataDirectory();
@@ -88,33 +97,30 @@ public class PushStatusStoreTest {
     runH2V(h2vProperties, 2, cluster);
 
     // clean up
-    controllerClient.close();
     daVinciClient.close();
+
+    // KafkaPushJob will hang since DaVinci client is closed
+    Future future = Executors.newSingleThreadExecutor().submit(() -> runH2V(h2vProperties, 3, cluster));
+    assertThrows(TimeoutException.class, () -> future.get(20, TimeUnit.SECONDS));
   }
 
-  @Test
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
   public void testIncrementalPush() throws Exception {
     String storeName = TestUtils.getUniqueString("store");
     String owner = "test";
     String zkSharedPushStatusStoreName = VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(cluster.getClusterName());
-    String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
-    ControllerClient controllerClient = cluster.getControllerClient();
-    controllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner);
-    controllerClient.updateStore(zkSharedPushStatusStoreName, new UpdateStoreQueryParams()
+    parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner);
+    parentControllerClient.updateStore(zkSharedPushStatusStoreName, new UpdateStoreQueryParams()
         .setLeaderFollowerModel(true)
         .setWriteComputationEnabled(true)
         .setHybridRewindSeconds(10)
         .setHybridOffsetLagThreshold(10));
-    controllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName);
-    controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA).isError();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+    parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName);
+    parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA).isError();
+    parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setIncrementalPushEnabled(true)
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
-    controllerClient.createDaVinciPushStatusStore(storeName);
-    int valueSchemaId = controllerClient.getValueSchemaID(pushStatusStoreName, PushStatusValue.SCHEMA$.toString()).getId();
-    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(PushStatusValue.SCHEMA$.toString()).getTypes().get(0);
-    controllerClient.addDerivedSchema(pushStatusStoreName, valueSchemaId,
-        writeComputeSchema.toString());
+    parentControllerClient.createDaVinciPushStatusStore(storeName);
 
     // Produce input data.
     File inputDir = getTempDataDirectory();
@@ -132,7 +138,6 @@ public class PushStatusStoreTest {
     runH2V(h2vProperties, 1, cluster);
 
     // clean up
-    controllerClient.close();
     daVinciClient.close();
   }
 
