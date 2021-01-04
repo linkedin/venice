@@ -21,7 +21,7 @@ import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.WriteComputeO
 /**
  * A util class that parses arbitrary Avro schema to its' write compute schema.
  *
- * Currently, it supports record partial update and collection merging.
+ * Currently, it supports record partial update, collection merging and deletion
  * See {@link WriteComputeOperation} for details.
  *
  * N.B.
@@ -30,6 +30,9 @@ import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.WriteComputeO
  *
  * 2. We should ask partners to assign a default value or wrap the field with nullable union if they intent to use
  * "partial put" to create new k/v pair (when the key is not existing in the store).
+ *
+ * 3. nested parsing is not allowed in order to reduce the complexity. Only the top level fields will be parsed.
+ * Nested Record/Array/Map will remain the same after parsing.
  */
 public class WriteComputeSchemaAdapter {
 
@@ -70,7 +73,8 @@ public class WriteComputeSchemaAdapter {
      * a RECORD type. The returned schema is a union of the record type and a delete operation
      * record.
      *
-     * Note: This is only used for non-nested records.
+     * Note: This is only used for non-nested records (it's only intended for removing the whole
+     * record. Removing fields inside of a record is not supported.
      */
     DEL_OP("DelOp");
 
@@ -156,7 +160,7 @@ public class WriteComputeSchemaAdapter {
       case MAP:
         return adapter.parseMap(originSchema, derivedSchemaName, namespace);
       case UNION:
-        return adapter.parseUnion(originSchema);
+        return adapter.parseUnion(originSchema, derivedSchemaName, namespace);
       default:
         return originSchema;
     }
@@ -184,7 +188,7 @@ public class WriteComputeSchemaAdapter {
    * }
    *
    * write compute record schema:
-   * {
+   * [{
    *   "type" : "record",
    *   "name" : "testRecordWriteOpRecord",
    *   "fields" : [ {
@@ -221,7 +225,11 @@ public class WriteComputeSchemaAdapter {
    *     } ],
    *     "default" : { }
    *   } ]
-   * }
+   * }, {
+   *   "type" : "record",
+   *   "name" : "DelOp",
+   *   "fields" : [ ]
+   * } ]
    *
    * @param recordSchema the original record schema
    */
@@ -240,13 +248,11 @@ public class WriteComputeSchemaAdapter {
         throw new VeniceException(String.format("Cannot generate derived schema because field: \"%s\" "
                 + "does not have a default value.", field.name()));
       }
-      String fieldName = null;
-      if (field.schema().getType() != RECORD) {
-        fieldName = field.name();
-      }
 
-      fieldList.add(new Field(field.name(), wrapNoopUnion(recordNamespace, parse(field.schema(),
-          fieldName, recordNamespace)), field.doc(), OBJECT_NODE, field.order()));
+      //parse each field. We'd like to skip parsing "RECORD" type in order to avoid recursive parsing
+      fieldList.add(new Field(field.name(), wrapNoopUnion(recordNamespace, field.schema().getType() == RECORD ?
+          field.schema() : parse(field.schema(), field.name(), recordNamespace)), field.doc(), OBJECT_NODE,
+          field.order()));
     }
 
     newSchema.setFields(fieldList);
@@ -335,17 +341,94 @@ public class WriteComputeSchemaAdapter {
         mapSchema));
   }
 
-  private Schema parseUnion(Schema unionSchema) {
+  /**
+   * Wrap up a union schema with possible write compute operations.
+   *
+   * N.B.: if it's an top level union field, the parse will try to parse the elements(except for RECORD)
+   * inside the union. It's not supported if an union contains more than 1 collections since it will
+   * confuse the interpreter about which elements the operation is supposed to be applied.
+   *
+   * e.g.
+   * original schema:
+   *{
+   *   "type" : "record",
+   *   "name" : "ecord",
+   *   "fields" : [ {
+   *     "name" : "nullableArrayField",
+   *     "type" : [ "null", {
+   *       "type" : "array",
+   *       "items" : {
+   *         "type" : "record",
+   *         "name" : "simpleRecord",
+   *         "fields" : [ {
+   *           "name" : "intField",
+   *           "type" : "int",
+   *           "default" : 0
+   *         } ]
+   *       }
+   *     } ],
+   *     "default" : null
+   *   } ]
+   * }
+   *
+   * write compute schema:
+   * [ {
+   *   "type" : "record",
+   *   "name" : "testRecordWriteOpRecord",
+   *   "fields" : [ {
+   *     "name" : "nullableArrayField",
+   *     "type" : [ {
+   *       "type" : "record",
+   *       "name" : "NoOp",
+   *       "fields" : [ ]
+   *     }, "null", {
+   *       "type" : "record",
+   *       "name" : "nullableArrayFieldListOps",
+   *       "fields" : [ {
+   *         "name" : "setUnion",
+   *         "type" : {
+   *           "type" : "array",
+   *           "items" : {
+   *             "type" : "record",
+   *             "name" : "simpleRecord",
+   *             "fields" : [ {
+   *               "name" : "intField",
+   *               "type" : "int",
+   *               "default" : 0
+   *             } ]
+   *           }
+   *         },
+   *         "default" : [ ]
+   *       }, {
+   *         "name" : "setDiff",
+   *         "type" : {
+   *           "type" : "array",
+   *           "items" : "simpleRecord"
+   *         },
+   *         "default" : [ ]
+   *       } ]
+   *     }, {
+   *       "type" : "array",
+   *       "items" : "simpleRecord"
+   *     } ],
+   *     "default" : { }
+   *   } ]
+   * }, {
+   *   "type" : "record",
+   *   "name" : "DelOp",
+   *   "fields" : [ ]
+   * } ]
+   */
+  private Schema parseUnion(Schema unionSchema, String name, String namespace) {
     containsOnlyOneCollection(unionSchema);
     return createFlattenedUnion(unionSchema.getTypes().stream().sequential()
         .map(schema ->{
           Schema.Type type = schema.getType();
           if (type == RECORD) {
-            throw new VeniceException("recursive parsing inside union is not supported yet. Schema: "
-                + schema.toString(true));
+            return schema;
           }
 
-          return schema;
+          return parse(schema, name, namespace);
         })
         .collect(Collectors.toList()));
   }

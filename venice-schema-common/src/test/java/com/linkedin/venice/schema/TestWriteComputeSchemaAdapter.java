@@ -2,6 +2,7 @@ package com.linkedin.venice.schema;
 
 import java.util.Arrays;
 import org.apache.avro.Schema;
+import org.codehaus.jackson.node.JsonNodeFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -103,6 +104,27 @@ public class TestWriteComputeSchemaAdapter {
       + "  ]\n"
       + "}";
 
+  private String recordOfNullableArrayStr = "{\n"
+      + "  \"type\" : \"record\",\n"
+      + "  \"name\" : \"testRecord\",\n"
+      + "  \"fields\" : [ {\n"
+      + "    \"name\" : \"nullableArrayField\",\n"
+      + "    \"type\" : [ \"null\", {\n"
+      + "      \"type\" : \"array\",\n"
+      + "      \"items\" : {\n"
+      + "        \"type\" : \"record\",\n"
+      + "        \"name\" : \"simpleRecord\",\n"
+      + "        \"fields\" : [ {\n"
+      + "          \"name\" : \"intField\",\n"
+      + "          \"type\" : \"int\",\n"
+      + "          \"default\" : 0\n"
+      + "        } ]\n"
+      + "      }\n"
+      + "    } ],\n"
+      + "    \"default\" : null\n"
+      + "  } ]\n"
+      + "}";
+
 
   @Test
   public void testAdapterCanParseBasicSchema() {
@@ -182,5 +204,22 @@ public class TestWriteComputeSchemaAdapter {
   public void testAdapterCanNotParseRecordWithUnionOfMultipleCollections() {
     //test parsing a schema with a union type that contains 2 collections (should barf)
     Assert.assertThrows(() -> WriteComputeSchemaAdapter.parse(recordOfUnionWithTwoCollectionsStr));
+  }
+
+  @Test
+  public void testAdapterCanParseNullableField() {
+    //test parsing nullable array field. The parser is supposed to dig into the union and
+    //parse the array
+    Schema nullableRecordWriteSchema = WriteComputeSchemaAdapter.parse(recordOfNullableArrayStr).getTypes().get(0);
+    Assert.assertEquals(nullableRecordWriteSchema.getType(), RECORD);
+
+    //Check the elements inside the union
+    Schema writeComputeFieldSchema = nullableRecordWriteSchema.getField("nullableArrayField").schema();
+    Assert.assertEquals(writeComputeFieldSchema.getType(), UNION);
+    Assert.assertEquals(writeComputeFieldSchema.getTypes().size(), 4);
+    Assert.assertEquals(writeComputeFieldSchema.getTypes().get(0).getName(), "NoOp");
+    Assert.assertEquals(writeComputeFieldSchema.getTypes().get(1).getType(), NULL);
+    Assert.assertEquals(writeComputeFieldSchema.getTypes().get(2).getName(), "nullableArrayFieldListOps");
+    Assert.assertEquals(writeComputeFieldSchema.getTypes().get(3).getType(), ARRAY);
   }
 }
