@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
+import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -19,6 +20,18 @@ public class SystemStoreAttributes implements DataModelBackedStructure<SystemSto
   @Override
   public SystemStoreProperties dataModel() {
     return this.dataModel;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    SystemStoreAttributes systemStoreAttributes = (SystemStoreAttributes) o;
+    return AvroCompatibilityUtils.compare(dataModel, systemStoreAttributes.dataModel);
   }
 
   public int getLargestUsedVersionNumber() {

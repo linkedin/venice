@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -650,7 +651,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
       return false;
     }
     ZKStore store = (ZKStore) o;
-    return storeProperties.equals(store.storeProperties);
+    return AvroCompatibilityUtils.compare(storeProperties, store.storeProperties);
   }
 
   @Override

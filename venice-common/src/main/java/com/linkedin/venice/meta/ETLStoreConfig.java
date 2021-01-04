@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
+import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.util.Objects;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
@@ -74,7 +75,7 @@ public class ETLStoreConfig implements DataModelBackedStructure<StoreETLConfig> 
       return false;
     }
     ETLStoreConfig that = (ETLStoreConfig) o;
-    return etlConfig.equals(that.etlConfig);
+    return AvroCompatibilityUtils.compare(etlConfig, that.etlConfig);
   }
 
   @Override

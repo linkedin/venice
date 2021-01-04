@@ -4,6 +4,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
@@ -274,7 +275,7 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
       return false;
     }
     Version version = (Version) o;
-    return storeVersion.equals(version.storeVersion);
+    return AvroCompatibilityUtils.compare(storeVersion, version.storeVersion);
   }
 
   @Override
