@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
+import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.Objects;
 import org.codehaus.jackson.annotate.JsonIgnore;
@@ -90,7 +91,7 @@ public class HybridStoreConfig implements DataModelBackedStructure<StoreHybridCo
       return false;
     }
     HybridStoreConfig that = (HybridStoreConfig) o;
-    return hybridConfig.equals(that.hybridConfig);
+    return AvroCompatibilityUtils.compare(hybridConfig, that.hybridConfig);
   }
 
   @Override

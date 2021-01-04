@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
+import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
@@ -75,7 +76,7 @@ public class PartitionerConfig implements DataModelBackedStructure<StorePartitio
       return false;
     }
     PartitionerConfig that = (PartitionerConfig) o;
-    return partitionerConfig.equals(that.partitionerConfig);
+    return AvroCompatibilityUtils.compare(partitionerConfig, that.partitionerConfig);
   }
 
   @Override
