@@ -81,11 +81,13 @@ import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushstatus.PushStatusStoreReader;
+import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -3328,6 +3330,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!pushStatusStoreReader.isPresent()) {
             throw new VeniceException("D2Client must be provided to read from push status store.");
         }
+        logger.info("Getting Da Vinci push status for store " + version.getStoreName());
         boolean allMiddleStatusReceived = true;
         ExecutionStatus completeStatus = incrementalPushVersion.isPresent() ?
             ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED : ExecutionStatus.COMPLETED;

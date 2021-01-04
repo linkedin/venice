@@ -9,6 +9,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatus.PushStatusValue;
+import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -27,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.log4j.Logger;
 
@@ -318,7 +321,13 @@ public class ControllerClient implements Closeable {
         .add(KEY_SCHEMA, systemStore.getKeySchema())
         .add(VALUE_SCHEMA, systemStore.getValueSchema())
         .add(IS_SYSTEM_STORE, true);
-    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+    NewStoreResponse response = request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+    if (!response.isError() && VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
+      int valueSchemaId = getValueSchemaID(storeName, PushStatusValue.SCHEMA$.toString()).getId();
+      Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(PushStatusValue.SCHEMA$.toString()).getTypes().get(0);
+      addDerivedSchema(storeName, valueSchemaId, writeComputeSchema.toString());
+    }
+    return response;
   }
 
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema, String accessPermissions) {
