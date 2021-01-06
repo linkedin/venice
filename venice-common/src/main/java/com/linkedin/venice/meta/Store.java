@@ -6,6 +6,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -506,6 +507,24 @@ public abstract class Store {
       Version version = new Version(storeVersion);
       if (version.getNumber() == versionNumber) {
         return Optional.of(version);
+      }
+    }
+    return Optional.empty();
+  }
+
+  public Optional<Version> getVersionWithRetry(int versionNumber, int retryCount, long sleepDuration, Time timer) {
+    int current = 0;
+    while (current < retryCount) {
+      Optional<Version> version = getVersion(versionNumber);
+      if (version.isPresent()) {
+        return version;
+      }
+      current++;
+
+      try {
+        timer.sleep(sleepDuration);
+      } catch (InterruptedException e) {
+        throw new VeniceException(e);
       }
     }
     return Optional.empty();

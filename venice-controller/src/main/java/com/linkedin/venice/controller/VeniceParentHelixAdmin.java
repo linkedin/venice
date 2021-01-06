@@ -88,7 +88,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -139,6 +138,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
+
+  private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
 
   protected final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -663,24 +664,33 @@ public class VeniceParentHelixAdmin implements Admin {
     if (latestKafkaTopic.isPresent()) {
       logger.debug("Latest kafka topic for store: " + storeName + " is " + latestKafkaTopic.get());
 
-
-      if (!isTopicTruncated(latestKafkaTopic.get())) {
+      final String latestKafkaTopicName = latestKafkaTopic.get();
+      if (!isTopicTruncated(latestKafkaTopicName)) {
         /**
          * Check whether the corresponding version exists or not, since it is possible that last push
          * meets Kafka topic creation timeout.
          * When Kafka topic creation timeout happens, topic/job could be still running, but the version
          * should not exist according to the logic in {@link VeniceHelixAdmin#addVersion}.
+         * However, it is possible that a different request enters this code section when the topic has been created but
+         * either the version information has not been persisted to Zk or the in-memory Store object. In this case, it
+         * is desirable to add a delay to topic deletion.
          *
          * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
          * the incomplete topic/job.
          */
         Store store = getStore(clusterName, storeName);
-        Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(latestKafkaTopic.get()));
-        if (! version.isPresent()) {
-          // The corresponding version doesn't exist.
-          killOfflinePush(clusterName, latestKafkaTopic.get(), true);
-          logger.info("Found topic: " + latestKafkaTopic.get() + " without the corresponding version, will kill it");
-          return Optional.empty();
+        Optional<Version> version = store.getVersionWithRetry(Version.parseVersionFromKafkaTopicName(latestKafkaTopicName), 3, 10 * Time.MS_PER_SECOND, timer);
+        if (!version.isPresent()) {
+          // TODO: Guard this topic deletion code using a store-level lock instead.
+          Long inMemoryTopicCreationTime = getVeniceHelixAdmin().getInMemoryTopicCreationTime(latestKafkaTopicName);
+          if (inMemoryTopicCreationTime == null || SystemTime.INSTANCE.getMilliseconds() - inMemoryTopicCreationTime >= TOPIC_DELETION_DELAY_MS) {
+            // The corresponding version doesn't exist.
+            killOfflinePush(clusterName, latestKafkaTopicName, true);
+            logger.info("Found topic: " + latestKafkaTopicName + " without the corresponding version, will kill it");
+            return Optional.empty();
+          } else {
+            throw new VeniceException("Failed to get version information but the topic exists and has been created recently. Try again after some time.");
+          }
         }
 
         /**
@@ -695,7 +705,7 @@ public class VeniceParentHelixAdmin implements Admin {
         int retryTimes = 5;
         int current = 0;
         while (current++ < retryTimes) {
-          OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestKafkaTopic.get());
+          OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestKafkaTopicName);
           jobStatus = offlineJobStatus.getExecutionStatus();
           extraInfo = offlineJobStatus.getExtraInfo();
           if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
@@ -710,12 +720,12 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         if (extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
           // TODO: Do we need to throw exception here??
-          logger.error("Failed to get job status for topic: " + latestKafkaTopic.get() + " after retrying " + retryTimes
+          logger.error("Failed to get job status for topic: " + latestKafkaTopicName + " after retrying " + retryTimes
               + " times, extra info: " + extraInfo);
         }
         if (!jobStatus.isTerminal()) {
           logger.info(
-              "Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic.get() + " is not terminal, extra info: " + extraInfo);
+              "Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopicName + " is not terminal, extra info: " + extraInfo);
           return latestKafkaTopic;
         } else {
           /**
@@ -2426,5 +2436,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, String> getChildDataCenterControllerUrlMap(String clusterName) {
     return veniceHelixAdmin.getChildDataCenterControllerUrlMap(clusterName);
+  }
+
+  // Function that can be overridden in tests
+  protected VeniceHelixAdmin getVeniceHelixAdmin() {
+    return veniceHelixAdmin;
   }
 }
