@@ -36,6 +36,7 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -161,6 +162,17 @@ public class SystemStoreTest {
       assertTrue(storeInfo.isLeaderFollowerModelEnabled(), metadataSystemStoreName + " should enable L/F model");
       assertTrue(storeInfo.isWriteComputationEnabled(), metadataSystemStoreName + " should enable write compute");
     }
+    // Check key/value/derived schemas
+    SchemaResponse keySchemaResponse = controllerClient.getKeySchema(metadataSystemStoreName);
+    assertFalse(keySchemaResponse.isError(), "Unexpected error while fetching key schema: " + keySchemaResponse.getError());
+    assertEquals(Schema.parse(keySchemaResponse.getSchemaStr()), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema());
+    SchemaResponse latestValueSchemaResponse = controllerClient.getValueSchema(metadataSystemStoreName, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
+    assertFalse(latestValueSchemaResponse.isError(), "Unexpected error while fetching the latest value schemas: " + latestValueSchemaResponse.getError());
+    assertEquals(Schema.parse(latestValueSchemaResponse.getSchemaStr()), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
+    // Check the derived compute schema for the latest value schema
+    String derivedComputeSchema = WriteComputeSchemaAdapter.parse(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()).toString();
+    SchemaResponse derivedSchemaResponse = controllerClient.getValueOrDerivedSchemaId(metadataSystemStoreName, derivedComputeSchema);
+    assertFalse(derivedSchemaResponse.isError(), "Unexpected error while fetching the derived schema id for the latest value schema: " + derivedSchemaResponse.getError());
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

@@ -1157,6 +1157,14 @@ public class ConfigKeys {
   public static final String SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS = "server.promotion.to.leader.replica.delay.seconds";
 
   /**
+   * The system store, such as replica status related requires fast leadership fail over to avoid the stable info in
+   * system store, which could affect the request routing in the read path.
+   * Since we do have a way to correct the unordered data if it really happens, such as produce a full snapshot
+   * periodically, but the freshness is very important.
+   */
+  public static final String SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS = "server.system.store.promotion.to.leader.replica.delay.seconds";
+
+  /**
    * This config defines whether SSL is enabled in controller.
    */
   public static final String CONTROLLER_SSL_ENABLED = "controller.ssl.enabled";

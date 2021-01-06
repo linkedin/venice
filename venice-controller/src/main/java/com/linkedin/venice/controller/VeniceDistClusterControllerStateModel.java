@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.SafeHelixManager;
-import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -38,7 +37,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
-  private final StoreCleaner storeCleaner;
+  private final VeniceHelixAdmin admin;
   private final MetricsRepository metricsRepository;
   private final ClusterLeaderInitializationRoutine controllerInitialization;
   private final Optional<DynamicAccessController> accessController;
@@ -55,7 +54,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final MetadataStoreWriter metadataStoreWriter;
 
   public VeniceDistClusterControllerStateModel(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      VeniceControllerMultiClusterConfig multiClusterConfigs, StoreCleaner storeCleaner, MetricsRepository metricsRepository,
+      VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
       Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
       MetadataStoreWriter metadataStoreWriter, HelixAdminClient helixAdminClient) {
@@ -65,7 +64,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.multiClusterConfigs = multiClusterConfigs;
-    this.storeCleaner = storeCleaner;
+    this.admin = admin;
     this.metricsRepository = metricsRepository;
     this.controllerInitialization = controllerInitialization;
     this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
@@ -122,8 +121,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
             HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, zkClient.getServers()));
         controller.connect();
         controller.startTimerTasks();
-        resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterConfig,
-            storeCleaner, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
+        resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterConfig, admin, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
             accessController, metadataStoreWriter, helixAdminClient);
         resources.refresh();
         resources.startErrorPartitionResetTask();

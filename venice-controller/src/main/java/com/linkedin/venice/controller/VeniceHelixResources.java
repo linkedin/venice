@@ -18,7 +18,6 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.pushmonitor.AggPushHealthStats;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
@@ -67,20 +66,21 @@ public class VeniceHelixResources implements VeniceResource {
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
+  private final Optional<MetaStoreWriter> metaStoreWriter;
 
   public VeniceHelixResources(String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapterSerializer,
       SafeHelixManager helixManager,
       VeniceControllerConfig config,
-      StoreCleaner storeCleaner,
+      VeniceHelixAdmin admin,
       MetricsRepository metricsRepository,
       Optional<TopicReplicator> onlineOfflineTopicReplicator,
       Optional<TopicReplicator> leaderFollowerTopicReplicator,
       Optional<DynamicAccessController> accessController,
       MetadataStoreWriter metadataStoreWriter,
       HelixAdminClient helixAdminClient) {
-    this(clusterName, zkClient, adapterSerializer, helixManager, config, storeCleaner, metricsRepository, new VeniceReentrantReadWriteLock(),
+    this(clusterName, zkClient, adapterSerializer, helixManager, config, admin, metricsRepository, new VeniceReentrantReadWriteLock(),
         onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, metadataStoreWriter, helixAdminClient);
   }
 
@@ -92,7 +92,7 @@ public class VeniceHelixResources implements VeniceResource {
                               HelixAdapterSerializer adapterSerializer,
                               SafeHelixManager helixManager,
                               VeniceControllerConfig config,
-                              StoreCleaner storeCleaner,
+                              VeniceHelixAdmin admin,
                               MetricsRepository metricsRepository,
                               VeniceReentrantReadWriteLock shutdownLock,
                               Optional<TopicReplicator> onlineOfflineTopicReplicator,
@@ -104,12 +104,17 @@ public class VeniceHelixResources implements VeniceResource {
     this.controller = helixManager;
     HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(
         zkClient, adapterSerializer, config.getSystemSchemaClusterName());
-    Optional<MetaStoreWriter> metaStoreWriter = Optional.empty();
+    HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(
+        zkSharedSystemStoreRepository, zkClient, adapterSerializer, config.getSystemSchemaClusterName(),
+        config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
+
     /**
      * So far, Meta system store doesn't support write from parent cluster.
      */
-    if ((storeCleaner instanceof VeniceHelixAdmin) && !config.isParent()) {
-      metaStoreWriter = Optional.of(((VeniceHelixAdmin)storeCleaner).getMetaStoreWriter());
+    if (!config.isParent()) {
+      metaStoreWriter = Optional.of(new MetaStoreWriter(admin.getTopicManager(), admin.getVeniceWriterFactory(), zkSharedSchemaRepository));
+    } else {
+      metaStoreWriter = Optional.empty();
     }
     this.metadataRepository = new HelixReadWriteStoreRepositoryAdapter(
         zkSharedSystemStoreRepository,
@@ -118,8 +123,7 @@ public class VeniceHelixResources implements VeniceResource {
             metaStoreWriter)
     );
     this.schemaRepository = new HelixReadWriteSchemaRepositoryAdapter(
-        new HelixReadOnlyZKSharedSchemaRepository(zkSharedSystemStoreRepository, zkClient, adapterSerializer, config.getSystemSchemaClusterName(),
-            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()),
+        zkSharedSchemaRepository,
         new HelixReadWriteSchemaRepository(this.metadataRepository, zkClient, adapterSerializer, clusterName, metaStoreWriter)
     );
 
@@ -137,7 +141,7 @@ public class VeniceHelixResources implements VeniceResource {
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
-            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,
+            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), admin,
         metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid(),
         onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metricsRepository, metadataStoreWriter);
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
@@ -246,6 +250,10 @@ public class VeniceHelixResources implements VeniceResource {
 
   public AggPartitionHealthStats getAggPartitionHealthStats() {
     return aggPartitionHealthStats;
+  }
+
+  public Optional<MetaStoreWriter> getMetaStoreWriter() {
+    return metaStoreWriter;
   }
 
   /**

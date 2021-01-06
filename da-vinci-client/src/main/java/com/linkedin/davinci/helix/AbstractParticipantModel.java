@@ -1,5 +1,6 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -39,7 +40,7 @@ import org.apache.log4j.Logger;
  * moving to next state.
  *
  * Currently, we support 2 kinds of participant model.
- * 1. PartitionOnlineOfflineModel. Check out {@link VeniceStateModel} for model definition
+ * 1. PartitionOnlineOfflineModel. Check out {@literal VeniceStateModel} for model definition
  * and {@link VenicePartitionStateModel} for behavior registry.
  * 2. LeaderStandbyModel. Check out {@link LeaderStandbySMD} for model definition and
  * {@link LeaderFollowerParticipantModel} for behavior registry.
@@ -215,6 +216,11 @@ public abstract class AbstractParticipantModel extends StateModel {
     }
     removePartitionFromStore();
     removeCustomizedState();
+    // Delete this replica from meta system store if necessary
+    Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier = storeIngestionService.getMetaSystemStoreReplicaStatusNotifier();
+    if (metaSystemStoreReplicaStatusNotifier.isPresent()) {
+      metaSystemStoreReplicaStatusNotifier.get().drop(storeConfig.getStoreName(), partition);
+    }
   }
 
   protected void removePartitionFromStore() {

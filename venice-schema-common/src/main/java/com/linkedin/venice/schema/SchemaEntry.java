@@ -63,17 +63,9 @@ public class SchemaEntry {
     return schema;
   }
 
-  /**
-   * Schema.hashCode only generates hash code based on name/value, but not consider doc/order/...,
-   * which is not expected.
-   * Fow now, we are using the formalized schema serialized string to generate hash code to cover
-   * all the fields
-   *
-   * @return
-   */
   @Override
   public int hashCode() {
-    return schema.toString().hashCode();
+    return schema.hashCode();
   }
 
   @Override

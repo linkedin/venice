@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -13,11 +14,13 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -36,6 +39,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
@@ -128,6 +132,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final ExecutorService cacheWarmingExecutorService;
 
+  private final MetaStoreWriter metaStoreWriter;
+  private final MetaSystemStoreReplicaStatusNotifier metaSystemStoreReplicaStatusNotifier;
+  private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
+
+  public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
+      VeniceConfigLoader veniceConfigLoader,
+      StorageMetadataService storageMetadataService,
+      ClusterInfoProvider clusterInfoProvider,
+      ReadOnlyStoreRepository metadataRepo,
+      ReadOnlySchemaRepository schemaRepo,
+      MetricsRepository metricsRepository,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
+      Optional<ClientConfig> clientConfig,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+    this(storageEngineRepository, veniceConfigLoader, storageMetadataService, clusterInfoProvider, metadataRepo, schemaRepo,
+        metricsRepository, rocksDBMemoryStats, kafkaMessageEnvelopeSchemaReader, clientConfig, partitionStateSerializer,
+        Optional.empty());
+  }
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
                                     VeniceConfigLoader veniceConfigLoader,
@@ -139,7 +162,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     RocksDBMemoryStats rocksDBMemoryStats,
                                     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
                                     Optional<ClientConfig> clientConfig,
-                                    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+                                    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+                                    Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository) {
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.partitionStateSerializer = partitionStateSerializer;
@@ -194,6 +218,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceNotifier notifier = new LogNotifier();
     this.onlineOfflineNotifiers.add(notifier);
     this.leaderFollowerNotifiers.add(notifier);
+
+    /**
+     * Only Venice SN will pass this param: {@param zkSharedSchemaRepository} since {@link metaStoreWriter} is
+     * used to report the replica status from Venice SN.
+     */
+    if (zkSharedSchemaRepository.isPresent()) {
+      this.metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository.get());
+      this.metaSystemStoreReplicaStatusNotifier =
+          new MetaSystemStoreReplicaStatusNotifier(serverConfig.getClusterName(), metaStoreWriter, metadataRepo,
+              Instance.fromHostAndPort(Utils.getHostName(), serverConfig.getListenerPort()));
+      logger.info("MetaSystemStoreReplicaStatusNotifier was initialized");
+    } else {
+      this.metaStoreWriter = null;
+      this.metaSystemStoreReplicaStatusNotifier = null;
+    }
 
     this.ingestionStats = new AggStoreIngestionStats(metricsRepository);
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
@@ -297,6 +336,30 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
         .build();
+  }
+
+  /**
+   * This function should only be triggered in classical Venice since replica status reporting is only valid
+   * in classical Venice for meta system store.
+   */
+  public synchronized void addMetaSystemStoreReplicaStatusNotifier() {
+    if (metaSystemStoreReplicaStatusNotifierQueued) {
+      throw new VeniceException("MetaSystemStoreReplicaStatusNotifier should NOT be added twice");
+    }
+    if (null == this.metaSystemStoreReplicaStatusNotifier) {
+      throw new VeniceException("MetaSystemStoreReplicaStatusNotifier wasn't initialized properly");
+    }
+    addCommonNotifier(this.metaSystemStoreReplicaStatusNotifier);
+    metaSystemStoreReplicaStatusNotifierQueued = true;
+  }
+
+  @Override
+  public synchronized Optional<MetaSystemStoreReplicaStatusNotifier> getMetaSystemStoreReplicaStatusNotifier() {
+    if (metaSystemStoreReplicaStatusNotifierQueued) {
+      return Optional.of(metaSystemStoreReplicaStatusNotifier);
+    } else {
+      return Optional.empty();
+    }
   }
 
   /**
@@ -424,6 +487,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     for (VeniceNotifier notifier : leaderFollowerNotifiers) {
       notifier.close();
+    }
+
+    if (null != metaStoreWriter) {
+      metaStoreWriter.close();
     }
 
     kafkaMessageEnvelopeSchemaReader.ifPresent(sr -> sr.close());

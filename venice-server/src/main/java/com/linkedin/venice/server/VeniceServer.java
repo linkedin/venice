@@ -89,6 +89,7 @@ public class VeniceServer {
   private MetricsRepository metricsRepository;
   private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
+  private HelixReadOnlyZKSharedSchemaRepository readOnlyZKSharedSchemaRepository;
   private ZkClient zkClient;
   private VeniceJVMStats jvmStats;
 
@@ -206,7 +207,9 @@ public class VeniceServer {
         null,
         kafkaMessageEnvelopeSchemaReader,
         clientConfigForConsumer,
-        partitionStateSerializer);
+        partitionStateSerializer,
+        Optional.of(this.readOnlyZKSharedSchemaRepository));
+    this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     this.diskHealthCheckService = new DiskHealthCheckService(
@@ -295,9 +298,10 @@ public class VeniceServer {
     // Load existing store config and setup watches
     metadataRepo.refresh();
 
+    this.readOnlyZKSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(readOnlyZKSharedSystemStoreRepository, zkClient, adapter, systemSchemaClusterName,
+        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
     this.schemaRepo = new HelixReadOnlySchemaRepositoryAdapter(
-        new HelixReadOnlyZKSharedSchemaRepository(readOnlyZKSharedSystemStoreRepository, zkClient, adapter, systemSchemaClusterName,
-            clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs()),
+        this.readOnlyZKSharedSchemaRepository,
         new HelixReadOnlySchemaRepository(metadataRepo, zkClient, adapter, clusterName,
             clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs())
     );
