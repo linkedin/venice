@@ -4,7 +4,9 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.HelixUtils;
+import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 
 
@@ -15,13 +17,19 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * stores.
  */
 public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository implements ReadWriteStoreRepository {
+  private final Optional<MetaStoreWriter> metaStoreWriter;
+  private final String clusterName;
+
   public HelixReadWriteStoreRepository(
       ZkClient zkClient,
       HelixAdapterSerializer compositeSerializer,
       String clusterName,
       int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs) {
+      long refreshIntervalForZkReconnectInMs,
+      Optional<MetaStoreWriter> metaStoreWriter) {
     super(zkClient, clusterName, compositeSerializer);
+    this.clusterName = clusterName;
+    this.metaStoreWriter = metaStoreWriter;
   }
 
   @Override
@@ -47,6 +55,12 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       }
       HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
       putStore(store);
+      if (store.isStoreMetaSystemStoreEnabled() && metaStoreWriter.isPresent()) {
+        /**
+         * Write the update to the meta system store RT topic.
+         */
+        metaStoreWriter.get().writeStoreProperties(clusterName, store);
+      }
     } finally {
       updateLock.unlock();
     }

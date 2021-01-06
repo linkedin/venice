@@ -27,7 +27,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
    * @param systemStoreType
    * @return
    */
-  protected boolean forwardToRegularRepository(VeniceSystemStoreType systemStoreType) {
+  static boolean forwardToRegularRepository(VeniceSystemStoreType systemStoreType) {
     /**
      * This is a regular Venice store or the existing system stores, which hasn't adopted the new repositories yet.
      * Check {@link VeniceSystemStoreType} to find more details.

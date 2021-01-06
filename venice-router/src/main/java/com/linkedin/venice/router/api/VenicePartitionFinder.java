@@ -2,8 +2,8 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.PartitionFinder;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -23,12 +23,12 @@ import java.util.stream.Collectors;
 
 public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
   private final RoutingDataRepository dataRepository;
-  private final HelixReadOnlyStoreRepository metadataRepository;
+  private final ReadOnlyStoreRepository metadataRepository;
 
   // a map of map: each store could have multiple versions and each version has a specific partitioner
   private Map<String, Map<Integer, VenicePartitioner>> storeByVersionByPartitionerMap = new VeniceConcurrentHashMap<>();
 
-  public VenicePartitionFinder(RoutingDataRepository dataRepository, HelixReadOnlyStoreRepository metadataRepository){
+  public VenicePartitionFinder(RoutingDataRepository dataRepository, ReadOnlyStoreRepository metadataRepository){
     this.dataRepository = dataRepository;
     this.metadataRepository = metadataRepository;
     this.metadataRepository.registerStoreDataChangedListener(storeChangeListener);

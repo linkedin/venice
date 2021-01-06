@@ -4,10 +4,10 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
@@ -62,7 +62,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   private static final int DEFAULT_DICTIONARY_DOWNLOAD_INTERNAL_IN_MS = 100;
   private final OnlineInstanceFinder onlineInstanceFinder;
   private final Optional<SSLEngineComponentFactory> sslFactory;
-  private final HelixReadOnlyStoreRepository metadataRepository;
+  private final ReadOnlyStoreRepository metadataRepository;
   private final Thread dictionaryRetrieverThread;
   private final ScheduledExecutorService executor;
   private final CloseableHttpAsyncClient httpClient;
@@ -129,7 +129,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
    * @param sslFactory if provided, the request will attempt to use ssl when fetching dictionary from the storage nodes
    */
   public DictionaryRetrievalService(OnlineInstanceFinder onlineInstanceFinder, VeniceRouterConfig routerConfig,
-      Optional<SSLEngineComponentFactory> sslFactory, HelixReadOnlyStoreRepository metadataRepository){
+      Optional<SSLEngineComponentFactory> sslFactory, ReadOnlyStoreRepository metadataRepository){
     this.onlineInstanceFinder = onlineInstanceFinder;
     this.sslFactory = sslFactory;
     this.metadataRepository = metadataRepository;

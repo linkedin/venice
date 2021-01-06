@@ -1,28 +1,41 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 
 /**
  * Enums of status of verion.
  */
 public enum VersionStatus {
-    NOT_CREATED,
-    STARTED,
+    NOT_CREATED(0),
+    STARTED(1),
     // Version has been pushed to venice(offline job related to this version has been completed), but is not ready to
     // serve read request because the writes to this store is disabled.
-    PUSHED,
+    PUSHED(2),
     // Version has been pushed to venice and is ready to serve read request.
-    ONLINE,
-    ERROR;
+    ONLINE(3),
+    ERROR(4);
 
-    private static final VersionStatus[] ALL_VERSION_STATUSES = values();
+    private final int value;
 
-    public static VersionStatus getVersionStatusFromOrdinal(int ordinal) {
-        if (ordinal >= ALL_VERSION_STATUSES.length) {
-            throw new VeniceException("Invalid VersionStatus ordinal: " + ordinal);
+    VersionStatus(int v) {
+        this.value = v;
+    }
+
+    private static final Map<Integer, VersionStatus> idMapping = new HashMap<>();
+    static {
+        Arrays.stream(values()).forEach(v -> idMapping.put(v.value, v));
+    }
+
+    public static VersionStatus getVersionStatusFromInt(int v) {
+        VersionStatus s = idMapping.get(v);
+        if (s == null) {
+            throw new VeniceException("Invalid VersionStatus id: " + v);
         }
-        return ALL_VERSION_STATUSES[ordinal];
+        return s;
     }
 
     /**

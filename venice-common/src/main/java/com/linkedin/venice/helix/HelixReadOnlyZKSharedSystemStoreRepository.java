@@ -109,16 +109,6 @@ public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlySto
     throw new VeniceException("Unsupported operation: 'getTotalStoreReadQuota'");
   }
 
-  @Override
-  public void registerStoreDataChangedListener(StoreDataChangedListener listener) {
-    throw new VeniceException("Unsupported operation: 'registerStoreDataChangedListener'");
-  }
-
-  @Override
-  public void unregisterStoreDataChangedListener(StoreDataChangedListener listener) {
-    throw new VeniceException("Unsupported operation: 'unregisterStoreDataChangedListener'");
-  }
-
   /**
    * Only return zk shared system store related info, otherwise {@link VeniceException} will be thrown.
    */

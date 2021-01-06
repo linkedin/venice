@@ -104,6 +104,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 1000)
           .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
           .put(SERVER_DISK_FULL_THRESHOLD, 0.99) // Minimum free space is required in tests
+          .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);

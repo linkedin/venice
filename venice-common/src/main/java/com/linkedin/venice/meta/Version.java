@@ -109,7 +109,7 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
   }
 
   public VersionStatus getStatus() {
-    return VersionStatus.getVersionStatusFromOrdinal(this.storeVersion.status);
+    return VersionStatus.getVersionStatusFromInt(this.storeVersion.status);
   }
 
   public void setStatus(VersionStatus status) {

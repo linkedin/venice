@@ -9,6 +9,10 @@ import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -19,6 +23,8 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
@@ -130,10 +136,10 @@ public class RouterServer extends AbstractVeniceService {
   // TODO: Make these final once the test constructors are cleaned up.
   private ZkClient zkClient;
   private SafeHelixManager manager;
-  private HelixReadOnlySchemaRepository schemaRepository;
+  private ReadOnlySchemaRepository schemaRepository;
   private HelixBaseRoutingRepository routingDataRepository;
   private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
-  private HelixReadOnlyStoreRepository metadataRepository;
+  private ReadOnlyStoreRepository metadataRepository;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
   private PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder;
@@ -238,11 +244,20 @@ public class RouterServer extends AbstractVeniceService {
       Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository) {
     this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true);
-    this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName(),
-        config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
-    this.schemaRepository =
-        new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName(),
-            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
+
+    HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
+        new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, config.getSystemSchemaClusterName());
+    this.metadataRepository = new HelixReadOnlyStoreRepositoryAdapter(
+        readOnlyZKSharedSystemStoreRepository,
+        new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName(),
+            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs())
+    );
+    this.schemaRepository = new HelixReadOnlySchemaRepositoryAdapter(
+        new HelixReadOnlyZKSharedSchemaRepository(readOnlyZKSharedSystemStoreRepository, zkClient, adapter, config.getSystemSchemaClusterName(),
+            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()),
+        new HelixReadOnlySchemaRepository(this.metadataRepository, zkClient, adapter, config.getClusterName(),
+            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs())
+    );
     this.routingDataRepository =
         config.isHelixOfflinePushEnabled() ? new HelixOfflinePushRepository(manager)
             : new HelixExternalViewRepository(manager);
@@ -652,7 +667,7 @@ public class RouterServer extends AbstractVeniceService {
     return routingDataRepository;
   }
 
-  public HelixReadOnlyStoreRepository getMetadataRepository() {
+  public ReadOnlyStoreRepository getMetadataRepository() {
     return metadataRepository;
   }
 
@@ -660,7 +675,7 @@ public class RouterServer extends AbstractVeniceService {
     return onlineInstanceFinder;
   }
 
-  public HelixReadOnlySchemaRepository getSchemaRepository() {
+  public ReadOnlySchemaRepository getSchemaRepository() {
     return schemaRepository;
   }
 

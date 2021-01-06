@@ -94,7 +94,11 @@ public class SystemStore extends Store {
 
   @Override
   public void setPersistenceType(PersistenceType persistenceType) {
-    throwUnsupportedOperationException("setPersistenceType");
+    /**
+     * Do nothing to avoid the failure since {@literal VeniceHelixAdmin#addVersion} would always
+     * setup store-level persistence type, which is not quite useful..
+     */
+    //throwUnsupportedOperationException("setPersistenceType");
   }
 
   @Override
@@ -401,6 +405,16 @@ public class SystemStore extends Store {
   @Override
   public void setStoreMetadataSystemStoreEnabled(boolean storeMetadataSystemStoreEnabled) {
     throwUnsupportedOperationException("setStoreMetadataSystemStoreEnabled");
+  }
+
+  @Override
+  public boolean isStoreMetaSystemStoreEnabled() {
+    return zkSharedStore.isStoreMetaSystemStoreEnabled();
+  }
+
+  @Override
+  public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
+    throwUnsupportedOperationException("setStoreMetaSystemStoreEnabled");
   }
 
   @Override

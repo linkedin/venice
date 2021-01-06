@@ -163,7 +163,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @Override
   public PersistenceType getPersistenceType() {
-    return PersistenceType.getPersistenceTypeFromOrdinal(this.storeProperties.persistenceType);
+    return PersistenceType.getPersistenceTypeFromInt(this.storeProperties.persistenceType);
   }
 
   @Override
@@ -174,19 +174,19 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @Override
   public RoutingStrategy getRoutingStrategy() {
-    return RoutingStrategy.getRoutingStrategyFromOrdinal(this.storeProperties.routingStrategy);
+    return RoutingStrategy.getRoutingStrategyFromInt(this.storeProperties.routingStrategy);
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @Override
   public ReadStrategy getReadStrategy() {
-    return ReadStrategy.getReadStrategyFromOrdinal(this.storeProperties.readStrategy);
+    return ReadStrategy.getReadStrategyFromInt(this.storeProperties.readStrategy);
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @Override
   public OfflinePushStrategy getOffLinePushStrategy() {
-    return OfflinePushStrategy.getOfflinePushStrategyFromOrdinal(this.storeProperties.offlinePushStrategy);
+    return OfflinePushStrategy.getOfflinePushStrategyFromInt(this.storeProperties.offlinePushStrategy);
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
@@ -524,6 +524,16 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
   }
 
   @Override
+  public boolean isStoreMetaSystemStoreEnabled() {
+    return this.storeProperties.storeMetaSystemStoreEnabled;
+  }
+
+  @Override
+  public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
+    this.storeProperties.storeMetaSystemStoreEnabled = storeMetaSystemStoreEnabled;
+  }
+
+  @Override
   public IncrementalPushPolicy getIncrementalPushPolicy() {
     return IncrementalPushPolicy.valueOf(this.storeProperties.incrementalPushPolicy);
   }
@@ -712,6 +722,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
     clonedStore.setMigrationDuplicateStore(isMigrationDuplicateStore());
     clonedStore.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     clonedStore.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
+    clonedStore.setStoreMetaSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
     for (StoreVersion storeVersion : this.storeProperties.versions) {
       clonedStore.forceAddVersion(new Version(storeVersion).cloneVersion(), true);
     }

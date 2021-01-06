@@ -33,8 +33,6 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
-import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
-import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
@@ -77,6 +75,8 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
@@ -97,6 +97,7 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -235,6 +236,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final String pushJobStatusStoreClusterName;
     private final MetadataStoreWriter metadataStoreWriter;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
+    private final MetaStoreWriter metaStoreWriter;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -360,6 +362,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             pushStatusStoreReader = Optional.empty();
         }
+        metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory);
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -371,7 +374,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (multiClusterConfigs.isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled()) {
             // Add routine to create zk shared metadata system store
             UpdateStoreQueryParams metadataSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-                .setHybridOffsetLagThreshold(100).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(5)) // 5 mins
+                .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
                 .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
                 .setPartitionCount(1);
             initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
@@ -553,7 +556,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 newStore.setNativeReplicationEnabled(false);
             }
 
-            HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
+            ReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
             storeRepo.lock();
             try {
                 Store existingStore = storeRepo.getStore(storeName);
@@ -577,7 +580,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 storeRepo.unLock();
             }
             // Add schema
-            HelixReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
+            ReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
             schemaRepo.initKeySchema(storeName, keySchema);
             schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
             // Write store schemas to metadata store.
@@ -605,7 +608,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         resources.lockForMetadataOperation();
         try{
-            HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
+            ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
             storeRepository.lock();
             Store store = null;
             StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
@@ -1013,7 +1016,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
 
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(storeName);
         // If the store exists in store repository and it's still active(not being deleted), we don't allow to re-create it.
         if (store != null && !isLagecyStore) {
@@ -1038,7 +1041,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected Store checkPreConditionForDeletion(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(storeName);
         checkPreConditionForDeletion(clusterName, storeName, store);
         return store;
@@ -1058,7 +1061,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected Store checkPreConditionForSingleVersionDeletion(String clusterName, String storeName, int versionNum) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(storeName);
         checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
         return store;
@@ -1174,7 +1177,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+        ReadWriteStoreRepository repository = resources.getMetadataRepository();
         Store store = repository.getStore(storeName);
         if (null == store) {
             throw new VeniceNoStoreException(storeName, clusterName);
@@ -1230,7 +1233,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+        ReadWriteStoreRepository repository = resources.getMetadataRepository();
         Version version = null;
         OfflinePushStrategy strategy;
         boolean isLeaderFollowerStateModel = false;
@@ -1243,6 +1246,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 repository.lock();
                 int amplificationFactor;
                 try {
+                    /**
+                     * For meta system store, Controller will produce a snapshot to RT topic before creating a new version, so that
+                     * it will guarantee the rewind will recover the state for both store properties and replica statuses.
+                     */
+                    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+                    if (null != systemStoreType && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+                        produceSnapshotToMetaStoreRT(clusterName, systemStoreType.extractRegularStoreName(storeName));
+                    }
+
                     Store store = repository.getStore(storeName);
                     if (store == null) {
                         throwStoreDoesNotExist(clusterName, storeName);
@@ -1619,7 +1631,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (currentTopics.contains(realTimeTopic)){
             return realTimeTopic;
         } else {
-            HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+            ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
             repository.lock();
             try {
                 Store store = repository.getStore(storeName);
@@ -1671,7 +1683,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized Version getIncrementalPushVersion(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
@@ -1755,8 +1767,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         resources.lockForMetadataOperation();
         try {
-
-            HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+            ReadWriteStoreRepository repository = resources.getMetadataRepository();
             List<Version> deletingVersionSnapshot = new ArrayList<>();
             repository.lock();
             try {
@@ -1791,7 +1802,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         resources.lockForMetadataOperation();
         try {
-            HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+            ReadWriteStoreRepository repository = resources.getMetadataRepository();
             Store store = repository.getStore(storeName);
             // Here we do not require the store be disabled. So it might impact reads
             // The thing is a new version is just online, now we delete the old version. So some of routers
@@ -1881,7 +1892,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         resources.lockForMetadataOperation();
         try {
-            HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
+            ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
             Store store = storeRepository.getStore(storeName);
 
             //  if deleteBackupOnStartPush is true decrement minNumberOfStoreVersionsToPreserve by one
@@ -1941,7 +1952,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void topicCleanupWhenPushComplete(String clusterName, String storeName, int versionNumber) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
-        HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
+        ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
         Store store = storeRepository.getStore(storeName);
         if ((store.isHybrid() && clusterConfig.isKafkaLogCompactionForHybridStoresEnabled())
             || (store.isIncrementalPushEnabled() && clusterConfig.isKafkaLogCompactionForIncrementalPushStoresEnabled())) {
@@ -1954,7 +1965,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * version to be deleted (if it exists) and not actually removing it from the {@link Store} object.
      */
     protected Optional<Version> deleteVersionFromStoreRepository(String clusterName, String storeName, int versionNumber) {
-        HelixReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
         logger.info("Deleting version " + versionNumber + " in Store: " + storeName + " in cluster: " + clusterName);
         Optional<Version> deletedVersion;
         storeRepository.lock();
@@ -2162,7 +2173,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     private Store getStoreForReadOnly(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
@@ -2178,7 +2189,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public List<Version> versionsForStore(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         List<Version> versions;
         repository.lock();
         try {
@@ -2196,7 +2207,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public List<Store> getAllStores(String clusterName){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             return repository.getAllStores();
@@ -2208,7 +2219,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Map<String, String> getAllStoreStatuses(String clusterName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             List<Store> storeList = repository.getAllStores();
@@ -2225,7 +2236,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public boolean hasStore(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             return repository.hasStore(storeName);
@@ -2237,7 +2248,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Store getStore(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         return repository.getStore(storeName);
     }
 
@@ -2955,7 +2966,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
         checkPreConditionForUpdateStore(clusterName, storeName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
@@ -2978,7 +2989,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void checkPreConditionForUpdateStore(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         if (repository.getStore(storeName) == null) {
             throwStoreDoesNotExist(clusterName, storeName);
         }
@@ -3038,42 +3049,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public SchemaEntry getKeySchema(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.getKeySchema(storeName);
     }
 
     @Override
     public Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.getValueSchemas(storeName);
     }
 
     @Override
     public Collection<DerivedSchemaEntry> getDerivedSchemas(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.getDerivedSchemas(storeName);
     }
 
     @Override
     public int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr) {
         checkControllerMastership(clusterName);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
     }
 
     @Override
     public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
         checkControllerMastership(clusterName);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.getDerivedSchemaId(storeName, schemaStr);
     }
 
     @Override
     public SchemaEntry getValueSchema(String clusterName, String storeName, int id) {
         checkControllerMastership(clusterName);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.getValueSchema(storeName, id);
     }
 
@@ -3101,7 +3112,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId,
         DirectionalSchemaCompatibilityType compatibilityType) {
         checkControllerMastership(clusterName);
-        HelixReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+        ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
         int newValueSchemaId = schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr,
             compatibilityType);
         if (newValueSchemaId != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE && newValueSchemaId != schemaId) {
@@ -3149,7 +3160,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         int valueSchemaId, String supersetSchema, int supersetSchemaId) {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
-        HelixReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
 
         // If the new superset schema does not exist in the schema repo, add it
         SchemaEntry existingSchema = schemaRepository.getValueSchema(storeName, supersetSchemaId);
@@ -3174,7 +3185,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public int getValueSchemaIdIgnoreFieldOrder(String clusterName, String storeName, String valueSchemaStr) {
         checkControllerMastership(clusterName);
         SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, valueSchemaStr);
-        HelixReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+        ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
 
         return schemaRepository.getValueSchemaIdIgnoreFieldOrder(storeName, valueSchemaEntry);
     }
@@ -3358,7 +3369,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             boolean allInstancesCompleted = true;
             for (Map.Entry<CharSequence, Integer> entry : instances.entrySet()) {
-                ExecutionStatus status = ExecutionStatus.fromOrdinal(entry.getValue());
+                ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
                 if (status != completeStatus && pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
                     allInstancesCompleted = false;
                     if (status != middleStatus) {
@@ -4163,7 +4174,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected Store checkPreConditionForUpdateStoreMetadata(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(storeName);
         if (null == store) {
             throw new VeniceNoStoreException(storeName);
@@ -4277,7 +4288,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         newVersion.setPushType(pushType);
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+        ReadWriteStoreRepository repository = resources.getMetadataRepository();
         try {
             resources.lockForMetadataOperation();
             try {
@@ -4489,7 +4500,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected Store checkPreConditionForAclOp(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(storeName);
         if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
@@ -4529,5 +4540,57 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     Long getInMemoryTopicCreationTime(String topic) {
         return topicToCreationTime.get(topic);
+    }
+
+    public void produceSnapshotToMetaStoreRT(String clusterName, String regularStoreName) {
+        checkControllerMastership(clusterName);
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        Store store = repository.getStore(regularStoreName);
+        if (store == null) {
+            throwStoreDoesNotExist(clusterName, regularStoreName);
+        }
+        String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName);
+        // Make sure RT topic is before producing the snapshot
+        getRealTimeTopic(clusterName, metaStoreName);
+
+        // Update the store flag to enable meta system store.
+        if (!store.isStoreMetaSystemStoreEnabled()) {
+            storeMetadataUpdate(clusterName, regularStoreName, (s) -> {
+                s.setStoreMetaSystemStoreEnabled(true);
+                return s;
+            });
+        }
+        // Get updated store
+        store = repository.getStore(regularStoreName);
+        // Local store properties
+        metaStoreWriter.writeStoreProperties(clusterName, store);
+        logger.info("Wrote store property snapshot to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
+        // Key/value schemas
+        Collection<SchemaEntry> keySchemas = new HashSet<>();
+        keySchemas.add(getKeySchema(clusterName, regularStoreName));
+        metaStoreWriter.writeStoreKeySchemas(clusterName, regularStoreName, keySchemas);
+        logger.info("Wrote key schema to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
+        metaStoreWriter.writeStoreValueSchemas(clusterName, regularStoreName, getValueSchemas(clusterName, regularStoreName));
+        logger.info("Wrote value schemas to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
+        // replica status for all the available versions
+        List<Version> versions = store.getVersions();
+        if (versions.isEmpty()) {
+            return;
+        }
+        for (Version version: versions) {
+            int versionNumber = version.getNumber();
+            String topic = Version.composeKafkaTopic(regularStoreName, versionNumber);
+            OfflinePushStatus offlinePushStatus = getVeniceHelixResource(clusterName).getPushMonitor().getOfflinePushOrThrow(topic);
+            Collection<PartitionStatus> partitionStatuses = offlinePushStatus.getPartitionStatuses();
+            for (PartitionStatus ps : partitionStatuses) {
+                metaStoreWriter.writeStoreReplicaStatuses(clusterName, regularStoreName, versionNumber, ps.getPartitionId(), ps.getReplicaStatuses());
+            }
+            logger.info("Wrote replica status snapshot for version: " + versionNumber + " to meta system store for venice store: "
+                + regularStoreName + " in cluster: " + clusterName);
+        }
+    }
+
+    public MetaStoreWriter getMetaStoreWriter() {
+        return metaStoreWriter;
     }
 }

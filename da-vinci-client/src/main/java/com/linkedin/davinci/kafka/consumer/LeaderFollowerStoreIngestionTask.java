@@ -573,7 +573,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (storeVersionState.isPresent()) {
       String newTopicSwitchLogging = "TopicSwitch message (new source topic:" + topicSwitch.sourceTopicName
-          + "; rewind start time:" + topicSwitch.rewindStartTimestamp + ")";
+          + "; rewind start time:" + topicSwitch.rewindStartTimestamp + "; upstream start offset: " + upstreamStartOffset + ")";
       if (null == storeVersionState.get().topicSwitch) {
         logger.info("First time receiving a " + newTopicSwitchLogging);
         storeVersionState.get().topicSwitch = topicSwitch;

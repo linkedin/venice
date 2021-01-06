@@ -313,7 +313,8 @@ public class OfflinePushStatus {
     return progress;
   }
 
-  protected Collection<PartitionStatus> getPartitionStatuses() {
+  @JsonIgnore
+  public Collection<PartitionStatus> getPartitionStatuses() {
     return Collections.unmodifiableCollection(partitionIdToStatus.values());
   }
 

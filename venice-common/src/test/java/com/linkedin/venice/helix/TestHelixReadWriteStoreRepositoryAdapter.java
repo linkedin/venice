@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -44,7 +45,8 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
 
     HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, cluster);
     zkSharedSystemStoreRepository.refresh();
-    HelixReadWriteStoreRepository writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000);
+    HelixReadWriteStoreRepository writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000,
+        Optional.empty());
     writeRepo.refresh();
 
     writeRepoAdapter = new HelixReadWriteStoreRepositoryAdapter(zkSharedSystemStoreRepository, writeRepo);

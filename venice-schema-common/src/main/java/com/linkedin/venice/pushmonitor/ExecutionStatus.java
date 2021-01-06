@@ -1,5 +1,10 @@
 package com.linkedin.venice.pushmonitor;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
+
 /**
  * Status of executing off-line push. The status will be used by both Job and Task.
  *
@@ -18,7 +23,7 @@ package com.linkedin.venice.pushmonitor;
  */
 public enum ExecutionStatus {
   /** Job doesn't yet exist */
-  NOT_CREATED(true, false, false, false),
+  NOT_CREATED(true, false, false, false, 0),
 
   /**
    * Legacy status.
@@ -26,66 +31,69 @@ public enum ExecutionStatus {
    * Now only used as the initial value for an {@link ExecutionStatus} in VeniceParentHelixAdmin, but should
    * never actually be returned to the push job, under normal circumstances...
    */
-  NEW(true, true, false, false),
+  NEW(true, true, false, false, 1),
 
   /** Job/Task is started and start consuming data from Kafka */
-  STARTED(true, true, false, false),
+  STARTED(true, true, false, false, 2),
 
   /** Task is processing data. */
-  PROGRESS(false, true, false, false),
+  PROGRESS(false, true, false, false, 3),
 
   /** Tasks belonging to a Hybrid Store emits this instead of {@link ExecutionStatus#COMPLETED} when it consumes a EOP message */
-  END_OF_PUSH_RECEIVED(true, true, true, false),
+  END_OF_PUSH_RECEIVED(true, true, true, false, 4),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a SOBR message */
-  START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false),
+  START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false, 5),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a TS message */
-  TOPIC_SWITCH_RECEIVED(false, true, true, false),
+  TOPIC_SWITCH_RECEIVED(false, true, true, false, 6),
 
   /** An incremental push job/task is started*/
-  START_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, false),
+  START_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, false, 7),
 
   /** An incremental push job/task is completed*/
-  END_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, true),
+  END_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, true, 8),
 
   /* Task is dropped by the storage node */
-  DROPPED(false, true, false, false),
+  DROPPED(false, true, false, false, 9),
 
   /**
    * For task, data is read and put into storage engine.
    * For Job, all of tasks are completed.
    */
-  COMPLETED(true, true, false, true),
+  COMPLETED(true, true, false, true, 10),
 
   /** a non-fatal error task meets when processing the data. Often happens after EOP is received. **/
-  WARNING(false, true, false, true),
+  WARNING(false, true, false, true, 11),
 
   /** Job/task met error when processing the data. */
-  ERROR(true, true, false, true),
+  ERROR(true, true, false, true, 12),
 
-  CATCH_UP_BASE_TOPIC_OFFSET_LAG(false, true, true, false),
+  CATCH_UP_BASE_TOPIC_OFFSET_LAG(false, true, true, false, 13),
 
   /**
    * Job is terminated and be removed from repository. Should be archived to historic data storage.
    * Only be used for Job
    * TODO: remove ARCHIVED as it's not been used anymore
    */
-  ARCHIVED(true, false, false, true),
+  ARCHIVED(true, false, false, true, 14),
 
   /** Job status is unknown when checking, and it could be caused by network issue */
-  UNKNOWN(true, false, false, false);
+  UNKNOWN(true, false, false, false, 15);
 
   final boolean isJobStatus;
   final boolean isTaskStatus;
   final boolean isUsedByHybridStoresOnly;
   final boolean isTerminal;
 
-  ExecutionStatus(boolean isJobStatus, boolean isTaskStatus, boolean isUsedByHybridStoresOnly, boolean isTerminal) {
+  final int value;
+
+  ExecutionStatus(boolean isJobStatus, boolean isTaskStatus, boolean isUsedByHybridStoresOnly, boolean isTerminal, int value) {
     this.isJobStatus = isJobStatus;
     this.isTaskStatus = isTaskStatus;
     this.isUsedByHybridStoresOnly = isUsedByHybridStoresOnly;
     this.isTerminal = isTerminal;
+    this.value = value;
   }
 
   /**
@@ -116,15 +124,21 @@ public enum ExecutionStatus {
     return this.isTerminal;
   }
 
+  public int getValue() {
+    return value;
+  }
   /**
    * Get ExecutionStatus from integer ordinal value in avro.
    */
-  public static ExecutionStatus fromOrdinal(int ordinal) {
-    for (ExecutionStatus status : values()) {
-      if (status.ordinal() == ordinal) {
-        return status;
-      }
+  private static final Map<Integer, ExecutionStatus> idMapping = new HashMap<>();
+  static {
+    Arrays.stream(values()).forEach(s -> idMapping.put(s.value, s));
+  }
+  public static ExecutionStatus fromInt(int v) {
+    ExecutionStatus status = idMapping.get(v);
+    if (status == null) {
+      return ExecutionStatus.UNKNOWN;
     }
-    return ExecutionStatus.UNKNOWN;
+    return status;
   }
 }

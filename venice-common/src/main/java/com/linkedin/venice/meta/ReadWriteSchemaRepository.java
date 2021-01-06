@@ -50,4 +50,10 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
    * @return the derived schema that is deleted or null if the schema doesn't exist
    */
   DerivedSchemaEntry removeDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId);
+
+  int preCheckValueSchemaAndGetNextAvailableId(String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType);
+
+  int getValueSchemaIdIgnoreFieldOrder(String storeName, SchemaEntry newSchemaEntry);
+
+  int preCheckDerivedSchemaAndGetNextAvailableId(String storeName, int valueSchemaId, String derivedSchemaStr);
 }

@@ -1,11 +1,8 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
-import com.linkedin.venice.router.cache.CacheEviction;
-import com.linkedin.venice.router.cache.CacheType;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
@@ -107,6 +104,7 @@ public class VeniceRouterConfig {
   private boolean useGroupFieldInHelixDomain;
   private VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
+  private String systemSchemaClusterName;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -249,6 +247,7 @@ public class VeniceRouterConfig {
       throw new VeniceException("Invalid " + ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY + " config: " + helixGroupSelectionStrategyStr +
           ", and allowed values: " + Arrays.toString(HelixGroupSelectionStrategyEnum.values()));
     }
+    systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
   }
 
   public String getClusterName() {
@@ -564,6 +563,10 @@ public class VeniceRouterConfig {
 
   public HelixGroupSelectionStrategyEnum getHelixGroupSelectionStrategy() {
     return helixGroupSelectionStrategy;
+  }
+
+  public String getSystemSchemaClusterName() {
+    return systemSchemaClusterName;
   }
 
   /**
