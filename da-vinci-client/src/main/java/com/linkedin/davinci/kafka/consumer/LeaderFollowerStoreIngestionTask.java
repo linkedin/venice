@@ -11,6 +11,7 @@ import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -108,6 +109,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * some time after seeing the last messages in version topic.
    */
   private final long newLeaderInactiveTime;
+
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceAddress;
 
@@ -189,7 +191,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionStateSerializer,
         isWriteComputationEnabled,
         venicePartitioner);
-    newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
+    /**
+     * We are going to apply fast leader failover for {@link com.linkedin.venice.common.VeniceSystemStoreType#META_STORE}
+     * since it is time sensitive, and if the split-brain problem happens in prod, we could design a way to periodically
+     * produce snapshot to the meta system store to make correction in the future.
+     */
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+      newLeaderInactiveTime = serverConfig.getServerSystemStorePromotionToLeaderReplicaDelayMs();
+    } else {
+      newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
+    }
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
   }
@@ -973,7 +985,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * to keep the goal of the function simple and not overload.
    *
    * Also DIV validation is done here if the message is received from RT topic. For more info please see
-   * please see {@link StoreIngestionTask#internalProcessConsumerRecord(ConsumerRecord, PartitionConsumptionState, ProducedRecord)}
+   * please see {@literal StoreIngestionTask#internalProcessConsumerRecord(ConsumerRecord, PartitionConsumptionState, ProducedRecord)}
    *
    * @param consumerRecord
    * @return true if the message was produced to kafka, Otherwise false.

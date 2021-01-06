@@ -62,7 +62,7 @@ public class TestSchemaEntry {
     String schemaStr2 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\", \"doc\": \"company name here\"}]}";
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
-    Assert.assertNotEquals(entry1.hashCode(), entry2.hashCode());
+    Assert.assertEquals(entry1.hashCode(), entry2.hashCode());
   }
 
   @Test

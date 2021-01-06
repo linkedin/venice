@@ -49,6 +49,10 @@ public class Instance {
     this.sslPort = sslPort;
   }
 
+  public static Instance fromHostAndPort(String hostName, int port) {
+    return Instance.fromNodeId(hostName + "_" + port);
+  }
+
   public static Instance fromNodeId(String nodeId){
     try {
       String[] parts = nodeId.split("_");

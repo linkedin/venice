@@ -234,7 +234,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final String pushJobStatusStoreClusterName;
     private final MetadataStoreWriter metadataStoreWriter;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
-    private final MetaStoreWriter metaStoreWriter;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -360,8 +359,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             pushStatusStoreReader = Optional.empty();
         }
-        metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory);
-
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
             AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, multiClusterConfigs, this));
@@ -377,7 +374,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 .setPartitionCount(1);
             initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
                 multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-                Optional.of(metadataSystemStoreUpdate)));
+                Optional.of(metadataSystemStoreUpdate), true));
         }
         ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
@@ -4558,6 +4555,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterControllerUrlMap();
     }
 
+
     /**
      * Return the topic creation time if it has not been persisted to Zk yet.
      * @param topic The topic whose creation time is needed.
@@ -4569,6 +4567,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public void produceSnapshotToMetaStoreRT(String clusterName, String regularStoreName) {
         checkControllerMastership(clusterName);
+        Optional<MetaStoreWriter> metaStoreWriter = getVeniceHelixResource(clusterName).getMetaStoreWriter();
+        if (!metaStoreWriter.isPresent()) {
+            logger.info("MetaStoreWriter retrieved from VeniceHelixResource is absent, so producing snapshot to meta"
+                + " store RT topic will be skipped for store: " + regularStoreName);
+            return;
+        }
         ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(regularStoreName);
         if (store == null) {
@@ -4588,14 +4592,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Get updated store
         store = repository.getStore(regularStoreName);
         // Local store properties
-        metaStoreWriter.writeStoreProperties(clusterName, store);
+        metaStoreWriter.get().writeStoreProperties(clusterName, store);
         logger.info("Wrote store property snapshot to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
         // Key/value schemas
         Collection<SchemaEntry> keySchemas = new HashSet<>();
         keySchemas.add(getKeySchema(clusterName, regularStoreName));
-        metaStoreWriter.writeStoreKeySchemas(clusterName, regularStoreName, keySchemas);
+        metaStoreWriter.get().writeStoreKeySchemas(clusterName, regularStoreName, keySchemas);
         logger.info("Wrote key schema to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
-        metaStoreWriter.writeStoreValueSchemas(clusterName, regularStoreName, getValueSchemas(clusterName, regularStoreName));
+        metaStoreWriter.get().writeStoreValueSchemas(clusterName, regularStoreName, getValueSchemas(clusterName, regularStoreName));
         logger.info("Wrote value schemas to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
         // replica status for all the available versions
         List<Version> versions = store.getVersions();
@@ -4608,14 +4612,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             OfflinePushStatus offlinePushStatus = getVeniceHelixResource(clusterName).getPushMonitor().getOfflinePushOrThrow(topic);
             Collection<PartitionStatus> partitionStatuses = offlinePushStatus.getPartitionStatuses();
             for (PartitionStatus ps : partitionStatuses) {
-                metaStoreWriter.writeStoreReplicaStatuses(clusterName, regularStoreName, versionNumber, ps.getPartitionId(), ps.getReplicaStatuses());
+                metaStoreWriter.get().writeStoreReplicaStatuses(clusterName, regularStoreName, versionNumber, ps.getPartitionId(), ps.getReplicaStatuses());
             }
             logger.info("Wrote replica status snapshot for version: " + versionNumber + " to meta system store for venice store: "
                 + regularStoreName + " in cluster: " + clusterName);
         }
-    }
-
-    public MetaStoreWriter getMetaStoreWriter() {
-        return metaStoreWriter;
     }
 }

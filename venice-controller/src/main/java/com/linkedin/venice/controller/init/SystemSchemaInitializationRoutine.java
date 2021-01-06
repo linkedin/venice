@@ -7,7 +7,9 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
@@ -33,19 +35,21 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
   private final VeniceHelixAdmin admin;
   private final Optional<Schema> keySchema;
   private final Optional<UpdateStoreQueryParams> storeMetadataUpdate;
+  private final boolean autoRegisterDerivedComputeSchema;
 
   public SystemSchemaInitializationRoutine(AvroProtocolDefinition protocolDefinition, VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin) {
-    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty());
+    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty(), false);
   }
 
   public SystemSchemaInitializationRoutine(AvroProtocolDefinition protocolDefinition,
       VeniceControllerMultiClusterConfig multiClusterConfigs, VeniceHelixAdmin admin,
-      Optional<Schema> keySchema, Optional<UpdateStoreQueryParams> storeMetadataUpdate) {
+      Optional<Schema> keySchema, Optional<UpdateStoreQueryParams> storeMetadataUpdate, boolean autoRegisterDerivedComputeSchema) {
     this.protocolDefinition = protocolDefinition;
     this.multiClusterConfigs = multiClusterConfigs;
     this.admin = admin;
     this.keySchema = keySchema;
     this.storeMetadataUpdate = storeMetadataUpdate;
+    this.autoRegisterDerivedComputeSchema = autoRegisterDerivedComputeSchema;
   }
 
   @Override
@@ -124,37 +128,51 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       for (int schemaVersion = 1; schemaVersion <= protocolDefinition.getCurrentProtocolVersion(); schemaVersion++) {
         Schema schemaInLocalResources = protocolSchemaMap.get(schemaVersion);
         if (null == schemaInLocalResources) {
-          throw new VeniceException("Invalid protocol definition: '" + protocolDefinition.name()
-              + "' does not have a version " + schemaVersion + " even though that is inferior to the current version ("
-              + protocolDefinition.getCurrentProtocolVersion() + ").");
+          throw new VeniceException(
+              "Invalid protocol definition: '" + protocolDefinition.name() + "' does not have a version " + schemaVersion + " even though that is inferior to the current version ("
+                  + protocolDefinition.getCurrentProtocolVersion() + ").");
         }
 
         Schema knownSchema = knownSchemaMap.get(schemaVersion);
 
         if (null == knownSchema) {
           try {
-            admin.addValueSchema(
-                clusterToInit,
-                systemStoreName,
-                schemaInLocalResources.toString(),
-                schemaVersion,
+            admin.addValueSchema(clusterToInit, systemStoreName, schemaInLocalResources.toString(), schemaVersion,
                 DirectionalSchemaCompatibilityType.NONE);
           } catch (Exception e) {
-            LOGGER.error("Caught Exception when attempting to register '" + protocolDefinition.name()
-                + "' schema version '" + schemaVersion + "'. Will bubble up.");
+            LOGGER.error(
+                "Caught Exception when attempting to register '" + protocolDefinition.name() + "' schema version '" + schemaVersion + "'. Will bubble up.");
             throw e;
           }
           LOGGER.info("Added new schema v" + schemaVersion + " to '" + systemStoreName + "'.");
         } else {
           boolean schemasAreEqual = knownSchema.equals(schemaInLocalResources);
           if (schemasAreEqual) {
-            LOGGER.info("Schema v" + schemaVersion + " in '" + systemStoreName +
-                "' is already registered and consistent with the local definition.");
+            LOGGER.info("Schema v" + schemaVersion + " in '" + systemStoreName
+                + "' is already registered and consistent with the local definition.");
           } else {
             LOGGER.warn("Schema v" + schemaVersion + " in '" + systemStoreName
-                + "' is already registered but it is INCONSISTENT with the local definition.\n"
-                + "Already registered: " + knownSchema.toString(true) + "\n"
-                + "Local definition: " + schemaInLocalResources.toString(true));
+                + "' is already registered but it is INCONSISTENT with the local definition.\n" + "Already registered: "
+                + knownSchema.toString(true) + "\n" + "Local definition: " + schemaInLocalResources.toString(true));
+          }
+        }
+        if (autoRegisterDerivedComputeSchema) {
+          // Check and register derived compute schema
+          String derivedSchema = WriteComputeSchemaAdapter.parse(schemaInLocalResources).toString();
+          Pair<Integer, Integer> derivedSchemaInfo = admin.getDerivedSchemaId(clusterToInit, systemStoreName, derivedSchema);
+          if (derivedSchemaInfo.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+            /**
+             * The derived schema doesn't exist right now, try to register it.
+             */
+            try {
+              admin.addDerivedSchema(clusterToInit, systemStoreName, schemaVersion, derivedSchema);
+            } catch (Exception e) {
+              LOGGER.error("Caught Exception when attempting to register the derived compute schema for '" + protocolDefinition.name()
+                  + "' schema version '" + schemaVersion + "'. Will bubble up.");
+              throw e;
+            }
+            LOGGER.info(
+                "Added the derived compute schema for the new schema v" + schemaVersion + " to '" + systemStoreName + "'.");
           }
         }
       }

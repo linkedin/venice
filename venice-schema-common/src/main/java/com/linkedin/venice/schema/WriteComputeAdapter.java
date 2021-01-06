@@ -67,6 +67,7 @@ public class WriteComputeAdapter {
         return updateArray(originalSchema, (List) originalValue, writeComputeValue);
       case MAP:
         return updateMap((Map) originalValue, writeComputeValue);
+        // TODO: bug here, and it should support union type
       default:
         return writeComputeValue;
     }

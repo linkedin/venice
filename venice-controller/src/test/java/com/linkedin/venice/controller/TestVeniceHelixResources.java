@@ -36,7 +36,7 @@ public class TestVeniceHelixResources {
     ZKHelixAdmin admin = new ZKHelixAdmin(zk.getAddress());
     admin.addCluster(cluster);
     return new VeniceHelixResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
-        mock(VeniceControllerConfig.class), mock(StoreCleaner.class), metricsRepository, lock, Optional.empty(),
+        mock(VeniceControllerConfig.class), mock(VeniceHelixAdmin.class), metricsRepository, lock, Optional.empty(),
         Optional.empty(), Optional.empty(), mock(MetadataStoreWriter.class), mock(HelixAdminClient.class));
   }
 

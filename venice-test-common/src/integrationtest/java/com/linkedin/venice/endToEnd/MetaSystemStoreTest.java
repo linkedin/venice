@@ -19,7 +19,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.HashMap;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -29,7 +28,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static org.testng.Assert.*;
 
@@ -50,9 +48,7 @@ public class MetaSystemStoreTest {
 
   @BeforeClass
   public void setup() {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-    venice = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false, extraProperties);
+    venice = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false);
     controllerClient = venice.getControllerClient();
   }
 
@@ -131,7 +127,6 @@ public class MetaSystemStoreTest {
         }}
     );
     StoreMetaValue replicaStatusForV1P0 = storeClient.get(replicaStatusKeyForV1P0).get();
-    // TODO: once the full support of replica status in meta system store is ready, we will need to do validations against
     // the different situations.
     assertTrue(replicaStatusForV1P0 != null && replicaStatusForV1P0.storeReplicaStatuses != null);
 
@@ -151,6 +146,59 @@ public class MetaSystemStoreTest {
       assertEquals(v.storeValueSchemas.valueSchemaMap.size(), 2);
       assertEquals(Schema.parse(v.storeValueSchemas.valueSchemaMap.get(new Utf8("2")).toString()),
           Schema.parse(VALUE_SCHEMA_2));
+    });
+
+    // Do the 2nd empty push to the Venice store
+    // Do an empty push
+    versionCreationResponse = controllerClient.emptyPush(regularVeniceStoreName, "test_push_id_2", 100000);
+    assertFalse(versionCreationResponse.isError(), "New version creation should success, but got error: " + versionCreationResponse.getError());
+    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10000,
+        TimeUnit.SECONDS, Optional.of(LOGGER));
+    // Query replica status
+    StoreMetaKey replicaStatusKeyForV2P0 = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(
+        new HashMap<String, String>() {{
+          put(KEY_STRING_STORE_NAME, regularVeniceStoreName);
+          put(KEY_STRING_CLUSTER_NAME, venice.getClusterName());
+          put(KEY_STRING_VERSION_NUMBER, "2");
+          put(KEY_STRING_PARTITION_ID, "0");
+        }}
+    );
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      StoreMetaValue replicaStatusForV2P0 = storeClient.get(replicaStatusKeyForV2P0).get();
+      assertNotNull(replicaStatusForV2P0);
+      if (replicaStatusForV2P0 != null) {
+        assertEquals(replicaStatusForV2P0.storeReplicaStatuses.size(), 2);
+      }
+    });
+
+    // Do the 3rd empty push to the Venice store, and the replica status for 1st version should become empty
+    versionCreationResponse = controllerClient.emptyPush(regularVeniceStoreName, "test_push_id_3", 100000);
+    assertFalse(versionCreationResponse.isError(), "New version creation should success, but got error: " + versionCreationResponse.getError());
+    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10,
+        TimeUnit.SECONDS, Optional.of(LOGGER));
+    // Query replica status
+    StoreMetaKey replicaStatusKeyForV3P0 = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(
+        new HashMap<String, String>() {{
+          put(KEY_STRING_STORE_NAME, regularVeniceStoreName);
+          put(KEY_STRING_CLUSTER_NAME, venice.getClusterName());
+          put(KEY_STRING_VERSION_NUMBER, "3");
+          put(KEY_STRING_PARTITION_ID, "0");
+        }}
+    );
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      StoreMetaValue replicaStatusForV3P0 = storeClient.get(replicaStatusKeyForV3P0).get();
+      assertNotNull(replicaStatusForV3P0);
+      if (replicaStatusForV3P0 != null) {
+        assertEquals(replicaStatusForV3P0.storeReplicaStatuses.size(), 2);
+      }
+
+      /**
+       * Since we don't have logic to remove the entries for the deprecated versions right now,
+       * the corresponding replica status should contain an emtpy map.
+       */
+      StoreMetaValue currentReplicaStatusForV1P0 = storeClient.get(replicaStatusKeyForV1P0).get();
+      assertNotNull(currentReplicaStatusForV1P0);
+      assertEquals(currentReplicaStatusForV1P0.storeReplicaStatuses.size(), 0);
     });
   }
 }
