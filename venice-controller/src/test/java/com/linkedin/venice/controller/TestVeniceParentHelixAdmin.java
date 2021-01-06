@@ -45,6 +45,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -1444,11 +1445,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testGetTopicForCurrentPushJob() {
     String storeName = TestUtils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false);
 
     Store store = new ZKStore(storeName, "test_owner", 1, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
     store.addVersion(new Version(storeName, 1, "test_push_id"));
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
@@ -1519,9 +1522,23 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     // When there is a regular topic, but there is no corresponding version
     store.deleteVersion(1);
+
+    // If the in memory topic to creation time map doesn't contain topic info, then push will be killed
+    doReturn(null).when(internalAdmin).getInMemoryTopicCreationTime(Version.composeKafkaTopic(storeName, 1));
     currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
     Assert.assertFalse(currentPush.isPresent());
-    verify(mockParentAdmin).killOfflinePush(clusterName, latestTopic, true);
+    verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, latestTopic, true);
+
+    // If the topic has been created recently, an exception will be thrown to kill the request and killOfflinePush will not be called
+    doReturn(SystemTime.INSTANCE.getMilliseconds() - Time.MS_PER_MINUTE).when(internalAdmin).getInMemoryTopicCreationTime(Version.composeKafkaTopic(storeName, 1));
+    Assert.assertThrows(VeniceException.class, () -> mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false));
+    verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, latestTopic, true);
+
+    // If a considerable time has passed since topic creation and the version creation still wasn't written to Zk, then, the push should be killed
+    doReturn(SystemTime.INSTANCE.getMilliseconds() - 5 * Time.MS_PER_MINUTE).when(internalAdmin).getInMemoryTopicCreationTime(Version.composeKafkaTopic(storeName, 1));
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
+    Assert.assertFalse(currentPush.isPresent());
+    verify(mockParentAdmin, times(2)).killOfflinePush(clusterName, latestTopic, true);
   }
 
   @Test
@@ -1607,6 +1624,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
       doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
       doReturn(Optional.of(version)).when(store).getVersion(1);
+      doCallRealMethod().when(store).getVersionWithRetry(eq(1), anyInt(), anyLong(), any());
       doReturn(new HashSet<>(Arrays.asList(topicName, existingTopicName))).when(topicManager).listTopics();
       doReturn(newVersion).when(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, newPushJobId,
           3, 3, false, true, Version.PushType.BATCH,

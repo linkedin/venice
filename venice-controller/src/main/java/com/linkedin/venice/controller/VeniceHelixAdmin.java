@@ -256,6 +256,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private static final String SYSTEM_STORE_PUSH_JOB_ID = "system_store_push_job";
     private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
 
+    // This map stores the time when topics were created. It only contains topics whose information has not yet been persisted to Zk.
+    private final Map<String, Long> topicToCreationTime = new VeniceConcurrentHashMap<>();
+
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
     /**
@@ -1273,6 +1276,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     repository.unLock();
                 }
 
+                topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
+
                 // Topic created by Venice Controller is always without Kafka compaction.
                 getTopicManager().createTopic(
                     version.kafkaTopicName(),
@@ -1484,6 +1489,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 errorMessage += "\n" + handlingErrorMsg + ". Error message: " + e1.getMessage();
             }
             throw new VeniceException(errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(e), e);
+        } finally {
+            // If topic creation succeeds and version info is persisted to Zk, we should remove the creation time for a topic
+            // If topic creation fails or if version persistence fails, we should remove the creation time for a topic
+            if (version != null) {
+                topicToCreationTime.remove(version.kafkaTopicName());
+            }
         }
     }
 
@@ -4509,5 +4520,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * if this is a child controller.
          */
         return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterControllerUrlMap();
+    }
+
+    /**
+     * Return the topic creation time if it has not been persisted to Zk yet.
+     * @param topic The topic whose creation time is needed.
+     * @return the topic creation time if it has not yet persisted to Zk yet. 0 if topic information has persisted to Zk or if the topic doesn't exist.
+     */
+    Long getInMemoryTopicCreationTime(String topic) {
+        return topicToCreationTime.get(topic);
     }
 }
