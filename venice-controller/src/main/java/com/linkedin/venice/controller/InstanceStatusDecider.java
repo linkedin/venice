@@ -1,13 +1,11 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -196,7 +194,7 @@ public class InstanceStatusDecider {
     return store.getVersionStatus(Version.parseVersionFromKafkaTopicName(resourceName));
   }
 
-  private static boolean isCurrentVersion(String resourceName, HelixReadWriteStoreRepository metadataRepo) {
+  private static boolean isCurrentVersion(String resourceName, ReadWriteStoreRepository metadataRepo) {
     try{
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);

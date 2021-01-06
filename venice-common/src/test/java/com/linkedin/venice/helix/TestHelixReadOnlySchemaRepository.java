@@ -13,6 +13,7 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -23,7 +24,6 @@ import org.testng.annotations.Test;
 
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;
-
 
 public class TestHelixReadOnlySchemaRepository {
   private String zkAddress;
@@ -48,11 +48,11 @@ public class TestHelixReadOnlySchemaRepository {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    storeRWRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0);
+    storeRWRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0, Optional.empty());
     storeRWRepo.refresh();
     storeRORepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
     storeRORepo.refresh();
-    schemaRWRepo = new HelixReadWriteSchemaRepository(storeRWRepo, zkClient, adapter, cluster);
+    schemaRWRepo = new HelixReadWriteSchemaRepository(storeRWRepo, zkClient, adapter, cluster, Optional.empty());
     schemaRORepo = new HelixReadOnlySchemaRepository(storeRORepo, zkClient, adapter, cluster, 1, 1000);
   }
 

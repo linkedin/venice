@@ -1,6 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 
 /**
@@ -8,16 +11,26 @@ import com.linkedin.venice.exceptions.VeniceException;
  */
 public enum ReadStrategy {
     /*Read from any one online replication.*/
-    ANY_OF_ONLINE,
+    ANY_OF_ONLINE(0),
     /*Read from two of replication and use the result returned by the faster one.*/
-    FASTER_OF_TWO_ONLINE;
+    FASTER_OF_TWO_ONLINE(1);
 
-    private static ReadStrategy[] ALL_READ_STRATEGIES = values();
+    private final int value;
 
-    public static ReadStrategy getReadStrategyFromOrdinal(int ordinal) {
-        if (ordinal >= ALL_READ_STRATEGIES.length) {
-            throw new VeniceException("Invalid ReadStrategy ordinal: " + ordinal);
+    ReadStrategy(int v) {
+        this.value = v;
+    }
+
+    private static final Map<Integer, ReadStrategy> idMapping = new HashMap<>();
+    static {
+        Arrays.stream(values()).forEach(s -> idMapping.put(s.value, s));
+    }
+
+    public static ReadStrategy getReadStrategyFromInt(int v) {
+        ReadStrategy strategy = idMapping.get(v);
+        if (strategy == null) {
+            throw new VeniceException("Invalid ReadStrategy id: " + v);
         }
-        return ALL_READ_STRATEGIES[ordinal];
+        return strategy;
     }
 }

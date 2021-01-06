@@ -2,12 +2,12 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.stats.ErrorPartitionStats;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
-import com.linkedin.venice.helix.CachedReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
@@ -41,7 +41,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
   private final Logger logger;
   private final String clusterName;
   private final HelixAdminClient helixAdminClient;
-  private final CachedReadOnlyStoreRepository readOnlyStoreRepository;
+  private final ReadOnlyStoreRepository readOnlyStoreRepository;
   private final HelixExternalViewRepository routingDataRepository;
   private final int errorPartitionAutoResetLimit;
   private final long processingCycleDelayMs;
@@ -50,7 +50,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
   private final Set<String> irrelevantResources = new HashSet<>();
 
   public ErrorPartitionResetTask(String clusterName, HelixAdminClient helixAdminClient,
-      CachedReadOnlyStoreRepository readOnlyStoreRepository, HelixExternalViewRepository routingDataRepository,
+      ReadOnlyStoreRepository readOnlyStoreRepository, HelixExternalViewRepository routingDataRepository,
       MetricsRepository metricsRepository, int errorPartitionAutoResetLimit, long processingCycleDelayMs) {
     taskId = String.format(TASK_ID_FORMAT, clusterName);
     logger = Logger.getLogger(taskId);

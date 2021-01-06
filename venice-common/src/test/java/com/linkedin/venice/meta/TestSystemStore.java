@@ -82,7 +82,6 @@ public class TestSystemStore {
 
     // All the shared store-level property update should throw exception
     assertThrows(() -> systemStore.setOwner("test"));
-    assertThrows(() -> systemStore.setPersistenceType(PersistenceType.ROCKS_DB));
     assertThrows(() -> systemStore.setStorageQuotaInByte(1));
     assertThrows(() -> systemStore.setPartitionCount(1));
     assertThrows(() -> systemStore.setPartitionerConfig(null));

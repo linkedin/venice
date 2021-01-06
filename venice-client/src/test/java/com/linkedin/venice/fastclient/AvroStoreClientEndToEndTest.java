@@ -11,12 +11,13 @@ import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -33,7 +34,6 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -230,13 +230,13 @@ public class AvroStoreClientEndToEndTest {
   }
 
   private static class RouterBasedStoreMetadata extends AbstractStoreMetadata {
-    private final HelixReadOnlyStoreRepository storeRepository;
-    private final HelixReadOnlySchemaRepository schemaRepository;
+    private final ReadOnlyStoreRepository storeRepository;
+    private final ReadOnlySchemaRepository schemaRepository;
     private final OnlineInstanceFinder onlineInstanceFinder;
     private final String storeName;
 
-    public RouterBasedStoreMetadata(HelixReadOnlyStoreRepository storeRepository,
-        HelixReadOnlySchemaRepository schemaRepository,
+    public RouterBasedStoreMetadata(ReadOnlyStoreRepository storeRepository,
+        ReadOnlySchemaRepository schemaRepository,
         OnlineInstanceFinder onlineInstanceFinder,
         String storeName,
         ClientConfig clientConfig) {

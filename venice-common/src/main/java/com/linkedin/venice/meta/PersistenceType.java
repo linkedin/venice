@@ -1,6 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 
 /**
@@ -10,29 +13,39 @@ public enum PersistenceType {
     /**
      * Volatile storage engine based on a simple Java {@link java.util.concurrent.ConcurrentHashMap}.
      */
-    IN_MEMORY,
+    IN_MEMORY(0),
 
     /**
      * Persistent storage engine that writes to durable media and maintains a B+ tree in the Java heap.
      */
-    BDB,
+    BDB(1),
 
     /**
      * Persistent storage engine that writes to durable media and maintains an off-heap in-memory index.
      */
-    ROCKS_DB,
+    ROCKS_DB(2),
 
     /**
      * Fastest lock-free most secure of all storage engines. Ignores data put in it, always returns null.
      */
-    BLACK_HOLE;
+    BLACK_HOLE(3);
 
-    private static PersistenceType[] ALL_PERSISTENCE_TYPES = values();
+    private final int value;
 
-    public static PersistenceType getPersistenceTypeFromOrdinal(int ordinal) {
-        if (ordinal >= ALL_PERSISTENCE_TYPES.length) {
-            throw new VeniceException("Invalid PersistenceType ordinal: " + ordinal);
+    PersistenceType(int v) {
+        this.value = v;
+    }
+
+    private static final Map<Integer, PersistenceType> idMapping = new HashMap<>();
+    static {
+        Arrays.stream(values()).forEach( p -> idMapping.put(p.value, p));
+    }
+
+    public static PersistenceType getPersistenceTypeFromInt(int i) {
+        PersistenceType pType = idMapping.get(i);
+        if (null == pType) {
+            throw new VeniceException("Invalid PersistenceType id: " + i);
         }
-        return ALL_PERSISTENCE_TYPES[ordinal];
+        return pType;
     }
 }

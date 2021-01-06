@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import java.util.Optional;
 import org.apache.avro.SchemaParseException;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -47,9 +48,9 @@ public class TestHelixReadWriteSchemaRepository {
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
     accessor = new HelixSchemaAccessor(zkClient, adapter, cluster);
-    storeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000);
+    storeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000, Optional.empty());
     storeRepo.refresh();
-    schemaRepo = new HelixReadWriteSchemaRepository(storeRepo, zkClient, adapter, cluster);
+    schemaRepo = new HelixReadWriteSchemaRepository(storeRepo, zkClient, adapter, cluster, Optional.empty());
   }
 
   @AfterMethod

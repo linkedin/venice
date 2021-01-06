@@ -8,11 +8,11 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -74,7 +74,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final Map<String, String> clusterToD2Map;
   private final OnlineInstanceFinderDelegator onlineInstanceFinder;
   private final Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
-  private final HelixReadOnlyStoreRepository storeRepository;
+  private final ReadOnlyStoreRepository storeRepository;
   private final String clusterName;
   private final String zkAddress;
   private final String kafkaZkAddress;
@@ -84,7 +84,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,
-      OnlineInstanceFinderDelegator onlineInstanceFinder, HelixReadOnlyStoreRepository storeRepository,
+      OnlineInstanceFinderDelegator onlineInstanceFinder, ReadOnlyStoreRepository storeRepository,
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       String clusterName, String zkAddress, String kafkaZkAddress, String kafkaBootstrapServers) {
     super();

@@ -14,8 +14,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -278,13 +282,25 @@ public class VeniceServer {
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "server-zk-client"));
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     String clusterName = clusterConfig.getClusterName();
-    this.metadataRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
+
+    String systemSchemaClusterName = veniceConfigLoader.getVeniceServerConfig().getSystemSchemaClusterName();
+    HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
+        new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, systemSchemaClusterName);
+;
+    this.metadataRepo = new HelixReadOnlyStoreRepositoryAdapter(
+        readOnlyZKSharedSystemStoreRepository,
+        new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
+            clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs())
+    );
     // Load existing store config and setup watches
     metadataRepo.refresh();
 
-    this.schemaRepo = new HelixReadOnlySchemaRepository(metadataRepo, zkClient, adapter, clusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
+    this.schemaRepo = new HelixReadOnlySchemaRepositoryAdapter(
+        new HelixReadOnlyZKSharedSchemaRepository(readOnlyZKSharedSystemStoreRepository, zkClient, adapter, systemSchemaClusterName,
+            clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs()),
+        new HelixReadOnlySchemaRepository(metadataRepo, zkClient, adapter, clusterName,
+            clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs())
+    );
     schemaRepo.refresh();
   }
 

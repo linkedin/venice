@@ -5,6 +5,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -42,7 +43,7 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
     repo = new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, cluster);
-    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000);
+    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000, Optional.empty());
     repo.refresh();
     writeRepo.refresh();
     // Create zk shared store first

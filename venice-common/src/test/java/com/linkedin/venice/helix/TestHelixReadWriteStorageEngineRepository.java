@@ -5,6 +5,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
@@ -37,7 +38,7 @@ public class TestHelixReadWriteStorageEngineRepository {
         zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
         zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-        repo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0);
+        repo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0, Optional.empty());
         repo.refresh();
     }
 
@@ -91,7 +92,8 @@ public class TestHelixReadWriteStorageEngineRepository {
         s2.setReadQuotaInCU(200);
         repo.addStore(s2);
 
-        HelixReadWriteStoreRepository newRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0);
+        HelixReadWriteStoreRepository newRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0,
+            Optional.empty());
         newRepo.refresh();
         Assert.assertEquals(newRepo.getStore(s1.getName()), s1, "Can not load stores from ZK successfully");
         Assert.assertEquals(newRepo.getStore(s2.getName()), s2, "Can not load stores from ZK successfully");

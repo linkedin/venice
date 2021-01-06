@@ -2,9 +2,9 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.tehuti.MetricsAware;
@@ -65,6 +65,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           // To speed up test
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(MAX_READ_CAPCITY, DEFAULT_PER_ROUTER_READ_QUOTA)
+          .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(properties);
 
       // setup d2 config first
@@ -136,11 +137,11 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     return service.getRoutingDataRepository();
   }
 
-  public HelixReadOnlyStoreRepository getMetaDataRepository() {
+  public ReadOnlyStoreRepository getMetaDataRepository() {
     return service.getMetadataRepository();
   }
 
-  public HelixReadOnlySchemaRepository getSchemaRepository() {
+  public ReadOnlySchemaRepository getSchemaRepository() {
     return service.getSchemaRepository();
   }
 

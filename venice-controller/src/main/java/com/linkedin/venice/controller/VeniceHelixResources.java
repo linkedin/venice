@@ -6,11 +6,17 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.AggStoreStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
+import com.linkedin.venice.helix.HelixReadWriteSchemaRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepositoryAdapter;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.pushmonitor.AggPushHealthStats;
@@ -20,6 +26,7 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.VeniceLock;
 import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
 import io.tehuti.metrics.MetricsRepository;
@@ -44,9 +51,9 @@ public class VeniceHelixResources implements VeniceResource {
   private static final Logger LOGGER = Logger.getLogger(VeniceHelixResources.class);
 
   private final SafeHelixManager controller;
-  private final HelixReadWriteStoreRepository metadataRepository;
+  private final ReadWriteStoreRepository metadataRepository;
   private final HelixExternalViewRepository routingDataRepository;
-  private final HelixReadWriteSchemaRepository schemaRepository;
+  private final ReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
   private final PushMonitorDelegator pushMonitor;
@@ -95,10 +102,27 @@ public class VeniceHelixResources implements VeniceResource {
                               HelixAdminClient helixAdminClient) {
     this.config = config;
     this.controller = helixManager;
-    this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
-        config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
-    this.schemaRepository =
-        new HelixReadWriteSchemaRepository(this.metadataRepository, zkClient, adapterSerializer, clusterName);
+    HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(
+        zkClient, adapterSerializer, config.getSystemSchemaClusterName());
+    Optional<MetaStoreWriter> metaStoreWriter = Optional.empty();
+    /**
+     * So far, Meta system store doesn't support write from parent cluster.
+     */
+    if ((storeCleaner instanceof VeniceHelixAdmin) && !config.isParent()) {
+      metaStoreWriter = Optional.of(((VeniceHelixAdmin)storeCleaner).getMetaStoreWriter());
+    }
+    this.metadataRepository = new HelixReadWriteStoreRepositoryAdapter(
+        zkSharedSystemStoreRepository,
+        new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
+            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs(),
+            metaStoreWriter)
+    );
+    this.schemaRepository = new HelixReadWriteSchemaRepositoryAdapter(
+        new HelixReadOnlyZKSharedSchemaRepository(zkSharedSystemStoreRepository, zkClient, adapterSerializer, config.getSystemSchemaClusterName(),
+            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()),
+        new HelixReadWriteSchemaRepository(this.metadataRepository, zkClient, adapterSerializer, clusterName, metaStoreWriter)
+    );
+
     SafeHelixManager spectatorManager;
     if (controller.getInstanceType() == InstanceType.SPECTATOR) {
       // HAAS is enabled for storage clusters therefore the helix manager is connected as a spectator and it can be
@@ -188,11 +212,11 @@ public class VeniceHelixResources implements VeniceResource {
     }
   }
 
-  public HelixReadWriteStoreRepository getMetadataRepository() {
+  public ReadWriteStoreRepository getMetadataRepository() {
     return metadataRepository;
   }
 
-  public HelixReadWriteSchemaRepository getSchemaRepository() {
+  public ReadWriteSchemaRepository getSchemaRepository() {
     return schemaRepository;
   }
 

@@ -1,6 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 
 /**
@@ -9,17 +12,29 @@ import com.linkedin.venice.exceptions.VeniceException;
 public enum RoutingStrategy {
     /* Calculate a hashvalue by key then use consistent hash to get the partition. Details: https://en.wikipedia
     .org/wiki/Consistent_hashing*/
-    CONSISTENT_HASH,
+    CONSISTENT_HASH(0),
     /*Simple hash and modulo strategy. Calculate a hash value by key, partition=hahsvalue mod
     numberOfPartitions*/
-    HASH;
+    HASH(1);
 
     private static RoutingStrategy[] ALL_ROUTING_STRATEGIES = values();
 
-    public static RoutingStrategy getRoutingStrategyFromOrdinal(int ordinal) {
-        if (ordinal >= ALL_ROUTING_STRATEGIES.length) {
-            throw new VeniceException("Invalid RoutingStrategy ordinal: " + ordinal);
+    private final int value;
+
+    RoutingStrategy(int v) {
+        this.value = v;
+    }
+
+    private static final Map<Integer, RoutingStrategy> idMapping = new HashMap<>();
+    static {
+        Arrays.stream(values()).forEach(s -> idMapping.put(s.value, s));
+    }
+
+    public static RoutingStrategy getRoutingStrategyFromInt(int v) {
+        RoutingStrategy strategy = idMapping.get(v);
+        if (strategy == null) {
+            throw new VeniceException("Invalid RoutingStrategy id: " + v);
         }
-        return ALL_ROUTING_STRATEGIES[ordinal];
+        return strategy;
     }
 }

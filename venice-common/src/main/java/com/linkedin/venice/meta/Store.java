@@ -311,6 +311,10 @@ public abstract class Store {
 
   public abstract void setStoreMetadataSystemStoreEnabled(boolean storeMetadataSystemStoreEnabled);
 
+  public abstract boolean isStoreMetaSystemStoreEnabled();
+
+  public abstract void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled);
+
   public abstract IncrementalPushPolicy getIncrementalPushPolicy();
 
   public abstract void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);

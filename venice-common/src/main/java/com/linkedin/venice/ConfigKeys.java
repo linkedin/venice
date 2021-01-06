@@ -1085,6 +1085,14 @@ public class ConfigKeys {
   public static final String CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME = "controller.system.schema.cluster.name";
 
   /**
+   * The name of the cluster that should host the special stores used to serve system schemas.
+   * This config is same as {@link #CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME}, since this config will be used
+   * in various Venice Components, so we remove the `controller` prefix to avoid confusion.
+   * TODO: deprecate {@link #CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME}
+   */
+  public static final String SYSTEM_SCHEMA_CLUSTER_NAME = "system.schema.cluster.name";
+
+  /**
    * Flag to enable the controller to send kill push job helix messages to the storage node upon consuming kill push job
    * admin messages.
    */

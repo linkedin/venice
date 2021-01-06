@@ -3,14 +3,11 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.utils.TestUtils;
 
+import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
@@ -49,7 +46,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
     repo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
-    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000);
+    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000, Optional.empty());
     repo.refresh();
     writeRepo.refresh();
   }

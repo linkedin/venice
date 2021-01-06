@@ -108,6 +108,7 @@
             {"name": "migrationDuplicateStore", "type": "boolean", "default": false, "doc": "Whether or not the store is a duplicate store in the process of migration."},
             {"name": "nativeReplicationSourceFabric", "type": "string", "default": "", "doc": "The source fabric name to be uses in native replication. Remote consumption will happen from kafka in this fabric."},
             {"name": "daVinciPushStatusStoreEnabled", "type": "boolean", "default": false, "doc": "Whether or not davinci push status store is enabled."},
+            {"name": "storeMetaSystemStoreEnabled", "type": "boolean", "default": false, "doc": "Whether or not the store meta system store is enabled for this store."},
             {
               "name": "versions",
               "doc": "List of non-retired versions. It's currently sorted and there is code run under the assumption that the last element in the list is the largest. Check out {VeniceHelixAdmin#getIncrementalPushVersion}, and please make it in mind if you want to change this logic",
@@ -225,7 +226,14 @@
         "null",
         {
           "type": "map",
-          "values": "int"
+          "values": {
+            "name": "StoreReplicaStatus",
+            "type": "record",
+            "doc": "This structure will contain all kinds of info related to one replica",
+            "fields": [
+              {"name": "status", "type": "int", "doc": "replica status"}
+            ]
+          }
         }
       ],
       "default": null

@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -50,7 +51,8 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     zkSharedSystemStoreRepository.refresh();
     storeRepository.refresh();
     repo = new HelixReadOnlyStoreRepositoryAdapter(zkSharedSystemStoreRepository, storeRepository);
-    HelixReadWriteStoreRepository writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000);
+    HelixReadWriteStoreRepository writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000,
+        Optional.empty());
     repo.refresh();
     writeRepo.refresh();
     // Create zk shared store first

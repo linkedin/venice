@@ -13,6 +13,7 @@ import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -57,7 +59,7 @@ import org.apache.log4j.Logger;
  * Instantiating multiple ReadWriteSchemaRepository will lead to race conditions in
  * ZK.
  */
-  public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
+public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
   private Logger logger = Logger.getLogger(HelixReadWriteSchemaRepository.class);
 
   private final HelixSchemaAccessor accessor;
@@ -65,10 +67,15 @@ import org.apache.log4j.Logger;
   // Store repository to check store related info
   private ReadWriteStoreRepository storeRepository;
 
+  private final String clusterName;
+  private final Optional<MetaStoreWriter> metaStoreWriter;
+
   public HelixReadWriteSchemaRepository(ReadWriteStoreRepository storeRepository, ZkClient zkClient,
-      HelixAdapterSerializer adapter, String clusterName) {
+      HelixAdapterSerializer adapter, String clusterName, Optional<MetaStoreWriter> metaStoreWriter) {
     this.storeRepository = storeRepository;
     this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName);
+    this.clusterName = clusterName;
+    this.metaStoreWriter = metaStoreWriter;
   }
 
   /**
@@ -302,6 +309,11 @@ import org.apache.log4j.Logger;
     } else {
       accessor.addValueSchema(storeName, newValueSchemaEntry);
     }
+    // Check whether meta system store is enabled or not
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    if (store.isStoreMetaSystemStoreEnabled() && metaStoreWriter.isPresent()) {
+      metaStoreWriter.get().writeStoreValueSchemas(clusterName, storeName, getValueSchemas(storeName));
+    }
     return newValueSchemaEntry;
   }
 
@@ -316,6 +328,7 @@ import org.apache.log4j.Logger;
    * @return next available ID if it's a valid schema or {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE}
    * if it's a duplicate
    */
+  @Override
   public int preCheckValueSchemaAndGetNextAvailableId(String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     preCheckStoreCondition(storeName);
 
@@ -331,6 +344,7 @@ import org.apache.log4j.Logger;
     return getNextAvailableSchemaId(getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
   }
 
+  @Override
   public int preCheckDerivedSchemaAndGetNextAvailableId(String storeName, int valueSchemaId, String derivedSchemaStr) {
     preCheckStoreCondition(storeName);
 
@@ -408,6 +422,7 @@ import org.apache.log4j.Logger;
     return newValueSchemaId;
   }
 
+  @Override
   public int getValueSchemaIdIgnoreFieldOrder(String storeName, SchemaEntry newSchemaEntry) {
     for (SchemaEntry schemaEntry : getValueSchemas(storeName)) {
       if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(schemaEntry.getSchema(), newSchemaEntry.getSchema())) {
