@@ -17,6 +17,7 @@ public class AggPushHealthStats extends AbstractVeniceAggStats<PushHealthStats> 
   public void recordSuccessfulPush(String storeName, long durationInSec) {
     totalStats.recordSuccessfulPush(durationInSec);
     getStoreStats(storeName).recordSuccessfulPush(durationInSec);
+    getStoreStats(storeName).recordSuccessfulPushGauge(durationInSec);
   }
 
   public void recordPushPrepartionDuration(String storeName, long durationInSec) {
