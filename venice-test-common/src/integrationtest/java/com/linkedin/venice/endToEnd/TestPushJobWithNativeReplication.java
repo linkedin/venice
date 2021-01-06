@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -50,6 +51,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class  TestPushJobWithNativeReplication {
+  private static final Logger logger = Logger.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 90_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
@@ -173,11 +175,11 @@ public class  TestPushJobWithNativeReplication {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT, groups = {"flaky"})
+  @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationWithLeadershipHandover() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    int recordCount = 10;
+    int recordCount = 10000;
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
@@ -200,8 +202,14 @@ public class  TestPushJobWithNativeReplication {
       job.run();
     }).start();
 
-    // Leadership hands over when the job is running
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, () -> {
+    /**
+     * Restart leader SN (server1) to trigger leadership handover during batch consumption.
+     * When server1 stops, sever2 will be promoted to leader. When server1 starts, due to full-auto rebalance, server2:
+     * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
+     * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
+     * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
+     */
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
       String topic = Version.composeKafkaTopic(storeName, 1);
       HelixBaseRoutingRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
@@ -209,10 +217,11 @@ public class  TestPushJobWithNativeReplication {
 
       Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);
       Assert.assertNotNull(leaderNode);
+      logger.info("Restart server port " + leaderNode.getPort());
       veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
     });
 
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       // Current version should become 1
       for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
         Assert.assertEquals(version, 1);
