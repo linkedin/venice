@@ -268,24 +268,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         /**
-         * 1. If leader(itself) was consuming from VT previously, just set the state as STANDBY for this partition;
-         * 2. otherwise, leader would unsubscribe from the previous feed topic (real-time topic or grandfathering
-         *    transient topic); then drain all the messages from the feed topic, which would produce the corresponding
-         *    result message to VT; block on the callback of the final message that it needs to produce; finally the new
-         *    follower will switch back to consuming from VT using the latest VT offset tracked by producer callback.
+         * 1. If leader(itself) was consuming from local VT previously, just set the state as STANDBY for this partition;
+         * 2. otherwise, leader would unsubscribe from the previous feed topic (real-time topic, grandfathering
+         *    transient topic or remote VT); then drain all the messages from the feed topic, which would produce the
+         *    corresponding result message to local VT; block on the callback of the final message that it needs to
+         *    produce; finally the new follower will switch back to consume from local VT using the latest VT offset
+         *    tracked by producer callback.
          */
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         String leaderTopic = offsetRecord.getLeaderTopic();
-        long versionTopicOffset = offsetRecord.getOffset();
-        if (leaderTopic != null && !topic.equals(leaderTopic)) {
+        if (leaderTopic != null && (!topic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely())) {
           consumerUnSubscribe(leaderTopic, partitionConsumptionState);
 
           waitForAllMessageToBeProcessedFromTopicPartition(leaderTopic, partition, partitionConsumptionState);
 
           partitionConsumptionState.setConsumeRemotely(false);
           logger.info(consumerTaskId + " disabled remote consumption for partition " + partition);
-          // subscribe back to VT/partition
-          consumerSubscribe(topic, partitionConsumptionState, versionTopicOffset);
+          // subscribe back to local VT/partition
+          offsetRecord = partitionConsumptionState.getOffsetRecord();
+          consumerSubscribe(topic, partitionConsumptionState, offsetRecord.getOffset());
           logger.info(consumerTaskId + " demoted to standby for partition " + partition + "\n" + offsetRecord.toDetailedString());
         }
         partitionConsumptionStateMap.get(partition).setLeaderState(STANDBY);
