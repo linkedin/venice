@@ -128,15 +128,18 @@ public final class ForkedJavaProcess extends Process {
 
     logger.info("Destroying forked process.");
     long startTime = System.currentTimeMillis();
-    if (Thread.currentThread() != processReaper) {
-      Runtime.getRuntime().removeShutdownHook(processReaper);
-    }
 
     try {
-      process.destroy();
-      if (!process.waitFor(60, TimeUnit.SECONDS)) {
+      if (Thread.currentThread() != processReaper) {
+        process.destroy();
+        if (!process.waitFor(60, TimeUnit.SECONDS)) {
+          process.destroyForcibly();
+        }
+        Runtime.getRuntime().removeShutdownHook(processReaper);
+      } else {
         process.destroyForcibly();
       }
+
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
 
