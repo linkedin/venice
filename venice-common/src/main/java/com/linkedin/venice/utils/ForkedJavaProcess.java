@@ -160,24 +160,17 @@ public final class ForkedJavaProcess extends Process {
     }
   }
 
-  /**
-   * Only works for UNIX.
-   *
-   * Adapted from https://stackoverflow.com/a/33171840/791758
-   */
-  private static synchronized long getPidOfProcess(Process p) {
-    long pid = -1;
+  private static synchronized long getPidOfProcess(Process process) {
     try {
-      if (p.getClass().getName().equals("java.lang.UNIXProcess")) {
-        Field f = p.getClass().getDeclaredField("pid");
-        f.setAccessible(true);
-        pid = f.getLong(p);
-        f.setAccessible(false);
-      }
+      Field pidField = process.getClass().getDeclaredField("pid");
+      pidField.setAccessible(true);
+      long pid = pidField.getLong(process);
+      pidField.setAccessible(false);
+      return pid;
     } catch (Exception e) {
-      pid = -2;
+      logger.error("Unable to access pid of " + process.getClass().getName(), e);
+      return -1;
     }
-    return pid;
   }
 
   public long getPid() {
