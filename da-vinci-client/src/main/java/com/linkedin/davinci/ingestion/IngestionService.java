@@ -88,8 +88,7 @@ public class IngestionService extends AbstractVeniceService {
   }
 
   @Override
-  public boolean startInner() throws Exception {
-    IngestionUtils.releaseTargetPortBinding(servicePort);
+  public boolean startInner() {
     int maxAttempt = 100;
     int retryCount = 0;
     while (true) {

@@ -1,8 +1,9 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.venice.utils.ForkedJavaProcess;
-
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,17 +19,13 @@ public class IngestionUtilsTest {
     ForkedJavaProcess forkedIngestionServiceProcess = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(servicePort));
     waitPortBinding(servicePort, MAX_ATTEMPT);
     Assert.assertEquals(forkedIngestionServiceProcess.isAlive(), true);
-
-    long processId = Long.parseLong(constructStringFromInputStream(executeShellCommand(new String[]{"lsof", "-t", "-i", ":" + servicePort})));
+    long processId = Long.parseLong(executeShellCommand("/usr/sbin/lsof -t -i :" + servicePort).split("\n")[0]);
     Assert.assertEquals(processId, forkedIngestionServiceProcess.getPid());
-
-    String fullProcessName = constructStringFromInputStream(executeShellCommand(new String[]{"ps", "-p",
-        String.valueOf(processId), "-o", "command"}));
+    String fullProcessName = executeShellCommand("ps -p " + processId + " -o command");
     Assert.assertEquals(fullProcessName.contains(IngestionService.class.getName()), true);
-
     IngestionUtils.releaseTargetPortBinding(servicePort);
-    forkedIngestionServiceProcess = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(servicePort));
-    Assert.assertEquals(forkedIngestionServiceProcess.isAlive(), true);
-    forkedIngestionServiceProcess.destroy();
+    TestUtils.waitForNonDeterministicAssertion(5000, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(executeShellCommand("/usr/sbin/lsof -t -i :" + servicePort), "");
+    });
   }
 }

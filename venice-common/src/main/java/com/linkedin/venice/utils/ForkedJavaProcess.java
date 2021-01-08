@@ -57,6 +57,10 @@ public final class ForkedJavaProcess extends Process {
     for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
       if (arg.startsWith("-Dlog4j2")) {
         command.add(arg);
+        if (arg.startsWith("-Dlog4j2.configuration=")) {
+          String log4jConfigFilePath = arg.split("=")[1];
+          command.add("-Dlog4j2.configurationFile=" + log4jConfigFilePath);
+        }
       }
     }
 

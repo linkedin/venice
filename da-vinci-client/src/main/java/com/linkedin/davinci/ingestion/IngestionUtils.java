@@ -47,6 +47,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 
@@ -225,24 +226,32 @@ public class IngestionUtils {
    * the port, which is created from previous deployment and was not killed due to failures.
    */
   public static void releaseTargetPortBinding(int port) {
-    String processId = constructStringFromInputStream(executeShellCommand(new String[]{"/bin/sh", "-c", "'", "lsof", "-t", "-i", ":" + port, "'"}));
-    if (!processId.equals("")) {
-      logger.info("Target port: " + port + " is bind to process id: " + processId);
-      String fullProcessName = constructStringFromInputStream(executeShellCommand(new String[]{"/bin/sh", "-c", "'", "ps", "-p", processId, "-o", "command", "'"}));
-      if (fullProcessName.contains(IngestionService.class.getName())) {
-        executeShellCommand(new String[]{"/bin/sh", "-c", "'", "kill", processId, "'"});
-        logger.info("Killed IngestionService process on pid " + processId);
-      } else {
-        logger.info("Target port is bind to unknown process: " + fullProcessName);
+    String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + port);
+    if (processIds.length() == 0) {
+      logger.info("No process is running on target port");
+    }
+    logger.info("All processes:\n" + processIds);
+    for (String processId : processIds.split("\n")) {
+      if (!processId.equals("")) {
+        int pid = Integer.parseInt(processId);
+        logger.info("Target port: " + port + " is bind to process id: " + pid);
+        String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
+        if (fullProcessName.contains(IngestionService.class.getName())) {
+          executeShellCommand("kill " +  pid);
+          logger.info("Killed IngestionService process on pid " + pid);
+        } else {
+          logger.info("Target port is bind to unknown process: " + fullProcessName);
+        }
       }
-    } else {
-      logger.info("No process is bind to target port.");
     }
   }
 
   public static Process startForkedIngestionProcess(VeniceConfigLoader configLoader) {
     int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     try (IngestionRequestClient ingestionRequestClient = new IngestionRequestClient(ingestionServicePort)) {
+      // Add blocking call to release target port binding.
+      releaseTargetPortBinding(ingestionServicePort);
+      // Start forking child ingestion process.
       Process isolatedIngestionService = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(ingestionServicePort));
       // Wait for server in forked child process to bind the listening port.
       waitPortBinding(ingestionServicePort, 100);
@@ -322,38 +331,22 @@ public class IngestionUtils {
     }
   }
 
-  /**
-   * executeShellCommand takes in a String array of command arguments and execute the shell command. It will return
-   * the inputStream of the exec process for user to consume.
-   */
-  static InputStream executeShellCommand(String[] command) {
+  static String executeShellCommand(String command) {
     try {
-      Process p = Runtime.getRuntime().exec(command);
-      return p.getInputStream();
+      Process process = Runtime.getRuntime().exec(command);
+      String output = IOUtils.toString(process.getInputStream());
+      int exitCode = process.waitFor();
+      if (exitCode != 0) {
+        logger.info("Exit code " + exitCode + " when executing shell command: " + command);
+        return "";
+      }
+      IOUtils.closeQuietly(process.getInputStream());
+      IOUtils.closeQuietly(process.getOutputStream());
+      IOUtils.closeQuietly(process.getErrorStream());
+      return output;
     } catch (Exception e) {
-      logger.info("Encounter exception when executing shell command: " + Arrays.toString(command), e);
-      return null;
-    }
-  }
-
-  /**
-   *  constructStringFromInputStream will read from provided inputStream and construct it as a String.
-   */
-  static String constructStringFromInputStream(InputStream inputStream) {
-    if (inputStream == null) {
+      logger.info("Encounter exception when executing shell command: " + command, e);
       return "";
     }
-    StringBuilder stringBuilder = new StringBuilder();
-    String line;
-    BufferedReader input = new BufferedReader(new InputStreamReader(inputStream));
-    try {
-      while ((line = input.readLine()) != null) {
-        stringBuilder.append(line);
-      }
-      input.close();
-    } catch (IOException e) {
-      throw new VeniceException("Encounter exception when reading the shell exec command output", e);
-    }
-    return stringBuilder.toString();
   }
 }
