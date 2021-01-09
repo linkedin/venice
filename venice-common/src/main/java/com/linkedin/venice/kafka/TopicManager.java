@@ -1,5 +1,7 @@
 package com.linkedin.venice.kafka;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
@@ -88,6 +90,12 @@ public class TopicManager implements Closeable {
   private KafkaAdminWrapper kafkaAdmin;
   private KafkaConsumer<byte[], byte[]> kafkaRawBytesConsumer;
   private KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaRecordConsumer;
+
+  // It's expensive to grab the topic config over and over again, and it changes infrequently.  So we temporarily cache
+  // queried configs.
+  Cache<String, Properties> topicConfigCache = Caffeine.newBuilder()
+      .expireAfterWrite(5, TimeUnit.MINUTES)
+      .build();
 
 
   //TODO: Consider adding a builder for this class as the number of constructors is getting high.
@@ -350,7 +358,7 @@ public class TopicManager implements Closeable {
   }
 
   public long getTopicMinLogCompactionLagMs(String topicName) {
-    Properties topicProperties = getTopicConfig(topicName);
+    Properties topicProperties = getCachedTopicConfig(topicName);
     return topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
         ? Long.valueOf((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)) : 0L;
   }
@@ -390,6 +398,22 @@ public class TopicManager implements Closeable {
     }
 
     return getKafkaAdmin().getTopicConfig(topicName);
+  }
+
+  /**
+   * Still heavy, but can be called repeatedly to amortize that cost.
+   *
+   * @param topicName
+   * @return
+   */
+  public Properties getCachedTopicConfig(String topicName) {
+    // query the cache first, if it it doesn't have it, query it from kafka and store it.
+    Properties properties = topicConfigCache.getIfPresent(topicName);
+    if (properties == null) {
+      properties = getTopicConfig(topicName);
+      topicConfigCache.put(topicName, properties);
+    }
+    return properties;
   }
 
   public Map<String, Properties> getAllTopicConfig() {
@@ -1032,5 +1056,10 @@ public class TopicManager implements Closeable {
   public synchronized void close() throws IOException {
     IOUtils.closeQuietly(kafkaRawBytesConsumer);
     IOUtils.closeQuietly(kafkaAdmin);
+  }
+
+  // For testing only
+  public void setTopicConfigCache(Cache<String, Properties> topicConfigCache) {
+    this.topicConfigCache = topicConfigCache;
   }
 }
