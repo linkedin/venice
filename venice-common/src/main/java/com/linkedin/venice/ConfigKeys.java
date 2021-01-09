@@ -1392,4 +1392,29 @@ public class ConfigKeys {
    * bootstrap the metadata system store locally.
    */
   public static final String CLIENT_METADATA_SYSTEM_STORE_VERSION = "client.metadata.system.store.version";
+
+  /**
+   * Whether to throttle SSL connections between router and client.
+   */
+  public static final String ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES = "router.throttle.client.ssl.handshakes";
+
+  /**
+   * The number of threads that will be used to perform SSL handshakes between clients and a router.
+   */
+  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
+
+  /**
+   * The maximum number of concurrent SSL handshakes between clients and a router.
+   */
+  public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
+
+  /**
+   * The number of attempts of SSL handshakes between clients and a router.
+   */
+  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS = "router.client.ssl.handshake.attempts";
+
+  /**
+   * The delay between attempts of SSL handshakes between clients and a router.
+   */
+  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS = "router.client.ssl.handshake.backoff.ms";
 }

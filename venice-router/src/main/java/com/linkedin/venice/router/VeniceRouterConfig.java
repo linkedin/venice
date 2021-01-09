@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.List;
@@ -105,6 +106,11 @@ public class VeniceRouterConfig {
   private VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
   private String systemSchemaClusterName;
+  private boolean throttleClientSslHandshakes;
+  private int clientSslHandshakeThreads;
+  private int maxConcurrentClientSslHandshakes;
+  private int clientSslHandshakeAttempts;
+  private long clientSslHandshakeBackoffMs;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -222,6 +228,12 @@ public class VeniceRouterConfig {
     helixHybridStoreQuotaEnabled = props.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ioThreadCountInPoolMode = props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
     leastLoadedHostSelectionEnabled = props.getBoolean(ROUTER_LEAST_LOADED_HOST_ENABLED, false);
+
+    throttleClientSslHandshakes = props.getBoolean(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, false);
+    clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 4);
+    maxConcurrentClientSslHandshakes = props.getInt(ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES, 100);
+    clientSslHandshakeAttempts = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS, 5);
+    clientSslHandshakeBackoffMs = props.getLong(ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
 
     String helixVirtualGroupFieldNameInDomain = props.getString(ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN,
         GROUP_FIELD_NAME_IN_DOMAIN);
@@ -637,5 +649,25 @@ public class VeniceRouterConfig {
     }
 
     return retryThresholdMap;
+  }
+
+  public boolean isThrottleClientSslHandshakesEnabled() {
+    return throttleClientSslHandshakes;
+  }
+
+  public int getClientSslHandshakeThreads() {
+    return clientSslHandshakeThreads;
+  }
+
+  public int getMaxConcurrentClientSslHandshakes() {
+    return maxConcurrentClientSslHandshakes;
+  }
+
+  public int getClientSslHandshakeAttempts() {
+    return clientSslHandshakeAttempts;
+  }
+
+  public long getClientSslHandshakeBackoffMs() {
+    return clientSslHandshakeBackoffMs;
   }
 }

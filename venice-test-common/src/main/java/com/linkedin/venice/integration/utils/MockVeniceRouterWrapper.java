@@ -110,6 +110,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
+          .put(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, true)
           .put(extraConfigs);
       StoreConfig storeConfig = new StoreConfig("test");
       storeConfig.setCluster(clusterName);
