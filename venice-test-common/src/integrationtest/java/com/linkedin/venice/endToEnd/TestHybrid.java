@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -92,6 +93,7 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -101,6 +103,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 //TODO: try to share the cluster across all test cases.
@@ -243,6 +246,10 @@ public class TestHybrid {
               100,
               MIN_COMPACTION_LAG,
               TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+
+        Cache cacheNothingCache = mock(Cache.class);
+        Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
+        topicManager.setTopicConfigCache(cacheNothingCache);
 
         ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
             .setHybridRewindSeconds(streamingRewindSeconds)

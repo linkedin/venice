@@ -1,8 +1,10 @@
 package com.linkedin.venice.kafka;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
@@ -58,6 +60,9 @@ public class TopicManagerTest {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
     manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, TestUtils.getVeniceConsumerFactory(kafka));
+    Cache cacheNothingCache = mock(Cache.class);
+    Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
+    manager.setTopicConfigCache(cacheNothingCache);
   }
 
   @AfterClass
