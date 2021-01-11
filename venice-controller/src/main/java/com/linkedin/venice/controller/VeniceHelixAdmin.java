@@ -81,13 +81,11 @@ import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushstatus.PushStatusStoreReader;
-import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -551,7 +549,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 newStore.setLeaderFollowerModelEnabled(true);
             }
             if (newStore.isLeaderFollowerModelEnabled()) {
-                newStore.setNativeReplicationEnabled(config.getNativeReplicationEnabled());
+                newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledForBatchOnly());
             } else {
                 newStore.setNativeReplicationEnabled(false);
             }
@@ -1194,6 +1192,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 try {
                     version.setPushType(pushType);
                     store.addVersion(version);
+                    // Apply cluster-level native replication configs
+                    VeniceControllerClusterConfig clusterConfig = resources.getConfig();
+                    if (version.isLeaderFollowerModelEnabled()) {
+                        boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
+                        if (store.isHybrid()) {
+                            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+                        } else {
+                            if (store.isIncrementalPushEnabled()) {
+                                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
+                            } else {
+                                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
+                            }
+                        }
+                        version.setNativeReplicationEnabled(nativeReplicationEnabled);
+                    }
                     if (version.isNativeReplicationEnabled()) {
                         if (remoteKafkaBootstrapServers != null) {
                             version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
@@ -1281,9 +1294,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         }
                         version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
                     }
-                    // TODO: Should perform leader/follower at check at cluster config level before doing this
-
-                    version.setNativeReplicationEnabled(clusterConfig.getNativeReplicationEnabled());
                 } finally {
                     repository.unLock();
                 }
@@ -1336,6 +1346,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
                           version.getNumber() + " in cluster: " + clusterName);
                     }
+                    // Apply cluster-level native replication configs
+                    if (version.isLeaderFollowerModelEnabled()) {
+                        boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
+                        if (store.isHybrid()) {
+                            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+                        } else {
+                            if (store.isIncrementalPushEnabled()) {
+                                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
+                            } else {
+                                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
+                            }
+                        }
+                        version.setNativeReplicationEnabled(nativeReplicationEnabled);
+                    }
+
                     // Check whether native replication is enabled
                     if (version.isNativeReplicationEnabled()) {
                         if (remoteKafkaBootstrapServers != null) {

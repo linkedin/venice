@@ -62,10 +62,22 @@ public class VeniceControllerClusterConfig {
   private boolean skipBufferRelayForHybrid;
 
   /**
-   * When this option is enabled, all new store versions created will have native replication enabled so long
+   * When this option is enabled, all new batch-only store versions created will have native replication enabled so long
    * as the store has leader follower also enabled.
    */
-  private boolean nativeReplicationEnabled;
+  private boolean nativeReplicationEnabledForBatchOnly;
+
+  /**
+   * When this option is enabled, all new incremental push enabled store versions created will have native replication
+   * enabled so long as the store has leader follower also enabled.
+   */
+  private boolean nativeReplicationEnabledForIncremental;
+
+  /**
+   * When this option is enabled, all new hybrid store versions created will have native replication enabled so long
+   * as the store has leader follower also enabled.
+   */
+  private boolean nativeReplicationEnabledForHybrid;
 
   /**
    * When this option is enabled, all new hybrid stores will have leader follower enabled.
@@ -179,13 +191,20 @@ public class VeniceControllerClusterConfig {
       routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }
 
-    nativeReplicationEnabled = props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT, false);
+    nativeReplicationEnabledForBatchOnly = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, false);
+    nativeReplicationEnabledForIncremental = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH, false);
+    nativeReplicationEnabledForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, false);
     leaderFollowerEnabledForHybridStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, false);
     leaderFollowerEnabledForIncrementalPushStores =
         props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, false);
     leaderFollowerEnabledForAllStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, false);
-    if (!leaderFollowerEnabledForAllStores && nativeReplicationEnabled) {
-      throw new ConfigurationException("Cannot enable native replication when leader follower is not enabled.");
+    if (!leaderFollowerEnabledForAllStores
+        && (nativeReplicationEnabledForBatchOnly || nativeReplicationEnabledForIncremental || nativeReplicationEnabledForHybrid)) {
+      logger.error("Cannot enable native replication when leader follower is not enabled for all stores. Will revert "
+          + "the cluster-level native replication flags to false");
+      nativeReplicationEnabledForBatchOnly = false;
+      nativeReplicationEnabledForIncremental = false;
+      nativeReplicationEnabledForHybrid = false;
     }
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
@@ -379,8 +398,16 @@ public class VeniceControllerClusterConfig {
     return skipBufferRelayForHybrid;
   }
 
-  public boolean getNativeReplicationEnabled() {
-    return nativeReplicationEnabled;
+  public boolean isNativeReplicationEnabledForBatchOnly() {
+    return nativeReplicationEnabledForBatchOnly;
+  }
+
+  public boolean isNativeReplicationEnabledForIncremental() {
+    return nativeReplicationEnabledForIncremental;
+  }
+
+  public boolean isNativeReplicationEnabledForHybrid() {
+    return nativeReplicationEnabledForHybrid;
   }
 
   public boolean isLeaderFollowerEnabledForHybridStores() {

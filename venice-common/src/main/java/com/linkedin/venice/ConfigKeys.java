@@ -95,9 +95,19 @@ public class ConfigKeys {
   public static final String KAFKA_REPLICATION_FACTOR = "kafka.replication.factor";
 
   /**
-   * Sets the default for whether or not native replication is enabled or not for a venice store.
+   * Cluster-level config to enable native replication for all batch-only stores.
    */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT = "enable.native.replication.as.default";
+  public static final String ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY = "enable.native.replication.for.batch.only";
+
+  /**
+   * Cluster-level config to enable native replication for all incremental push stores.
+   */
+  public static final String ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH = "enable.native.replication.for.incremental.push";
+
+  /**
+   * Cluster-level config to enable native replication for all hybrid stores.
+   */
+  public static final String ENABLE_NATIVE_REPLICATION_FOR_HYBRID = "enable.native.replication.for.hybrid";
 
   /**
    * Sets the default for whether or not leader follower is enabled or not for a hybrid store.
