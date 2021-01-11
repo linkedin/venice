@@ -352,7 +352,7 @@ public class TopicManager implements Closeable {
   }
 
   public boolean isTopicCompactionEnabled(String topicName) {
-    Properties topicProperties = getTopicConfig(topicName);
+    Properties topicProperties = getCachedTopicConfig(topicName);
     return topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG) &&
         topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG).equals(TopicConfig.CLEANUP_POLICY_COMPACT);
   }
