@@ -221,7 +221,7 @@ public class  TestPushJobWithNativeReplication {
       veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
     });
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       // Current version should become 1
       for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
         Assert.assertEquals(version, 1);
