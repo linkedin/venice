@@ -301,7 +301,6 @@ public class VeniceParentHelixAdmin implements Admin {
         } catch (VeniceException e) {
           // Verification attempts (i.e. a controller running this routine but is not the master of the cluster) do not
           // count towards the retry count.
-          retryCount++;
           logger.info("VeniceException occurred during " + storeDescriptor + " setup with store " + storeName
               + " in cluster " + clusterName, e);
           logger.info("Async setup for " + storeDescriptor + " attempts: " + retryCount + "/" + MAX_ASYNC_SETUP_RETRY_COUNT);
@@ -309,6 +308,8 @@ public class VeniceParentHelixAdmin implements Admin {
           logger.warn(
               "Exception occurred aborting " + storeDescriptor + " setup with store " + storeName + " in cluster " + clusterName, e);
           break;
+        } finally {
+          retryCount++;
         }
       }
       if (isStoreReady) {
