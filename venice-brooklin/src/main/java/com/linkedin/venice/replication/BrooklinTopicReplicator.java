@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -89,18 +90,27 @@ public class BrooklinTopicReplicator extends TopicReplicator {
    * @param applicationId The name of the service using the BrooklinTopicReplicator, this gets used as the "owner" for any created datastreams
    * @param sslConfig Configs required for SSL connection to Brooklin
    */
-  public BrooklinTopicReplicator(TopicManager topicManager, VeniceWriterFactory veniceWriterFactory,
-      String brooklinConnectionString, VeniceProperties veniceProperties, String veniceCluster, String applicationId,
-      boolean isKafkaSSL, Optional<SSLConfig> sslConfig) {
+  public BrooklinTopicReplicator(
+      TopicManager topicManager,
+      VeniceWriterFactory veniceWriterFactory,
+      String brooklinConnectionString,
+      VeniceProperties veniceProperties,
+      String veniceCluster,
+      String applicationId,
+      boolean isKafkaSSL,
+      Optional<SSLConfig> sslConfig) {
     super(topicManager, veniceWriterFactory, veniceProperties);
+
     this.veniceCluster = veniceCluster;
     this.applicationId = applicationId;
     this.isSSLToKafka = isKafkaSSL;
 
+    Map<String, Object> httpConfig = new HashMap<>();
+    httpConfig.put(HttpClientFactory.HTTP_REQUEST_TIMEOUT, String.valueOf(TimeUnit.SECONDS.toMillis(10)));
+
     if (sslConfig.isPresent()) {
       SSLContext sslContext;
       SSLParameters sslParameters;
-
       try {
         SSLEngineComponentFactoryImpl sslEngine = new SSLEngineComponentFactoryImpl(sslConfig.get().getSslEngineComponentConfig());
         sslContext = sslEngine.getSSLContext();
@@ -110,21 +120,19 @@ public class BrooklinTopicReplicator extends TopicReplicator {
         throw new VeniceException(e);
       }
 
-      Map<String, Object> httpConfig = new HashMap<>();
-      httpConfig.put(HttpClientFactory.HTTP_SSL_CONTEXT, sslContext);
-      httpConfig.put(HttpClientFactory.HTTP_SSL_PARAMS, sslParameters);
-
       String canonicalUri = RestliUtils.sanitizeUri(brooklinConnectionString);
       if (!canonicalUri.startsWith("https://")) {
         throw new VeniceException("Expect URL starts with \"https://\", actual = " + canonicalUri);
       }
+
+      httpConfig.put(HttpClientFactory.HTTP_SSL_CONTEXT, sslContext);
+      httpConfig.put(HttpClientFactory.HTTP_SSL_PARAMS, sslParameters);
       RestClient restClient = new RestClient(new TransportClientAdapter(new HttpClientFactory().getClient(httpConfig)), canonicalUri);
       DatastreamRestClientFactory.registerRestClient(canonicalUri, restClient);
 
       this.client = DatastreamRestClientFactory.getClient(canonicalUri);
     } else {
-      // The original non-SSL client
-      this.client = DatastreamRestClientFactory.getClient(brooklinConnectionString);
+      this.client = DatastreamRestClientFactory.getClient(brooklinConnectionString, (Map<String, String>) (Object) httpConfig);
     }
   }
 
