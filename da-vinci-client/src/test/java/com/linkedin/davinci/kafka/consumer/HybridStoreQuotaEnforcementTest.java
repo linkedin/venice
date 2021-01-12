@@ -5,6 +5,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,10 +28,11 @@ public class HybridStoreQuotaEnforcementTest {
   private final String storeName = "TestTopic";
   private final String topic = Version.composeKafkaTopic(storeName, 1);
   private final int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
-  private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap = mock(ConcurrentMap.class);
 
   private StoreIngestionTask storeIngestionTask;
+  private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private AbstractStorageEngine storageEngine;
+  private IngestionNotificationDispatcher notificationDispatcher;
   private Store store;
   private Version version;
   private Map<Integer, Integer> subscribedPartitionToSize;
@@ -46,12 +48,15 @@ public class HybridStoreQuotaEnforcementTest {
   @BeforeMethod
   private void buildNewQuotaEnforcer() {
     storeIngestionTask = mock(StoreIngestionTask.class);
+    notificationDispatcher = mock(IngestionNotificationDispatcher.class);
+    partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
     when(store.getName()).thenReturn(storeName);
     when(store.getStorageQuotaInByte()).thenReturn(storeQuotaInBytes);
     when(store.getPartitionCount()).thenReturn(storePartitionCount);
     when(store.getVersion(storeVersion)).thenReturn(Optional.of(version));
     when(version.getStatus()).thenReturn(VersionStatus.STARTED);
     when(storeIngestionTask.isMetricsEmissionEnabled()).thenReturn(false);
+    when(storeIngestionTask.getNotificationDispatcher()).thenReturn(notificationDispatcher);
 
     quotaEnforcer = new HybridStoreQuotaEnforcement(storeIngestionTask,
                                                     storageEngine,
@@ -66,9 +71,9 @@ public class HybridStoreQuotaEnforcementTest {
     when(store.getStorageQuotaInByte()).thenReturn(newStoreQuotaInBytes);
     when(version.getStatus()).thenReturn(VersionStatus.ONLINE);
 
-    // handleStoreChanged should have changed isRTJob, storeQuotaInBytes, and diskQuotaPerPartition
+    // handleStoreChanged should have changed isVersionOnline, storeQuotaInBytes, and diskQuotaPerPartition
     quotaEnforcer.handleStoreChanged(store);
-    Assert.assertTrue(quotaEnforcer.isRTJob());
+    Assert.assertTrue(quotaEnforcer.isVersionOnline());
     Assert.assertEquals(quotaEnforcer.getStoreQuotaInBytes(), newStoreQuotaInBytes);
     Assert.assertEquals(quotaEnforcer.getPartitionQuotaInBytes(), newStoreQuotaInBytes/storePartitionCount);
   }
@@ -89,7 +94,7 @@ public class HybridStoreQuotaEnforcementTest {
 
   @Test
   public void testRTJobNotExceededQuota() throws Exception {
-    setUpRTJob();
+    setUpOnlineVersion();
     buildDummyPartitionToSizeMap(5);
     runTest(() -> {
       for (int i = 1; i <= storePartitionCount; i++) {
@@ -100,7 +105,7 @@ public class HybridStoreQuotaEnforcementTest {
 
   @Test
   public void testRTJobExceededQuota() throws Exception {
-    setUpRTJob();
+    setUpOnlineVersion();
 
     // these partitions should be paused for exceeding write quota
     buildDummyPartitionToSizeMap(10);
@@ -129,6 +134,25 @@ public class HybridStoreQuotaEnforcementTest {
     });
   }
 
+  @Test
+  public void testReportCompletionForOnlineVersion() throws Exception {
+    setUpOnlineVersion();
+    buildDummyPartitionToSizeMap(10);
+    for (int i = 1; i <= storePartitionCount; i++) {
+      PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+      // The version is online but completion is not reported. We should expect the enforcer report completion.
+      when(pcs.isCompletionReported()).thenReturn(false);
+      when(pcs.getLeaderState()).thenReturn(LeaderFollowerStateType.STANDBY);
+      partitionConsumptionStateMap.put(i, pcs);
+    }
+    runTest(() -> {
+      for (int i = 1; i <= storePartitionCount; i++) {
+        verify(notificationDispatcher, times(10)).reportCompleted(any());
+        Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
+      }
+    });
+  }
+
   private void runTest(Runnable assertions) throws Exception {
     quotaEnforcer.checkPartitionQuota(subscribedPartitionToSize);
     assertions.run();
@@ -141,7 +165,7 @@ public class HybridStoreQuotaEnforcementTest {
     }
   }
 
-  private void setUpRTJob() {
+  private void setUpOnlineVersion() {
     KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
     List<KafkaConsumerWrapper> consumerList = new ArrayList<>();
     consumerList.add(consumer);
