@@ -43,15 +43,10 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   private final String versionTopic;
   private final String storeName;
   private final int storePartitionCount;
-
-  /**
-   * RT Job refers to the Samza job after batch/GF job finishes.
-   * These fields are for RT job; when a samza RT partition exhausted the hybrid quota, we
-   * stall the partition.
-   */
-  private boolean isRTJob;
   private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap;
   private final Set<Integer> pausedPartitions;
+
+  private boolean versionIsOnline;
 
   /**
    * These fields are subject to changes in #handleStoreChanged
@@ -74,7 +69,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
     int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     Optional<Version> version = store.getVersion(storeVersion);
-    setRTJob(version);
+    checkVersionIsOnline(version);
   }
 
   @Override
@@ -94,7 +89,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     }
     int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     Optional<Version> version = store.getVersion(storeVersion);
-    setRTJob(version);
+    checkVersionIsOnline(version);
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
     this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
   }
@@ -125,32 +120,33 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
       partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngine));
     }
     partitionConsumptionSizeMap.get(partition).add(recordSize);
-
-    /**
-     * Check the topic which is currently consumed topic for this partition
-     */
-    String consumingTopic = versionTopic;
+    PartitionConsumptionState pcs = null;
     if (partitionConsumptionStateMap.containsKey(partition)) {
-      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
-      if (partitionConsumptionState.getLeaderState().equals(LEADER)) {
-        OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-         if (offsetRecord.getLeaderTopic() != null) {
-           consumingTopic = offsetRecord.getLeaderTopic();
-         }
-      }
+      pcs = partitionConsumptionStateMap.get(partition);
     }
-    String msgIdentifier = this.versionTopic + "_" + partition + "_quota_exceeded";
-    // Log quota exceeded info only once a minute per partition.
 
+    String consumingTopic = getConsumingTopic(pcs);
+    String msgIdentifier = consumingTopic + "_" + partition + "_quota_exceeded";
+    // Log quota exceeded info only once a minute per partition.
     boolean shouldLogQuotaExceeded = !storeIngestionTask.REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier);
     /**
-     * check if the current partition violates the partition-level quota.
+     * Check if the current partition violates the partition-level quota.
      * It's possible to pause an already-paused partition or resume an un-paused partition. The reason that
      * we don't prevent this is that when a SN gets restarted, the in-memory paused partitions are empty. If
      * we check if the partition is in paused partitions to decide whether to resume it, we may never resume it.
      */
     if (isStorageQuotaExceeded(partition, shouldLogQuotaExceeded)) {
       storeIngestionTask.reportQuotaViolated(partition);
+
+      /**
+       * If the version is already online but the completion has not been reported, we directly
+       * report online for this replica.
+       * Otherwise it could induce error replicas during rebalance for online version.
+       */
+      if (isVersionOnline() && pcs != null && !pcs.isCompletionReported()) {
+        storeIngestionTask.getNotificationDispatcher().reportCompleted(pcs);
+      }
+
       /**
        * For GF job or real-time job of a hybrid store.
        *
@@ -162,7 +158,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
       pausePartition(partition, consumingTopic);
       if (shouldLogQuotaExceeded) {
         logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition." + versionTopic);
-      }
+     }
     } else { /** we have free space for this partition */
       /**
        *  Paused partitions could be resumed
@@ -214,13 +210,27 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     this.pausedPartitions.remove(partition);
   }
 
-  private void setRTJob(Optional<Version> version) {
+  private void checkVersionIsOnline(Optional<Version> version) {
     if (!version.isPresent()) {
       int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
       throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
     } else if (version.get().getStatus().equals(VersionStatus.ONLINE)) {
-      isRTJob = true;
+      versionIsOnline = true;
     }
+  }
+
+  /**
+   * Check the topic which is currently consumed topic for this partition
+   */
+  private String getConsumingTopic(PartitionConsumptionState pcs) {
+    String consumingTopic = versionTopic;
+    if (pcs != null && pcs.getLeaderState().equals(LEADER)) {
+      OffsetRecord offsetRecord = pcs.getOffsetRecord();
+      if (offsetRecord.getLeaderTopic() != null) {
+        consumingTopic = offsetRecord.getLeaderTopic();
+      }
+    }
+    return consumingTopic;
   }
 
   protected boolean isPartitionPausedIngestion(int partition) {
@@ -239,7 +249,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     return diskQuotaPerPartition;
   }
 
-  protected boolean isRTJob() {
-    return isRTJob;
+  protected boolean isVersionOnline() {
+    return versionIsOnline;
   }
 }

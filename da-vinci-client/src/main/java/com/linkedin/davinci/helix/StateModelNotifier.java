@@ -53,7 +53,7 @@ public abstract class StateModelNotifier implements VeniceNotifier {
         storeIngestionService.getStoreIngestionTask(resourceName).reportError(errorMsg, partitionId, veniceException);
       }
       stateModelToLatchMap.remove(stateModelId);
-      // If consumption is failed, throw an exception here, Helix will put this replcia to ERROR state.
+      // If consumption is failed, throw an exception here, Helix will put this replica to ERROR state.
       if (stateModelToSuccessMap.containsKey(stateModelId) && !stateModelToSuccessMap.get(stateModelId)) {
         throw new VeniceException("Consumption is failed. Thrown an exception to put this replica:" +
             stateModelId + " to ERROR state.");
