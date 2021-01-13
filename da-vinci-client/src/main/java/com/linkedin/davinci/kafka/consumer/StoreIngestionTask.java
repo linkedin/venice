@@ -495,9 +495,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
 
     Optional<Supplier<byte[]>> partitionChecksumSupplier = Optional.empty();
-    //For now checksum verification is only enabled in sorted batch push in O/O model.
+    /**
+     * In rocksdb Plain Table mode or in non deferredWrite mode, we can't use rocksdb SSTFileWriter to verify the checksum.
+     * So there is no point keep calculating the running checksum here.
+     */
     if (serverConfig.isDatabaseChecksumVerificationEnabled() && partitionConsumptionState.isDeferredWrite()
-        && this instanceof OnlineOfflineStoreIngestionTask) {
+        && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) {
       partitionConsumptionState.initializeExpectedChecksum();
       partitionChecksumSupplier = Optional.of(() -> {
         byte[] checksum = partitionConsumptionState.getExpectedChecksum();
@@ -1550,6 +1553,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     storageEngine.endBatchWrite(storagePartitionConfig);
 
+    /**
+     * The checksum verification is not used after EOP, so completely reset it.
+     */
+    partitionConsumptionState.finalizeExpectedChecksum();
     /**
      * It's a bit of tricky here. Since the offset is not updated yet, it's actually previous offset reported
      * here.

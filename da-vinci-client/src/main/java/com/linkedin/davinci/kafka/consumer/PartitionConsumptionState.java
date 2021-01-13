@@ -279,6 +279,10 @@ public class PartitionConsumptionState {
     this.expectedSSTFileChecksum = CheckSum.getInstance(CheckSumType.MD5);
   }
 
+  public void finalizeExpectedChecksum() {
+    this.expectedSSTFileChecksum = Optional.empty();
+  }
+
   /**
    * Keep updating the checksum for key/value pair received from kafka PUT message.
    * If the checksum instance is not configured via {@link PartitionConsumptionState#initializeExpectedChecksum} then do nothing.
