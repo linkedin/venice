@@ -6,6 +6,7 @@ import java.util.Map;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.avro.util.Utf8;
 
@@ -45,7 +46,7 @@ public class AvroCompatibilityUtils {
           int pos = f.pos();
           String name = f.name();
           int compare =
-              compareGenericData(GenericData.get().getField(o1, name, pos), GenericData.get().getField(o2, name, pos),
+              compareGenericData(getField(o1, name, pos), getField(o2, name, pos),
                   f.schema(), equals);
           if (compare != 0)                         // not equal
             return f.order() == Schema.Field.Order.DESCENDING ? -compare : compare;
@@ -85,4 +86,10 @@ public class AvroCompatibilityUtils {
     }
   }
 
+  /**
+   * Backport getField() method implementation from GenericData in avro v1.7
+   */
+  public static Object getField(Object record, String name, int position) {
+    return ((IndexedRecord)record).get(position);
+  }
 }
