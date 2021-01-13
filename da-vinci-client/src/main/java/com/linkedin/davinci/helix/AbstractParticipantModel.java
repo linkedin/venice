@@ -181,7 +181,7 @@ public abstract class AbstractParticipantModel extends StateModel {
   /**
    * set up a new store partition and start the ingestion
    */
-  protected void setupNewStorePartition(boolean isLeaderFollowerModel) {
+  protected void setupNewStorePartition() {
     /**
      * Waiting for push accessor to get initialized before starting ingestion.
      * Otherwise, it's possible that store ingestion starts without having the
@@ -198,7 +198,7 @@ public abstract class AbstractParticipantModel extends StateModel {
      * will not create them again.
      */
     storageService.openStoreForNewPartition(storeConfig, partition);
-    storeIngestionService.startConsumption(storeConfig, partition, isLeaderFollowerModel);
+    storeIngestionService.startConsumption(storeConfig, partition);
   }
 
   protected void removePartitionFromStoreGracefully() {

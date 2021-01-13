@@ -39,7 +39,7 @@ public class VenicePartitionStateModelTest
   public void testOnBecomeBootstrapFromOffline() {
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     verify(mockStoreIngestionService, times(1))
-        .startConsumption(mockStoreConfig, testPartition, false);
+        .startConsumption(mockStoreConfig, testPartition);
     verify(mockStorageService, times(1)).openStoreForNewPartition(mockStoreConfig, testPartition);
     verify(mockNotifier, times(1)).startConsumption(mockMessage.getResourceName(), testPartition);
   }
@@ -110,7 +110,7 @@ public class VenicePartitionStateModelTest
    */
   @Test
   public void testOnBecomeDroppedFromOffline() {
-    testStateModel.setupNewStorePartition(false);
+    testStateModel.setupNewStorePartition();
     doAnswer(invocation -> {return null;}).when(mockPushStatusAccessor).deleteReplicaStatus(any(), anyInt());
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
     verify(mockStorageService, atLeastOnce()).dropStorePartition(mockStoreConfig , testPartition);

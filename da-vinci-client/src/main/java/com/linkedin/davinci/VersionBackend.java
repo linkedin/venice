@@ -269,7 +269,7 @@ public class VersionBackend {
     } else {
       // Create partition in storage engine for ingestion.
       storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
-      backend.getIngestionService().startConsumption(config, subPartition, version.isLeaderFollowerModelEnabled());
+      backend.getIngestionService().startConsumption(config, subPartition);
     }
     tryStartHeartbeat();
     return subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture());
@@ -281,7 +281,7 @@ public class VersionBackend {
     storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
     // The consumption task should be re-started on DaVinci side to receive future updates for hybrid stores and consumer
     // action messages for all stores. The partition and its corresponding future will be completed by the main ingestion task.
-    backend.getIngestionService().startConsumption(config, subPartition, version.isLeaderFollowerModelEnabled());
+    backend.getIngestionService().startConsumption(config, subPartition);
   }
 
   private synchronized void unsubscribeSubPartition(int subPartition) {
