@@ -98,6 +98,7 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
@@ -121,6 +122,9 @@ public class TestHybrid {
   public void testHybridInitializationOnMultiColo(boolean isLeaderFollowerModelEnabled) throws IOException {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
+    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false, false, extraProperties);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
@@ -746,6 +750,10 @@ public class TestHybrid {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
+    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+
     SystemProducer veniceBatchProducer1 = null, veniceBatchProducer2 = null;
     try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false, extraProperties)) {
       Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
@@ -834,6 +842,9 @@ public class TestHybrid {
   public void testHybridWithBufferReplayDisabled(boolean isLeaderFollowerModelEnabled) throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
+    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false, extraProperties)) {
       List<VeniceControllerWrapper> controllers = venice.getVeniceControllers();
       Assert.assertEquals(controllers.size(), 1, "There should only be one controller");
