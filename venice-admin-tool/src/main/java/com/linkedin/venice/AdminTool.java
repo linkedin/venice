@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.client.store.QueryTool;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.AclResponse;
@@ -1168,8 +1169,19 @@ public class AdminTool {
           destControllerClient.queryJobStatus(Version.composeKafkaTopic(metadataStoreName, destZkSharedStore.getCurrentVersion()));
       destMetadataStoreOnline = jobStatusResponse.getStatus().equals(ExecutionStatus.COMPLETED.toString());
     }
-
-    return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetadataStoreOnline;
+    /**
+     * The following logic is to check whether the corresponding meta system store is fully migrated or not.
+     */
+    boolean destMetaStoreOnline = true;
+    if (srcStore.isStoreMetaSystemStoreEnabled()) {
+      String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+      StoreInfo srcMetaSystemStore = srcControllerClient.getStore(metaSystemStoreName).getStore();
+      StoreInfo destMetaSystemStore = destControllerClient.getStore(metaSystemStoreName).getStore();
+      int srcLatestOnlineVersionOfMetaSystemStore = getLatestOnlineVersionNum(srcMetaSystemStore.getVersions());
+      int destLatestOnlineVersionOfMetaSystemStore = getLatestOnlineVersionNum(destMetaSystemStore.getVersions());
+      destMetaStoreOnline = destLatestOnlineVersionOfMetaSystemStore >= srcLatestOnlineVersionOfMetaSystemStore;
+    }
+    return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetadataStoreOnline && destMetaStoreOnline;
   }
 
   private static ControllerClient[] createControllerClients(String clusterName, List<String> controllerUrls) {

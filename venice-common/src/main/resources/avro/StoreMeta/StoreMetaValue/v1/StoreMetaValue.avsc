@@ -225,7 +225,9 @@
     {
       "name": "storeReplicaStatuses",
       "doc": "This field describes the replica statuses per version per partition, and the mapping is 'host_port' -> 'replica status'",
-      "type": {
+      "type": [
+        "null",
+        {
           "type": "map",
           "values": {
             "name": "StoreReplicaStatus",
@@ -235,8 +237,9 @@
               {"name": "status", "type": "int", "doc": "replica status"}
             ]
           }
-        },
-      "default": {}
+        }
+      ],
+      "default": null
     }
   ]
 }

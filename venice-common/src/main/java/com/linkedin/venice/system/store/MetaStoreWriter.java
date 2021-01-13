@@ -161,7 +161,7 @@ public class MetaStoreWriter implements Closeable {
           // Construct an update
           GenericRecord update = new GenericData.Record(derivedComputeSchema.getTypes().get(0));
           update.put("timestamp", System.currentTimeMillis());
-          GenericRecord storeReplicaStatusesUpdate = new GenericData.Record(derivedComputeSchema.getTypes().get(0).getField("storeReplicaStatuses").schema().getTypes().get(1));
+          GenericRecord storeReplicaStatusesUpdate = new GenericData.Record(derivedComputeSchema.getTypes().get(0).getField("storeReplicaStatuses").schema().getTypes().get(2));
           Map<CharSequence, StoreReplicaStatus> instanceStatusMap = new HashMap<>();
           StoreReplicaStatus replicaStatus = new StoreReplicaStatus();
           replicaStatus.status = executionStatus.getValue();
@@ -188,7 +188,7 @@ public class MetaStoreWriter implements Closeable {
           // Construct an update
           GenericRecord update = new GenericData.Record(derivedComputeSchema.getTypes().get(0));
           update.put("timestamp", System.currentTimeMillis());
-          GenericRecord storeReplicaStatusesUpdate = new GenericData.Record(derivedComputeSchema.getTypes().get(0).getField("storeReplicaStatuses").schema().getTypes().get(1));
+          GenericRecord storeReplicaStatusesUpdate = new GenericData.Record(derivedComputeSchema.getTypes().get(0).getField("storeReplicaStatuses").schema().getTypes().get(2));
           List<CharSequence> deletedReplicas = new ArrayList<>();
           deletedReplicas.add(instance.getUrl(true));
           storeReplicaStatusesUpdate.put(MAP_UNION, Collections.emptyMap());
@@ -204,9 +204,6 @@ public class MetaStoreWriter implements Closeable {
     VeniceWriter writer = prepareToWrite(metaStoreName);
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     StoreMetaValue value = valueSupplier.get();
-    if (!dataType.equals(MetaStoreDataType.STORE_REPLICA_STATUSES)) {
-      value.storeReplicaStatuses = Collections.emptyMap();
-    }
     value.timestamp = System.currentTimeMillis();
     writer.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get());
     writer.flush();

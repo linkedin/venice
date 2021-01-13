@@ -44,7 +44,16 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
     LOGGER.info("Report replica status: " + status + " for topic: " + kafkaTopic + ", partition: " + partitionId);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     if (status.equals(ExecutionStatus.DROPPED)) {
-      metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, partitionId, instance);
+      try {
+        metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, partitionId, instance);
+      } catch (Exception e) {
+        /**
+         * This could potentially happen during store deletion.
+         * Since store deletion is a infrequent event, no need to optimize it.
+         */
+        LOGGER.error("Encountered exception while trying to report `Dropped` status for store: " + storeName +
+            ", partition: " + partitionId + " in cluster: " + clusterName, e);
+      }
     } else {
       metaStoreWriter.writeStoreReplicaStatus(clusterName, storeName, version, partitionId, instance, status);
     }

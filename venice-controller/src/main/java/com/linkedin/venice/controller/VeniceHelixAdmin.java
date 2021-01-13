@@ -127,6 +127,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -478,6 +479,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         throw new VeniceException("Timed out when waiting for the external view of cluster resource: " + clusterName);
     }
 
+    private boolean isResourceStillAlive(String clusterName, String resourceName) {
+        String externalViewPath = "/" + clusterName + "/EXTERNALVIEW/" + resourceName;
+        return zkClient.exists(externalViewPath);
+    }
+
     @Override
     public boolean isResourceStillAlive(String resourceName) {
         if (!Version.isVersionTopicOrStreamReprocessingTopic(resourceName)) {
@@ -499,9 +505,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
         String clusterName = storeConfig.getCluster();
-        // Compose ZK path for external view of the resource
-        String externalViewPath = "/" + clusterName + "/EXTERNALVIEW/" + resourceName;
-        return zkClient.exists(externalViewPath);
+        return isResourceStillAlive(clusterName, resourceName);
     }
 
     @Override
@@ -595,7 +599,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /**
      * This method will delete store data, metadata, version and rt topics
      * One exception is for stores with isMigrating flag set. In that case, the corresponding kafka topics and storeConfig
-     * will not be deleted so that they are still avaiable for the cloned store.
+     * will not be deleted so that they are still available for the cloned store.
      */
     public synchronized void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber) {
         checkControllerMastership(clusterName);
@@ -681,6 +685,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             } else {
                 // Defensive coding: This should never happen, unless someone adds a catch block to the above try/finally clause...
                 logger.error("Unexpected null store instance...!");
+            }
+            // Cleanup meta system store if necessary
+            if (store.isStoreMetaSystemStoreEnabled()) {
+                String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+                logger.info("Start deleting meta system store: " + metaSystemStoreName);
+                // Delete All versions and push statues for meta system store
+                deleteAllVersionsInStore(clusterName, metaSystemStoreName);
+                resources.getPushMonitor().cleanupStoreStatus(metaSystemStoreName);
+                if (!store.isMigrating()) {
+                    // Delete RT topic
+                    truncateKafkaTopic(Version.composeRealTimeTopic(metaSystemStoreName));
+                } else {
+                    logger.info("The rt topic for " + metaSystemStoreName + " will be kept since the store is migrating");
+                }
+                Store metaSystemStore = storeRepository.getStore(metaSystemStoreName);
+                if (metaSystemStore != null) {
+                    truncateOldTopics(clusterName, store, true);
+                }
+                logger.info("Finished deleting meta system store: " + metaSystemStoreName);
             }
             // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
             // value schemas.
@@ -852,29 +875,38 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             destControllerClient.materializeMetadataStoreVersion(storeName, destMetadataStoreCurrentVersion);
         }
 
-        // Add versions to store in dest cluster and start ingestion
-        List<Version> versionsToMigrate = getVersionsToMigrate(srcClusterName, storeName, srcStore);
-        logger.info("Adding versions: "
-            + versionsToMigrate.stream().map(Version::getNumber).map(String::valueOf).collect(Collectors.joining(","))
-            + " to the dest cluster " + destClusterName);
-        for (Version version : versionsToMigrate) {
-            try {
-                /**
-                 * Topic manager partitions might be cleaned up in parent controller.
-                 * Get partition count from existing version instead of topic manager.
-                 */
-                int partitionCount = version.getPartitionCount();
-                /**
-                 * Remote Kafka is set to null for store migration because version topics at source fabric might be deleted
-                 * already; migrated stores should bootstrap by consuming the version topics in its local fabric.
-                 */
-                destControllerClient.addVersionAndStartIngestion(storeName, version.getPushJobId(), version.getNumber(),
-                    partitionCount, version.getPushType(), null);
-            } catch (Exception e) {
-                logger.warn("An exception was thrown when attempting to add version and start ingestion for store "
-                + storeName + " and version " + version.getNumber(), e);
+        Consumer<String> versionMigrationConsumer = migratingStoreName -> {
+            Store migratingStore = this.getStore(srcClusterName, migratingStoreName);
+            List<Version> versionsToMigrate = getVersionsToMigrate(srcClusterName, migratingStoreName, migratingStore);
+            logger.info("Adding versions: "
+                + versionsToMigrate.stream().map(Version::getNumber).map(String::valueOf).collect(Collectors.joining(","))
+                + " to the dest cluster " + destClusterName);
+            for (Version version : versionsToMigrate) {
+                try {
+                    /**
+                     * Topic manager partitions might be cleaned up in parent controller.
+                     * Get partition count from existing version instead of topic manager.
+                     */
+                    int partitionCount = version.getPartitionCount();
+                    /**
+                     * Remote Kafka is set to null for store migration because version topics at source fabric might be deleted
+                     * already; migrated stores should bootstrap by consuming the version topics in its local fabric.
+                     */
+                    destControllerClient.addVersionAndStartIngestion(migratingStoreName, version.getPushJobId(), version.getNumber(),
+                        partitionCount, version.getPushType(), null);
+                } catch (Exception e) {
+                    throw new VeniceException("An exception was thrown when attempting to add version and start ingestion for store "
+                        + migratingStoreName + " and version " + version.getNumber(), e);
+                }
             }
+        };
+
+        if (srcStore.isStoreMetaSystemStoreEnabled()) {
+            // Migrate all the meta system store versions
+            versionMigrationConsumer.accept(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
         }
+        // Migrate all the versions belonging to the regular Venice store
+        versionMigrationConsumer.accept(storeName);
     }
 
     private List<Version> getVersionsToMigrate(String srcClusterName, String storeName, Store srcStore) {
@@ -1997,9 +2029,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 throw new VeniceNoStoreException(storeName);
             }
             VeniceSystemStoreType systemStore = VeniceSystemStoreUtils.getSystemStoreType(storeName);
+
             if (systemStore != null && systemStore.isStoreZkShared()) {
                 deletedVersion = store.getVersion(versionNumber);
             } else {
+              /**
+               * If the system store type is {@link VeniceSystemStoreType.META_STORE}, we will use the same logic
+               * as the regular Venice store here since it also contains multiple versions maintained on system store basis.
+               */
                 Version version = store.deleteVersion(versionNumber);
                 if (version == null) {
                     deletedVersion = Optional.empty();
@@ -4366,7 +4403,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceRetriableException("Waiting for previously materialized RT to be deleted for store: "
                 + metadataStoreName);
         }
-        if (isResourceStillAlive(metadataVTName)) {
+        /**
+         * We need to check whether the resource is alive in current cluster.
+         */
+        if (isResourceStillAlive(clusterName, metadataVTName)) {
             logger.info("Metadata system store version: " + metadataVTName + " already exists will just rewrite metadata to RT");
         } else {
             // Write null to the participant store for a clean slate in case this version was materialized previously.
@@ -4567,12 +4607,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public void produceSnapshotToMetaStoreRT(String clusterName, String regularStoreName) {
         checkControllerMastership(clusterName);
-        Optional<MetaStoreWriter> metaStoreWriter = getVeniceHelixResource(clusterName).getMetaStoreWriter();
-        if (!metaStoreWriter.isPresent()) {
-            logger.info("MetaStoreWriter retrieved from VeniceHelixResource is absent, so producing snapshot to meta"
-                + " store RT topic will be skipped for store: " + regularStoreName);
-            return;
-        }
         ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(regularStoreName);
         if (store == null) {
@@ -4588,6 +4622,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 s.setStoreMetaSystemStoreEnabled(true);
                 return s;
             });
+        }
+        Optional<MetaStoreWriter> metaStoreWriter = getVeniceHelixResource(clusterName).getMetaStoreWriter();
+        if (!metaStoreWriter.isPresent()) {
+            logger.info("MetaStoreWriter retrieved from VeniceHelixResource is absent, so producing snapshot to meta"
+                + " store RT topic will be skipped for store: " + regularStoreName);
+            return;
         }
         // Get updated store
         store = repository.getStore(regularStoreName);

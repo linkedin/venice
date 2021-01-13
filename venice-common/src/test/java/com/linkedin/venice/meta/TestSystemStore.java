@@ -85,8 +85,6 @@ public class TestSystemStore {
     assertThrows(() -> systemStore.setStorageQuotaInByte(1));
     assertThrows(() -> systemStore.setPartitionCount(1));
     assertThrows(() -> systemStore.setPartitionerConfig(null));
-    assertThrows(() -> systemStore.setEnableWrites(true));
-    assertThrows(() -> systemStore.setEnableReads(true));
     assertThrows(() -> systemStore.setReadQuotaInCU(1));
     assertThrows(() -> systemStore.setHybridStoreConfig(null));
     assertThrows(() -> systemStore.setCompressionStrategy(CompressionStrategy.GZIP));

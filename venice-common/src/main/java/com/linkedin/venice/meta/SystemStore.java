@@ -158,24 +158,36 @@ public class SystemStore extends Store {
     throwUnsupportedOperationException("setPartitionerConfig");
   }
 
+  /**
+   * This function is used to check the precondition for store deletion.
+   * Since the system store should deleted together with the corresponding regular Venice store, so
+   * this function will delegate the call to the regular Venice store.
+   * @return
+   */
   @Override
   public boolean isEnableWrites() {
-    return zkSharedStore.isEnableWrites();
+    return veniceStore.isEnableWrites();
   }
 
   @Override
   public void setEnableWrites(boolean enableWrites) {
-    throwUnsupportedOperationException("setEnableWrites");
+    // do nothing since it will follow the regular Venice store.
   }
 
+  /**
+   * This function is used to check the precondition for store deletion.
+   * Since the system store should deleted together with the corresponding regular Venice store, so
+   * this function will delegate the call to the regular Venice store.
+   * @return
+   */
   @Override
   public boolean isEnableReads() {
-    return zkSharedStore.isEnableReads();
+    return veniceStore.isEnableReads();
   }
 
   @Override
   public void setEnableReads(boolean enableReads) {
-    throwUnsupportedOperationException("setEnableReads");
+    // Do nothing since it will follow the regular Venice store
   }
 
   @Override
@@ -264,7 +276,7 @@ public class SystemStore extends Store {
   }
 
   /**
-   * TODO: need to consider how we could migrate system store accordingly when migrating a user's store.
+   * The system store will be migrated together with the corresponding Venice store.
    * @return
    */
   @Override

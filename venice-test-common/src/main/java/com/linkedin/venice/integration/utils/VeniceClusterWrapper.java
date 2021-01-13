@@ -161,7 +161,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       for (int i = 0; i < numberOfRouters; i++) {
         VeniceRouterWrapper veniceRouterWrapper =
-            ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2);
+            ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2, extraProperties);
         veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
       }
 
