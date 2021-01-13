@@ -67,7 +67,8 @@ public class WriteComputeAdapter {
         return updateArray(originalSchema, (List) originalValue, writeComputeValue);
       case MAP:
         return updateMap((Map) originalValue, writeComputeValue);
-        // TODO: bug here, and it should support union type
+      case UNION:
+        return updateUnion(originalSchema, originalValue, writeComputeValue);
       default:
         return writeComputeValue;
     }
@@ -180,5 +181,21 @@ public class WriteComputeAdapter {
     }
 
     return originalMap;
+  }
+
+  Object updateUnion(Schema originalSchema, Object originalObject, Object writeComputeObject) {
+    for (Schema schema : originalSchema.getTypes()) {
+      if (schema.getType() == Schema.Type.ARRAY && writeComputeObject instanceof GenericRecord &&
+          ((GenericRecord) writeComputeObject).getSchema().getName().endsWith(LIST_OPS.name)) {
+        return updateArray(schema, (List) originalObject, writeComputeObject);
+      }
+
+      if (schema.getType() == Schema.Type.MAP && writeComputeObject instanceof GenericRecord &&
+          ((GenericRecord) writeComputeObject).getSchema().getName().endsWith(MAP_OPS.name)) {
+        return updateMap((Map) originalObject, writeComputeObject);
+      }
+    }
+
+    return writeComputeObject;
   }
 }

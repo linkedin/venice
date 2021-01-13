@@ -2,11 +2,13 @@ package com.linkedin.venice.schema;
 
 import java.util.Arrays;
 import org.apache.avro.Schema;
-import org.codehaus.jackson.node.JsonNodeFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.WriteComputeOperation.*;
+
 import static org.apache.avro.Schema.Type.*;
+
 
 
 public class TestWriteComputeSchemaAdapter {
@@ -195,8 +197,9 @@ public class TestWriteComputeSchemaAdapter {
     // Check for NoOp option
     Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(0).getType(), RECORD);
     Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(0).getName(), "NoOp");
-    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(1), Schema.createArray(Schema.create(INT)));
-    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(2), Schema.create(BOOLEAN));
+    Assert.assertTrue(recordWriteSchema.getField("intArray").schema().getTypes().get(1).getName().endsWith(LIST_OPS.name));
+    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(2), Schema.createArray(Schema.create(INT)));
+    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(3), Schema.create(BOOLEAN));
 
   }
 

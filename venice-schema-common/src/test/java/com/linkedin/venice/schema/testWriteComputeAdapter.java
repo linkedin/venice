@@ -1,11 +1,13 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.venice.utils.TestPushUtils;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -58,6 +60,20 @@ public class testWriteComputeAdapter {
       "    \"type\" : \"int\",\n" +
       "    \"default\" : 0\n" +
       " } ]\n" +
+      "}";
+
+  private String nullableRecordStr = "{\n" +
+      "  \"type\" : \"record\",\n" +
+      "  \"name\" : \"nullableRecord\",\n" +
+      "  \"fields\" : [ {\n" + "    \"name\" : \"nullableArray\",\n" +
+      "    \"type\" : [ \"null\", {\n" +
+      "      \"type\" : \"array\",\n" +
+      "      \"items\" : \"int\"\n" +
+      "    } ],\n" + "    \"default\" : null\n" +
+      "  }, {\n" + "    \"name\" : \"intField\",\n" +
+      "    \"type\" : \"int\",\n" +
+      "    \"default\" : 0\n" +
+      "  } ]\n" +
       "}";
 
   @Test
@@ -189,6 +205,41 @@ public class testWriteComputeAdapter {
     recordUpdateRecord.put("hasNext", noOpRecord);
     result = recordAdapter.updateRecord(null, recordUpdateRecord);
     Assert.assertEquals(((GenericData.Record)result).get("hasNext"), false);
+  }
+
+  @Test
+  public void testCanUpdateNullableUnion() {
+    Schema nullableRecord = Schema.parse(nullableRecordStr);
+    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(nullableRecord);
+
+    WriteComputeAdapter recordAdapter =
+        WriteComputeAdapter.getWriteComputeAdapter(nullableRecord, writeComputeSchema);
+
+    //construct an empty write compute schema. WC adapter is supposed to construct the
+    //original value by using default values.
+    GenericData.Record writeComputeRecord = new GenericData.Record(writeComputeSchema.getTypes().get(0));
+
+    Schema noOpSchema = writeComputeSchema.getTypes().get(0).getField("nullableArray").schema().getTypes().get(0);
+    GenericData.Record noOpRecord = new GenericData.Record(noOpSchema);
+
+    writeComputeRecord.put("nullableArray", noOpRecord);
+    writeComputeRecord.put("intField", noOpRecord);
+
+    GenericData.Record result = (GenericData.Record) recordAdapter.updateRecord(null, writeComputeRecord);
+    Assert.assertNull(result.get("nullableArray"));
+    Assert.assertEquals(result.get("intField"), 0);
+
+    //use a array operation to update the nullable field
+    GenericData.Record listOpsRecord =
+        new GenericData.Record(writeComputeSchema.getTypes().get(0).getField("nullableArray").schema().getTypes().get(2));
+    listOpsRecord.put(SET_UNION, Arrays.asList(1, 2));
+    listOpsRecord.put(SET_DIFF, Collections.emptyList());
+    writeComputeRecord.put("nullableArray", listOpsRecord);
+
+    result = (GenericData.Record) recordAdapter.updateRecord(result, writeComputeRecord);
+    GenericArray array = (GenericArray) result.get("nullableArray");
+    Assert.assertEquals(array.size(), 2);
+    Assert.assertTrue(array.contains(1) && array.contains(2));
   }
 
   @Test
