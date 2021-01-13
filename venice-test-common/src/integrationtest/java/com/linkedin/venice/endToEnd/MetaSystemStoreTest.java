@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -199,6 +200,19 @@ public class MetaSystemStoreTest {
       StoreMetaValue currentReplicaStatusForV1P0 = storeClient.get(replicaStatusKeyForV1P0).get();
       assertNotNull(currentReplicaStatusForV1P0);
       assertEquals(currentReplicaStatusForV1P0.storeReplicaStatuses.size(), 0);
+    });
+
+    // Meta system store should be deleted when the regular Venice store gets deleted.
+    ControllerResponse storeDeletionResponse = controllerClient.disableAndDeleteStore(regularVeniceStoreName);
+    assertFalse(storeDeletionResponse.isError(), "Store deletion should success, but got error: " + storeDeletionResponse.getError());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      try {
+        storeClient.get(replicaStatusKeyForV3P0).get();
+        fail("An exception is expected here");
+      } catch (Exception e) {
+        assertTrue(e.getMessage().contains("does not exist"),
+            "Any request to meta system store should throw exception before non-existing store");
+      }
     });
   }
 }

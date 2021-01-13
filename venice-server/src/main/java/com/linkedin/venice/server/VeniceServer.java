@@ -289,11 +289,13 @@ public class VeniceServer {
     String systemSchemaClusterName = veniceConfigLoader.getVeniceServerConfig().getSystemSchemaClusterName();
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, systemSchemaClusterName);
+
+    HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
+        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
 ;
     this.metadataRepo = new HelixReadOnlyStoreRepositoryAdapter(
         readOnlyZKSharedSystemStoreRepository,
-        new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
-            clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs())
+        readOnlyStoreRepository
     );
     // Load existing store config and setup watches
     metadataRepo.refresh();
@@ -302,7 +304,7 @@ public class VeniceServer {
         clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
     this.schemaRepo = new HelixReadOnlySchemaRepositoryAdapter(
         this.readOnlyZKSharedSchemaRepository,
-        new HelixReadOnlySchemaRepository(metadataRepo, zkClient, adapter, clusterName,
+        new HelixReadOnlySchemaRepository(readOnlyStoreRepository, zkClient, adapter, clusterName,
             clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs())
     );
     schemaRepo.refresh();

@@ -279,6 +279,12 @@ public class ServiceFactory {
         VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2, new Properties()));
   }
 
+  static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
+      boolean sslToStorageNodes, String  clusterToD2, Properties extraProperties){
+    return getService(VeniceRouterWrapper.SERVICE_NAME,
+        VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2, extraProperties));
+  }
+
   public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress, boolean sslToStorageNodes, Properties extraConfigs){
     return getService(
         MockVeniceRouterWrapper.SERVICE_NAME,

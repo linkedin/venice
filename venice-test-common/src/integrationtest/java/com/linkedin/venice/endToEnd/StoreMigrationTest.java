@@ -9,11 +9,13 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.common.MetadataStoreUtils;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -28,6 +30,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
+import com.linkedin.venice.system.store.MetaStoreDataType;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -35,13 +40,13 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -50,6 +55,7 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -92,6 +98,12 @@ public class StoreMigrationTest {
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
     parentControllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+    // Required by metadata system store
+    parentControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+
+    Properties childControllerProperties = new Properties();
+    // Required by metadata system store
+    childControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
 
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
@@ -107,7 +119,7 @@ public class StoreMigrationTest {
         2,
         Optional.empty(),
         Optional.of(new VeniceProperties(parentControllerProperties)),
-        Optional.empty(),
+        Optional.of(childControllerProperties),
         Optional.of(new VeniceProperties(serverProperties)),
         true,
         MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
@@ -242,7 +254,6 @@ public class StoreMigrationTest {
     ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
     Assert.assertFalse(srcControllerClient.materializeMetadataStoreVersion(STORE_NAME, zkSharedStoreVersion).isError());
     String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
-    String destD2ServiceName = "venice-" + destClusterName.substring(destClusterName.length() - 1);
     D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrappers.get(0).getClusters().get(srcClusterName).getZk().getAddress());
     ClientConfig<StoreMetadataValue> clientConfig = ClientConfig.defaultSpecificClientConfig(
         VeniceSystemStoreUtils.getMetadataStoreName(STORE_NAME), StoreMetadataValue.class)
@@ -275,6 +286,63 @@ public class StoreMigrationTest {
         StoreAttributes storeAttributes = (StoreAttributes) client.get(storeAttributesKey).get().metadataUnion;
         Assert.assertEquals(storeAttributes.sourceCluster.toString(), destClusterName,
             "Unexpected source cluster post store migration");
+      } finally {
+        endMigration(parentControllerUrl);
+      }
+    }
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testMigrateStoreWithMetaSystemStoreMultiDatacenter() throws Exception {
+    // materialize metadata store in the source cluster
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+    // Enable the meta system store
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(STORE_NAME);
+    VersionCreationResponse versionCreationResponseForMetaSystemStore = srcControllerClient.emptyPush(metaSystemStoreName,
+        "test_meta_system_store_push_1", 10000);
+    assertFalse(versionCreationResponseForMetaSystemStore.isError(), "New version creation for meta system store: "
+        + metaSystemStoreName + " should success, but got error: " + versionCreationResponseForMetaSystemStore.getError());
+    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(), srcControllerClient, 30,
+        TimeUnit.SECONDS, Optional.empty());
+
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
+    String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
+    D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrappers.get(0).getClusters().get(srcClusterName).getZk().getAddress());
+
+    ClientConfig<StoreMetaValue> clientConfig = ClientConfig.defaultSpecificClientConfig(
+        metaSystemStoreName, StoreMetaValue.class)
+        .setD2ServiceName(srcD2ServiceName)
+        .setD2Client(d2Client)
+        .setStoreName(metaSystemStoreName);
+    // Refresh router repositories to ensure client connects to the correct cluster during initialization
+    refreshAllRouterMetaData();
+    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> client =
+        ClientFactory.getAndStartSpecificAvroClient(clientConfig)) {
+      StoreMetaKey storePropertiesKey = MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
+        put(KEY_STRING_STORE_NAME, STORE_NAME);
+        put(KEY_STRING_CLUSTER_NAME, srcClusterName);
+      }});
+      StoreMetaValue storeProperties = client.get(storePropertiesKey).get();
+      assertTrue(storeProperties != null && storeProperties.storeProperties != null);
+
+      startMigration(parentControllerUrl);
+      completeMigration();
+
+      refreshAllRouterMetaData();
+      try {
+        // Verify the meta system store is materialized in the destination cluster and contains correct values.
+        StoreMetaKey storePropertiesKeyInDestCluster = MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
+          put(KEY_STRING_STORE_NAME, STORE_NAME);
+          put(KEY_STRING_CLUSTER_NAME, destClusterName);
+        }});
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          try {
+            StoreMetaValue storePropertiesInDestCluster = client.get(storePropertiesKeyInDestCluster).get();
+            assertTrue(storePropertiesInDestCluster != null && storePropertiesInDestCluster.storeProperties != null);
+          } catch (Exception e) {
+            fail("Exception is not unexpected: " + e.getMessage());
+          }
+        });
       } finally {
         endMigration(parentControllerUrl);
       }

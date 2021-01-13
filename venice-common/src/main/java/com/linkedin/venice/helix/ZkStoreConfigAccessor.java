@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.StoreConfig;
@@ -56,10 +57,26 @@ public class ZkStoreConfigAccessor {
   }
 
   public synchronized boolean containsConfig(String store) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(store);
+    if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+      /**
+       * For meta system store, Controller will use the same {@link StoreConfig} as the regular Venice store
+       * during migration.
+       */
+      store = systemStoreType.extractRegularStoreName(store);
+    }
     return dataAccessor.exists(getStoreConfigPath(store), AccessOption.PERSISTENT);
   }
 
   public synchronized StoreConfig getStoreConfig(String store) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(store);
+    if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+      /**
+       * For meta system store, Controller will use the same {@link StoreConfig} as the regular Venice store
+       * during migration.
+       */
+      store = systemStoreType.extractRegularStoreName(store);
+    }
     return dataAccessor.get(getStoreConfigPath(store), null, AccessOption.PERSISTENT);
   }
 

@@ -116,15 +116,15 @@ public class VeniceHelixResources implements VeniceResource {
     } else {
       metaStoreWriter = Optional.empty();
     }
+    HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
+        config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs(), metaStoreWriter);
     this.metadataRepository = new HelixReadWriteStoreRepositoryAdapter(
         zkSharedSystemStoreRepository,
-        new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
-            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs(),
-            metaStoreWriter)
+        readWriteStoreRepository
     );
     this.schemaRepository = new HelixReadWriteSchemaRepositoryAdapter(
         zkSharedSchemaRepository,
-        new HelixReadWriteSchemaRepository(this.metadataRepository, zkClient, adapterSerializer, clusterName, metaStoreWriter)
+        new HelixReadWriteSchemaRepository(readWriteStoreRepository, zkClient, adapterSerializer, clusterName, metaStoreWriter)
     );
 
     SafeHelixManager spectatorManager;

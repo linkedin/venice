@@ -43,8 +43,6 @@ public class VeniceSystemStoreUtils {
       return METADATA_STORE;
     } else if (storeName.startsWith(DAVINCI_PUSH_STATUS_STORE.getPrefix())) {
       return DAVINCI_PUSH_STATUS_STORE;
-    } if (storeName.startsWith(META_STORE.getPrefix())) {
-      return META_STORE;
     } else {
       return null;
     }

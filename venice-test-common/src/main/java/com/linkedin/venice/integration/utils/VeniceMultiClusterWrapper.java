@@ -19,6 +19,8 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
   public static final String SERVICE_NAME = "VeniceMultiCluster";
@@ -89,6 +91,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
             delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, true, controllerProperties);
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
+      // Specify the system store cluster name
+      Properties extraProperties = veniceProperties.isPresent() ? veniceProperties.get().toProperties() : new Properties();
+      extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
+      veniceProperties = Optional.of(new VeniceProperties(extraProperties));
+
       for (int i = 0; i < numberOfClusters; i++) {
         // Create a wrapper for cluster without controller.
         VeniceClusterWrapper clusterWrapper =
