@@ -253,19 +253,20 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 3)
-  public void testIngestionIsolation() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 3)
+  public void testIngestionIsolation(boolean isLeaderFollowerModelEnabled) throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
     String storeName = TestUtils.getUniqueString("store");
     String storeName2 = cluster.createStore(KEY_COUNT);
     Consumer<UpdateStoreQueryParams> paramsConsumer =
             params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
-                    .setPartitionCount(partitionCount)
-                    .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-                    .setPartitionerParams(
-                            Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
-                    );
+                .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+                .setPartitionCount(partitionCount)
+                .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+                .setPartitionerParams(
+                    Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
+                );
     setupHybridStore(storeName, paramsConsumer, 1000);
 
     D2Client d2Client = new D2ClientBuilder()

@@ -182,7 +182,7 @@ public class KafkaStoreIngestionServiceTest {
     doReturn(new Pair<>(mockStore, mockStore.getVersion(1).get())).when(mockmetadataRepo).waitVersion(eq(storeName), eq(1), any());
     doReturn(new Pair<>(toBeDeletedStore, toBeDeletedStore.getVersion(1).get())).when(mockmetadataRepo).waitVersion(eq(deletedStoreName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic1, veniceProperties), 0, false);
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic1, veniceProperties), 0);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 1,
         "Unexpected number of ingesting topics with version status of not ONLINE");
     mockStore.getVersion(1).get().setStatus(VersionStatus.ONLINE);
@@ -190,8 +190,8 @@ public class KafkaStoreIngestionServiceTest {
        "Expecting an empty set since all ingesting topics have version status of ONLINE");
     mockStore.addVersion(new Version(storeName, 2, "test-job-id"));
     doReturn(new Pair<>(mockStore, mockStore.getVersion(2).get())).when(mockmetadataRepo).waitVersion(eq(storeName), eq(2), any());
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic2, veniceProperties), 0, false);
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(invalidTopic, veniceProperties), 0, false);
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic2, veniceProperties), 0);
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(invalidTopic, veniceProperties), 0);
     doReturn(null).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);
     doReturn(null).when(mockmetadataRepo).getStore(deletedStoreName);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 2,

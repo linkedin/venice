@@ -66,7 +66,7 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
-      setupNewStorePartition(true);
+      setupNewStorePartition();
       String resourceName = message.getResourceName();
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);

@@ -2,23 +2,29 @@ package com.linkedin.davinci.ingestion.handler;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.venice.CommonConfigKeys;
-import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.ingestion.IngestionRequestClient;
+import com.linkedin.davinci.ingestion.IngestionService;
+import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.CommonConfigKeys;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.davinci.ingestion.IngestionRequestClient;
-import com.linkedin.davinci.ingestion.IngestionService;
-import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
@@ -37,18 +43,12 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.security.DefaultSSLFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
-import com.linkedin.davinci.storage.StorageEngineMetadataService;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -70,9 +70,9 @@ import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 
 
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
@@ -338,7 +338,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           ingestionService.topicPartitionIngestionFuture.putIfAbsent(topicName, partitionFutureMap);
 
           storageService.openStoreForNewPartition(storeConfig, partitionId);
-          storeIngestionService.startConsumption(storeConfig, partitionId, false);
+          storeIngestionService.startConsumption(storeConfig, partitionId);
           break;
         case STOP_CONSUMPTION:
           storeIngestionService.stopConsumption(storeConfig, partitionId);

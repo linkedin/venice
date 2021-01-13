@@ -73,7 +73,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
         partitionNumberFromOfflineToBootstrap.incrementAndGet();
         executeStateTransition(message, context, () -> {
-            setupNewStorePartition(false);
+            setupNewStorePartition();
             notifier.startConsumption(message.getResourceName(), getPartition());
         });
         partitionNumberFromOfflineToBootstrap.decrementAndGet();
