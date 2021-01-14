@@ -953,7 +953,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * {@link OffsetRecordTransformer} of {@link ProducerTracker#validateMessageAndGetOffsetRecordTransformer(ConsumerRecord, boolean, Optional)},
          * where `segment` could be changed by another message independent from current `offsetRecord`;
          */
-        consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
+        consumerUnSubscribeAllTopics(partitionConsumptionState);
         waitForAllMessageToBeProcessedFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition(), partitionConsumptionState);
         syncOffset(kafkaVersionTopic, partitionConsumptionState);
       }
@@ -1155,7 +1155,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
         if (consumptionState != null) {
-          consumerUnSubscribe(topic, consumptionState);
+          consumerUnSubscribeAllTopics(consumptionState);
         }
 
         // Drain the buffered message by last subscription.
@@ -1975,6 +1975,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
     consumer.unSubscribe(topic, partitionConsumptionState.getPartition());
   }
+
+  public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
   public void consumerSubscribe(String topic, PartitionConsumptionState partitionConsumptionState, long offset) {
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
