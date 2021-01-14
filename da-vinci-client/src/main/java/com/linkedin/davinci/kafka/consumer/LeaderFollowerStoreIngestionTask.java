@@ -437,9 +437,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
           /**
            * If LEADER is consuming remotely and EOP is already received, switch back to local fabrics.
-           * TODO: The logic needs to be updated in order to support native replication for incremental push and hybrid.
+           * TODO: We do not need to switch back to local fabrics at all when native replication is completely ramped up
+           *   and push job directly produces prod cluster instead of parent corp cluster.
+           * TODO: The logic needs to be updated in order to support native replication for hybrid.
            */
-          if (partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived()) {
+          if (partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived() &&
+              !partitionConsumptionState.isIncrementalPushEnabled()) {
             // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
             consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
             // If remote consumption flag is false, existing messages for the partition in the drainer queue should be processed before that

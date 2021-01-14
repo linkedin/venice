@@ -12,6 +12,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -20,6 +21,7 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -294,4 +296,59 @@ public class  TestPushJobWithNativeReplication {
       }
     }
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testNativeReplicationForIncrementalPush() throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    File inputDir = getTempDataDirectory();
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+
+    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 100);
+    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setLeaderFollowerModel(true)
+        .setNativeReplicationEnabled(true)
+        .setIncrementalPushEnabled(true)
+        .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+
+    // Write batch data
+    KafkaPushJob job = new KafkaPushJob("Test push job", props);
+    job.run();
+
+
+    //Run incremental push job
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDir);
+    KafkaPushJob job1 = new KafkaPushJob("Test incremental push job", props);
+    job1.run();
+
+    //Verify following in child controller
+    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+
+    //Verify version level incremental push config is set correctly. The current version should be 1.
+    Optional<Version> version = childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
+    Assert.assertTrue(version.get().isIncrementalPushEnabled());
+
+    //Verify the data in the second child fabric which consumes remotely
+    String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+    try(AvroGenericStoreClient<String, Object> client =
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+      for (int i = 1; i <= 150; ++i) {
+        String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * 2);
+        String actual = client.get(Integer.toString(i)).get().toString();
+        Assert.assertEquals(actual, expected);
+      }
+    }
+  }
+
 }

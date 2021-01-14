@@ -443,6 +443,8 @@ public abstract class Store {
       version.setReplicationFactor(getReplicationFactor());
 
       version.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
+
+      version.setIncrementalPushEnabled(isIncrementalPushEnabled());
     }
 
     storeVersionsSupplier.get().add(index, version.dataModel());
