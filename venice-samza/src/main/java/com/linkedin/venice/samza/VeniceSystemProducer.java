@@ -250,7 +250,7 @@ public class VeniceSystemProducer implements SystemProducer {
     if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
       pushMonitor = Optional.of(new RouterBasedPushMonitor(
-              new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), versionTopic, factory, this)
+          new D2TransportClient(discoveryResponse.getD2Service(), d2Client), versionTopic, factory, this)
       );
       pushMonitor.get().start();
     }
@@ -269,14 +269,14 @@ public class VeniceSystemProducer implements SystemProducer {
 
     if (pushType.equals(Version.PushType.STREAM) && hybridStoreDiskQuotaEnabled) {
       hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(
-          new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), storeName));
+          new D2TransportClient(discoveryResponse.getD2Service(), d2Client), storeName));
       hybridStoreQuotaMonitor.get().start();
     }
 
     if(pushType.equals(Version.PushType.STREAM_REPROCESSING) && hybridStoreDiskQuotaEnabled) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
       hybridStoreQuotaMonitor = Optional.of(new RouterBasedHybridStoreQuotaMonitor(
-          new D2TransportClient(ClientConfig.DEFAULT_D2_SERVICE_NAME, d2Client), versionTopic));
+          new D2TransportClient(discoveryResponse.getD2Service(), d2Client), versionTopic));
       hybridStoreQuotaMonitor.get().start();
     }
   }
@@ -366,6 +366,7 @@ public class VeniceSystemProducer implements SystemProducer {
            * If there are multiple stream SystemProducer in one Samza job, one failed push will
            * also affect other push jobs.
            */
+          LOGGER.error("Current hybrid store quota status: " + currentStatus + ", should throw exception to kill the job.");
           throw new VeniceException("Push job for resource " + topicName + " is in hybrid quota violated mode; please reach out to Venice team.");
         case QUOTA_NOT_VIOLATED:
         default:
