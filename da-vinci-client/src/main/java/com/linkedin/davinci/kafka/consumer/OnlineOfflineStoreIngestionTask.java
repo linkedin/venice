@@ -255,6 +255,14 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
+  public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
+    /**
+     * O/O replica will always be consuming from one topic only, which is the local version topic.
+     */
+    consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
+  }
+
+  @Override
   public long getFollowerOffsetLag() {
     return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
   }

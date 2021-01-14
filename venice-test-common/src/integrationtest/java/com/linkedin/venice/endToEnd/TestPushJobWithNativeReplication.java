@@ -54,7 +54,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 public class  TestPushJobWithNativeReplication {
   private static final Logger logger = Logger.getLogger(TestPushJobWithNativeReplication.class);
-  private static final int TEST_TIMEOUT = 90_000; // ms
+  private static final int TEST_TIMEOUT = 120_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;

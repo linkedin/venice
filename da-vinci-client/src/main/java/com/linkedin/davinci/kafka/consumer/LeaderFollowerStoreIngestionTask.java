@@ -18,6 +18,7 @@ import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -1383,6 +1384,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .sum();
 
     return minZeroLag(offsetLag);
+  }
+
+  /**
+   * Unsubscribe from all the topics being consumed for the partition in partitionConsumptionState
+   *
+   * TODO: In Active/Active replication, leader will need to unsubscribe from all RTs in different fabrics
+   */
+  @Override
+  public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+    if (partitionConsumptionState.getLeaderState().equals(LEADER) && leaderTopic != null) {
+      consumer.unSubscribe(leaderTopic, partitionConsumptionState.getPartition());
+    } else {
+      consumer.unSubscribe(kafkaVersionTopic, partitionConsumptionState.getPartition());
+    }
   }
 
   @Override
