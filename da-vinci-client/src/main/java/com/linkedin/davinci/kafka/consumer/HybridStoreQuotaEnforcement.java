@@ -1,14 +1,14 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.davinci.exceptions.StorageQuotaExceededException;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -159,18 +159,16 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
        * but the notification to storage node gets delayed, the quota exceeding issue will put this partition of current version to be ERROR,
        * which will break the production.
        */
-      if (Version.isRealTimeTopic(versionTopic) || Version.isStreamReprocessingTopic(versionTopic)) {
-        pausePartition(partition, consumingTopic);
-      }
+      pausePartition(partition, consumingTopic);
       if (shouldLogQuotaExceeded) {
-        logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition.");
+        logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition." + versionTopic);
       }
     } else { /** we have free space for this partition */
       /**
-       * Only RT jobs partitions could be resumed
+       *  Paused partitions could be resumed
        */
       storeIngestionTask.reportQuotaNotViolated(partition);
-      if (isRTJob() && isPartitionPausedIngestion(partition)) {
+      if (isPartitionPausedIngestion(partition)) {
         resumePartition(partition, consumingTopic);
         logger.info("Quota available for store " + storeName + " partition " + partition + ", resumed this partition.");
       }

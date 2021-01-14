@@ -1,14 +1,10 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.kafka.consumer.HybridStoreQuotaEnforcement;
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
-import com.linkedin.davinci.exceptions.StorageQuotaExceededException;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -77,9 +73,9 @@ public class HybridStoreQuotaEnforcementTest {
     Assert.assertEquals(quotaEnforcer.getPartitionQuotaInBytes(), newStoreQuotaInBytes/storePartitionCount);
   }
 
-  @Test(expectedExceptions = StorageQuotaExceededException.class)
+  @Test
   public void testHybridStoreBatchPushExceededQuota() throws Exception {
-    // should throw exception as the partitions size break write quota
+    // should not throw exception as the partitions size break write quota
     buildDummyPartitionToSizeMap(10);
     runTest(() -> {});
   }
