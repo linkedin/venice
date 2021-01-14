@@ -22,7 +22,6 @@ class IngestionNotificationDispatcher {
   private final Queue<VeniceNotifier> notifiers;
   private final String topic;
   private final BooleanSupplier isCurrentVersion;
-  private final RedundantExceptionFilter filter = RedundantExceptionFilter.getDailyRedundantExceptioFilter();
 
   private long lastProgressReportTime = 0;
 
@@ -243,12 +242,7 @@ class IngestionNotificationDispatcher {
             }
 
             if (!report) {
-              if (filter.isRedundantException(message)) {
-                logger.warn(logMessage + " The full stacktrace for this error message has already been printed earlier,"
-                    + " so it will not be re-printed again. Current error message: " + message);
-              } else {
-                logger.warn(logMessage + " Full stacktrace below: ", consumerEx);
-              }
+              logger.info(logMessage);
             }
             return report;
           }
