@@ -429,9 +429,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Properties kafkaProperties = getKafkaConsumerProperties(veniceStoreConfig);
 
     boolean nativeReplicationEnabled = version.get().isNativeReplicationEnabled();
+    boolean isIncrementalPushEnabled = version.get().isIncrementalPushEnabled();
     String nativeReplicationSourceAddress = version.get().getPushStreamSourceAddress();
     return ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModel, kafkaProperties, isStoreVersionCurrent,
-        hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStoreConfig, bufferReplayEnabledForHybrid,
+        hybridStoreConfig, isIncrementalPushEnabled, veniceStoreConfig, bufferReplayEnabledForHybrid,
         nativeReplicationEnabled, nativeReplicationSourceAddress, partitionId, store.isWriteComputationEnabled(), venicePartitioner);
   }
 
