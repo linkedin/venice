@@ -237,6 +237,14 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
     this.storeVersion.incrementalPushEnabled = incrementalPushEnabled;
   }
 
+  public boolean isUseVersionLevelIncrementalPushEnabled() {
+    return this.storeVersion.useVersionLevelIncrementalPushEnabled;
+  }
+
+  public void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled) {
+    this.storeVersion.useVersionLevelIncrementalPushEnabled = versionLevelIncrementalPushEnabled;
+  }
+
   @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
@@ -262,6 +270,7 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
         ", replicationFactor=" + getReplicationFactor() +
         ", nativeReplicationSourceFabric=" + getNativeReplicationSourceFabric() +
         ", incrementalPushEnabled=" + isIncrementalPushEnabled() +
+        ", useVersionLevelIncrementalPushEnabled=" + isUseVersionLevelIncrementalPushEnabled() +
         '}';
   }
 
@@ -312,6 +321,7 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
     clonedVersion.setReplicationFactor(getReplicationFactor());
     clonedVersion.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     clonedVersion.setIncrementalPushEnabled(isIncrementalPushEnabled());
+    clonedVersion.setUseVersionLevelIncrementalPushEnabled(isUseVersionLevelIncrementalPushEnabled());
     return clonedVersion;
   }
 
