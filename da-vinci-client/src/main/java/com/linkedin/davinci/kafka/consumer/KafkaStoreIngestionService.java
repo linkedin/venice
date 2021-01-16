@@ -1,25 +1,15 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
-import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
-import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
-import com.linkedin.davinci.stats.StoreBufferServiceStats;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -29,24 +19,36 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.davinci.notifier.LogNotifier;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.storage.MetadataRetriever;
-import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.notifier.LogNotifier;
+import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.stats.StoreBufferServiceStats;
+import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
 
 import io.tehuti.metrics.MetricsRepository;
 
@@ -55,6 +57,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -126,9 +129,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private ParticipantStoreConsumptionTask participantStoreConsumptionTask = null;
 
   private StoreIngestionTaskFactory ingestionTaskFactory;
-
-  private final int retryStoreRefreshIntervalInMs = 5000;
-  private final int retryStoreRefreshAttempt = 10;
 
   private final ExecutorService cacheWarmingExecutorService;
 
@@ -388,57 +388,48 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private StoreIngestionTask createConsumerTask(VeniceStoreConfig veniceStoreConfig, boolean isLeaderFollowerModel, int partitionId) {
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreConfig.getStoreName());
-    int storeVersion = Version.parseVersionFromKafkaTopicName(veniceStoreConfig.getStoreName());
-    Store store = metadataRepo.getStoreOrThrow(storeName);
-    Optional<Version> version = store.getVersion(storeVersion);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(veniceStoreConfig.getStoreName());
 
-    int attempt = 0;
-
-    // In theory, the version should exist since the corresponding store ingestion is ready to start.
-    // The issue could be caused by race condition that the in-memory metadata hasn't been refreshed yet,
-    // So here will refresh that store explicitly up to getRefreshAttemptsForZkReconnect times
-    if (!version.isPresent()) {
-      while (attempt < retryStoreRefreshAttempt) {
-        store = metadataRepo.refreshOneStore(storeName);
-        version = store.getVersion(storeVersion);
-        if (version.isPresent()) {
-          break;
-        }
-        attempt++;
-        Utils.sleep(retryStoreRefreshIntervalInMs);
-      }
+    Pair<Store, Version> storeVersionPair = metadataRepo.waitVersion(storeName, versionNumber, Duration.ofSeconds(30));
+    Store store = storeVersionPair.getFirst();
+    Version version = storeVersionPair.getSecond();
+    if (store == null) {
+      throw new VeniceException("Store " + storeName + " does not exist.");
     }
-    // Error out if no store version found even after retries
-    if (!version.isPresent()) {
-      throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
+    if (version == null) {
+      throw new VeniceException("Version " + veniceStoreConfig.getStoreName() + " does not exist.");
     }
 
-    VenicePartitioner venicePartitioner;
-    PartitionerConfig partitionerConfig = version.get().getPartitionerConfig();
+    VenicePartitioner partitioner;
+    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
     if (partitionerConfig == null) {
-      venicePartitioner = new DefaultVenicePartitioner();
+      partitioner = new DefaultVenicePartitioner();
     } else {
-      venicePartitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
+      partitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
     }
 
-    final Store finalStore = store;
-    BooleanSupplier isStoreVersionCurrent = () -> finalStore.getCurrentVersion() == storeVersion;
-    Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
+    BooleanSupplier isVersionCurrent = () -> {
+      try {
+        return versionNumber == metadataRepo.getStoreOrThrow(storeName).getCurrentVersion();
+      } catch (VeniceNoStoreException e) {
+        logger.warn("Unable to find store meta-data for " + veniceStoreConfig.getStoreName(), e);
+        return false;
+      }
+    };
 
-    boolean bufferReplayEnabledForHybrid = version.get().isBufferReplayEnabledForHybrid();
-    Properties kafkaProperties = getKafkaConsumerProperties(veniceStoreConfig);
-
-    boolean nativeReplicationEnabled = version.get().isNativeReplicationEnabled();
-    boolean isIncrementalPushEnabled;
-    if (version.get().isUseVersionLevelIncrementalPushEnabled()) {
-      isIncrementalPushEnabled = version.get().isIncrementalPushEnabled();
-    } else {
-      isIncrementalPushEnabled = store.isIncrementalPushEnabled();
-    }
-    String nativeReplicationSourceAddress = version.get().getPushStreamSourceAddress();
-    return ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModel, kafkaProperties, isStoreVersionCurrent,
-        hybridStoreConfig, isIncrementalPushEnabled, veniceStoreConfig, bufferReplayEnabledForHybrid,
-        nativeReplicationEnabled, nativeReplicationSourceAddress, partitionId, store.isWriteComputationEnabled(), venicePartitioner);
+    return ingestionTaskFactory.getNewIngestionTask(
+        isLeaderFollowerModel,
+        getKafkaConsumerProperties(veniceStoreConfig),
+        isVersionCurrent,
+        Optional.ofNullable(store.getHybridStoreConfig()),
+        version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled(),
+        veniceStoreConfig,
+        version.isBufferReplayEnabledForHybrid(),
+        version.isNativeReplicationEnabled(),
+        version.getPushStreamSourceAddress(),
+        partitionId,
+        store.isWriteComputationEnabled(),
+        partitioner);
   }
 
   private void shutdownExecutorService(ExecutorService executorService, boolean force) {

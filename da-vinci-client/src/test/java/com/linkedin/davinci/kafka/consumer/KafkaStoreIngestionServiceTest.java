@@ -19,6 +19,8 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.utils.Pair;
+
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.NavigableMap;
@@ -177,6 +179,8 @@ public class KafkaStoreIngestionServiceTest {
     doReturn(toBeDeletedStore).when(mockmetadataRepo).getStore(deletedStoreName);
     doReturn(mockStore).when(mockmetadataRepo).getStoreOrThrow(storeName);
     doReturn(toBeDeletedStore).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);
+    doReturn(new Pair<>(mockStore, mockStore.getVersion(1).get())).when(mockmetadataRepo).waitVersion(eq(storeName), eq(1), any());
+    doReturn(new Pair<>(toBeDeletedStore, toBeDeletedStore.getVersion(1).get())).when(mockmetadataRepo).waitVersion(eq(deletedStoreName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic1, veniceProperties), 0, false);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 1,
@@ -185,6 +189,7 @@ public class KafkaStoreIngestionServiceTest {
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 0,
        "Expecting an empty set since all ingesting topics have version status of ONLINE");
     mockStore.addVersion(new Version(storeName, 2, "test-job-id"));
+    doReturn(new Pair<>(mockStore, mockStore.getVersion(2).get())).when(mockmetadataRepo).waitVersion(eq(storeName), eq(2), any());
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic2, veniceProperties), 0, false);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(invalidTopic, veniceProperties), 0, false);
     doReturn(null).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);

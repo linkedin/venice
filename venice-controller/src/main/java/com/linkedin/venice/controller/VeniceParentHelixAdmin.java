@@ -87,6 +87,20 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import com.linkedin.venice.utils.Pair;
+
+import org.apache.avro.Schema;
+import org.apache.http.HttpStatus;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.log4j.Logger;
+import org.codehaus.jackson.JsonNode;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.node.ArrayNode;
+import org.codehaus.jackson.node.JsonNodeFactory;
+import org.codehaus.jackson.node.ObjectNode;
+
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -107,15 +121,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
-import org.apache.avro.Schema;
-import org.apache.http.HttpStatus;
-import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.log4j.Logger;
-import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.node.ArrayNode;
-import org.codehaus.jackson.node.JsonNodeFactory;
-import org.codehaus.jackson.node.ObjectNode;
 
 import static com.linkedin.venice.VeniceConstants.*;
 
@@ -679,19 +684,18 @@ public class VeniceParentHelixAdmin implements Admin {
          * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
          * the incomplete topic/job.
          */
-        Store store = getStore(clusterName, storeName);
-        Optional<Version> version = store.getVersionWithRetry(Version.parseVersionFromKafkaTopicName(latestKafkaTopicName), 3, 10 * Time.MS_PER_SECOND, timer);
-        if (!version.isPresent()) {
+        int versionNumber = Version.parseVersionFromKafkaTopicName(latestKafkaTopicName);
+        Pair<Store, Version> storeVersionPair = getVeniceHelixAdmin().waitVersion(clusterName, storeName, versionNumber, Duration.ofSeconds(30));
+        if (storeVersionPair.getSecond() == null) {
           // TODO: Guard this topic deletion code using a store-level lock instead.
           Long inMemoryTopicCreationTime = getVeniceHelixAdmin().getInMemoryTopicCreationTime(latestKafkaTopicName);
-          if (inMemoryTopicCreationTime == null || SystemTime.INSTANCE.getMilliseconds() - inMemoryTopicCreationTime >= TOPIC_DELETION_DELAY_MS) {
-            // The corresponding version doesn't exist.
-            killOfflinePush(clusterName, latestKafkaTopicName, true);
-            logger.info("Found topic: " + latestKafkaTopicName + " without the corresponding version, will kill it");
-            return Optional.empty();
-          } else {
+          if (inMemoryTopicCreationTime != null && SystemTime.INSTANCE.getMilliseconds() < (inMemoryTopicCreationTime + TOPIC_DELETION_DELAY_MS)) {
             throw new VeniceException("Failed to get version information but the topic exists and has been created recently. Try again after some time.");
           }
+
+          killOfflinePush(clusterName, latestKafkaTopicName, true);
+          logger.info("Found topic: " + latestKafkaTopicName + " without the corresponding version, will kill it");
+          return Optional.empty();
         }
 
         /**

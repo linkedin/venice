@@ -799,6 +799,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String pushJobId2 = "test_push_id2";
     store.addVersion(new Version(storeName, 1, pushJobId));
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.PROGRESS);
@@ -823,6 +824,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Version version = new Version(storeName, 1, pushJobId);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
     doReturn(version).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty());
@@ -896,6 +898,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Version version = new Version(storeName, 1, Version.guidBasedDummyPushId());
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
       try {
@@ -1454,6 +1457,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     store.addVersion(new Version(storeName, 1, "test_push_id"));
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+    doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false).isPresent());
 
@@ -1522,6 +1526,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     // When there is a regular topic, but there is no corresponding version
     store.deleteVersion(1);
+    doReturn(new Pair<>(store, null)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
     // If the in memory topic to creation time map doesn't contain topic info, then push will be killed
     doReturn(null).when(internalAdmin).getInMemoryTopicCreationTime(Version.composeKafkaTopic(storeName, 1));
@@ -1624,7 +1629,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
       doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
       doReturn(Optional.of(version)).when(store).getVersion(1);
-      doCallRealMethod().when(store).getVersionWithRetry(eq(1), anyInt(), anyLong(), any());
+      doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
       doReturn(new HashSet<>(Arrays.asList(topicName, existingTopicName))).when(topicManager).listTopics();
       doReturn(newVersion).when(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, newPushJobId,
           3, 3, false, true, Version.PushType.BATCH,

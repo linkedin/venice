@@ -325,12 +325,15 @@ public class Utils {
    * of the loop.
    *
    * @param millis
+   * @return true on success and false if sleep was interrupted
    */
-  public static void sleep(long millis) {
+  public static boolean sleep(long millis) {
     try {
       Thread.sleep(millis);
+      return true;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      return false;
     }
   }
 

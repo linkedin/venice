@@ -111,6 +111,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -2309,6 +2310,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerMastership(clusterName);
         ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         return repository.getStore(storeName);
+    }
+
+    public Pair<Store, Version> waitVersion(String clusterName, String storeName, int versionNumber, Duration timeout) {
+        checkControllerMastership(clusterName);
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        return repository.waitVersion(storeName, versionNumber, timeout);
     }
 
     @Override
