@@ -516,11 +516,7 @@ public abstract class AbstractPushMonitor
     if (null == store) {
       logger.info("Got a null store from metadataRepository for store name: '" + storeName +
           "'. Will attempt a refresh().");
-      // TODO refresh is a very expensive operation, because it will read all stores' metadata from ZK,
-      // TODO Do we really need to do this here?
-      getReadWriteStoreRepository().refresh();
-
-      store = getReadWriteStoreRepository().getStore(storeName);
+      store = getReadWriteStoreRepository().refreshOneStore(storeName);
       if (null == store) {
         throw new IllegalStateException("checkHybridPushStatus could not find a store named '" + storeName +
             "' in the metadataRepository, even after refresh()!");

@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.api.routing.helix;
 
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
-import com.linkedin.util.Pair;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashMap;
 import java.util.Map;
@@ -69,7 +69,7 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
        * not be invoked, and without timeout, the group counter will be leaking.
        */
       requestTimeoutFutureMap.put(requestId,
-          Pair.of(leastLoadedGroup,
+          new Pair<>(leastLoadedGroup,
               timeoutProcessor.schedule( () -> timeoutRequest(requestId, finalLeastLoadedGroup, false), timeoutInMS, TimeUnit.MILLISECONDS)
           )
       );

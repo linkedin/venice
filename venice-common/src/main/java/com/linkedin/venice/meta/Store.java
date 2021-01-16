@@ -1,12 +1,16 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
-import com.linkedin.venice.utils.Time;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
+import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificRecord;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -19,8 +23,6 @@ import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificRecord;
 
 
 /**
@@ -515,24 +517,6 @@ public abstract class Store {
       Version version = new Version(storeVersion);
       if (version.getNumber() == versionNumber) {
         return Optional.of(version);
-      }
-    }
-    return Optional.empty();
-  }
-
-  public Optional<Version> getVersionWithRetry(int versionNumber, int retryCount, long sleepDuration, Time timer) {
-    int current = 0;
-    while (current < retryCount) {
-      Optional<Version> version = getVersion(versionNumber);
-      if (version.isPresent()) {
-        return version;
-      }
-      current++;
-
-      try {
-        timer.sleep(sleepDuration);
-      } catch (InterruptedException e) {
-        throw new VeniceException(e);
       }
     }
     return Optional.empty();
