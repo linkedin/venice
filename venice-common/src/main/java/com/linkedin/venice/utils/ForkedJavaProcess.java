@@ -74,6 +74,18 @@ public final class ForkedJavaProcess extends Process {
         }
       }
       command.add("-cp");
+
+      /**
+       * Prepend extra_webapp_resources/lib classpath to the forked Java process's classpath so the forked
+       * process will have correct(newest) jar version for every dependencies when deployed in thin-war fashion.
+       */
+
+      for (File file : new ArrayList<>(classpathDirs)) {
+        if (!file.getPath().contains("extra_webapp_resources")) {
+          classpathDirs.remove(file);
+          classpathDirs.add(file);
+        }
+      }
       command.add(JarUtils.pathElementsToPathStr(classpathDirs));
     }
 
