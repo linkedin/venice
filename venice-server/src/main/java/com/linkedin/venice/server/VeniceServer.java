@@ -477,11 +477,11 @@ public class VeniceServer {
       } else if (args.length == 1) {
         veniceConfigService = VeniceConfigLoader.loadFromConfigDirectory(args[0]);
       } else {
-        Utils.croak("USAGE: java " + VeniceServer.class.getName() + " [venice_config_dir] ");
+        Utils.exit("USAGE: java " + VeniceServer.class.getName() + " [venice_config_dir] ");
       }
     } catch (Exception e) {
       logger.error("Error starting Venice Server ", e);
-      Utils.croak("Error while loading configuration: " + e.getMessage());
+      Utils.exit("Error while loading configuration: " + e.getMessage());
     }
 
     final VeniceServer server = new VeniceServer(veniceConfigService);

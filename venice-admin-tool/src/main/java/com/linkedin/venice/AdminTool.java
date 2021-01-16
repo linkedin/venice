@@ -861,7 +861,7 @@ public class AdminTool {
             VsonAvroSchemaAdapter.parse(keySchemaStr).toString(),
             VsonAvroSchemaAdapter.parse(valueSchemaStr).toString()));
 
-    System.exit(1);
+    Utils.exit("convertVsonSchemaAndExit");
   }
 
   private static void listBootstrappingVersions(CommandLine cmd) {
@@ -1490,7 +1490,7 @@ public class AdminTool {
 
       System.out.println(command + " --" + c.toString() + " " + exampleArgs.toString());
     }
-    System.exit(1);
+    Utils.exit("printUsageAndExit");
   }
 
   private static String getRequiredArgument(CommandLine cmd, Arg arg){
@@ -1831,7 +1831,7 @@ public class AdminTool {
       printFunction.accept("\n");
     } catch (IOException e) {
       printFunction.accept("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
-      System.exit(1);
+      Utils.exit("printObject");
     }
   }
 
@@ -1845,7 +1845,7 @@ public class AdminTool {
 
   private static void printErrAndExit(String errorMessage, Map<String, String> customMessages) {
     printErr(errorMessage, customMessages);
-    System.exit(1);
+    Utils.exit("printErrAndExit");
   }
 
   private static void printErrAndThrow(Exception e, String errorMessage, Map<String, String> customMessages) throws Exception {

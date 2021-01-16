@@ -18,21 +18,21 @@ import org.testng.annotations.Test;
 
 
 public class TestSslTransportClient {
-
   @Test
   public void SslTransportClientCanTalkToRouter() throws ExecutionException, InterruptedException, IOException {
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(ServiceFactory.getZkServer().getAddress(), true, new Properties());
-    String routerSslUrl = "https://" + router.getHost() + ":" + router.getSslPort();
-    HttpsTransportClient client = new HttpsTransportClient(routerSslUrl, SslUtils.getLocalSslFactory());
+    try (MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(ServiceFactory.getZkServer().getAddress(), true, new Properties())) {
+      String routerSslUrl = "https://" + router.getHost() + ":" + router.getSslPort();
+      try (HttpsTransportClient client = new HttpsTransportClient(routerSslUrl, SslUtils.getLocalSslFactory())) {
 
-    TransportClientResponse transportClientResponse = client.get("/master_controller").get();
-    byte[] response = transportClientResponse.getBody();
+        TransportClientResponse transportClientResponse = client.get("/master_controller").get();
+        byte[] response = transportClientResponse.getBody();
 
-    String responseJson = new String(response, StandardCharsets.UTF_8);
-    Map<String, String> responseMap = new ObjectMapper().readValue(responseJson, new TypeReference<HashMap<String, String>>(){});
-    Assert.assertEquals(responseMap.get("cluster"), router.getClusterName());
-    Assert.assertEquals(responseMap.get("url"), "http://localhost:1234");
-
-    client.close();
+        String responseJson = new String(response, StandardCharsets.UTF_8);
+        Map<String, String> responseMap = new ObjectMapper().readValue(responseJson, new TypeReference<HashMap<String, String>>() {
+        });
+        Assert.assertEquals(responseMap.get("cluster"), router.getClusterName());
+        Assert.assertEquals(responseMap.get("url"), "http://localhost:1234");
+      }
+    }
   }
 }

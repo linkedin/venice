@@ -245,11 +245,11 @@ public class MetaStoreWriter implements Closeable {
   }
 
   private Map<CharSequence, CharSequence> buildSchemaMap(Collection<SchemaEntry> schemas) {
-    return schemas.stream().collect(Collectors.toMap(s -> (Integer.toString(s.getId())), s->s.getSchema().toString()));
+    return schemas.stream().collect(Collectors.toMap(s -> (Integer.toString(s.getId())), s -> s.getSchema().toString()));
   }
 
   @Override
   public void close() throws IOException {
-    metaStoreWriterMap.forEach((k, v) -> IOUtils.closeQuietly(v));
+    metaStoreWriterMap.values().forEach(IOUtils::closeQuietly);
   }
 }

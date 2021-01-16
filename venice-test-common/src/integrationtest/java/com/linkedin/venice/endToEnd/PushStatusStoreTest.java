@@ -60,9 +60,9 @@ public class PushStatusStoreTest {
 
   @AfterClass
   public void cleanup() {
-    IOUtils.closeQuietly(cluster);
+    IOUtils.closeQuietly(parentControllerClient);
     IOUtils.closeQuietly(parentController);
-    parentControllerClient.close();
+    IOUtils.closeQuietly(cluster);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

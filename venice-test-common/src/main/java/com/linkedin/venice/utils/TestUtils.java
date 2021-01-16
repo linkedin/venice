@@ -173,7 +173,7 @@ public class TestUtils {
       } finally {
         Utils.sleep(waitTime);
         if (exponentialBackOff) {
-          waitTime = Math.min(waitTime * 2, MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
+          waitTime = Math.max(Time.MS_PER_SECOND, Math.min(waitTime * 2, MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS));
         }
       }
     }

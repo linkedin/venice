@@ -1,5 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.utils.Utils;
+
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -42,7 +44,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
   private Map<String, FullHttpResponse> uriPatternToResponseMap = new ConcurrentHashMap<>();
 
   static StatefulServiceProvider<MockHttpServerWrapper> generateService() {
-    return ((serviceName, port, dataDirectory) -> new MockHttpServerWrapper(serviceName, port));
+    return (serviceName, dataDirectory) -> new MockHttpServerWrapper(serviceName, Utils.getFreePort());
   }
 
   public MockHttpServerWrapper(String serviceName, int port) {

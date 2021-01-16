@@ -3,12 +3,8 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
+import com.linkedin.venice.utils.Utils;
+
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.ZooDefs;
@@ -19,22 +15,26 @@ import org.apache.zookeeper.server.ZooKeeperServer;
 import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
 import org.apache.zookeeper.server.quorum.QuorumPeerConfig;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+
 /**
  * This class contains a ZK server, and provides facilities for cleaning up
  * its side effects when we're done using it.
  */
 public class ZkServerWrapper extends ProcessWrapper {
   // Class-level state and APIs
-  static final boolean useSingleton = true;
-  private static final ConcurrentLinkedQueue<String> chroots = new ConcurrentLinkedQueue<>();
-  private static volatile ZkServerWrapper singleton = null;
-  private String chroot; // only used for singleton, never includes a leading slash
-
   private static final Logger LOGGER = Logger.getLogger(ZkServerWrapper.class);
 
+  static final boolean SINGLETON = true;
   public static final String SERVICE_NAME = "Zookeeper";
-
   private static final int MAX_WAIT_TIME_DURING_STARTUP = 5 * Time.MS_PER_SECOND;
+  private static ZkServerWrapper INSTANCE = null;
+  private static final ConcurrentLinkedQueue<String> CHROOTS = new ConcurrentLinkedQueue<>();
 
   // TODO: Make sure the hardcoded defaults below make sense
 
@@ -44,7 +44,6 @@ public class ZkServerWrapper extends ProcessWrapper {
   private static final int TICK_TIME = 200;
   private static final int MAX_SESSION_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final int NUM_CONNECTIONS = 5000;
-  private static final String ZK_HOSTNAME = "localhost"; // Retrieving Utils.getHostName() doesn't work...
 
   private static final String CLIENT_PORT_PROP = "clientPort";
   private static final String TICK_TIME_PROP = "tickTime";
@@ -58,40 +57,30 @@ public class ZkServerWrapper extends ProcessWrapper {
    *
    * @return a function which yields a {@link ZkServerWrapper} instance
    */
-  static StatefulServiceProvider<ZkServerWrapper> generateService() {
-    if (useSingleton){
+  static synchronized StatefulServiceProvider<ZkServerWrapper> generateService() {
+    return (String serviceName, File dataDirectory) -> {
+      if (!SINGLETON) {
+        return createRealZkServerWrapper(serviceName, Utils.getFreePort(), dataDirectory);
+      }
 
-      return (String serviceName, int port, File dir) -> {
-        if (singleton == null) {
-          synchronized (ZkServerWrapper.class) {
-            if (singleton == null) {
-              try {
-                singleton = createRealZkServerWrapper(serviceName, port, dir);
-                singleton.start();
-                //Auto close
-                Runtime.getRuntime().addShutdownHook(new Thread() {
-                  public void run(){
-                    singleton.close();
-                  }
-                });
-              } catch (Exception e) {
-                singleton = null;
-                throw e; //So port bind exceptions leverage ServiceFactory for retry
-              }
-            }
-          }
+      if (INSTANCE == null) {
+        try {
+          INSTANCE = createRealZkServerWrapper(serviceName, Utils.getFreePort(), dataDirectory);
+          Runtime.getRuntime().addShutdownHook(new Thread(INSTANCE::close));
+          INSTANCE.start();
+        } catch (Exception e) {
+          INSTANCE = null;
+          throw e;
         }
-        String chroot = chroots.poll();
-        if (null == chroot){
-          chroots.addAll(addPathsToZk(getSingletonAddress(), 100));
-          chroot = chroots.poll();
-        }
-        return new ZkServerWrapper(dir, chroot);
-      };
+      }
 
-    } else {
-      return (String serviceName, int port, File dir) -> createRealZkServerWrapper(serviceName, port, dir);
-    }
+      String chroot = CHROOTS.poll();
+      if (null == chroot) {
+        CHROOTS.addAll(addPathsToZk(INSTANCE.getAddress(), 100));
+        chroot = CHROOTS.poll();
+      }
+      return new ZkServerWrapper(dataDirectory, chroot);
+    };
   }
 
   private static ZkServerWrapper createRealZkServerWrapper(String serviceName, int port, File dir) {
@@ -110,16 +99,17 @@ public class ZkServerWrapper extends ProcessWrapper {
     QuorumPeerConfig quorumConfiguration = new QuorumPeerConfig();
     try {
       quorumConfiguration.parseProperties(startupProperties);
-    } catch(Exception e) {
+    } catch (Exception e) {
       throw new RuntimeException(e);
     }
 
-    final ServerConfig configuration = new ServerConfig();
+    ServerConfig configuration = new ServerConfig();
     configuration.readFrom(quorumConfiguration);
     return new ZkServerWrapper(dir, configuration);
   }
 
   // Instance-level state and APIs
+  private final String chroot; // only used for singleton, never includes a leading slash
   private final ServerConfig configuration;
   private ZkThread zkThread;
   private ZooKeeperServer zkServer;
@@ -133,47 +123,44 @@ public class ZkServerWrapper extends ProcessWrapper {
    */
   private ZkServerWrapper(File dataDirectory, ServerConfig configuration) {
     super(SERVICE_NAME, dataDirectory);
-    this.configuration = configuration;
-    this.zkServer = new ZooKeeperServer();
+    this.chroot = null;
     this.zkThread = new ZkThread();
+    this.zkServer = new ZooKeeperServer();
+    this.configuration = configuration;
+
   }
 
-  private ZkServerWrapper(File dataDir, String chroot) {
-    super(SERVICE_NAME, dataDir);
-    if (!useSingleton){
+  private ZkServerWrapper(File dataDirectory, String chroot) {
+    super(SERVICE_NAME, dataDirectory);
+    if (!SINGLETON) {
       throw new RuntimeException("Do not use the singleton-based ZkServerWrapper constructor without enabling the useSingleton flag");
-    } else {
-      this.chroot = chroot;
-      this.zkThread = null;
-      this.zkServer = null;
-      this.configuration = null;
     }
+    this.chroot = chroot;
+    this.zkThread = null;
+    this.zkServer = null;
+    this.configuration = null;
   }
 
   /**
    * Adapted from ZK's source code. We need to be able to block until ZK has successfully started.
    */
   private class ZkThread extends Thread {
-    Exception exception = null;
+    volatile Exception exception = null;
+
     public void run() {
       try {
         LOGGER.info("Starting ZK server");
         FileTxnSnapLog txnLog = null;
         try {
-          txnLog = new FileTxnSnapLog(new File(configuration.getDataLogDir()), new File(
-              configuration.getDataDir()));
+          txnLog = new FileTxnSnapLog(new File(configuration.getDataLogDir()), new File(configuration.getDataDir()));
           zkServer.setTxnLogFactory(txnLog);
           zkServer.setTickTime(configuration.getTickTime());
           zkServer.setMinSessionTimeout(configuration.getMinSessionTimeout());
           zkServer.setMaxSessionTimeout(configuration.getMaxSessionTimeout());
           ServerCnxnFactory cnxnFactory = ServerCnxnFactory.createFactory();
-          cnxnFactory.configure(configuration.getClientPortAddress(),
-              configuration.getMaxClientCnxns());
+          cnxnFactory.configure(configuration.getClientPortAddress(), configuration.getMaxClientCnxns());
           cnxnFactory.startup(zkServer);
           cnxnFactory.join();
-        } catch (InterruptedException e) {
-          // warn, but generally this is ok
-          LOGGER.warn("ZkThread interrupted", e);
         } finally {
           if (zkServer.isRunning()) {
             zkServer.shutdown();
@@ -192,47 +179,45 @@ public class ZkServerWrapper extends ProcessWrapper {
    * @see {@link ProcessWrapper#getHost()}
    */
   public String getHost() {
-    return ZK_HOSTNAME;
+    return "localhost";
   }
 
   /**
    * @see {@link ProcessWrapper#getPort()}
    */
   public int getPort() {
+    if (SINGLETON && this != INSTANCE) {
+      return INSTANCE.getPort();
+    }
     return configuration.getClientPortAddress().getPort();
   }
 
   @Override
-  public String getAddress(){
-    if (useSingleton){
-      return getSingletonAddress() + "/" + chroot;
-    } else {
-      return getHost() + ":" + getPort();
+  public String getAddress() {
+    if (SINGLETON && this != INSTANCE) {
+      return INSTANCE.getAddress() + "/" + chroot;
     }
-  }
-
-  private static String getSingletonAddress(){
-    return singleton.getHost() + ":" + singleton.getPort();
+    return getHost() + ":" + getPort();
   }
 
   @Override
   protected void internalStart() throws Exception {
-    if (useSingleton && this != singleton){
+    if (SINGLETON && this != INSTANCE) {
       return;
     }
-    long startTime = System.currentTimeMillis();
+
+    long expirationTime = System.currentTimeMillis() + MAX_WAIT_TIME_DURING_STARTUP;
     zkThread.start();
     while (!zkServer.isRunning() && zkThread.exception == null) {
-      long currentTime = System.currentTimeMillis();
-      if ((currentTime - startTime) > MAX_WAIT_TIME_DURING_STARTUP) {
+      if (expirationTime < System.currentTimeMillis()) {
         close();
         throw new VeniceException("Unable to start ZK within the maximum allotted time (" + MAX_WAIT_TIME_DURING_STARTUP + " ms).");
-      } else {
-        Thread.sleep(100);
       }
+      Thread.sleep(100);
     }
 
     if (zkThread.exception != null) {
+      INSTANCE = null;
       throw new VeniceException("ZooKeeper failed to start.", zkThread.exception);
     }
 
@@ -240,22 +225,22 @@ public class ZkServerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void internalStop() throws Exception {
-    if (useSingleton){
+  protected synchronized void internalStop() throws Exception {
+    if (SINGLETON && this != INSTANCE) {
       return;
     }
-    zkServer.shutdown();
     zkThread.interrupt();
+    zkThread.join();
+    INSTANCE = null;
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
-    if (useSingleton){
+  protected void newProcess() throws Exception {
+    if (SINGLETON) {
       throw new RuntimeException("newProcess is not implemented for singleton ZkServerWrappers");
     }
-    this.zkServer = new ZooKeeperServer();
     this.zkThread = new ZkThread();
+    this.zkServer = new ZooKeeperServer();
   }
 
   /**
@@ -266,22 +251,22 @@ public class ZkServerWrapper extends ProcessWrapper {
    * @param count how many random root paths to create
    * @return List of paths that were created
    */
-  private static List<String> addPathsToZk(String zkConnection, int count){
-    List<String> addedPaths = new ArrayList<>();
+  private static List<String> addPathsToZk(String zkConnection, int count) {
     try {
-      ZooKeeper zooKeeper = new ZooKeeper(zkConnection, 10000, event -> {});
-      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
-        return zooKeeper.getState().equals(ZooKeeper.States.CONNECTED);
-      });
-      for (int i=0; i< count; i++) {
+      ZooKeeper zooKeeper = new ZooKeeper(zkConnection, MAX_SESSION_TIMEOUT, event -> {});
+      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
+          () -> zooKeeper.getState().equals(ZooKeeper.States.CONNECTED));
+
+      List<String> paths = new ArrayList<>(count);
+      for (int i = 0; i < count; ++i) {
         String path = TestUtils.getUniqueString("test");
-        zooKeeper.create("/"+path, null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-        addedPaths.add(path);
+        zooKeeper.create("/" + path, null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+        paths.add(path);
       }
       zooKeeper.close();
-    } catch (Exception e){
+      return paths;
+    } catch (Exception e) {
       throw new RuntimeException("Failed to create paths on zookeeper at: " + zkConnection, e);
     }
-    return addedPaths;
   }
 }

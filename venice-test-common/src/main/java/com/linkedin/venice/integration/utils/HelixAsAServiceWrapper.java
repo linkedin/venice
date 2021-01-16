@@ -27,7 +27,7 @@ import org.apache.log4j.Logger;
  * Wrapper to start up Helix as a service in integration tests. Since it's for testing purpose there are only two
  * Helix controller in the Helix super cluster (can be increased if needed).
  */
-public class HelixAsAServiceWrapper extends ProcessWrapper{
+public class HelixAsAServiceWrapper extends ProcessWrapper {
   public static final String SERVICE_NAME = "HelixAsAService";
   public static final String HELIX_SUPER_CLUSTER_NAME = "helix_controllers";
   public static final String HELIX_INSTANCE_NAME_PREFIX = "helix_controller_";
@@ -42,8 +42,7 @@ public class HelixAsAServiceWrapper extends ProcessWrapper{
   private final PropertyKey.Builder keyBuilder;
 
   static StatefulServiceProvider<HelixAsAServiceWrapper> generateService(String zkAddress) {
-    return (serviceName, port, dataDirectory) ->
-        new HelixAsAServiceWrapper(serviceName, dataDirectory, zkAddress);
+    return (serviceName, dataDirectory) -> new HelixAsAServiceWrapper(serviceName, dataDirectory, zkAddress);
   }
 
   private HelixAsAServiceWrapper(String serviceName, File dataDirectory, String zkAddress) {

@@ -105,7 +105,7 @@ public class DaVinciClusterAgnosticTest {
     zkServer.close();
   }
 
-  @Test(timeOut = 90 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testMultiClusterDaVinci() throws Exception {
     assertTrue(clusterNames.length > 1, "Insufficient clusters for this test to be meaningful");
     int initialKeyCount = 10;
@@ -182,7 +182,6 @@ public class DaVinciClusterAgnosticTest {
           assertEquals(clients.get(migrateStoreIndex).get(k).get(), newMigratedStoreValue);
         }
       });
-      clients.forEach(DaVinciClient::close);
     }
   }
 

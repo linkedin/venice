@@ -117,7 +117,6 @@ public class StoreMigrationTest {
         2,
         1,
         2,
-        Optional.empty(),
         Optional.of(new VeniceProperties(parentControllerProperties)),
         Optional.of(childControllerProperties),
         Optional.of(new VeniceProperties(serverProperties)),

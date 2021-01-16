@@ -179,7 +179,7 @@ public class VeniceController {
 
   public static void main(String args[]) {
     if(args.length < 2) {
-      Utils.croak("USAGE: java " + VeniceController.class.getName()
+      Utils.exit("USAGE: java " + VeniceController.class.getName()
           + " [cluster_config_file_path] [controller_config_file_path] ");
     }
     VeniceProperties controllerProps = null;
@@ -194,7 +194,7 @@ public class VeniceController {
     } catch (Exception e) {
       String errorMessage = "Can not load configuration from file.";
       logger.error(errorMessage, e);
-      Utils.croak(errorMessage+e.getMessage());
+      Utils.exit(errorMessage+e.getMessage());
     }
 
     VeniceController controller = new VeniceController(controllerProps);

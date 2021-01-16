@@ -77,17 +77,11 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
 
     // This is to guarantee ordering, even in the face of failures.
     validateProp(properties, strictConfigs, ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1");
-
     // This will ensure the durability on Kafka broker side
-    validateProp(properties, strictConfigs, ProducerConfig.ACKS_CONFIG, "-1");
+    validateProp(properties, strictConfigs, ProducerConfig.ACKS_CONFIG, "all");
 
-    if (!properties.containsKey(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG)) {
-      // if not specified, set default request timeout as 5 minutes (300000ms)
-      properties.setProperty(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "300000");
-    }
-    if (!properties.containsKey(ProducerConfig.RETRIES_CONFIG)) {
-      // if not specified, retry infinitely
-      properties.setProperty(ProducerConfig.RETRIES_CONFIG, Integer.toString(Integer.MAX_VALUE));
+    if (!properties.containsKey(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG)) {
+      properties.setProperty(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, "300000"); // 5min
     }
 
     // Hard-coded backoff config to be 1 sec
@@ -120,8 +114,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     if (!properties.containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
       throw new ConfigurationException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
     }
-    LOGGER.info("Constructing KafkaProducer with the following properties: " + properties.toString());
 
+    LOGGER.info("Constructing KafkaProducer with the following properties: " + properties);
     producer = new KafkaProducer<>(properties);
     // TODO: Consider making the choice of partitioner implementation configurable
   }

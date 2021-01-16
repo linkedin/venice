@@ -24,9 +24,7 @@ public class TestRouterAsyncStart {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws VeniceClientException {
     Utils.thisIsLocalhost();
-    ServiceFactory.setMaxAttempt(1);
-    ServiceFactory.setMaxAttemptPerPort(2);
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, true, false);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0);
   }
 
   @AfterClass(alwaysRun = true)
@@ -34,22 +32,13 @@ public class TestRouterAsyncStart {
     IOUtils.closeQuietly(veniceCluster);
   }
 
-  /**
-   *   This test will take around 2 mins to finish:
-   * 1. The client warming timeout is 1 min;
-   * 2. Reduced the retry limit to 2 in {@link ServiceFactory#getService } so that it finishes faster.
-   *
-   */
-  @Test(timeOut = 140 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testConnectionWarmingFailureDuringSyncStart() {
-    // Setup Venice server in a way that it will take a very long time to response
+    // Setup Venice server in a way that it will take a very long time to response (drop all requests)
     List<VeniceServerWrapper> servers = veniceCluster.getVeniceServers();
     Assert.assertEquals(servers.size(), 1, "There should be only one storage node in this cluster");
     VeniceServerWrapper serverWrapper = servers.get(0);
-    serverWrapper.getVeniceServer().setRequestHandler((ChannelHandlerContext context, Object message) -> {
-      Utils.sleep(Integer.MAX_VALUE); // never return;
-      return true;
-    });
+    serverWrapper.getVeniceServer().setRequestHandler((ChannelHandlerContext context, Object message) -> true);
 
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT);
@@ -61,10 +50,7 @@ public class TestRouterAsyncStart {
     routerProperties.put(ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 0);
     routerProperties.put(ConfigKeys.ROUTER_ASYNC_START_ENABLED, false);
 
-    try {
-      veniceCluster.addVeniceRouter(routerProperties);
-      Assert.fail("Venice Router should fail to start because of connection warming  since storage node won't respond to any request");
-    } catch (Exception e) {
-    }
+    // Venice Router should fail to start because of connection warming  since storage node won't respond to any request
+    Assert.assertThrows(() -> ServiceFactory.withMaxAttempt(1, () -> veniceCluster.addVeniceRouter(routerProperties)));
   }
 }

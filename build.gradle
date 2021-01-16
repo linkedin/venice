@@ -174,16 +174,17 @@ subprojects {
       excludeGroups 'flaky'
     }
     // Tests should run in parallel (this controls the number of parallel tests within a single module)
-    maxParallelForks = 5
     maxHeapSize = '4g'
+    maxParallelForks = 4
+    ignoreFailures = true
 
     def alt_tmp =  System.getProperty('alt_temp', '/tmp')
-    if ( alt_tmp != '/tmp') {
+    if (alt_tmp != '/tmp') {
       environment 'JAVA_TOOL_OPTIONS', "-Djava.io.tmpdir=${alt_tmp}"
     }
 
     testLogging {
-      events 'started', 'failed', 'passed', 'skipped'
+      events 'failed', 'skipped'
       showStandardStreams = false // to mute the DDS Router's noisy behavior...
       exceptionFormat = 'full'
     }
@@ -194,12 +195,6 @@ subprojects {
       includeGroups 'flaky'
     }
     mustRunAfter test
-
-    def alt_tmp =  System.getProperty('alt_temp', '/tmp')
-    if ( alt_tmp != '/tmp') {
-      environment 'JAVA_TOOL_OPTIONS', "-Djava.io.tmpdir=${alt_tmp}"
-    }
-
   }
 }
 

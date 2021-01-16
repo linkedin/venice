@@ -2,6 +2,8 @@ package com.linkedin.davinci.storage;
 
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -117,8 +119,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
             if (unhealthyStartTime != 0) {
               long duration = System.currentTimeMillis() - unhealthyStartTime;
               if (duration > diskFailServerShutdownTimeMs) {
-                logger.error("Disk health service reported unhealthy disk for " + duration/1000 + " seconds, STOPPING THE SERVER NOW!");
-                System.exit(1);
+                Utils.exit("Disk health service reported unhealthy disk for " + duration/1000 + " seconds, STOPPING THE SERVER NOW!");
                 break;
               }
             } else {

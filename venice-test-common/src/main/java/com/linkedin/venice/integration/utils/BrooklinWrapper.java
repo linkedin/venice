@@ -36,10 +36,7 @@ public class BrooklinWrapper extends ProcessWrapper {
    * @return a function which yields a {@link BrooklinWrapper} instance
    */
   static StatefulServiceProvider<BrooklinWrapper> generateService(KafkaBrokerWrapper kafka) {
-    return (String serviceName, int port, File dir) -> {
-      //Note: ignores the passed in port
-      return new BrooklinWrapper(dir, kafka);
-    };
+    return (serviceName, dataDirectory) -> new BrooklinWrapper(dataDirectory, kafka);
   }
 
   private EmbeddedDatastreamCluster brooklin;

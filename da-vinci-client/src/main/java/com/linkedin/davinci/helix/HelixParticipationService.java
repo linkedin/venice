@@ -72,15 +72,16 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
   private Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture;
 
-  public HelixParticipationService(StoreIngestionService storeIngestionService,
-          StorageService storageService,
-          VeniceConfigLoader veniceConfigLoader,
-          ReadOnlyStoreRepository helixReadOnlyStoreRepository,
-          MetricsRepository metricsRepository,
-          String zkAddress,
-          String clusterName,
-          int port,
-          CompletableFuture<SafeHelixManager> managerFuture) {
+  public HelixParticipationService(
+      StoreIngestionService storeIngestionService,
+      StorageService storageService,
+      VeniceConfigLoader veniceConfigLoader,
+      ReadOnlyStoreRepository helixReadOnlyStoreRepository,
+      MetricsRepository metricsRepository,
+      String zkAddress,
+      String clusterName,
+      int port,
+      CompletableFuture<SafeHelixManager> managerFuture) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;
@@ -241,9 +242,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       } catch (Exception e) {
         logger.error(e.getMessage(), e);
         logger.error("Venice server is about to close");
-
-        //Since helix manager is necessary. We force to exit the program if it is not able to connected.
-        System.exit(1);
+        Utils.exit("Failed to start HelixParticipationService");
       }
 
       // If Helix customized view is enabled, do dual-write for offline push status update

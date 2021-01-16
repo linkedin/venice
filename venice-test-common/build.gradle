@@ -9,6 +9,7 @@ task createFlatBuffers(type: FlatBuffers) {
   outputDir = file("src/jmh/generated/flatbuffers")
   language = 'java'
 }
+
 compileJava.dependsOn(createFlatBuffers)
 
 task buildJar(type: Jar) {
@@ -61,14 +62,13 @@ configurations {
   jmhRuntime.extendsFrom testRuntime
 }
 
-
 def applyConcurrencyConfig(task) {
   String forkEveryConfigName = 'integrationTest.forkEvery'
   if (project.hasProperty(forkEveryConfigName)) {
     println "$forkEveryConfigName set to ${project.getProperty(forkEveryConfigName)}"
     task.forkEvery = Integer.parseInt(project.getProperty(forkEveryConfigName))
   } else {
-    println "$forkEveryConfigName not set. Will recycle the same JVM(s)."
+    println "$forkEveryConfigName not set, will use the default ($task.forkEvery)."
   }
 
   String maxParallelForksConfigName = 'integrationTest.maxParallelForks'
@@ -76,7 +76,7 @@ def applyConcurrencyConfig(task) {
     println "$maxParallelForksConfigName set to ${project.getProperty(maxParallelForksConfigName)}"
     task.maxParallelForks = Integer.parseInt(project.getProperty(maxParallelForksConfigName))
   } else {
-    println "$maxParallelForksConfigName not set. Will default to $task.maxParallelForks parallel forks."
+    println "$maxParallelForksConfigName not set, will use the default ($task.maxParallelForks)."
   }
 }
 
@@ -119,7 +119,7 @@ dependencies {
   implementation libraries.brooklinKafka
   implementation libraries.brooklinKafkaTransport
   implementation (libraries.d2) {
-    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesnt exist in repo
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesn't exist in repo
     // this will introduce another different mockito-all version
     exclude group: 'org.mockito', module: 'mockito-all'
   }

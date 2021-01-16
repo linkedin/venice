@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.admin;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -167,7 +168,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   public void close() throws IOException {
     if (null != this.kafkaAdminClient) {
       try {
-        this.kafkaAdminClient.close();
+        this.kafkaAdminClient.close(Duration.ofSeconds(60));
       } catch (Exception e) {
         logger.warn("Exception (suppressed) during kafkaAdminClient.close()", e);
       }
