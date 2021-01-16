@@ -6,14 +6,15 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+
+import org.apache.commons.io.IOUtils;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.IOUtils;
 
 
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
@@ -37,28 +38,26 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, int replicationFactor, Optional<Integer> zkPort, Optional<VeniceProperties> parentControllerProperties,
+      int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
       Optional<VeniceProperties> serverProperties) {
     return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers, numberOfServers,
-        numberOfRouters, replicationFactor, zkPort, parentControllerProperties, Optional.empty(), serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+        numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(), serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, int replicationFactor, Optional<Integer> zkPort, Optional<VeniceProperties> parentControllerProperties,
+      int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
       Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProperties, boolean multiD2, String whitelistConfigForKMM) {
 
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
     final List<MirrorMakerWrapper> mirrorMakers = new ArrayList<>(numberOfColos);
 
-    ZkServerWrapper zk = null;
+    ZkServerWrapper zkServer = null;
     KafkaBrokerWrapper parentKafka = null;
-
     try {
-      final ZkServerWrapper finalZk = zk = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
-
-      final KafkaBrokerWrapper finalParentKafka = parentKafka = ServiceFactory.getKafkaBroker(zk);
+      zkServer = ServiceFactory.getZkServer();
+      parentKafka = ServiceFactory.getKafkaBroker(zkServer);
 
       String clusterToD2 = "";
       String[] clusterNames = new String[numberOfClustersInEachColo];
@@ -88,37 +87,29 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       D2TestUtils.setupD2Config(parentKafka.getZkAddress(), false, D2TestUtils.CONTROLLER_CLUSTER_NAME, VeniceSystemFactory.VENICE_PARENT_D2_SERVICE, false);
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {
-        if (parentControllerProperties.isPresent()) {
-          VeniceControllerWrapper parentController =
-              ServiceFactory.getVeniceParentController(clusterNames, parentKafka.getZkAddress(), parentKafka,
-                  childControllers,
-                  // random controller from each multicluster, in reality this should include all controllers, not just one
-                  clusterToD2, false, replicationFactor, parentControllerProperties.get());
-          parentControllers.add(parentController);
-        } else {
-          VeniceControllerWrapper parentController =
-              ServiceFactory.getVeniceParentController(clusterNames, parentKafka.getZkAddress(), parentKafka,
-                  childControllers,
-                  // random controller from each multicluster, in reality this should include all controllers, not just one
-                  clusterToD2, false, replicationFactor);
-          parentControllers.add(parentController);
-        }
+        // random controller from each multicluster, in reality this should include all controllers, not just one
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
+            clusterNames, parentKafka.getZkAddress(), parentKafka, childControllers, clusterToD2, false,
+            replicationFactor, parentControllerProperties.orElseGet(() -> new VeniceProperties()));
+        parentControllers.add(parentController);
       }
 
       // Create MirrorMakers
-      for (VeniceMultiClusterWrapper multicluster : multiClusters) {
-        MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(parentKafka, multicluster.getKafkaBrokerWrapper(), whitelistConfigForKMM);
+      for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
+        MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(parentKafka, multiCluster.getKafkaBrokerWrapper(), whitelistConfigForKMM);
         mirrorMakers.add(mirrorMakerWrapper);
       }
 
-      return (serviceName, port) -> new VeniceTwoLayerMultiColoMultiClusterWrapper(null, finalZk, finalParentKafka,
-          multiClusters, parentControllers, mirrorMakers);
+      final ZkServerWrapper finalZkServer = zkServer;
+      final KafkaBrokerWrapper finalParentKafka = parentKafka;
+      return (serviceName) -> new VeniceTwoLayerMultiColoMultiClusterWrapper(
+          null, finalZkServer, finalParentKafka, multiClusters, parentControllers, mirrorMakers);
     } catch (Exception e) {
-      IOUtils.closeQuietly(zk);
+      mirrorMakers.forEach(IOUtils::closeQuietly);
+      parentControllers.forEach(IOUtils::closeQuietly);
+      multiClusters.forEach(IOUtils::closeQuietly);
       IOUtils.closeQuietly(parentKafka);
-      parentControllers.forEach(ProcessWrapper::close);
-      multiClusters.forEach(ProcessWrapper::close);
-      mirrorMakers.forEach(ProcessWrapper::close);
+      IOUtils.closeQuietly(zkServer);
       throw e;
     }
   }
@@ -140,13 +131,11 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    CompletableFuture.runAsync(() -> {
-      clusters.stream().forEach(IOUtils::closeQuietly);
-      parentControllers.stream().forEach(IOUtils::closeQuietly);
-      mirrorMakers.stream().forEach(IOUtils::closeQuietly);
-      parentKafkaBrokerWrapper.close();
-      zkServerWrapper.close();
-    });
+    mirrorMakers.forEach(IOUtils::closeQuietly);
+    parentControllers.forEach(IOUtils::closeQuietly);
+    clusters.forEach(IOUtils::closeQuietly);
+    IOUtils.closeQuietly(parentKafkaBrokerWrapper);
+    IOUtils.closeQuietly(zkServerWrapper);
   }
 
   @Override
@@ -201,5 +190,4 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         ServiceFactory.getKafkaMirrorMaker(srcKafka, dstKafka, whitelistConfigForKMM);
     mirrorMakers.add(mirrorMakerWrapper);
   }
-
 }

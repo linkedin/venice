@@ -59,60 +59,56 @@ public class TestRouter {
   }
 
   public void testRouterWithD2(boolean https, boolean secureOnly) throws Exception {
-    ZkServerWrapper zk = ServiceFactory.getZkServer();
-    D2TestUtils.setupD2Config(zk.getAddress(), https);
+    try (ZkServerWrapper zk = ServiceFactory.getZkServer()) {
+      D2TestUtils.setupD2Config(zk.getAddress(), https);
 
-    Properties extraConfigs = new Properties();
-    if (secureOnly){
-      extraConfigs.put(ConfigKeys.ENFORCE_SECURE_ROUTER, true);
-    }
-
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, extraConfigs);
-    D2Client d2Client = null;
-    if (https) {
-      d2Client = D2TestUtils.getAndStartHttpsD2Client(zk.getAddress());
-    } else {
-      d2Client = D2TestUtils.getAndStartD2Client(zk.getAddress());
-    }
-
-    URI requestUri = new URI("d2://" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
-    // "get" method name is put on purpose, since we would like Venice Router to support both 'get' and 'GET'
-    RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
-    RestResponse response;
-    try {
-      response = d2Client.restRequest(request).get();
-    } catch (ExecutionException e){
-      if (e.getCause() instanceof RestException){
-        response = ((RestException) e.getCause()).getResponse();
-      } else {
-        throw e;
+      Properties extraConfigs = new Properties();
+      if (secureOnly) {
+        extraConfigs.put(ConfigKeys.ENFORCE_SECURE_ROUTER, true);
       }
-    }
-    if (secureOnly){
-      Assert.assertEquals(response.getStatus(), HttpStatus.SC_FORBIDDEN,
-          "SecureRouter should return a 403 forbidden error");
-    } else {
-      Assert.assertEquals(response.getStatus(), HttpStatus.SC_SERVICE_UNAVAILABLE,
-          "Router with Mock components should return a 503 service unavailable error");
-    }
 
-    InternalAvroStoreClient<Object, Object> storeClient =
-        (InternalAvroStoreClient<Object, Object>) ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(
-            "myStore").setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client));
+      try (MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, extraConfigs)) {
+        D2Client d2Client = null;
+        if (https) {
+          d2Client = D2TestUtils.getAndStartHttpsD2Client(zk.getAddress());
+        } else {
+          d2Client = D2TestUtils.getAndStartD2Client(zk.getAddress());
+        }
 
-    try {
-      byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
-      Assert.fail("Router with Mock components should trigger VeniceClientHttpException");
-    } catch (ExecutionException e){
-      if (e.getCause() instanceof VeniceClientHttpException) {
-        // expected.
-      } else {
-        throw e;
+        URI requestUri = new URI("d2://" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
+        // "get" method name is put on purpose, since we would like Venice Router to support both 'get' and 'GET'
+        RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
+        RestResponse response;
+        try {
+          response = d2Client.restRequest(request).get();
+        } catch (ExecutionException e) {
+          if (e.getCause() instanceof RestException) {
+            response = ((RestException) e.getCause()).getResponse();
+          } else {
+            throw e;
+          }
+        }
+        if (secureOnly) {
+          Assert.assertEquals(response.getStatus(), HttpStatus.SC_FORBIDDEN,
+              "SecureRouter should return a 403 forbidden error");
+        } else {
+          Assert.assertEquals(response.getStatus(), HttpStatus.SC_SERVICE_UNAVAILABLE,
+              "Router with Mock components should return a 503 service unavailable error");
+        }
+
+        try (InternalAvroStoreClient<Object, Object> storeClient =
+            (InternalAvroStoreClient<Object, Object>) ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(
+                "myStore").setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client))) {
+          byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
+          Assert.fail("Router with Mock components should trigger VeniceClientHttpException");
+        } catch (ExecutionException e) {
+          if (e.getCause() instanceof VeniceClientHttpException) {
+            // expected.
+          } else {
+            throw e;
+          }
+        }
       }
-    } finally {
-      storeClient.close();
-      IOUtils.closeQuietly(router);
-      IOUtils.closeQuietly(zk);
     }
   }
 

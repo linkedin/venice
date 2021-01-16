@@ -78,7 +78,6 @@ public class TestPushJobWithNativeReplicationAndKMM {
         2,
         1,
         2,
-        Optional.empty(),
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),

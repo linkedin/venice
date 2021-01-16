@@ -58,7 +58,7 @@ public class MirrorMakerWrapper extends ProcessWrapper {
       Properties consumerProperties,
       Properties producerProperties) {
 
-    return (serviceName, port, dataDirectory) -> {
+    return (serviceName, dataDirectory) -> {
       String consumerConfigPath = createConsumerConfig(dataDirectory, sourceKafkaAddress, consumerProperties);
       String producerConfigPath = createProducerConfig(dataDirectory, targetKafkaAddress, targetZkAddress, producerProperties);
       logger.info("MirrorMaker: source:" + sourceKafkaAddress + " dest:" + targetKafkaAddress);
@@ -97,8 +97,8 @@ public class MirrorMakerWrapper extends ProcessWrapper {
       String consumerConfigPath,
       String producerConfigPath) throws Exception {
     super(serviceName, dataDirectory);
-    logger.info("Source config: " + Utils.loadProps(consumerConfigPath).toString());
-    logger.info("Target config: " + Utils.loadProps(producerConfigPath).toString());
+    logger.info("Source config: " + Utils.loadProps(consumerConfigPath));
+    logger.info("Target config: " + Utils.loadProps(producerConfigPath));
     this.topicWhitelist = topicWhitelist;
     this.consumerConfigPath = consumerConfigPath;
     this.producerConfigPath = producerConfigPath;

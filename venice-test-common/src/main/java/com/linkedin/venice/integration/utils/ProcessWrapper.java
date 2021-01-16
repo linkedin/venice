@@ -2,13 +2,14 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.Utils;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A class used for wrapping external systems and Venice components and
@@ -26,10 +27,12 @@ public abstract class ProcessWrapper implements Closeable {
   private boolean isRunning;
 
   private final Exception constructionCallstack;
-  private final AtomicBoolean closeCalled = new AtomicBoolean();
-  private final AtomicBoolean closeSucceeded = new AtomicBoolean();
+  private boolean closeCalled;
+  private boolean closeFailed;
 
   ProcessWrapper(String serviceName, File dataDirectory) {
+    Utils.SUPPRESS_SYSTEM_EXIT.set(true);
+
     this.serviceName = serviceName;
     this.dataDirectory = dataDirectory;
 
@@ -55,7 +58,7 @@ public abstract class ProcessWrapper implements Closeable {
      * Since {@link ZKServerWrapper} is using singleton mode, currently, there is no way to close it explicitly, but at exit.
      * So no need to report the following error for {@link ZkServerWrapper}, and this hook will be in charge of closing it properly.
      */
-    if (!(getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.useSingleton)) {
+    if (!getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.SINGLETON) {
       Runtime.getRuntime().addShutdownHook(new Thread(() -> closeAudit("JVM shutdown time")));
     }
   }
@@ -94,8 +97,10 @@ public abstract class ProcessWrapper implements Closeable {
    * @throws Exception if there is any problem during the start up
    */
   protected synchronized void start() throws Exception {
-    if(!isRunning) {
+    if (!isRunning) {
+      long startTime = System.currentTimeMillis();
       internalStart();
+      LOGGER.info(String.format("%s startup took %d ms.", serviceName, System.currentTimeMillis() - startTime));
       isRunning = true;
     } else {
       LOGGER.info(serviceName +" service has already started.");
@@ -114,7 +119,9 @@ public abstract class ProcessWrapper implements Closeable {
    */
   protected synchronized void stop() throws Exception {
     if (isRunning) {
+      long startTime = System.currentTimeMillis();
       internalStop();
+      LOGGER.info(String.format("%s shutdown took %d ms.", serviceName, System.currentTimeMillis() - startTime));
       isRunning = false;
     } else {
       LOGGER.info(serviceName + " service has already been stopped.");
@@ -143,15 +150,19 @@ public abstract class ProcessWrapper implements Closeable {
   }
 
   public synchronized void close() {
-    closeCalled.set(true);
+    if (closeCalled) {
+      LOGGER.error("Ignore duplicate attempt to close " + serviceName + " service running at " + getAddressForLogging(), new VeniceException("Duplicate close attempt."));
+      return;
+    }
+    closeCalled = true;
     try {
       stop();
-      closeSucceeded.set(true);
-    } catch (Exception e) {
+    } catch (Throwable e) {
+      closeFailed = true;
       LOGGER.error("Failed to shutdown " + serviceName + " service running at " + getAddressForLogging(), e);
     }
     try {
-      if (dataDirectory != null && dataDirectory.exists()) {
+      if (dataDirectory != null) {
         FileUtils.deleteDirectory(dataDirectory);
       }
     } catch (IOException e) {
@@ -160,9 +171,9 @@ public abstract class ProcessWrapper implements Closeable {
   }
 
   private void closeAudit(String context) {
-    if (!closeCalled.get()) {
+    if (!closeCalled) {
       System.out.println(getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionCallstack));
-    } else if (!closeSucceeded.get()) {
+    } else if (closeFailed) {
       System.err.println(context + ": " + getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionCallstack));
     }
   }

@@ -46,7 +46,8 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
-    return (serviceName, port, dataDirectory) -> {
+    return (serviceName, dataDirectory) -> {
+      int port = Utils.getFreePort();
       PropertyBuilder builder = new PropertyBuilder()
           .put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)

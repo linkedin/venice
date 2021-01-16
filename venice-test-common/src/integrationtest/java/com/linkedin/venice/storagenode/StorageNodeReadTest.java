@@ -111,9 +111,9 @@ public class StorageNodeReadTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    IOUtils.closeQuietly(veniceCluster);
-    IOUtils.closeQuietly(veniceWriter);
     IOUtils.closeQuietly(client);
+    IOUtils.closeQuietly(veniceWriter);
+    IOUtils.closeQuietly(veniceCluster);
   }
 
   private int getPartitionId(byte[] key) {
@@ -250,7 +250,6 @@ public class StorageNodeReadTest {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testDiskHealthCheckService() throws Exception  {
     VeniceServerWrapper serverWrapper = null;
-    CloseableHttpAsyncClient client = null;
     try {
       Properties serverProperties = new Properties();
       serverProperties.put(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 5); // set health check interval to 10 seconds
@@ -258,25 +257,25 @@ public class StorageNodeReadTest {
       serverWrapper = veniceCluster.addVeniceServer(serverProperties);
       String testServerAddr = serverWrapper.getAddress();
 
-      client = HttpAsyncClients.createDefault();
-      client.start();
+      try (CloseableHttpAsyncClient client = HttpAsyncClients.createDefault()) {
+        client.start();
 
-      HttpResponse response = sendHeartbeatRequest(client, testServerAddr);
-      Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
+        HttpResponse response = sendHeartbeatRequest(client, testServerAddr);
+        Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
 
-      // wait for the next health check cycle
-      Thread.sleep(TimeUnit.SECONDS.toMillis(5));
-      response = sendHeartbeatRequest(client, testServerAddr);
-      Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
+        // wait for the next health check cycle
+        Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+        response = sendHeartbeatRequest(client, testServerAddr);
+        Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
 
-      // delete the db path
-      FileUtils.deleteDirectory(serverWrapper.getDataDirectory());
+        // delete the db path
+        FileUtils.deleteDirectory(serverWrapper.getDataDirectory());
 
-      Thread.sleep(TimeUnit.SECONDS.toMillis(5));
-      response = sendHeartbeatRequest(client, testServerAddr);
+        Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+        response = sendHeartbeatRequest(client, testServerAddr);
 
-      Assert.assertEquals(response.getStatusLine().getStatusCode(), 500);
-
+        Assert.assertEquals(response.getStatusLine().getStatusCode(), 500);
+      }
     } finally {
       if (serverWrapper != null) {
         /**
@@ -284,7 +283,6 @@ public class StorageNodeReadTest {
          */
         veniceCluster.removeVeniceServer(serverWrapper.getPort());
       }
-      IOUtils.closeQuietly(client);
     }
   }
 

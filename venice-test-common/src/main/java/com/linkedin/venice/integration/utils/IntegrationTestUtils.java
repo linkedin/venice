@@ -54,6 +54,8 @@ public class IntegrationTestUtils {
         .put(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000)
         .put(KAFKA_BOOTSTRAP_SERVERS, sslToKafka ? kafkaBrokerWrapper.getSSLAddress() : kafkaBrokerWrapper.getAddress())
         .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
+        .put(KAFKA_REQUEST_TIMEOUT_MS, 5000)
+        .put(KAFKA_DELIVERY_TIMEOUT_MS, 5000)
 
         // Other configs
         .put(CLUSTER_NAME, clusterName)

@@ -39,6 +39,7 @@ import java.util.Properties;
 import java.util.RandomAccess;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -49,30 +50,32 @@ import static com.linkedin.venice.HttpConstants.*;
  * Helper functions
  */
 public class Utils {
-
   private static Logger LOGGER = Logger.getLogger(Utils.class);
 
   public static final String WILDCARD_MATCH_ANY = "*";
+  public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
 
   /**
    * Print an error and exit with error code 1
    *
    * @param message The error to print
    */
-  public static void croak(String message) {
-    System.err.println(message);
-    System.exit(1);
+  public static void exit(String message) {
+    exit(message, 1);
   }
 
   /**
    * Print an error and exit with the given error code
    *
    * @param message The error to print
-   * @param errorCode The error code to exit with
+   * @param exitCode The error code to exit with
    */
-  public static void croak(String message, int errorCode) {
+  public static void exit(String message, int exitCode) {
     System.err.println(message);
-    System.exit(errorCode);
+    if (SUPPRESS_SYSTEM_EXIT.get()) {
+      throw new RuntimeException(message + ", exitCode=" + exitCode);
+    }
+    System.exit(exitCode);
   }
 
   /**
@@ -582,7 +585,7 @@ public class Utils {
   public static int getFreePort() {
     try (ServerSocket socket = new ServerSocket(0)) {
       return socket.getLocalPort();
-    } catch(IOException e) {
+    } catch (IOException e) {
       throw new RuntimeException(e);
     }
   }

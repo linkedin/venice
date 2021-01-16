@@ -23,6 +23,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -109,7 +110,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
 
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
-            1, 2, 1, 2, Optional.empty(), Optional.of(new VeniceProperties(controllerProps)),
+            1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)),
             Optional.of(controllerProps), Optional.of(new VeniceProperties(serverProperties)), false,
             MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
@@ -124,6 +125,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiColoMultiClusterWrapper.close();
+    IOUtils.closeQuietly(corpVeniceNativeKafka);
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")

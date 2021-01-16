@@ -92,7 +92,8 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     final String kafkaZkAddress = "localhost:1234";
     final String kafkaBootstrapServers = "localhost:1234";
 
-    return (serviceName, port, dataDirectory) -> {
+    return (serviceName, dataDirectory) -> {
+      int port = Utils.getFreePort();
       List<D2Server> d2ServerList;
       if (Utils.isNullOrEmpty(zkAddress)) {
         d2ServerList = new ArrayList<>();

@@ -190,7 +190,6 @@ public class RouterServer extends AbstractVeniceService {
   private final AggHostHealthStats aggHostHealthStats;
 
   public static void main(String args[]) throws Exception {
-
     VeniceProperties props;
     try {
       String routerConfigFilePath = args[0];
@@ -198,7 +197,6 @@ public class RouterServer extends AbstractVeniceService {
     } catch (Exception e) {
       throw new VeniceException("No config file parameter found", e);
     }
-
 
     logger.info("Zookeeper: " + props.getString(ConfigKeys.ZOOKEEPER_ADDRESS));
     logger.info("Cluster: " + props.getString(ConfigKeys.CLUSTER_NAME));
@@ -594,8 +592,15 @@ public class RouterServer extends AbstractVeniceService {
         .build();
 
     boolean asyncStart = config.isAsyncStartEnabled();
-    CompletableFuture startFuture = startServices(asyncStart);
-    if (!asyncStart) {
+    CompletableFuture<Void> startFuture = startServices(asyncStart);
+    if (asyncStart) {
+      startFuture.whenComplete((Object v, Throwable e) -> {
+        if (e != null) {
+          logger.error("Router has failed to start", e);
+          close();
+        }
+      });
+    } else {
       startFuture.get();
       logger.info("All the required services have been started");
     }
@@ -707,13 +712,9 @@ public class RouterServer extends AbstractVeniceService {
     return schemaRepository;
   }
 
-
   private void handleExceptionInStartServices(VeniceException e, boolean async) throws VeniceException {
     if (async) {
-      // TODO: Clean up all System.exit() calls... this is not proper.
-      logger.error("'startServices' encountered exception", e);
-      logger.error(this.toString() + " is able to exit");
-      System.exit(1);
+      Utils.exit("Failed to start router services due to " + e);
     } else {
       throw e;
     }

@@ -44,7 +44,9 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
    */
   static StatefulServiceProvider<KafkaBrokerWrapper> generateService(ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime) {
-    return (String serviceName, int port, File dir) -> {
+    return (String serviceName, File dir) -> {
+      int port = Utils.getFreePort();
+      int sslPort = Utils.getFreePort();
       Map<String, Object> configMap = new HashMap<>();
 
       // Essential configs
@@ -63,7 +65,6 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       configMap.put(KafkaConfig.LogCleanerEnableProp(), LOG_CLEANER_ENABLE);
 
       // Setup ssl related configs for kafka.
-      int sslPort = Utils.getFreePort();
       Properties sslConfig = KafkaSSLUtils.getLocalKafkaBrokerSSlConfig(DEFAULT_HOST_NAME, port, sslPort);
       sslConfig.entrySet().stream().forEach(entry->configMap.put((String)entry.getKey(), entry.getValue()));
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
@@ -134,7 +135,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   }
 
   public String getSSLAddress(){
-    return getHost()+":"+getSslPort();
+    return getHost() + ":" + getSslPort();
   }
   /**
    * @return the address of the ZK used by this Kafka instance
@@ -156,13 +157,10 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   @Override
   protected void internalStop() throws Exception {
     kafkaServer.shutdown();
-    zkServerWrapper.close();
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
-    zkServerWrapper = ServiceFactory.getZkServer();
+  protected void newProcess() throws Exception {
     kafkaServer = instantiateNewKafkaServer(kafkaConfig, mockTime);
   }
 }

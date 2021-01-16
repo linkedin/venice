@@ -2,13 +2,11 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.stream.Collectors;
+
 import org.apache.commons.io.IOUtils;
 
 import java.io.File;
@@ -16,8 +14,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -43,12 +41,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     this.clusterToD2 = clusterToD2;
   }
 
-  static ServiceProvider<VeniceMultiClusterWrapper> generateService(int numberOfClusters, int numberOfControllers,
-      int numberOfServers, int numberOfRouters, int replicationFactor, int partitionSize, boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
-      Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties,
-      boolean multiD2) {
+  static ServiceProvider<VeniceMultiClusterWrapper> generateService(
+      int numberOfClusters, int numberOfControllers, int numberOfServers, int numberOfRouters, int replicationFactor,
+      int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist, long rebalanceDelayMs,
+      int minActiveReplica, boolean sslToStorageNodes, boolean randomizeClusterName, boolean multiColoSetup,
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean multiD2) {
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
     BrooklinWrapper brooklinWrapper = null;
@@ -56,7 +53,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceControllerWrapper> controllerMap = new HashMap<>();
 
     try {
-      zkServerWrapper = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
+      zkServerWrapper = ServiceFactory.getZkServer();
       kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
       brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
       String clusterToD2 = "";
@@ -88,7 +85,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
       for (int i = 0; i < numberOfControllers; i++) {
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicationFactor, partitionSize,
-            delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, true, controllerProperties);
+            rebalanceDelayMs, minActiveReplica, brooklinWrapper, clusterToD2, false, true, controllerProperties);
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
       // Specify the system store cluster name
@@ -101,7 +98,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         VeniceClusterWrapper clusterWrapper =
             ServiceFactory.getVeniceClusterWrapperForMultiCluster(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
                 clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableWhitelist,
-                enableAutoJoinWhitelist, delayToReblanceMS, minActiveReplica, sslToStorageNodes, false, veniceProperties);
+                enableAutoJoinWhitelist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
         clusterWrapper.setExternalControllerDiscoveryURL(controllerMap.values().stream()
             .map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(",")));
@@ -110,14 +107,14 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       final KafkaBrokerWrapper finalKafkaBrokerWrapper = kafkaBrokerWrapper;
       final BrooklinWrapper finalBrooklinWrapper = brooklinWrapper;
       final String finalClusterToD2 = clusterToD2;
-      return (serviceName, port) -> new VeniceMultiClusterWrapper(null, finalZkServerWrapper, finalKafkaBrokerWrapper,
+      return (serviceName) -> new VeniceMultiClusterWrapper(null, finalZkServerWrapper, finalKafkaBrokerWrapper,
           finalBrooklinWrapper, clusterWrapperMap, controllerMap, finalClusterToD2);
     } catch (Exception e) {
-      IOUtils.closeQuietly(zkServerWrapper);
-      IOUtils.closeQuietly(kafkaBrokerWrapper);
+      controllerMap.values().forEach(IOUtils::closeQuietly);
+      clusterWrapperMap.values().forEach(IOUtils::closeQuietly);
       IOUtils.closeQuietly(brooklinWrapper);
-      clusterWrapperMap.values().forEach(ProcessWrapper::close);
-      controllerMap.values().forEach(ProcessWrapper::close);
+      IOUtils.closeQuietly(kafkaBrokerWrapper);
+      IOUtils.closeQuietly(zkServerWrapper);
       throw e;
     }
   }
@@ -139,9 +136,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    CompletableFuture.runAsync(() -> clusters.values().stream().forEach(IOUtils::closeQuietly));
-    brooklinWrapper.close();
-    kafkaBrokerWrapper.close();
+    controllers.values().forEach(IOUtils::closeQuietly);
+    clusters.values().forEach(IOUtils::closeQuietly);
+    IOUtils.closeQuietly(brooklinWrapper);
+    IOUtils.closeQuietly(kafkaBrokerWrapper);
+    IOUtils.closeQuietly(zkServerWrapper);
   }
 
   @Override
@@ -211,7 +210,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   }
 
   public void restartControllers() {
-    controllers.values().stream().forEach(veniceControllerWrapper -> {
+    controllers.values().forEach(veniceControllerWrapper -> {
       try {
         veniceControllerWrapper.stop();
         veniceControllerWrapper.restart();

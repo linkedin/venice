@@ -4,7 +4,8 @@ package com.linkedin.venice.integration.utils;
  * An interface to use for passing lambdas into
  * {@link ServiceFactory#getService(String, ServiceProvider)}
  *
- * @param <S> The type of {@link ProcessWrapper} returned.
+ * @param <Service> The type of {@link ProcessWrapper} returned.
  */
-interface ServiceProvider<S extends ProcessWrapper> extends ArbitraryServiceProvider<S> {
+interface ServiceProvider<Service> {
+  Service get(String serviceName) throws Exception;
 }

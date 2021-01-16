@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
+
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
 import nonapi.io.github.classgraph.utils.JarUtils;
@@ -15,6 +17,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,21 +34,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Adapted from https://stackoverflow.com/a/723914/791758
  */
 public final class ForkedJavaProcess extends Process {
-  private static final Logger logger = Logger.getLogger(ForkedJavaProcess.class);
+  private static final Logger LOGGER = Logger.getLogger(ForkedJavaProcess.class);
 
   /**
    * Debug mode is only intended for debugging individual forked processes, as it will block the forked JVM until
    * the debugger is attached. Debug mode is not intended to be used as part of the regular suite.
    */
-  private static final boolean debug = false;
+  private static final boolean DEBUG = false;
 
+  private final Logger logger;
   private final Process process;
   private final Thread processReaper;
   private final ExecutorService executorService;
   private final AtomicBoolean isDestroyed = new AtomicBoolean();
 
   public static ForkedJavaProcess exec(Class appClass, String... args) throws IOException, InterruptedException {
-    logger.info("Forking " + appClass.getSimpleName() + " with arguments " + Arrays.asList(args));
+    LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + Arrays.asList(args));
 
     List<String> command = new ArrayList<>();
     command.add(Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString());
@@ -73,24 +77,22 @@ public final class ForkedJavaProcess extends Process {
           classpathDirs.add(new File(file.getParent(), "*"));
         }
       }
-      command.add("-cp");
-
       /**
        * Prepend extra_webapp_resources/lib classpath to the forked Java process's classpath so the forked
        * process will have correct(newest) jar version for every dependencies when deployed in thin-war fashion.
        */
-
       for (File file : new ArrayList<>(classpathDirs)) {
         if (!file.getPath().contains("extra_webapp_resources")) {
           classpathDirs.remove(file);
           classpathDirs.add(file);
         }
       }
+      command.add("-cp");
       command.add(JarUtils.pathElementsToPathStr(classpathDirs));
     }
 
     int debugPort = 0;
-    if (debug) {
+    if (DEBUG) {
       debugPort = Utils.getFreePort();
       command.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=" + debugPort);
     }
@@ -99,7 +101,7 @@ public final class ForkedJavaProcess extends Process {
     command.addAll(Arrays.asList(args));
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    Logger logger = Logger.getLogger(appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + (debug ? ", debugPort=" + debugPort : ""));
+    Logger logger = Logger.getLogger(appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + (DEBUG ? ", debugPort=" + debugPort : ""));
     return new ForkedJavaProcess(process, logger);
   }
 
@@ -107,6 +109,7 @@ public final class ForkedJavaProcess extends Process {
    * Construction should happen via {@link #exec(Class, String...)}
    */
   private ForkedJavaProcess(Process process, Logger logger) {
+    this.logger = logger;
     this.process = process;
     this.processReaper = new Thread(this::destroy);
     Runtime.getRuntime().addShutdownHook(processReaper);
@@ -138,7 +141,7 @@ public final class ForkedJavaProcess extends Process {
   @Override
   public void destroy() {
     if (isDestroyed.getAndSet(true)) {
-      logger.info("Ignoring duplicate destroy attempt.");
+      logger.warn("Ignoring duplicate destroy attempt.", new VeniceException("Duplicate destroy attempt."));
       return;
     }
 
@@ -149,10 +152,12 @@ public final class ForkedJavaProcess extends Process {
       if (Thread.currentThread() != processReaper) {
         process.destroy();
         if (!process.waitFor(60, TimeUnit.SECONDS)) {
+          logger.info("Destroying forked process forcibly.");
           process.destroyForcibly();
         }
         Runtime.getRuntime().removeShutdownHook(processReaper);
       } else {
+        logger.info("Destroying forked process forcibly.");
         process.destroyForcibly();
       }
 
@@ -181,13 +186,20 @@ public final class ForkedJavaProcess extends Process {
 
   private static synchronized long getPidOfProcess(Process process) {
     try {
-      Field pidField = process.getClass().getDeclaredField("pid");
-      pidField.setAccessible(true);
-      long pid = pidField.getLong(process);
-      pidField.setAccessible(false);
-      return pid;
+      if (process.getClass().getName().equals("java.lang.UNIXProcess")) {
+        // Java 8: `pid` is a private field
+        Field pidField = process.getClass().getDeclaredField("pid");
+        pidField.setAccessible(true);
+        long pid = pidField.getLong(process);
+        pidField.setAccessible(false);
+        return pid;
+      } else {
+        // Java 9+: `pid()` is a public method
+        Method pidMethod = process.getClass().getMethod("pid");
+        return (Long) pidMethod.invoke(process);
+      }
     } catch (Exception e) {
-      logger.error("Unable to access pid of " + process.getClass().getName(), e);
+      LOGGER.error("Unable to access pid of " + process.getClass().getName(), e);
       return -1;
     }
   }

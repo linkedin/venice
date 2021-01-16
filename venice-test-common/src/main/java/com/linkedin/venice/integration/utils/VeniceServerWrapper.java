@@ -68,7 +68,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       KafkaBrokerWrapper kafkaBrokerWrapper,
       Properties featureProperties,
       Properties configProperties) {
-    return (serviceName, port, dataDirectory) -> {
+    return (serviceName, dataDirectory) -> {
       boolean enableServerWhitelist = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_WHITE_LIST, "false"));
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
       boolean isKafkaOpenSSLEnabled = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_KAFKA_OPENSSL, "false"));
