@@ -29,6 +29,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.IngestionMode;
@@ -219,13 +220,16 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     ReadOnlySchemaRepository schemaRepository;
     boolean useSystemStore = veniceProperties.getBoolean(ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY, false);
     logger.info("Isolated ingestion service uses system store repository: " + useSystemStore);
+    ClusterInfoProvider clusterInfoProvider;
     if (useSystemStore) {
       MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository =
           MetadataStoreBasedStoreRepository.getInstance(clientConfig, veniceProperties);
       metadataStoreBasedStoreRepository.refresh();
+      clusterInfoProvider = metadataStoreBasedStoreRepository;
       storeRepository = metadataStoreBasedStoreRepository;
       schemaRepository = metadataStoreBasedStoreRepository;
     } else {
+      clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
       storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
       storeRepository.refresh();
       schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
@@ -267,7 +271,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         storageService.getStorageEngineRepository(),
         configLoader,
         storageMetadataService,
-        new StaticClusterInfoProvider(Collections.singleton(clusterName)),
+        clusterInfoProvider,
         storeRepository,
         schemaRepository,
         metricsRepository,
