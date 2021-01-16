@@ -16,7 +16,9 @@ import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -59,6 +61,48 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private static class AdminErrorInfo {
     long offset;
     Exception exception;
+  }
+
+  // A simplified version of ProducerTracker that only checks against previous message's producer info.
+  private static class ProducerInfo {
+    private GUID producerGUID;
+    private int segmentNumber;
+    private int sequenceNumber;
+
+    ProducerInfo(ProducerMetadata producerMetadata) {
+      updateProducerMetadata(producerMetadata);
+    }
+
+
+    boolean isIncomingMessageValid(ProducerMetadata incomingProducerMetadata) {
+      if (!incomingProducerMetadata.producerGUID.equals(producerGUID)) {
+        // We will assume a new producer is always valid regardless of its state (starts with segment 0 and etc.).
+        // Since we don't have sufficient information here to make any informative decisions and it's rare for both the
+        // execution id and producer id edge case to occur at the same time.
+        updateProducerMetadata(incomingProducerMetadata);
+      }
+      if (incomingProducerMetadata.segmentNumber != segmentNumber) {
+        return false;
+      }
+      if (incomingProducerMetadata.messageSequenceNumber == sequenceNumber + 1) {
+        // Expected behavior, update the sequenceNumber.
+        sequenceNumber = incomingProducerMetadata.messageSequenceNumber;
+      }
+      // Duplicate message is acceptable.
+      return incomingProducerMetadata.messageSequenceNumber <= sequenceNumber;
+    }
+
+    void updateProducerMetadata(ProducerMetadata producerMetadata) {
+      this.producerGUID = producerMetadata.producerGUID;
+      this.segmentNumber = producerMetadata.segmentNumber;
+      this.sequenceNumber = producerMetadata.messageSequenceNumber;
+    }
+
+    @Override
+    public String toString() {
+      return String.format("{producerGUID: %s, segmentNumber: %d, sequenceNumber: %d}", producerGUID, segmentNumber,
+          sequenceNumber);
+    }
   }
 
   private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + " [Topic: %s] ";
@@ -132,6 +176,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * Map of store names to their last succeeded execution id
    */
   private volatile ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
+  /**
+   * An in-memory DIV tracker used as a backup to execution id to verify the integrity of admin messages.
+   * TODO If the edge case: a gap is detected on the very first message that's consumed by the task then we can add
+   * additional logic such as rewind some messages or persist producer tracker info to ZK.
+   */
+  private ProducerInfo producerInfo = null;
 
   public AdminConsumptionTask(String clusterName,
       KafkaConsumerWrapper consumer,
@@ -431,7 +481,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private long delegateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     if (checkOffsetToSkip(record.offset()) || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
-      // used if the skip requires executionId to be reset.
+      // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
+      // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
+      // what's the right execution id and producer info to set moving forward.
       return lastDelegatedExecutionId;
     }
     KafkaKey kafkaKey = record.key();
@@ -450,9 +502,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     long executionId = adminOperation.executionId;
     logger.info("Received admin message: " + adminOperation + " offset: " + record.offset());
     try {
-      checkAndValidateMessage(adminOperation, record.offset());
+      checkAndValidateMessage(adminOperation, record);
     } catch (DuplicateDataException e) {
-      // Previous processed message, safe to skip
+      // Previously processed message, safe to skip
       logger.info(e.getMessage());
       return executionId;
     }
@@ -470,21 +522,50 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return executionId;
   }
 
-  private void checkAndValidateMessage(AdminOperation message, long offset) {
+  private void checkAndValidateMessage(AdminOperation message, ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     long incomingExecutionId = message.executionId;
-    if (checkOffsetToSkipDIV(offset) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
+    if (checkOffsetToSkipDIV(record.offset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
       lastDelegatedExecutionId = incomingExecutionId;
+      updateProducerInfo(record.value().producerMetadata);
       return;
     }
     if (incomingExecutionId == lastDelegatedExecutionId + 1) {
       // Expected behavior
       lastDelegatedExecutionId++;
+      updateProducerInfo(record.value().producerMetadata);
     } else if (incomingExecutionId <= lastDelegatedExecutionId) {
+      updateProducerInfo(record.value().producerMetadata);
       throw new DuplicateDataException("Skipping message with execution id: " + incomingExecutionId
           + " because last delegated execution id was: " + lastDelegatedExecutionId);
     } else {
-      throw new MissingDataException("Last delegated execution id was: " + lastDelegatedExecutionId
-          + " ,but incoming execution id is: " + incomingExecutionId);
+      // Cross-reference with producerInfo to see if the missing data is false positive.
+      boolean throwException = true;
+      String exceptionString = "Last delegated execution id was: " + lastDelegatedExecutionId
+          + " ,but incoming execution id is: " + incomingExecutionId;
+      String producerInfoString = " Previous producer info: " + producerInfo.toString() + " Incoming message producer info: "
+          + record.value().producerMetadata;
+      if (producerInfo != null) {
+        throwException = !producerInfo.isIncomingMessageValid(record.value().producerMetadata);
+      }
+      if (throwException) {
+        if (producerInfo != null) {
+          exceptionString += producerInfoString;
+        } else {
+          exceptionString += " Cannot cross-reference with previous producer info because it's not available yet";
+        }
+        throw new MissingDataException(exceptionString);
+      } else {
+        logger.info("Ignoring " + exceptionString + " Cross-reference with producerInfo passed. " + producerInfoString);
+        lastDelegatedExecutionId = incomingExecutionId;
+      }
+    }
+  }
+
+  private void updateProducerInfo(ProducerMetadata producerMetadata) {
+    if (producerInfo != null) {
+      producerInfo.updateProducerMetadata(producerMetadata);
+    } else {
+      producerInfo = new ProducerInfo(producerMetadata);
     }
   }
 

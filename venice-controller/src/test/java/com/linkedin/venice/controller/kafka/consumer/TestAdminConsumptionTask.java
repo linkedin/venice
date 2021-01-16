@@ -596,6 +596,40 @@ public class TestAdminConsumptionTask {
   }
 
   @Test (timeOut = TIMEOUT)
+  public void testRunWithFalsePositiveMissingMessages() throws Exception {
+    String storeName1 = "test_store1";
+    String storeName2 = "test_store2";
+    String storeName3 = "test_store3";
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    // Write a message with a skipped execution id but valid producer metadata.
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 3),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 4),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    // The stores don't exist yet.
+    doReturn(false).when(admin).hasStore(clusterName, storeName1);
+    doReturn(false).when(admin).hasStore(clusterName, storeName2);
+    doReturn(false).when(admin).hasStore(clusterName, storeName3);
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, TIMEOUT);
+    executor.submit(task);
+    // The missing data based on execution id should be ignored and everything should be processed accordingly.
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastOffset(clusterName), 3L));
+    Assert.assertEquals(task.getFailingOffset(), -1);
+    task.close();
+    verify(stats, never()).recordAdminTopicDIVErrorReportCount();
+    verify(admin, atLeastOnce()).addStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
+    verify(admin, atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
+    verify(admin, atLeastOnce()).addStore(clusterName, storeName3, owner, keySchema, valueSchema, false);
+    Assert.assertEquals(getLastExecutionId(clusterName), 4L);
+  }
+
+  @Test (timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithDifferentOffset() throws InterruptedException, IOException {
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
@@ -928,27 +962,33 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
-  @Test
+  @Test (timeOut = TIMEOUT)
   public void testSkipDIV() throws InterruptedException, ExecutionException, TimeoutException, IOException {
-    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
-    executor.submit(task);
     // Let the admin consumption task process some admin messages
     veniceWriter.put(emptyKeyBytes, getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 2L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastExecutionId(clusterName), 2L));
+    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // New admin messages should fail with DIV error
     Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    // We need to actually create a gap in producer metadata too in order to craft a valid DIV exception.
+    Set<Pair<TopicPartition, Long>> set = new HashSet<>();
+    set.add(new Pair(new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), 2L));
+    PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
+    executor.submit(task);
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 2L));
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getFailingOffset(), offset));
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
     task.skipMessageDIVWithOffset(offset);
-    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(getLastExecutionId(clusterName), 5L));
     task.close();
