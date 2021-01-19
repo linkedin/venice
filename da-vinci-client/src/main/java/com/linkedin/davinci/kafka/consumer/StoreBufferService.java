@@ -6,16 +6,24 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.log4j.Logger;
-
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.log4j.Logger;
+
+import static java.util.Collections.reverseOrder;
+import static java.util.Comparator.*;
+import static java.util.stream.Collectors.*;
+
 
 /**
  * This class is serving as a {@link ConsumerRecord} buffer with an accompanying pool of drainer threads. The drainers
@@ -107,7 +115,7 @@ public class StoreBufferService extends AbstractVeniceService {
     private static final Logger LOGGER = Logger.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
-
+    private final ConcurrentMap<TopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
     public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue) {
       this.blockingQueue = blockingQueue;
     }
@@ -132,11 +140,14 @@ public class StoreBufferService extends AbstractVeniceService {
         ProducedRecord producedRecord = node.getProducedRecord();
         StoreIngestionTask ingestionTask = node.getIngestionTask();
         try {
+          long startTime = System.currentTimeMillis();
           ingestionTask.processConsumerRecord(consumerRecord, producedRecord);
           //complete the producedRecord future as processing for this producedRecord is done here.
           if (producedRecord != null) {
             producedRecord.completePersistedToDBFuture(null);
           }
+          TopicPartition topicPartition = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
+          topicToTimeSpent.compute(topicPartition, (K,V) ->  (V == null ? 0 : V) + System.currentTimeMillis() - startTime );
         } catch (Throwable e) {
           LOGGER.error("Received throwable in drainer thread:  ", e);
           String consumerRecordString = consumerRecord.toString();
@@ -166,15 +177,16 @@ public class StoreBufferService extends AbstractVeniceService {
   }
 
   private static final Logger LOGGER =  Logger.getLogger(StoreBufferService.class);
-
   private final int drainerNum;
   private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;
   private ExecutorService executorService;
   private final List<StoreBufferDrainer> drainerList = new ArrayList<>();
+  private final long bufferCapacityPerDrainer;
 
   public StoreBufferService(int drainerNum, long bufferCapacityPerDrainer, long bufferNotifyDelta) {
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
+    this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
     for (int cur = 0; cur < drainerNum; ++cur) {
       this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
     }
@@ -194,6 +206,7 @@ public class StoreBufferService extends AbstractVeniceService {
   public void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
                                 StoreIngestionTask ingestionTask, ProducedRecord producedRecord) throws InterruptedException {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord);
+
     blockingQueueArr.get(drainerIndex)
         .put(new QueueNode(consumerRecord, ingestionTask, producedRecord));
   }
@@ -258,6 +271,14 @@ public class StoreBufferService extends AbstractVeniceService {
     }
   }
 
+  public int getDrainerCount() {
+    return blockingQueueArr.size();
+  }
+
+  public long getDrainerQueueMemoryUsage(int index) {
+    return blockingQueueArr.get(index).getMemoryUsage();
+  }
+
   public long getTotalMemoryUsage() {
     long totalUsage = 0;
     for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
@@ -276,9 +297,33 @@ public class StoreBufferService extends AbstractVeniceService {
 
   public long getMaxMemoryUsagePerDrainer() {
     long maxUsage = 0;
+    boolean slowDrainerExists = false;
+
     for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
       maxUsage = Math.max(maxUsage, queue.getMemoryUsage());
+      if (queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer) {
+        slowDrainerExists = true;
+      }
     }
+    if (slowDrainerExists) {
+      for (int index = 0; index < blockingQueueArr.size(); index++) {
+        MemoryBoundBlockingQueue<QueueNode> queue = blockingQueueArr.get(index);
+        StoreBufferDrainer drainer = drainerList.get(index);
+        int count = queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer ? 5 : 1;
+        List<Map.Entry<TopicPartition, Long>> slowestEntries = drainer.topicToTimeSpent.entrySet()
+            .stream()
+            .sorted(comparing(Map.Entry::getValue, reverseOrder()))
+            .limit(count)
+            .collect(toList());
+
+        int finalIndex = index;
+        slowestEntries.forEach(entry -> LOGGER.info(
+            "In drainer number " + finalIndex + ", time spent on topic " + entry.getKey().topic() + ", partition " + entry.getKey().partition() + " : " + entry.getValue() + " ms"));
+        LOGGER.info("Drainer number " + index + " hosting " + drainer.topicToTimeSpent.size() + " partitions, has memory usage of " + queue.getMemoryUsage());
+        drainer.topicToTimeSpent.clear();
+      }
+    }
+
     return maxUsage;
   }
 
