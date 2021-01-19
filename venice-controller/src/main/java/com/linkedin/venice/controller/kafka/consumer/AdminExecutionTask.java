@@ -314,7 +314,11 @@ public class AdminExecutionTask implements Callable<Void> {
   private void handleDeleteAllVersions(DeleteAllVersions message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.deleteAllVersionsInStore(clusterName, storeName);
+    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
+      admin.deleteDaVinciPushStatusStore(clusterName, VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName));
+    } else {
+      admin.deleteAllVersionsInStore(clusterName, storeName);
+    }
     logger.info("Deleted all of version in store:" + storeName + " in cluster: " + clusterName);
   }
 

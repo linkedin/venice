@@ -2225,6 +2225,28 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  @Override
+  public void deleteDaVinciPushStatusStore(String clusterName, String storeName) {
+    String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
+    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
+    Store store = repository.getStore(storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException("Store:" + storeName + " does not exist in cluster:" + clusterName);
+    }
+    DeleteAllVersions deleteAllVersions = (DeleteAllVersions) AdminMessageType.DELETE_ALL_VERSIONS.getNewInstance();
+    deleteAllVersions.clusterName = clusterName;
+    deleteAllVersions.storeName = pushStatusStoreName;
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.DELETE_ALL_VERSIONS.getValue();
+    message.payloadUnion = deleteAllVersions;
+    acquireLock(clusterName, storeName);
+    try {
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    } finally {
+      releaseLock(clusterName);
+    }
+  }
+
   /**
    * Check if a version has been lingering around for more than the bootstrap to online timeout because of bugs or other
    * unexpected events.

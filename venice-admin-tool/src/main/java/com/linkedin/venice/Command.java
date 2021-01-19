@@ -176,6 +176,8 @@ public enum Command {
       new Arg[] {URL, CLUSTER, STORE, VERSION}),
   CREATE_DAVINCI_PUSH_STATUS_STORE("create-davinci-push-status-store", "Create a Da Vinci push status store for an existing Venice store",
       new Arg[] {URL, CLUSTER, STORE}),
+  DELETE_DAVINCI_PUSH_STATUS_STORE("delete-davinci-push-status-store", "Delete the Da Vinci push status store for an existing Venice store",
+      new Arg[] {URL, CLUSTER, STORE}),
   NEW_STORE_ACL("new-store-acl", "Create a new store with ACL permissions set",
       new Arg[]{URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA, ACL_PERMS},
       new Arg[]{OWNER, VSON_STORE}),

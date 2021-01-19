@@ -55,6 +55,7 @@ public class StoreInfo {
     storeInfo.setNativeReplicationSourceFabric(store.getNativeReplicationSourceFabric());
     storeInfo.setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
     storeInfo.setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
+    storeInfo.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
     return storeInfo;
   }
   /**
@@ -266,6 +267,11 @@ public class StoreInfo {
    * Whether or not meta system store is enabled for this Venice store.
    */
   private boolean storeMetaSystemStoreEnabled;
+
+  /**
+   * Whether or not Da Vinci push status system store is enabled for this Venice store.
+   */
+  private boolean daVinciPushStatusStoreEnabled;
 
   public StoreInfo() {
   }
@@ -644,5 +650,13 @@ public class StoreInfo {
 
   public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
     this.storeMetaSystemStoreEnabled = storeMetaSystemStoreEnabled;
+  }
+
+  public boolean isDaVinciPushStatusStoreEnabled() {
+    return daVinciPushStatusStoreEnabled;
+  }
+
+  public void setDaVinciPushStatusStoreEnabled(boolean DaVinciPushStatusStoreEnabled) {
+    this.daVinciPushStatusStoreEnabled = storeMetadataSystemStoreEnabled;
   }
 }

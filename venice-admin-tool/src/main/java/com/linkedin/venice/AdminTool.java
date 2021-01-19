@@ -377,6 +377,9 @@ public class AdminTool {
         case CREATE_DAVINCI_PUSH_STATUS_STORE:
           createDaVinciPushStatusStore(cmd);
           break;
+        case DELETE_DAVINCI_PUSH_STATUS_STORE:
+          deleteDaVinciPushStatusStore(cmd);
+          break;
         case NEW_STORE_ACL:
           createNewStoreWithAcl(cmd);
           break;
@@ -1454,6 +1457,12 @@ public class AdminTool {
   private static void createDaVinciPushStatusStore(CommandLine cmd) {
     String veniceStoreName = getRequiredArgument(cmd, Arg.STORE);
     ControllerResponse response = controllerClient.createDaVinciPushStatusStore(veniceStoreName);
+    printObject(response);
+  }
+
+  private static void deleteDaVinciPushStatusStore(CommandLine cmd) {
+    String veniceStoreName = getRequiredArgument(cmd, Arg.STORE);
+    ControllerResponse response = controllerClient.deleteDaVinciPushStatusStore(veniceStoreName);
     printObject(response);
   }
 
