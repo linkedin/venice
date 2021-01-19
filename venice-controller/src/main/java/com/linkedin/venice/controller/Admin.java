@@ -503,6 +503,12 @@ public interface Admin extends AutoCloseable, Closeable {
     void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber, boolean deleteRT);
 
     /**
+     * Delete all versions and topics of Da Vinci push status store.
+     * Same as dematerializeMetadataStoreVersion.
+     */
+    void deleteDaVinciPushStatusStore(String clusterName, String storeName);
+
+    /**
      * provision a new set of ACL for a venice store and it's associated kafka topic.
      * @param clusterName
      * @param storeName

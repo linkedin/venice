@@ -326,6 +326,7 @@ public class ControllerClient implements Closeable {
       int valueSchemaId = getValueSchemaID(storeName, PushStatusValue.SCHEMA$.toString()).getId();
       Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(PushStatusValue.SCHEMA$.toString()).getTypes().get(0);
       addDerivedSchema(storeName, valueSchemaId, writeComputeSchema.toString());
+      updateStore(storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true).setWriteComputationEnabled(true));
     }
     return response;
   }
@@ -372,6 +373,12 @@ public class ControllerClient implements Closeable {
     QueryParams params = newParams()
         .add(NAME, storeName);
     return request(ControllerRoute.CREATE_DAVINCI_PUSH_STATUS_STORE, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse deleteDaVinciPushStatusStore(String storeName) {
+    QueryParams params = newParams()
+        .add(NAME, storeName);
+    return request(ControllerRoute.DELETE_DAVINCI_PUSH_STATUS_STORE, params, ControllerResponse.class);
   }
 
   public StoreMigrationResponse migrateStore(String storeName, String destClusterName) {

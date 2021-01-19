@@ -57,6 +57,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
     pushStatusValue.reportTimestamp = System.currentTimeMillis();
     pushStatusValue.instances = Collections.emptyMap();
     int valueSchemaId = schemaRepository.getValueSchemaId(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), PushStatusValue.SCHEMA$.toString());
+    logger.info("Sending heartbeat of " + instanceName);
     writer.put(pushStatusKey, pushStatusValue, valueSchemaId);
   }
 
@@ -76,6 +77,8 @@ public class PushStatusStoreWriter implements AutoCloseable {
     Pair<Integer, Integer> schemaIds = schemaRepository.getDerivedSchemaId(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), WRITE_COMPUTE_SCHEMA.toString());
     int valueSchemaId = schemaIds.getFirst();
     int derivedSchemaId = schemaIds.getSecond();
+    logger.info("Updating pushStatus of " + instanceName + " to " + status.toString() +
+        ". storeName: " + storeName + " , version: " + version + " , partition: " + partitionId);
     writer.update(pushStatusKey, writeComputeRecord, valueSchemaId, derivedSchemaId, null);
   }
 
