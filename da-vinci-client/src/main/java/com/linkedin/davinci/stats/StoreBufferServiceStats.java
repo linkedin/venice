@@ -5,13 +5,19 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import java.util.ArrayList;
+import java.util.List;
+
 
 public class StoreBufferServiceStats extends AbstractVeniceStats {
   private StoreBufferService workerService = null;
+
   private Sensor totalMemoryUsageSensor;
   private Sensor totalRemainingMemorySensor;
   private Sensor maxMemoryUsagePerWriterSensor;
   private Sensor minMemoryUsagePerWriterSensor;
+  private List<Sensor> preDrainerSensors = new ArrayList<>(2);
+
 
   public StoreBufferServiceStats(MetricsRepository metricsRepository, StoreBufferService workerService) {
     super(metricsRepository, "StoreBufferService");
@@ -28,5 +34,10 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
     minMemoryUsagePerWriterSensor = registerSensor("min_memory_usage_per_writer", new Gauge(
         () -> this.workerService.getMinMemoryUsagePerDrainer()
     ));
+
+    for(int i = 0; i < this.workerService.getDrainerCount(); i++) {
+      int finalIndex = i;
+      registerSensor("memory_usage_for_writer_num_" + i, new Gauge(() -> this.workerService.getDrainerQueueMemoryUsage(finalIndex)));
+    }
   }
 }
