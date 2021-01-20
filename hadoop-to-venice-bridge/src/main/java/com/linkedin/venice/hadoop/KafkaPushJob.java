@@ -1,9 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import azkaban.jobExecutor.AbstractJob;
-import com.github.luben.zstd.Zstd;
-import com.github.luben.zstd.ZstdDictTrainer;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -36,7 +33,6 @@ import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.EncodingUtils;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -46,25 +42,13 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
+import azkaban.jobExecutor.AbstractJob;
+import com.github.luben.zstd.Zstd;
+import com.github.luben.zstd.ZstdDictTrainer;
+
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.mapred.AvroInputFormat;
@@ -84,6 +68,26 @@ import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.log4j.Logger;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -1174,7 +1178,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         veniceWriterProperties.putAll(sslProps);
       }
       if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
-        veniceWriterProperties.setProperty(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS));
+        // Not a typo, we actually want to set delivery timeout!
+        veniceWriterProperties.setProperty(KAFKA_DELIVERY_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS));
       }
       if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
         veniceWriterProperties.setProperty(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
@@ -1224,10 +1229,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    * If any datacenter report an explicit error status, we throw an exception and fail the job. However, datacenters
    * with COMPLETED status will be serving new data.
    */
-  private void pollStatusUntilComplete(Optional<String> incrementalPushVersion, ControllerClient controllerClient,
-      PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
-    boolean keepChecking = true;
-    long pollingIntervalMs = pushJobSetting.pollJobStatusIntervalMs;
+  private void pollStatusUntilComplete(
+      Optional<String> incrementalPushVersion,
+      ControllerClient controllerClient,
+      PushJobSetting pushJobSetting,
+      VersionTopicInfo versionTopicInfo) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -1236,7 +1242,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     String previousOverallDetails = null;
     // Perform a poll first in case the job has already finished before taking breaks between polls.
     long pollTime = 0;
-
     /**
      * The start time when some data centers enter unknown state;
      * if 0, it means no data center is in unknown state.
@@ -1244,73 +1249,73 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
      * Once enter unknown state, it's allowed to stayed in unknown state for
      * no more than {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}.
      */
-    long unknownStateStartTimeInNS = 0;
+    long unknownStateStartTimeMs = 0;
 
-    while (keepChecking) {
+    String topicToMonitor = Version.isRealTimeTopic(versionTopicInfo.topic) ?
+            Version.composeKafkaTopic(pushJobSetting.storeName, versionTopicInfo.version) :
+            versionTopicInfo.topic;
+
+    for (;;) {
       long currentTime = System.currentTimeMillis();
-      if (currentTime > pollTime) {
-        pollTime = currentTime + pollingIntervalMs;
-      } else {
-        Utils.sleep(pollTime - currentTime);
-        continue;
+      if (pollTime > currentTime) {
+        if (!Utils.sleep(pollTime - currentTime)) {
+          throw new VeniceException("Job status polling was interrupted!");
+        }
       }
-      String topicToMonitor;
-      if (Version.isRealTimeTopic(versionTopicInfo.topic)) {
-        topicToMonitor = Version.composeKafkaTopic(pushJobSetting.storeName, versionTopicInfo.version);
-      } else {
-        topicToMonitor = versionTopicInfo.topic;
-      }
+      pollTime = currentTime + pushJobSetting.pollJobStatusIntervalMs;
 
-      JobStatusQueryResponse response = controllerClient.retryableRequest(pushJobSetting.controllerStatusPollRetries,
-          c -> c.queryOverallJobStatus(topicToMonitor, incrementalPushVersion));
-
-      // response#isError() means the status could not be queried which could be due to a communication error.
+      JobStatusQueryResponse response = controllerClient.retryableRequest(
+          pushJobSetting.controllerStatusPollRetries,
+          client -> client.queryOverallJobStatus(topicToMonitor, incrementalPushVersion));
       if (response.isError()) {
-        throw new RuntimeException("Failed to connect to: " + pushJobSetting.veniceControllerUrl +
+        // status could not be queried which could be due to a communication error.
+        throw new VeniceException("Failed to connect to: " + pushJobSetting.veniceControllerUrl +
             " to query job status, after " + pushJobSetting.controllerStatusPollRetries + " attempts.");
-      } else {
-        previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
-        ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());
-        Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
-        // Note that it's intended to update the push job details before updating the completed datacenter set.
-        updatePushJobDetailsWithColoStatus(datacenterSpecificInfo, completedDatacenters);
-        for (String datacenter : datacenterSpecificInfo.keySet()) {
-          ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(datacenterSpecificInfo.get(datacenter));
-          if (datacenterStatus.isTerminal()) {
-            if (!datacenterStatus.equals(ExecutionStatus.ERROR)) {
-              completedDatacenters.add(datacenter);
-            }
-          }
-        }
-        if (overallStatus.isTerminal()) {
-          if (completedDatacenters.size() == datacenterSpecificInfo.size()) {
-            // Every known datacenter have successfully reported a completed status at least once.
-            keepChecking = false;
-            logger.info("Successfully pushed " + versionTopicInfo.topic);
-          } else {
-            // One datacenter (could be more) is in an UNKNOWN status and has never successfully reported a completed
-            // status before but the majority of datacenters have completed so we give up on the unreachable datacenter
-            // and start truncating the data topic.
-            throw new RuntimeException("Push job triggered error for: " + pushJobSetting.veniceControllerUrl);
-          }
-        } else if (ExecutionStatus.UNKNOWN.equals(overallStatus)) {
-          if (unknownStateStartTimeInNS == 0) {
-            unknownStateStartTimeInNS = System.nanoTime();
-          } else if (LatencyUtils.getLatencyInMS(unknownStateStartTimeInNS) > pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
-            throw new VeniceException("After waiting for " + (pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE) + " minutes; "
-                + "push job is still in unknown state.");
-          } else {
-            double elapsedMinutes = LatencyUtils.getLatencyInMS(unknownStateStartTimeInNS) / Time.MS_PER_MINUTE;
-            logger.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
-          }
-        } else {
-          unknownStateStartTimeInNS = 0;
-        }
-        // Only send the push job details after all error checks have passed and job is not completed yet.
-        if (keepChecking) {
-          sendPushJobDetails();
+      }
+
+      previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
+      ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());
+      Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
+      // Note that it's intended to update the push job details before updating the completed datacenter set.
+      updatePushJobDetailsWithColoStatus(datacenterSpecificInfo, completedDatacenters);
+      for (String datacenter : datacenterSpecificInfo.keySet()) {
+        ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(datacenterSpecificInfo.get(datacenter));
+        if (datacenterStatus.isTerminal() && !datacenterStatus.equals(ExecutionStatus.ERROR)) {
+          completedDatacenters.add(datacenter);
         }
       }
+
+      if (overallStatus.isTerminal()) {
+        if (completedDatacenters.size() != datacenterSpecificInfo.size()) {
+          // One datacenter (could be more) is in an UNKNOWN status and has never successfully reported a completed
+          // status before but the majority of datacenters have completed so we give up on the unreachable datacenter
+          // and start truncating the data topic.
+          throw new VeniceException("Push job triggered error for: " + pushJobSetting.veniceControllerUrl);
+        }
+
+        // Every known datacenter have successfully reported a completed status at least once.
+        logger.info("Successfully pushed " + versionTopicInfo.topic);
+        return;
+      }
+
+      if (overallStatus.equals(ExecutionStatus.UNKNOWN)) {
+        if (unknownStateStartTimeMs > pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
+          long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
+          throw new VeniceException("After waiting for " + timeoutMinutes + " minutes; push job is still in unknown state.");
+        }
+
+        if (unknownStateStartTimeMs == 0) {
+          unknownStateStartTimeMs = System.currentTimeMillis();
+        } else {
+          double elapsedMinutes = (double) unknownStateStartTimeMs / Time.MS_PER_SECOND;
+          logger.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
+        }
+      } else {
+        unknownStateStartTimeMs = 0;
+      }
+
+      // Only send the push job details after all error checks have passed and job is not completed yet.
+      sendPushJobDetails();
     }
   }
 

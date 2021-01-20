@@ -119,8 +119,9 @@ public class StoreBackend {
       setCurrentVersion(new VersionBackend(
           backend,
           bootstrapVersion.orElseGet(
-              () -> backend.getCurrentVersion(storeName).orElseThrow(
-                  () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName)))));
+              () -> backend.getCurrentVersion(storeName).orElseGet(
+                  () -> backend.getLatestVersion(storeName).orElseThrow(
+                      () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName))))));
 
     } else if (bootstrapVersion.isPresent()) {
       throw new VeniceException("Bootstrap version is already selected, storeName=" + storeName +
