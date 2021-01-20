@@ -1,13 +1,19 @@
 package com.linkedin.venice.utils;
 
+import io.github.classgraph.ClassGraph;
+import io.github.classgraph.ScanResult;
+
 import com.google.common.reflect.ClassPath;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
@@ -78,13 +84,10 @@ public class ReflectUtils {
    * Print to the logs the entire classpath (one line per jar)
    */
   public static void printClasspath() {
-    ClassLoader cl = ClassLoader.getSystemClassLoader();
-
-    URL[] urls = ((URLClassLoader)cl).getURLs();
-
-    LOGGER.info("Classpath:");
-    for(URL url: urls){
-      LOGGER.info(url.getFile());
+    try (ScanResult scanResult = new ClassGraph().scan()) {
+      for (File file : scanResult.getClasspathFiles()) {
+        LOGGER.info(file.getAbsolutePath());
+      }
     }
   }
 
