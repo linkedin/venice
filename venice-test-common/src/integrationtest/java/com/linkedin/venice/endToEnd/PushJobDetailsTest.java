@@ -110,7 +110,6 @@ public class PushJobDetailsTest {
     parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2));
     Properties pushJobProps = defaultH2VProps(venice, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    pushJobProps.setProperty(POLL_JOB_STATUS_INTERVAL_MS, String.valueOf(1000));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
     try (KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps)) {
@@ -188,7 +187,6 @@ public class PushJobDetailsTest {
     parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
     Properties pushJobProps = defaultH2VProps(venice, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    pushJobProps.setProperty(POLL_JOB_STATUS_INTERVAL_MS, String.valueOf(1000));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
     try (KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps)) {

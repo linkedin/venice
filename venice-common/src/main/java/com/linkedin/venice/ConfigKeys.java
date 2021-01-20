@@ -1,5 +1,7 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.writer.ApacheKafkaProducer;
+
 import org.apache.kafka.clients.producer.ProducerConfig;
 
 public class ConfigKeys {
@@ -42,8 +44,8 @@ public class ConfigKeys {
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
 
-  public static final String KAFKA_REQUEST_TIMEOUT_MS = "kafka." + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
-  public static final String KAFKA_DELIVERY_TIMEOUT_MS = "kafka." + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
+  public static final String KAFKA_REQUEST_TIMEOUT_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
+  public static final String KAFKA_DELIVERY_TIMEOUT_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
 
   /**
    * The time window used by the consumption throttler. Throttler will sum the requests during the time window and

@@ -176,7 +176,6 @@ subprojects {
     // Tests should run in parallel (this controls the number of parallel tests within a single module)
     maxHeapSize = '4g'
     maxParallelForks = 4
-    ignoreFailures = true
 
     def alt_tmp =  System.getProperty('alt_temp', '/tmp')
     if (alt_tmp != '/tmp') {
