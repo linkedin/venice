@@ -56,7 +56,7 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
     this.dualReadFastClientErrorThinClientSucceedRequestCountSensor = registerSensor(
         "dual_read_fastclient_error_thinclient_succeed_request_count", fastClientErrorThinClientSucceedRequestRate);
     this.dualReadFastClientErrorThinClientSucceedRequestRatioSensor = registerSensor(
-        "", new TehutiUtils.SimpleRatioStat(fastClientErrorThinClientSucceedRequestRate, requestRate));
+        "dual_read_fastclient_error_thinclient_succeed_request_ratio", new TehutiUtils.SimpleRatioStat(fastClientErrorThinClientSucceedRequestRate, requestRate));
     this.dualReadThinClientFastClientLatencyDeltaSensor = registerSensorWithDetailedPercentiles(
         "dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());

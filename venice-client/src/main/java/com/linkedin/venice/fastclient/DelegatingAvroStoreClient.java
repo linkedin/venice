@@ -1,6 +1,8 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 
@@ -20,6 +22,11 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     return delegate.get(requestContext, key);
+  }
+
+  @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    return delegate.batchGet(keys);
   }
 
   @Override

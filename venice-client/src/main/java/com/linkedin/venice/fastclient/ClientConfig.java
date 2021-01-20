@@ -44,6 +44,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long routingUnavailableRequestCounterResetDelayMS;
   private final int routingPendingRequestCounterInstanceBlockThreshold;
 
+  /**
+   * The max allowed key count in batch-get request.
+   * Right now, the batch-get implementation will leverage single-get, which is inefficient, when there
+   * are many keys, since the requests to the same storage node won't be reused.
+   * But to temporarily unblock the first customer, we will only allow at most two keys in a batch-get request.
+   */
+  private final int maxAllowedKeyCntInBatchGetReq;
+
   // For perf test purpose
   private final String veniceZKAddress;
   private final String clusterName;
@@ -66,6 +74,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long routingErrorRequestCounterResetDelayMS,
       long routingUnavailableRequestCounterResetDelayMS,
       int routingPendingRequestCounterInstanceBlockThreshold,
+      int maxAllowedKeyCntInBatchGetReq,
       String veniceZKAddress,
       String clusterName,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
@@ -108,6 +117,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         routingUnavailableRequestCounterResetDelayMS : TimeUnit.MINUTES.toMicros(1); // 1 min
     this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold > 0 ?
         routingPendingRequestCounterInstanceBlockThreshold : 50;
+
+    this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
 
     this.veniceZKAddress = veniceZKAddress;
     this.clusterName = clusterName;
@@ -175,6 +186,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return routingPendingRequestCounterInstanceBlockThreshold;
   }
 
+  public int getMaxAllowedKeyCntInBatchGetReq() {
+    return maxAllowedKeyCntInBatchGetReq;
+  }
+
   public String getVeniceZKAddress() {
     return veniceZKAddress;
   }
@@ -208,6 +223,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long routingErrorRequestCounterResetDelayMS = -1;
     private long routingUnavailableRequestCounterResetDelayMS = -1;
     private int routingPendingRequestCounterInstanceBlockThreshold = -1;
+
+    private int maxAllowedKeyCntInBatchGetReq = 2;
 
     // For perf test purpose
     private String veniceZKAddress;
@@ -313,6 +330,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setMaxAllowedKeyCntInBatchGetReq(int maxAllowedKeyCntInBatchGetReq) {
+      this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder()
           .setStoreName(storeName)
@@ -330,6 +352,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRoutingErrorRequestCounterResetDelayMS(routingErrorRequestCounterResetDelayMS)
           .setRoutingUnavailableRequestCounterResetDelayMS(routingUnavailableRequestCounterResetDelayMS)
           .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
+          .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeyCntInBatchGetReq)
           .setVeniceZKAddress(veniceZKAddress)
           .setClusterName(clusterName)
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
@@ -352,6 +375,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingErrorRequestCounterResetDelayMS,
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
+          maxAllowedKeyCntInBatchGetReq,
           veniceZKAddress,
           clusterName,
           daVinciClientForMetaStore,

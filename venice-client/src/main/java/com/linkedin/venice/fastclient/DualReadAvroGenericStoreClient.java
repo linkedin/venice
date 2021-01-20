@@ -5,6 +5,8 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,6 +22,7 @@ import java.util.function.Supplier;
 public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
   private final AvroGenericStoreClient<K, V> thinClient;
   private final ClientStats clientStatsForSingleGet;
+  private final ClientStats clientStatsForMultiGet;
 
   public DualReadAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig config) {
     this(delegate, config, config.getGenericThinClient());
@@ -32,11 +35,12 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     super(delegate);
     this.thinClient = thinClient;
     this.clientStatsForSingleGet = config.getStats(RequestType.SINGLE_GET);
+    this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET);
   }
 
-  private CompletableFuture<V> sendRequest(Supplier<CompletableFuture<V>> supplier, long startTimeNS,
-      AtomicBoolean error, AtomicReference<Double> latency, CompletableFuture<V> valueFuture) {
-    CompletableFuture<V> requestFuture;
+  private static <T> CompletableFuture<T> sendRequest(Supplier<CompletableFuture<T>> supplier, long startTimeNS,
+      AtomicBoolean error, AtomicReference<Double> latency, CompletableFuture<T> valueFuture) {
+    CompletableFuture<T> requestFuture;
     try {
       requestFuture = supplier.get();
     } catch (Exception e) {
@@ -45,7 +49,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       requestFuture.completeExceptionally(e);
     }
 
-    CompletableFuture<V> latencyFuture = requestFuture.handle((response, throwable) -> {
+    CompletableFuture<T> latencyFuture = requestFuture.handle((response, throwable) -> {
       /**
        * We need to record the latency metric before trying to complete {@link valueFuture} since the the pre-registered
        * callbacks to {@link valueFuture} could be executed in the same thread.
@@ -75,17 +79,17 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     return latencyFuture;
   }
 
-  @Override
-  protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
-    CompletableFuture<V> valueFuture = new CompletableFuture<>();
+  private static <T> CompletableFuture<T> dualExecute(Supplier<CompletableFuture<T>> fastClientFutureSupplier,
+      Supplier<CompletableFuture<T>> thinClientFutureSupplier, ClientStats clientStats) {
+    CompletableFuture<T> valueFuture = new CompletableFuture<>();
     long startTimeNS = System.nanoTime();
     AtomicBoolean fastClientError = new AtomicBoolean(false);
     AtomicBoolean thinClientError = new AtomicBoolean(false);
     AtomicReference<Double> fastClientLatency = new AtomicReference<>();
     AtomicReference<Double> thinClientLatency = new AtomicReference<>();
-    CompletableFuture<V> fastClientFuture = sendRequest(() -> super.get(requestContext, key),
+    CompletableFuture<T> fastClientFuture = sendRequest(fastClientFutureSupplier,
         startTimeNS, fastClientError, fastClientLatency, valueFuture);
-    CompletableFuture<V> thinClientFuture = sendRequest(() -> thinClient.get(key),
+    CompletableFuture<T> thinClientFuture = sendRequest(thinClientFutureSupplier,
         startTimeNS, thinClientError, thinClientLatency, valueFuture);
 
     CompletableFuture.allOf(fastClientFuture, thinClientFuture).whenComplete( (response, throwable) -> {
@@ -98,18 +102,28 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
 
       if (fastClientError.get() && !thinClientError.get()) {
         // fast client returns error, but thin client returns good.
-        clientStatsForSingleGet.recordFastClientErrorThinClientSucceedRequest();
+        clientStats.recordFastClientErrorThinClientSucceedRequest();
       }
       // record latency delta and comparison only both requests succeed.
       if (!thinClientError.get() && !fastClientError.get()) {
-        clientStatsForSingleGet.recordThinClientFastClientLatencyDelta(thinClientLatency.get() - fastClientLatency.get());
+        clientStats.recordThinClientFastClientLatencyDelta(thinClientLatency.get() - fastClientLatency.get());
         if (fastClientLatency.get() > thinClientLatency.get()) {
           // fast client is slower than thin client
-          clientStatsForSingleGet.recordFastClientSlowerRequest();
+          clientStats.recordFastClientSlowerRequest();
         }
       }
     });
 
     return valueFuture;
+  }
+
+  @Override
+  protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+    return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);
+  }
+
+  @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    return dualExecute(() -> super.batchGet(keys), () -> thinClient.batchGet(keys), clientStatsForMultiGet);
   }
 }

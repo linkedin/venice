@@ -8,7 +8,10 @@ import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import org.apache.log4j.Logger;
@@ -25,10 +28,13 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private final ClientStats clientStatsForSingleGet;
   private final ClusterStats clusterStats;
 
+  private final int maxAllowedKeyCntInBatchGetReq;
+
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate);
     this.clientStatsForSingleGet = clientConfig.getStats(RequestType.SINGLE_GET);
     this.clusterStats = clientConfig.getClusterStats();
+    this.maxAllowedKeyCntInBatchGetReq = clientConfig.getMaxAllowedKeyCntInBatchGetReq();
   }
 
   @Override
@@ -118,4 +124,37 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     return AppTimeOutTrackingCompletableFuture.track(statFuture, clientStatsForSingleGet);
   }
 
+  @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    if (keys.isEmpty()) {
+      return CompletableFuture.completedFuture(Collections.emptyMap());
+    }
+    int keyCnt = keys.size();
+    if (keyCnt > maxAllowedKeyCntInBatchGetReq) {
+      throw new VeniceClientException("Currently, the max allowed keyc count in a batch-get request: "
+          + maxAllowedKeyCntInBatchGetReq + ", but received: " + keyCnt);
+    }
+    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
+    /**
+     * Leverage single-get implementation here.
+     */
+    Map<K, CompletableFuture<V>> valueFutures = new HashMap<>();
+    keys.forEach(k -> valueFutures.put(k, (get(k))));
+    CompletableFuture.allOf(valueFutures.values().toArray(new CompletableFuture[keyCnt])).whenComplete( ((aVoid, throwable) -> {
+      if (throwable != null) {
+        resultFuture.completeExceptionally(throwable);
+      }
+      Map<K, V> resultMap = new HashMap<>();
+      valueFutures.forEach((k, f) -> {
+        try {
+          resultMap.put(k, f.get());
+        } catch (Exception e) {
+          resultFuture.completeExceptionally(new VeniceClientException("Failed to complete future for key: " + k.toString(), e));
+        }
+      });
+      resultFuture.complete(resultMap);
+    }));
+
+    return resultFuture;
+  }
 }
