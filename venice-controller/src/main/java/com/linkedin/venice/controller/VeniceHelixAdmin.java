@@ -4405,7 +4405,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /**
      * Child controller will create the VT topic and trigger an empty push. Set up Helix resources and push monitor then
      * sync/write relevant current store state to the RT. The child controller will also check and waits on
-     * (by throwing {@link VeniceRetriableException}) any previously truncated VT topic to be deleted.
+     * (by throwing {@link VeniceRetriableException}) any previously truncated VT topic to be deleted. This method will
+     * will not be called in the parent controller since the parent controller doesn't need to write anything to VT and
+     * doesn't need Helix resources to be created.
      */
     @Override
     public void materializeMetadataStoreVersion(String clusterName, String storeName, int metadataStoreVersionNumber) {
@@ -4489,6 +4491,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private void createSystemStoreResources(String clusterName, String storeName, int versionNumber,
         Store zkSharedStore, VeniceSystemStoreType storeType) {
+        if (isClusterInMaintenanceMode(clusterName)) {
+          throw new HelixClusterMaintenanceModeException(clusterName);
+        }
         Version version = zkSharedStore.getVersion(versionNumber).get();
         String topicName =
             Version.composeKafkaTopic(VeniceSystemStoreUtils.getSystemStoreName(storeName, storeType), versionNumber);
