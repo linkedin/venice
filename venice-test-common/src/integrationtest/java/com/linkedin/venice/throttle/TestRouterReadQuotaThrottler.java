@@ -18,6 +18,8 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -50,7 +52,7 @@ public class TestRouterReadQuotaThrottler {
     currentVersion = response.getVersion();
 
     String stringSchema = "\"string\"";
-    TestUtils.VeniceTestWriterFactory writerFactory = TestUtils.getVeniceTestWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
     try (
         VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);

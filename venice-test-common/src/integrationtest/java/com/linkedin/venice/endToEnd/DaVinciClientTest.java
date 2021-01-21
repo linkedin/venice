@@ -206,7 +206,7 @@ public class DaVinciClientTest {
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceTestWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
@@ -610,7 +610,7 @@ public class DaVinciClientTest {
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceTestWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 

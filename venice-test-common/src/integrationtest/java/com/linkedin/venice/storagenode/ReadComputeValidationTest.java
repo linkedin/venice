@@ -150,7 +150,7 @@ public class ReadComputeValidationTest {
     String topic = newVersion.getKafkaTopic();
 
     VeniceWriterFactory vwFactory =
-        TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress());
+        TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
         vwFactory.createVeniceWriter(topic, keySerializer, new DefaultSerializer(), valueLargerThan1MB);
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
@@ -209,7 +209,7 @@ public class ReadComputeValidationTest {
     String topic = newVersion.getKafkaTopic();
 
     VeniceWriterFactory vwFactory =
-        TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress());
+        TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
         vwFactory.createVeniceWriter(topic, keySerializer, new DefaultSerializer(), false);
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(

@@ -76,7 +76,7 @@ public class TestDictionaryUtils {
     byte[] dictionaryToSend = "TEST_DICT".getBytes();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = new VeniceWriterFactory(props).createVeniceWriter(topic)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic)) {
       veniceWriter.broadcastStartOfPush(true, false, CompressionStrategy.ZSTD_WITH_DICT, ByteBuffer.wrap(dictionaryToSend), null);
       veniceWriter.broadcastEndOfPush(null);
     }
@@ -90,7 +90,7 @@ public class TestDictionaryUtils {
     String topic = getTopic();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = new VeniceWriterFactory(props).createVeniceWriter(topic)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic)) {
       veniceWriter.broadcastStartOfPush(true, false, CompressionStrategy.ZSTD_WITH_DICT, null);
       veniceWriter.broadcastEndOfPush(null);
     }
@@ -104,7 +104,7 @@ public class TestDictionaryUtils {
     String topic = getTopic();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = new VeniceWriterFactory(props).createVeniceWriter(topic)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic)) {
       veniceWriter.put(new KafkaKey(MessageType.PUT, "blah".getBytes()), "blah".getBytes(), 1, null);
     }
 

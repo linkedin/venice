@@ -101,7 +101,7 @@ public class StorageNodeReadTest {
     keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
-    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
         .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
     client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)

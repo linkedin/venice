@@ -4,7 +4,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
@@ -177,7 +176,7 @@ public class TopicManagerTest {
     String topicName = getTopic();
     Properties properties = new Properties();
     properties.put(ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceTestWriterFactory(kafka.getAddress());
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName);
 
     // Test starting conditions

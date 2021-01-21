@@ -10,9 +10,9 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.Instance;
@@ -26,13 +26,20 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
+import org.apache.helix.participant.statemachine.StateModel;
+import org.apache.helix.participant.statemachine.StateModelFactory;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.log4j.Logger;
+
 import java.io.File;
 import java.nio.file.Paths;
 import java.util.Collections;
@@ -43,12 +50,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
-import org.apache.helix.HelixManagerFactory;
-import org.apache.helix.InstanceType;
-import org.apache.helix.participant.statemachine.StateModel;
-import org.apache.helix.participant.statemachine.StateModelFactory;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.*;
@@ -109,7 +110,7 @@ public class TestUtils {
   public static void waitForNonDeterministicCompletion(long timeout, TimeUnit timeoutUnits, BooleanSupplier conditionToWaitFor) {
     long timeoutTime = System.currentTimeMillis() + timeoutUnits.toMillis(timeout);
     while (!conditionToWaitFor.getAsBoolean()) {
-      if (System.currentTimeMillis() > timeoutTime){
+      if (System.currentTimeMillis() > timeoutTime) {
         throw new RuntimeException("Operation did not complete in time");
       }
       Utils.sleep(WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
@@ -210,7 +211,7 @@ public class TestUtils {
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
     props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
-    VeniceWriterFactory writerFactory = new VeniceWriterFactory(props);
+    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props);
 
     String kafkaTopic = response.getKafkaTopic();
     Properties partitionerProperties = new Properties();
@@ -326,21 +327,18 @@ public class TestUtils {
     return cluster + ":" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
   }
 
-  public static VeniceTestWriterFactory getVeniceTestWriterFactory(String kafkaBootstrapServer){
+  public static VeniceWriterFactory getVeniceWriterFactory(String kafkaBootstrapServers) {
     Properties properties = new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServer);
-    return new VeniceTestWriterFactory(properties);
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
+    return getVeniceWriterFactory(properties);
   }
 
-  public static class VeniceTestWriterFactory extends VeniceWriterFactory {
-    public VeniceTestWriterFactory(Properties properties) {
-      super(properties);
-    }
-
-
-    public <K, V> VeniceWriter<K, V, byte[]> createVeniceWriter(String topic, VeniceKafkaSerializer<K> keySer,  VeniceKafkaSerializer<V>  valSer) {
-      return createVeniceWriter(topic, keySer, valSer, new DefaultSerializer(), Optional.empty(), SystemTime.INSTANCE);
-    }
+  public static VeniceWriterFactory getVeniceWriterFactory(Properties properties) {
+    Properties factoryProperties = new Properties();
+    factoryProperties.put(KAFKA_REQUEST_TIMEOUT_MS, 5000);
+    factoryProperties.put(KAFKA_DELIVERY_TIMEOUT_MS, 5000);
+    factoryProperties.putAll(properties);
+    return new VeniceWriterFactory(factoryProperties);
   }
 
   public static KafkaClientFactory getVeniceConsumerFactory(KafkaBrokerWrapper kafka) {
