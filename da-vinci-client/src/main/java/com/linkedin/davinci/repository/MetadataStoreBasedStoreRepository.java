@@ -106,8 +106,12 @@ public abstract class MetadataStoreBasedStoreRepository implements SubscriptionB
     int metadataSystemStoreVersion = backendConfig.getInt(CLIENT_METADATA_SYSTEM_STORE_VERSION,
         MetadataStoreBasedStoreRepository.DEFAULT_METADATA_SYSTEM_STORE_VERSION);
     if (metadataSystemStoreVersion > 0) {
+      logger.info("Initializing " + MetadataStoreBasedStoreRepository.class.getSimpleName() + " with "
+          + DaVinciClientMetadataStoreBasedRepository.class.getSimpleName());
       return new DaVinciClientMetadataStoreBasedRepository(clientConfig, backendConfig, metadataSystemStoreVersion);
     } else {
+      logger.info("Initializing " + MetadataStoreBasedStoreRepository.class.getSimpleName() + " with "
+          + ThinClientMetadataStoreBasedRepository.class.getSimpleName());
       return new ThinClientMetadataStoreBasedRepository(clientConfig, backendConfig);
     }
   }
@@ -350,7 +354,7 @@ public abstract class MetadataStoreBasedStoreRepository implements SubscriptionB
    */
   @Override
   public void refresh() {
-    logger.info("Refresh started for " + getClass().getSimpleName());
+    logger.debug("Refresh started for " + getClass().getSimpleName());
     updateLock.lock();
     try {
       List<Store> newStores = getStoresFromSystemStores();
@@ -365,7 +369,7 @@ public abstract class MetadataStoreBasedStoreRepository implements SubscriptionB
         removeStore(storeName);
         removeStoreSchema(storeName);
       }
-      logger.info("Refresh finished for " + getClass().getSimpleName());
+      logger.debug("Refresh finished for " + getClass().getSimpleName());
     } catch (Exception e) {
       // Catch all exceptions here so the scheduled periodic refresh doesn't break and transient errors can be retried.
       logger.warn("Caught an exception when trying to refresh " + getClass().getSimpleName(), e);
