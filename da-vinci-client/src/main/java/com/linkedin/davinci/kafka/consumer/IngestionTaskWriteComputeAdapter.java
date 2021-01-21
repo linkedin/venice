@@ -70,7 +70,7 @@ public class IngestionTaskWriteComputeAdapter {
   }
 
   private WriteComputeAdapter getWriteComputeAdapter(int valueSchemaId, int derivedSchemaId) {
-    return idToWriteComputeAdapterMap.computeIfAbsent(new  Pair<>(valueSchemaId, derivedSchemaId),
+    return idToWriteComputeAdapterMap.computeIfAbsent(new Pair<>(valueSchemaId, derivedSchemaId),
         idPair -> WriteComputeAdapter.getWriteComputeAdapter(getValueSchema(valueSchemaId),
             getDerivedSchema(valueSchemaId, derivedSchemaId)));
   }
