@@ -1296,6 +1296,8 @@ public class VeniceParentHelixAdmin implements Admin {
               + clusterName + ". Read quota " + readQuotaInCU.get() + " requested is more than the cluster quota.");
         }
         setStore.readQuotaInCU = readQuotaInCU.get();
+      } else {
+        setStore.readQuotaInCU = store.getReadQuotaInCU();
       }
       //We need to to be careful when handling currentVersion.
       //Since it is not synced between parent and local controller,
