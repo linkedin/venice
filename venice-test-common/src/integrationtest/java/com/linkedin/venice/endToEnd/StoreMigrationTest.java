@@ -93,7 +93,7 @@ public class StoreMigrationTest {
     this.isLeaderFollowerModel = isLeaderFollowerModel;
   }
 
-  @BeforeClass
+  @BeforeClass(timeOut = 180 * Time.MS_PER_SECOND)
   public void setup() {
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.

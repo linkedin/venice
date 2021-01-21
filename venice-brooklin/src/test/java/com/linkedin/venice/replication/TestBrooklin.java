@@ -61,7 +61,7 @@ public class TestBrooklin {
       kafkaSslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
 
       BrooklinTopicReplicator replicator =
-          new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaSslProps));
+          new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaSslProps));
       Assert.assertEquals(replicator.getKafkaURL(topic), "kafkassl://" + kafka.getSSLAddress() + "/" + topic);
 
       //disable ssl
@@ -70,7 +70,7 @@ public class TestBrooklin {
       kafkaNonSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "false");
 
       replicator =
-          new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaNonSslProps));
+          new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaNonSslProps));
       Assert.assertEquals(replicator.getKafkaURL(topic), "kafka://" + kafka.getAddress() + "/" + topic);
     }
   }
@@ -85,7 +85,7 @@ public class TestBrooklin {
       try (TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka))) {
         String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
         TopicReplicator replicator =
-            new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
+            new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceWriterFactory(kafka.getAddress()),
                 brooklin.getBrooklinDmsUri(), new VeniceProperties(properties), dummyVeniceClusterName, "venice-test-service", false,
                 Optional.empty());
 
@@ -197,7 +197,7 @@ public class TestBrooklin {
           .put(ConfigKeys.CLUSTER_NAME, "Venice cluster name")
           .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "some app id")
           .build();
-      VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceTestWriterFactory("some Kafka connection");
+      VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory("some Kafka connection");
       Optional<TopicReplicator> topicReplicator = TopicReplicator.getTopicReplicator(topicManager, props, veniceWriterFactory);
 
       assertTrue(topicReplicator.isPresent());

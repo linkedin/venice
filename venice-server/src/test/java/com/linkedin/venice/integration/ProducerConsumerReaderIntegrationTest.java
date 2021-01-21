@@ -6,7 +6,6 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -25,17 +24,19 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Properties;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
+
 import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -88,7 +89,7 @@ public class ProducerConsumerReaderIntegrationTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
-    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
         .createVeniceWriter(topicName, keySerializer, valueSerializer);
     storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
         .setVeniceURL(routerUrl)
@@ -139,7 +140,7 @@ public class ProducerConsumerReaderIntegrationTest {
     Properties defaultProps = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, creationResponse.getKafkaBootstrapServers());
     defaultProps.put(KAFKA_BOOTSTRAP_SERVERS, creationResponse.getKafkaBootstrapServers());
-    VeniceWriterFactory writerFactory = new VeniceWriterFactory(defaultProps);
+    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(defaultProps);
     int partitionCount =
         new ApacheKafkaProducer(new VeniceProperties(veniceWriterProperties)).getNumberOfPartitions(topicName);
     DefaultVenicePartitioner partitioner = new DefaultVenicePartitioner();
@@ -147,8 +148,7 @@ public class ProducerConsumerReaderIntegrationTest {
         GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
     veniceWriterProperties.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JT_ID, 0L);
     veniceWriterProperties.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, 0L);
-    TestUtils.VeniceTestWriterFactory veniceTestWriterFactory =
-        new TestUtils.VeniceTestWriterFactory(veniceWriterProperties);
+    VeniceWriterFactory veniceTestWriterFactory = TestUtils.getVeniceWriterFactory(veniceWriterProperties);
     ArrayList<Pair<String, String>> data = new ArrayList<>();
     // Generate a set of records that belongs to the same partition
     int k = 0;

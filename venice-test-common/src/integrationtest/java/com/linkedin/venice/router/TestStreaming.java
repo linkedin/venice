@@ -57,7 +57,6 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.router.httpclient.StorageNodeClientType.*;
 
 
@@ -124,7 +123,7 @@ public class TestStreaming {
     CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
     VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
 
-    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, new DefaultSerializer());
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, new DefaultSerializer());
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 

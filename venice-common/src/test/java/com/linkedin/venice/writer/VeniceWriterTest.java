@@ -64,7 +64,7 @@ public class VeniceWriterTest {
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
 
     ExecutorService executorService = null;
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = new VeniceWriterFactory(properties).createVeniceWriter(topicName)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(properties).createVeniceWriter(topicName)) {
       executorService = Executors.newFixedThreadPool(numberOfThreads);
       Future[] vwFutures = new Future[numberOfThreads];
       for (int i = 0; i < numberOfThreads; i++) {

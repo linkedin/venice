@@ -23,6 +23,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -639,7 +640,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
     properties.put(CLUSTER_NAME, clusterName);
-    TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
+    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -653,7 +654,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
     properties.put(CLUSTER_NAME, clusterName);
     properties.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
-    TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
+    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties);
 
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);

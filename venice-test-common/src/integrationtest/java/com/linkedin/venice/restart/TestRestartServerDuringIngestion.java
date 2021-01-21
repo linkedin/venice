@@ -126,9 +126,7 @@ public abstract class TestRestartServerDuringIngestion {
             Optional.empty(), Optional.empty());
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 

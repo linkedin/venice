@@ -101,7 +101,7 @@ public class TestHelixCustomizedView {
     controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
-    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }
 
   @AfterClass(alwaysRun = true)
