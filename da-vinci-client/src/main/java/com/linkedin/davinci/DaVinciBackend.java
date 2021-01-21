@@ -102,6 +102,7 @@ public class DaVinciBackend implements Closeable {
     ClusterInfoProvider clusterInfoProvider;
     VeniceProperties backendProps = backendConfig.getClusterProperties();
     if (backendProps.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false)) {
+      logger.info("Initializing DaVinciBackend repositories with " + MetadataStoreBasedStoreRepository.class.getSimpleName());
       MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository = MetadataStoreBasedStoreRepository.getInstance(clientConfig, backendProps);
       clusterInfoProvider = metadataStoreBasedStoreRepository;
       storeRepository = metadataStoreBasedStoreRepository;

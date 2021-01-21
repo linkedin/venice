@@ -151,7 +151,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    logger.error("Encounter exception " + cause.getMessage());
+    logger.error("Encounter exception " + cause.getMessage(), cause);
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage()));
     ctx.close();
   }
@@ -222,6 +222,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     logger.info("Isolated ingestion service uses system store repository: " + useSystemStore);
     ClusterInfoProvider clusterInfoProvider;
     if (useSystemStore) {
+      logger.info("Initializing IngestionServiceTaskHandler with " + MetadataStoreBasedStoreRepository.class.getSimpleName());
       MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository =
           MetadataStoreBasedStoreRepository.getInstance(clientConfig, veniceProperties);
       metadataStoreBasedStoreRepository.refresh();
