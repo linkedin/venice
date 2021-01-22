@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
@@ -922,9 +923,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     store.setEnableWrites(false);
     store.setEnableReads(false);
     // Legacy store
-    StoreConfig storeConfig = veniceAdmin.getStoreConfigAccessor().getStoreConfig(storeName);
+    ZkStoreConfigAccessor storeConfigAccessor = veniceAdmin.getVeniceHelixResource(clusterName).getStoreConfigAccessor();
+    StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
     storeConfig.setDeleting(true);
-    veniceAdmin.getStoreConfigAccessor().updateConfig(storeConfig);
+    storeConfigAccessor.updateConfig(storeConfig, false);
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
     //Re-create store with incompatible schema
     veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"long\"", "\"long\"");

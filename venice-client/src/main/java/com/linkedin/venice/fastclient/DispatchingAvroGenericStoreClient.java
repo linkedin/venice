@@ -45,16 +45,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final Executor deserializationExecutor;
 
   // Key serializer
-  private final RecordSerializer<K> keySerializer;
+  private RecordSerializer<K> keySerializer;
 
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
     this.metadata = metadata;
     this.config = config;
     this.transportClient = new R2TransportClient(config.getR2Client());
-
-    // Initialize key serializer
-    this.keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
 
     if (config.isSpeculativeQueryEnabled()) {
       this.requiredReplicaCount = 2;
@@ -218,6 +215,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public void start() throws VeniceClientException {
     metadata.start();
+    // Initialize key serializer after metadata.start().
+    this.keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
   }
 
   @Override

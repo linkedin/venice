@@ -411,6 +411,7 @@ public class SystemStore extends Store {
 
   @Override
   public boolean isStoreMetadataSystemStoreEnabled() {
+    // TODO zkSharedStore.isStoreMetadataSystemStoreEnabled() should never be true. Perhaps we should enforce that here or somewhere.
     return zkSharedStore.isStoreMetadataSystemStoreEnabled();
   }
 

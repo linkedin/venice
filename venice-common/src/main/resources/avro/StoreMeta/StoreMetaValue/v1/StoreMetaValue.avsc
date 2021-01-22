@@ -250,6 +250,26 @@
         }
       ],
       "default": null
+    },
+    {
+      "name": "storeClusterConfig",
+      "doc": "This is the Zk's StoreConfig equivalent which contains various Venice cluster information",
+      "type": [
+        "null",
+        {
+          "name": "StoreClusterConfig",
+          "doc": "This type describes the various Venice cluster information for a store",
+          "type": "record",
+          "fields": [
+            {"name":  "cluster", "type": "string", "default": "", "doc": "The Venice cluster of the store."},
+            {"name":  "deleting", "type": "boolean", "default": false, "doc": "Is the store undergoing deletion."},
+            {"name":  "migrationDestCluster", "type": ["null", "string"], "default": null, "doc": "The destination cluster for store migration"},
+            {"name":  "migrationSrcCluster", "type": ["null", "string"], "default": null, "doc": "The source cluster for store migration"},
+            {"name":  "storeName", "type": "string", "default": "", "doc": "The name of the store"}
+          ]
+        }
+      ],
+      "default": null
     }
   ]
 }

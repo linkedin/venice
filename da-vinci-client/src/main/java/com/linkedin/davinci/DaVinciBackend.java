@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import com.linkedin.davinci.repository.NativeMetadataRepository;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -42,7 +43,6 @@ import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
@@ -103,8 +103,9 @@ public class DaVinciBackend implements Closeable {
     ClusterInfoProvider clusterInfoProvider;
     VeniceProperties backendProps = backendConfig.getClusterProperties();
     if (backendProps.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false)) {
-      logger.info("Initializing DaVinciBackend repositories with " + MetadataStoreBasedStoreRepository.class.getSimpleName());
-      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository = MetadataStoreBasedStoreRepository.getInstance(clientConfig, backendProps);
+      logger.info("Initializing DaVinciBackend repositories with " + NativeMetadataRepository.class.getSimpleName());
+      NativeMetadataRepository
+          metadataStoreBasedStoreRepository = NativeMetadataRepository.getInstance(clientConfig, backendProps);
       clusterInfoProvider = metadataStoreBasedStoreRepository;
       storeRepository = metadataStoreBasedStoreRepository;
       schemaRepository = metadataStoreBasedStoreRepository;
