@@ -53,6 +53,7 @@ import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.HashMap;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -514,13 +515,14 @@ public class SystemStoreTest {
     TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
         TimeUnit.SECONDS, Optional.empty());
     venice.refreshAllRouterMetaData();
+    String metadataStoreVersionConfig = regularVeniceStore + ":" + metadataStoreVersionNumber;
 
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(CLIENT_METADATA_SYSTEM_STORE_VERSION, metadataStoreVersionNumber)
+        .put(CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP, metadataStoreVersionConfig)
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024);

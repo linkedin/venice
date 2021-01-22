@@ -1396,9 +1396,10 @@ public class ConfigKeys {
   /*
    * Temporary config to specify the version number of the corresponding metadata system store. This config will retire
    * once multi-versioned metadata system store is properly supported. Setting the config will enable DaVinci to
-   * bootstrap the metadata system store locally.
+   * bootstrap the metadata system store locally. The config should be a map of Venice store name to their corresponding
+   * metadata store version.
    */
-  public static final String CLIENT_METADATA_SYSTEM_STORE_VERSION = "client.metadata.system.store.version";
+  public static final String CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP = "client.metadata.system.store.version.map";
 
   /**
    * Whether to throttle SSL connections between router and client.
