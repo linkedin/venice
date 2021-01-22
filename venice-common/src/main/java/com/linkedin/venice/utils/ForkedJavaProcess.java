@@ -190,13 +190,11 @@ public final class ForkedJavaProcess extends Process {
         // Java 8: `pid` is a private field
         Field pidField = process.getClass().getDeclaredField("pid");
         pidField.setAccessible(true);
-        long pid = pidField.getLong(process);
-        pidField.setAccessible(false);
-        return pid;
+        return pidField.getInt(process);
       } else {
         // Java 9+: `pid()` is a public method
-        Method pidMethod = process.getClass().getMethod("pid");
-        return (Long) pidMethod.invoke(process);
+        Method pidMethod = Process.class.getMethod("pid");
+        return (long) pidMethod.invoke(process);
       }
     } catch (Exception e) {
       LOGGER.error("Unable to access pid of " + process.getClass().getName(), e);
