@@ -47,6 +47,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -103,9 +104,9 @@ public abstract class MetadataStoreBasedStoreRepository implements SubscriptionB
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
 
   public static MetadataStoreBasedStoreRepository getInstance(ClientConfig<StoreMetadataValue> clientConfig, VeniceProperties backendConfig) {
-    int metadataSystemStoreVersion = backendConfig.getInt(CLIENT_METADATA_SYSTEM_STORE_VERSION,
-        MetadataStoreBasedStoreRepository.DEFAULT_METADATA_SYSTEM_STORE_VERSION);
-    if (metadataSystemStoreVersion > 0) {
+    Map<String, String> metadataSystemStoreVersion = backendConfig.getMap(CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP,
+        new HashMap<>());
+    if (!metadataSystemStoreVersion.isEmpty()) {
       logger.info("Initializing " + MetadataStoreBasedStoreRepository.class.getSimpleName() + " with "
           + DaVinciClientMetadataStoreBasedRepository.class.getSimpleName());
       return new DaVinciClientMetadataStoreBasedRepository(clientConfig, backendConfig, metadataSystemStoreVersion);

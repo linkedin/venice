@@ -1,5 +1,6 @@
 package com.linkedin.davinci.repository;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -48,7 +49,7 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
   // TODO Add a server endpoint to retrieve the zk shared store configs and versions properly instead of relying on the
   // default configs and a predesignated version topic.
   private final Map<String, Store> metadataSystemStores = new VeniceConcurrentHashMap<>();
-  private final int metadataSystemStoreVersion;
+  private final Map<String, String> metadataSystemStoreVersion = new VeniceConcurrentHashMap<>();
 
   // SchemaReader used to retrieve schemas for the metadata system stores.
   private SchemaReader metadataStoreSchemaReader;
@@ -59,9 +60,9 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
   private final CachingDaVinciClientFactory daVinciClientFactory;
 
   public DaVinciClientMetadataStoreBasedRepository(ClientConfig<StoreMetadataValue> clientConfig,
-      VeniceProperties backendConfig, int metadataSystemStoreVersion) {
+      VeniceProperties backendConfig, Map<String, String> metadataSystemStoreVersion) {
     super(clientConfig, backendConfig);
-    this.metadataSystemStoreVersion = metadataSystemStoreVersion;
+    this.metadataSystemStoreVersion.putAll(metadataSystemStoreVersion);
     daVinciClientFactory = new CachingDaVinciClientFactory(clientConfig.getD2Client(),
         Optional.ofNullable(clientConfig.getMetricsRepository())
             .orElse(TehutiUtils.getMetricsRepository("davinci-client")), backendConfig);
@@ -73,6 +74,11 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
     updateLock.lock();
     try {
       if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
+        String veniceStoreName = VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName);
+        if (!metadataSystemStoreVersion.containsKey(veniceStoreName)) {
+          throw new VeniceException("Unable to find corresponding metadata system store version for store: "
+              + storeName + ". Please double check the config: " + ConfigKeys.CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP);
+        }
         metadataSystemStores.computeIfAbsent(storeName, k -> {
           Store store = new ZKStore(storeName, "venice-system", 0,
               PersistenceType.ROCKS_DB, RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE,
@@ -81,8 +87,8 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
           // TODO time based lag threshold might be more suitable than offset based for system store use cases.
           store.setHybridStoreConfig(new HybridStoreConfig(DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
               OFFSET_LAG_THRESHOLD_FOR_METADATA_DA_VINCI_STORE, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
-          Version currentVersion = new Version(storeName, metadataSystemStoreVersion, "system_store_push_job",
-              DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
+          Version currentVersion = new Version(storeName, Integer.parseInt(metadataSystemStoreVersion.get(veniceStoreName)),
+              "system_store_push_job", DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
           store.addVersion(currentVersion);
           store.setCurrentVersion(currentVersion.getNumber());
           return store;
