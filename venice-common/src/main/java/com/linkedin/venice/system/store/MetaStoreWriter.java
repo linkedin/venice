@@ -6,6 +6,7 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -15,6 +16,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
@@ -92,9 +94,9 @@ public class MetaStoreWriter implements Closeable {
         });
   }
 
-  public void writeStoreKeySchemas(String clusterName, String storeName, Collection<SchemaEntry> keySchemas) {
+  public void writeStoreKeySchemas(String storeName, Collection<SchemaEntry> keySchemas) {
     write(storeName, MetaStoreDataType.STORE_KEY_SCHEMAS,
-        () -> new HashMap<String, String>() {{ put(KEY_STRING_STORE_NAME, storeName); put(KEY_STRING_CLUSTER_NAME, clusterName);}},
+        () -> new HashMap<String, String>() {{ put(KEY_STRING_STORE_NAME, storeName);}},
         () -> {
           StoreMetaValue value = new StoreMetaValue();
           StoreKeySchemas storeKeySchemas = new StoreKeySchemas();
@@ -108,9 +110,9 @@ public class MetaStoreWriter implements Closeable {
    * This function should be invoked for any value schema changes, and the {@param valueSchemas} should
    * contain all the value schemas since this operation will be a full PUT.
    */
-  public void writeStoreValueSchemas(String clusterName, String storeName, Collection<SchemaEntry> valueSchemas) {
+  public void writeStoreValueSchemas(String storeName, Collection<SchemaEntry> valueSchemas) {
     write(storeName, MetaStoreDataType.STORE_VALUE_SCHEMAS,
-        () -> new HashMap<String, String>() {{ put(KEY_STRING_STORE_NAME, storeName); put(KEY_STRING_CLUSTER_NAME, clusterName);}},
+        () -> new HashMap<String, String>() {{ put(KEY_STRING_STORE_NAME, storeName);}},
         () -> {
           StoreMetaValue value = new StoreMetaValue();
           StoreValueSchemas storeValueSchemas = new StoreValueSchemas();
@@ -170,6 +172,22 @@ public class MetaStoreWriter implements Closeable {
           storeReplicaStatusesUpdate.put(MAP_DIFF, Collections.emptyList());
           update.put("storeReplicaStatuses", storeReplicaStatusesUpdate);
           return update;
+        });
+  }
+
+  /**
+   * Write {@link com.linkedin.venice.meta.StoreConfig} equivalent to the meta system store. This is still only invoked
+   * by child controllers only.
+   */
+  public void writeStoreClusterConfig(StoreConfig storeConfig) {
+    write(storeConfig.getStoreName(), MetaStoreDataType.STORE_CLUSTER_CONFIG,
+        () -> new HashMap<String, String>() {{
+          put(KEY_STRING_STORE_NAME, storeConfig.getStoreName());
+        }},
+        () -> {
+          StoreMetaValue value = new StoreMetaValue();
+          value.storeClusterConfig = storeConfig.dataModel();
+          return value;
         });
   }
 

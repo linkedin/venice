@@ -151,7 +151,7 @@ public class VeniceHelixResources implements VeniceResource {
     this.aggPartitionHealthStats =
         new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository, pushMonitor);
     this.aggStoreStats = new AggStoreStats(metricsRepository, metadataRepository);
-    this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
+    this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer, metaStoreWriter);
     String readLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-readLock";
     this.veniceHelixResourceReadLock = new VeniceLock(shutdownLock.readLock(), readLockDescription, metricsRepository);
     String writeLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-writeLock";
@@ -254,6 +254,10 @@ public class VeniceHelixResources implements VeniceResource {
 
   public Optional<MetaStoreWriter> getMetaStoreWriter() {
     return metaStoreWriter;
+  }
+
+  public ZkStoreConfigAccessor getStoreConfigAccessor() {
+    return storeConfigAccessor;
   }
 
   /**

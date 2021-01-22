@@ -1,14 +1,18 @@
 package com.linkedin.venice.fastclient;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -46,6 +50,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final String veniceZKAddress;
   private final String clusterName;
 
+  // For DaVinciClientBasedMetadata
+  private final VeniceProperties daVinciBackendConfig;
+  private final D2Client d2Client;
+  private final long metadataRefreshInvervalInSeconds;
+
   private ClientConfig(String storeName,
       Client r2Client,
       MetricsRepository metricsRepository,
@@ -62,7 +71,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long routingUnavailableRequestCounterResetDelayMS,
       int routingPendingRequestCounterInstanceBlockThreshold,
       String veniceZKAddress,
-      String clusterName) {
+      String clusterName,
+      VeniceProperties daVinciBackendConfig,
+      D2Client d2Client,
+      long metadataRefreshInvervalInSeconds) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -73,6 +85,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
     this.metricsRepository = (metricsRepository == null ? new MetricsRepository() : metricsRepository);
+    // TODO consider changing the implementation or make it explicit that the config builder can only build once with the same metricsRepository
     for (RequestType requestType : RequestType.values()) {
       clientStatsMap.put(requestType, ClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
     }
@@ -101,6 +114,20 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.veniceZKAddress = veniceZKAddress;
     this.clusterName = clusterName;
+    if (daVinciBackendConfig != null) {
+      // User would like to use DaVinciClientBasedStoreMetadata, check the provided configs to fail fast if needed.
+      Map<String, String> metaSystemStoreVersionMap = daVinciBackendConfig.getMap(ConfigKeys.CLIENT_META_SYSTEM_STORE_VERSION_MAP, new HashMap<>());
+      if (metaSystemStoreVersionMap.isEmpty() || !metaSystemStoreVersionMap.containsKey(storeName)) {
+        throw new VeniceClientException("The current version for corresponding Meta store for store: " + storeName + " is required by the config: "
+            + ConfigKeys.CLIENT_META_SYSTEM_STORE_VERSION_MAP);
+      }
+      if (d2Client == null) {
+        throw new VeniceClientException("d2Client is required for DaVinciClientBasedStoreMetadata in fast client");
+      }
+    }
+    this.daVinciBackendConfig = daVinciBackendConfig;
+    this.d2Client = d2Client;
+    this.metadataRefreshInvervalInSeconds = metadataRefreshInvervalInSeconds;
   }
 
   public String getStoreName() {
@@ -175,6 +202,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return clusterName;
   }
 
+  public VeniceProperties getDaVinciBackendConfig() {
+    return daVinciBackendConfig;
+  }
+
+  public D2Client getD2Client() {
+    return d2Client;
+  }
+
+  public long getMetadataRefreshInvervalInSeconds() {
+    return metadataRefreshInvervalInSeconds;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -196,6 +235,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     // For perf test purpose
     private String veniceZKAddress;
     private String clusterName;
+
+    private VeniceProperties daVinciBackendConfig;
+    private D2Client d2Client;
+    private long metadataRefreshInvervalInSeconds = -1;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -283,6 +326,21 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setDaVinciBackendConfig(VeniceProperties daVinciBackendConfig) {
+      this.daVinciBackendConfig = daVinciBackendConfig;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setD2Client(D2Client d2Client) {
+      this.d2Client = d2Client;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setMetadataRefreshInvervalInSeconds(long metadataRefreshInvervalInSeconds) {
+      this.metadataRefreshInvervalInSeconds = metadataRefreshInvervalInSeconds;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder()
           .setStoreName(storeName)
@@ -301,7 +359,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRoutingUnavailableRequestCounterResetDelayMS(routingUnavailableRequestCounterResetDelayMS)
           .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
           .setVeniceZKAddress(veniceZKAddress)
-          .setClusterName(clusterName);
+          .setClusterName(clusterName)
+          .setDaVinciBackendConfig(daVinciBackendConfig)
+          .setD2Client(d2Client)
+          .setMetadataRefreshInvervalInSeconds(metadataRefreshInvervalInSeconds);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -321,7 +382,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
           veniceZKAddress,
-          clusterName);
+          clusterName,
+          daVinciBackendConfig,
+          d2Client,
+          metadataRefreshInvervalInSeconds);
     }
   }
 }

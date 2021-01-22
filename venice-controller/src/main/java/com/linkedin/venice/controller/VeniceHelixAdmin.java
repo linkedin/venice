@@ -80,9 +80,8 @@ import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
-import com.linkedin.venice.pushstatus.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.pushstatus.PushStatusStoreReader;
-import com.linkedin.venice.pushstatus.PushStatusStoreVeniceWriterCache;
+import com.linkedin.venice.pushstatus.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
@@ -222,7 +221,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
     private final long deprecatedJobTopicRetentionMs;
     private final long deprecatedJobTopicMaxRetentionMs;
-    private final ZkStoreConfigAccessor storeConfigAccessor;
     private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
     private final VeniceWriterFactory veniceWriterFactory;
     private final VeniceControllerConsumerFactory veniceConsumerFactory;
@@ -339,9 +337,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                                                  veniceConsumerFactory);
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
-        this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
         this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer,
             commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
+        storeConfigRepo.refresh();
         this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
         veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
         this.onlineOfflineTopicReplicator =
@@ -497,21 +495,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
         // Find out the cluster first
-        StoreConfig storeConfig = getStoreConfigAccessor().getStoreConfig(storeName);
-        if (null == storeConfig) {
+        Optional<StoreConfig> storeConfig = storeConfigRepo.getStoreConfig(storeName);
+        if (!storeConfig.isPresent()) {
             if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE ||
                 VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
                 // Use the corresponding Venice store name to get cluster information
-                storeConfig = getStoreConfigAccessor().getStoreConfig(
+                storeConfig = storeConfigRepo.getStoreConfig(
                     VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName));
             }
-            if (null == storeConfig) {
+            if (!storeConfig.isPresent()) {
                 logger.info(
                     "StoreConfig doesn't exist for store: " + storeName + ", will treat resource:" + resourceName + " as deprecated");
                 return false;
             }
         }
-        String clusterName = storeConfig.getCluster();
+        String clusterName = storeConfig.get().getCluster();
         return isResourceStillAlive(clusterName, resourceName);
     }
 
@@ -577,6 +575,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
                 storeRepo.addStore(newStore);
                 // Create global config for that store.
+                ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(clusterName).getStoreConfigAccessor();
                 if (!storeConfigAccessor.containsConfig(storeName)) {
                     storeConfigAccessor.createConfig(storeName, clusterName);
                 }
@@ -617,6 +616,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
             storeRepository.lock();
             Store store = null;
+            ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(clusterName).getStoreConfigAccessor();
             StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
             try {
                 store = storeRepository.getStore(storeName);
@@ -657,7 +657,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
                     // delete this legacy store if isDeleting is true for this store.
                     storeConfig.setDeleting(true);
-                    storeConfigAccessor.updateConfig(storeConfig);
+                    storeConfigAccessor.updateConfig(storeConfig, store.isStoreMetaSystemStoreEnabled());
                 }
                 storeRepository.updateStore(store);
             } finally {
@@ -1029,15 +1029,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public synchronized void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
-        StoreConfig storeConfig = this.storeConfigAccessor.getStoreConfig(storeName);
+        ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(oldCluster).getStoreConfigAccessor();
+        StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
         if (storeConfig == null) {
             throw new VeniceException("Store config is empty!");
         } else if (!storeConfig.getCluster().equals(oldCluster)) {
             throw new VeniceException("Store " + storeName + " is expected to be in " + oldCluster + " cluster, but is actually in " + storeConfig.getCluster());
         }
-
+        Store store = getStore(oldCluster, storeName);
         storeConfig.setCluster(newCluster);
-        this.storeConfigAccessor.updateConfig(storeConfig);
+        storeConfigAccessor.updateConfig(storeConfig, store.isStoreMetaSystemStoreEnabled());
         logger.info("Store " + storeName + " now belongs to cluster " + newCluster + " instead of " + oldCluster);
     }
 
@@ -1055,6 +1056,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // TODO so we need a way to sync up the data. For example, while we loading all stores from ZK for a cluster,
         // TODO put them into global store configs.
         boolean isLagecyStore = false;
+        ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(clusterName).getStoreConfigAccessor();
         if (storeConfigAccessor.containsConfig(storeName)) {
             StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
             // Controller was trying to delete the old store but failed.
@@ -1170,7 +1172,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Version.PushType pushType, String remoteKafkaBootstrapServers) {
         checkControllerMastership(clusterName);
         try {
-            StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
+            StoreConfig storeConfig = storeConfigRepo.getStoreConfigOrThrow(storeName);
             String destinationCluster = storeConfig.getMigrationDestCluster();
             String sourceCluster = storeConfig.getMigrationSrcCluster();
             if (storeConfig.getCluster().equals(destinationCluster)) {
@@ -1606,7 +1608,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (multiClusterConfigs.isParent()) {
             return false;
         }
-        StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
+        StoreConfig storeConfig = storeConfigRepo.getStoreConfigOrThrow(storeName);
         String destCluster = storeConfig.getMigrationDestCluster();
         if (clusterName.equals(destCluster)) {
             String versionTopic = Version.composeKafkaTopic(storeName, versionNumber);
@@ -2987,7 +2989,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     public void replicateUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
         try {
-            StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
+            StoreConfig storeConfig = storeConfigRepo.getStoreConfigOrThrow(storeName);
             String destinationCluster = storeConfig.getMigrationDestCluster();
             String sourceCluster = storeConfig.getMigrationSrcCluster();
             if (storeConfig.getCluster().equals(destinationCluster)) {
@@ -4198,7 +4200,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public Pair<String, String> discoverCluster(String storeName) {
-        StoreConfig config = storeConfigAccessor.getStoreConfig(storeName);
+        StoreConfig config = storeConfigRepo.getStoreConfigOrThrow(storeName);
         if (config == null || Utils.isNullOrEmpty(config.getCluster())) {
             throw new VeniceNoStoreException("Could not find the given store: " + storeName
             + ". Make sure the store is created and the provided store name is correct");
@@ -4337,10 +4339,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return controllerName;
     }
 
-    public ZkStoreConfigAccessor getStoreConfigAccessor() {
-        return storeConfigAccessor;
-    }
-
     HelixReadOnlyStoreConfigRepository getStoreConfigRepo() { return storeConfigRepo; }
 
     public interface StoreMetadataOperation {
@@ -4457,7 +4455,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             ParticipantMessageKey key = new ParticipantMessageKey();
             key.resourceName = metadataVTName;
             key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
-            getParticipantStoreWriter(clusterName).delete(key, null, PARTICIPANT_MESSAGE_STORE_SCHEMA_ID);
+            getParticipantStoreWriter(clusterName).delete(key, null);
             createSystemStoreResources(clusterName, storeName, metadataStoreVersionNumber, zkSharedStoreMetadata,
                 VeniceSystemStoreType.METADATA_STORE);
             writeEndOfPush(clusterName, metadataStoreName, metadataStoreVersionNumber, true);
@@ -4619,10 +4617,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     public void setStoreConfigForMigration(String storeName, String srcClusterName, String destClusterName) {
+        ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(srcClusterName).getStoreConfigAccessor();
         StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
         storeConfig.setMigrationSrcCluster(srcClusterName);
         storeConfig.setMigrationDestCluster(destClusterName);
-        storeConfigAccessor.updateConfig(storeConfig);
+        Store store = getStore(srcClusterName, storeName);
+        storeConfigAccessor.updateConfig(storeConfig, store.isStoreMetaSystemStoreEnabled());
     }
 
     @Override
@@ -4713,13 +4713,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store = repository.getStore(regularStoreName);
         // Local store properties
         metaStoreWriter.get().writeStoreProperties(clusterName, store);
+        // Store cluster configs
+        metaStoreWriter.get().writeStoreClusterConfig(getVeniceHelixResource(clusterName).getStoreConfigAccessor()
+            .getStoreConfig(regularStoreName));
         logger.info("Wrote store property snapshot to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
         // Key/value schemas
         Collection<SchemaEntry> keySchemas = new HashSet<>();
         keySchemas.add(getKeySchema(clusterName, regularStoreName));
-        metaStoreWriter.get().writeStoreKeySchemas(clusterName, regularStoreName, keySchemas);
+        metaStoreWriter.get().writeStoreKeySchemas(regularStoreName, keySchemas);
         logger.info("Wrote key schema to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
-        metaStoreWriter.get().writeStoreValueSchemas(clusterName, regularStoreName, getValueSchemas(clusterName, regularStoreName));
+        metaStoreWriter.get().writeStoreValueSchemas(regularStoreName, getValueSchemas(clusterName, regularStoreName));
         logger.info("Wrote value schemas to meta system store for venice store: " + regularStoreName + " in cluster: " + clusterName);
         // replica status for all the available versions
         List<Version> versions = store.getVersions();

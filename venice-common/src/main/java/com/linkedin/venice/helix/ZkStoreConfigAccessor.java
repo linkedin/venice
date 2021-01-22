@@ -1,14 +1,12 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collector;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
@@ -29,14 +27,17 @@ public class ZkStoreConfigAccessor {
 
   private final ZkClient zkClient;
   private final ZkBaseDataAccessor<StoreConfig> dataAccessor;
+  private final Optional<MetaStoreWriter> metaStoreWriter;
 
-  public ZkStoreConfigAccessor(ZkClient zkClient, HelixAdapterSerializer adapterSerializer) {
+  public ZkStoreConfigAccessor(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
+      Optional<MetaStoreWriter> metaStoreWriter) {
     this.zkClient = zkClient;
     adapterSerializer
         .registerSerializer(ROOT_PATH + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY, new StoreConfigJsonSerializer());
     adapterSerializer.registerSerializer(ROOT_PATH, new VeniceJsonSerializer<>(Integer.TYPE));
     this.zkClient.setZkSerializer(adapterSerializer);
     dataAccessor = new ZkBaseDataAccessor<>(this.zkClient);
+    this.metaStoreWriter = metaStoreWriter;
   }
 
   public List<String> getAllStores() {
@@ -91,8 +92,11 @@ public class ZkStoreConfigAccessor {
     HelixUtils.create(dataAccessor, getStoreConfigPath(store), config);
   }
 
-  public synchronized void updateConfig(StoreConfig config) {
+  public synchronized void updateConfig(StoreConfig config, boolean isStoreMetaSystemStoreEnabled) {
     HelixUtils.compareAndUpdate(dataAccessor, getStoreConfigPath(config.getStoreName()), currentData -> config);
+    if (isStoreMetaSystemStoreEnabled && metaStoreWriter.isPresent()) {
+      metaStoreWriter.get().writeStoreClusterConfig(config);
+    }
   }
 
   public void subscribeStoreConfigDataChangedListener(String storeName, IZkDataListener listener) {

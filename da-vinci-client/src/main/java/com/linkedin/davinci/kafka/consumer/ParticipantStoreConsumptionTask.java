@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.meta.ClusterInfoProvider;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -64,7 +65,8 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
 
         for (String topic : storeIngestionService.getIngestingTopicsWithVersionStatusNotOnline()) {
           key.resourceName = topic;
-          for (String clusterName : clusterInfoProvider.getAssociatedClusters()) {
+          String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
+          if (clusterName != null) {
             ParticipantMessageValue value = getParticipantStoreClient(clusterName).get(key).get();
             if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
               KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;

@@ -14,10 +14,12 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -40,7 +42,7 @@ import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 /**
  * Implementation that uses DaVinci client to bootstrap the metadata system stores locally.
  */
-public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBasedStoreRepository {
+public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRepository {
 
   private static final long OFFSET_LAG_THRESHOLD_FOR_METADATA_DA_VINCI_STORE = 1;
   private static final long DEFAULT_DA_VINCI_CLIENT_ROCKS_DB_MEMORY_LIMIT = 1024 * 1024 * 1024; // 1 GB
@@ -71,39 +73,34 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
 
   @Override
   public void subscribe(String storeName) throws InterruptedException {
-    updateLock.lock();
-    try {
-      if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
-        String veniceStoreName = VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName);
-        if (!metadataSystemStoreVersion.containsKey(veniceStoreName)) {
-          throw new VeniceException("Unable to find corresponding metadata system store version for store: "
-              + storeName + ". Please double check the config: " + ConfigKeys.CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP);
-        }
-        metadataSystemStores.computeIfAbsent(storeName, k -> {
-          Store store = new ZKStore(storeName, "venice-system", 0,
-              PersistenceType.ROCKS_DB, RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE,
-              OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-          store.setPartitionCount(DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
-          // TODO time based lag threshold might be more suitable than offset based for system store use cases.
-          store.setHybridStoreConfig(new HybridStoreConfig(DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
-              OFFSET_LAG_THRESHOLD_FOR_METADATA_DA_VINCI_STORE, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
-          Version currentVersion = new Version(storeName, Integer.parseInt(metadataSystemStoreVersion.get(veniceStoreName)),
-              "system_store_push_job", DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
-          store.addVersion(currentVersion);
-          store.setCurrentVersion(currentVersion.getNumber());
-          return store;
-        });
-        if (metadataStoreSchemaReader == null) {
-          ClientConfig<StoreMetadataValue> clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
-              .setStoreName(VeniceSystemStoreType.METADATA_STORE.getPrefix())
-              .setSpecificValueClass(StoreMetadataValue.class);
-          metadataStoreSchemaReader = ClientFactory.getSchemaReader(clonedClientConfig);
-        }
-      } else {
-        super.subscribe(storeName);
+    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
+      String veniceStoreName = VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName);
+      if (!metadataSystemStoreVersion.containsKey(veniceStoreName)) {
+        throw new VeniceException("Unable to find corresponding metadata system store version for store: "
+            + storeName + ". Please double check the config: " + ConfigKeys.CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP);
       }
-    } finally {
-      updateLock.unlock();
+      metadataSystemStores.computeIfAbsent(storeName, k -> {
+        Store store = new ZKStore(storeName, "venice-system", 0,
+            PersistenceType.ROCKS_DB, RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE,
+            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        store.setPartitionCount(DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
+        // TODO time based lag threshold might be more suitable than offset based for system store use cases.
+        store.setHybridStoreConfig(new HybridStoreConfig(DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
+            OFFSET_LAG_THRESHOLD_FOR_METADATA_DA_VINCI_STORE, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+        Version currentVersion = new Version(storeName, Integer.parseInt(metadataSystemStoreVersion.get(veniceStoreName)),
+            "system_store_push_job", DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
+        store.addVersion(currentVersion);
+        store.setCurrentVersion(currentVersion.getNumber());
+        return store;
+      });
+      if (metadataStoreSchemaReader == null) {
+        ClientConfig<StoreMetadataValue> clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
+            .setStoreName(VeniceSystemStoreType.METADATA_STORE.getPrefix())
+            .setSpecificValueClass(StoreMetadataValue.class);
+        metadataStoreSchemaReader = ClientFactory.getSchemaReader(clonedClientConfig);
+      }
+    } else {
+      super.subscribe(storeName);
     }
   }
 
@@ -130,6 +127,15 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
       throw new VeniceNoStoreException(storeName);
     } else {
       return super.getStoreOrThrow(storeName);
+    }
+  }
+
+  @Override
+  public boolean hasStore(String storeName) {
+    if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
+      return metadataSystemStores.containsKey(storeName);
+    } else {
+      return super.hasStore(storeName);
     }
   }
 
@@ -172,18 +178,23 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
 
   @Override
   public void clear() {
-    updateLock.lock();
-    try {
       super.clear();
-      daVinciClientMap.forEach((k, v) -> v.unsubscribeAll());
-      daVinciClientFactory.close();
-      daVinciClientMap.clear();
-      if (metadataStoreSchemaReader != null) {
-        metadataStoreSchemaReader.close();
-      }
-    } finally {
-      updateLock.unlock();
+    daVinciClientMap.forEach((k, v) -> v.unsubscribeAll());
+    daVinciClientFactory.close();
+    daVinciClientMap.clear();
+    if (metadataStoreSchemaReader != null) {
+      metadataStoreSchemaReader.close();
     }
+  }
+
+  @Override
+  protected StoreConfig getStoreConfigFromSystemStore(String storeName) {
+    return getStoreConfigFromMetadataSystemStore(storeName);
+  }
+
+  @Override
+  protected Store getStoreFromSystemStore(String storeName, String clusterName) {
+    return getStoreFromMetadataSystemStore(storeName, clusterName);
   }
 
   @Override
@@ -202,15 +213,22 @@ public class DaVinciClientMetadataStoreBasedRepository extends MetadataStoreBase
     }
   }
 
-  private DaVinciClient<StoreMetadataKey, StoreMetadataValue> getDaVinciClientForSystemStore(String storeName)
-      throws ExecutionException, InterruptedException {
-    // Thread safe for new client initialization since all calls to getDaVinciClientForSystemStore are protected by updateLock
-    if (!daVinciClientMap.containsKey(storeName)) {
+  @Override
+  protected SchemaData getSchemaDataFromSystemStore(String storeName) {
+    return getSchemaDataFromMetadataSystemStore(storeName);
+  }
+
+  private DaVinciClient<StoreMetadataKey, StoreMetadataValue> getDaVinciClientForSystemStore(String storeName) {
+    return daVinciClientMap.computeIfAbsent(storeName, k -> {
       DaVinciClient<StoreMetadataKey, StoreMetadataValue> client = daVinciClientFactory.getAndStartSpecificAvroClient(
           VeniceSystemStoreUtils.getMetadataStoreName(storeName), daVinciConfig, StoreMetadataValue.class);
-      client.subscribeAll().get();
+      try {
+        client.subscribeAll().get();
+      } catch (InterruptedException | ExecutionException e) {
+        throw new VeniceException("Failed to construct DaVinci client for the metadata store of store: " + storeName, e);
+      }
       daVinciClientMap.put(storeName, client);
-    }
-    return daVinciClientMap.get(storeName);
+      return client;
+    });
   }
 }

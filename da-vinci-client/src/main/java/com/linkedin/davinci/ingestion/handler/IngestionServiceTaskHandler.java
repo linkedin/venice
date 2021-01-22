@@ -9,7 +9,7 @@ import com.linkedin.davinci.ingestion.IngestionService;
 import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.repository.MetadataStoreBasedStoreRepository;
+import com.linkedin.davinci.repository.NativeMetadataRepository;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
@@ -223,13 +223,13 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     logger.info("Isolated ingestion service uses system store repository: " + useSystemStore);
     ClusterInfoProvider clusterInfoProvider;
     if (useSystemStore) {
-      logger.info("Initializing IngestionServiceTaskHandler with " + MetadataStoreBasedStoreRepository.class.getSimpleName());
-      MetadataStoreBasedStoreRepository metadataStoreBasedStoreRepository =
-          MetadataStoreBasedStoreRepository.getInstance(clientConfig, veniceProperties);
-      metadataStoreBasedStoreRepository.refresh();
-      clusterInfoProvider = metadataStoreBasedStoreRepository;
-      storeRepository = metadataStoreBasedStoreRepository;
-      schemaRepository = metadataStoreBasedStoreRepository;
+      logger.info("Initializing IngestionServiceTaskHandler with " + NativeMetadataRepository.class.getSimpleName());
+      NativeMetadataRepository
+          systemStoreBasedRepository = NativeMetadataRepository.getInstance(clientConfig, veniceProperties);
+      systemStoreBasedRepository.refresh();
+      clusterInfoProvider = systemStoreBasedRepository;
+      storeRepository = systemStoreBasedRepository;
+      schemaRepository = systemStoreBasedRepository;
     } else {
       clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
       storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);

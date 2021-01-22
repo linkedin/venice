@@ -1,13 +1,10 @@
 package com.linkedin.venice.meta;
 
-import java.util.Set;
-
-
 public interface ClusterInfoProvider {
 
   /**
-   * Get the Venice clusters that are associated with the Venice component that holds this {@link kafka.cluster.Cluster}.
-   * @return a {@link Set} of associated Venice cluster names.
+   * Get the associated Venice cluster name given a Venice store name.
+   * @return the cluster name that the store belongs to or null if such information cannot be provided.
    */
-  Set<String> getAssociatedClusters();
+  String getVeniceCluster(String storeName);
 }

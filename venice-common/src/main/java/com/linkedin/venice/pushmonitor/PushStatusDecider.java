@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -147,6 +148,17 @@ public abstract class PushStatusDecider {
                 partitionStatus.getReplicaHistoricStatusList(instance.getNodeId()))
                 .equals(ExecutionStatus.COMPLETED))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Replicas from L/F and Online/Offline model will be considered ready to serve if their status is {@link ExecutionStatus.COMPLETED}.
+   * More information is needed if you'd like to change/support other behaviors such as routing to the leader replica.
+   * @param replicaStatusMap
+   * @return List of ready to serve instance ids
+   */
+  public static List<String> getReadyToServeInstances(Map<CharSequence, StoreReplicaStatus> replicaStatusMap) {
+    return replicaStatusMap.entrySet().stream().filter(e -> e.getValue().status == COMPLETED.value)
+        .map(e -> e.getKey().toString()).collect(Collectors.toList());
   }
 
   /**

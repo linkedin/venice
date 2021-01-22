@@ -1,24 +1,20 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.HashMap;
-import java.util.Map;
+import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 
 
 /**
  * Configurations of a store which are non-cluster specified.
  */
-public class StoreConfig {
-  public static final String CLUSTER_PROPERTY = "cluster";
-  public static final String IS_DELETING_PROPERTY = "is_deleting";
-  public static final String MIGRATION_SRC_CLUSTER = "migration_src_cluster";
-  public static final String MIGRATION_DEST_CLUSTER = "migration_dest_cluster";
-  private String storeName;
-  private Map<String, String> configs;
+public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig> {
+  private final String storeName;
+  private final StoreClusterConfig storeClusterConfig;
 
   public StoreConfig(String storeName) {
     this.storeName = storeName;
-    configs = new HashMap<>();
+    storeClusterConfig = Store.prefillAvroRecordWithDefaultValue(new StoreClusterConfig());
+    storeClusterConfig.storeName = storeName;
   }
 
   public String getStoreName() {
@@ -26,43 +22,55 @@ public class StoreConfig {
   }
 
   public boolean isDeleting() {
-    if (configs.containsKey(IS_DELETING_PROPERTY)) {
-      return Boolean.valueOf(configs.get(IS_DELETING_PROPERTY)).booleanValue();
-    } else {
-      return false;
-    }
+    return storeClusterConfig.deleting;
   }
 
   public void setDeleting(boolean isDeleting) {
-    configs.put(IS_DELETING_PROPERTY, String.valueOf(isDeleting));
+    storeClusterConfig.deleting = isDeleting;
   }
 
   public String getCluster() {
-    if (configs.containsKey(CLUSTER_PROPERTY)) {
-      return configs.get(CLUSTER_PROPERTY);
+    if (storeClusterConfig.cluster.length() != 0) {
+      return storeClusterConfig.cluster.toString();
     } else {
       throw new VeniceException(
-          "Could not find property:" + CLUSTER_PROPERTY + " in the config of store: " + storeName);
+          "Could not find cluster property in the config of store: " + storeName);
     }
   }
 
   public void setCluster(String cluster) {
-    configs.put(CLUSTER_PROPERTY, cluster);
+    storeClusterConfig.cluster = cluster;
   }
 
   public String getMigrationSrcCluster() {
-    return configs.get(MIGRATION_SRC_CLUSTER);  // This will return null if key does not exist
+    return storeClusterConfig.migrationSrcCluster == null ? null
+        : storeClusterConfig.migrationSrcCluster.toString();  // This will return null if does not exist
   }
 
   public void setMigrationSrcCluster(String srcClusterName) {
-    configs.put(MIGRATION_SRC_CLUSTER, srcClusterName);
+    storeClusterConfig.migrationSrcCluster = srcClusterName;
   }
 
   public String getMigrationDestCluster() {
-    return configs.get(MIGRATION_DEST_CLUSTER); // This will return null if key does not exist
+    return storeClusterConfig.migrationDestCluster == null ? null
+        : storeClusterConfig.migrationDestCluster.toString(); // This will return null if does not exist
   }
 
   public void setMigrationDestCluster(String destClusterName) {
-    configs.put(MIGRATION_DEST_CLUSTER, destClusterName);
+    storeClusterConfig.migrationDestCluster = destClusterName;
+  }
+
+  @Override
+  public StoreClusterConfig dataModel() {
+    return storeClusterConfig;
+  }
+
+  public StoreConfig cloneStoreConfig() {
+    StoreConfig clonedStoreConfig = new StoreConfig(storeName);
+    clonedStoreConfig.setCluster(getCluster());
+    clonedStoreConfig.setDeleting(isDeleting());
+    clonedStoreConfig.setMigrationSrcCluster(getMigrationSrcCluster());
+    clonedStoreConfig.setMigrationDestCluster(getMigrationDestCluster());
+    return clonedStoreConfig;
   }
 }

@@ -312,7 +312,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     // Check whether meta system store is enabled or not
     Store store = storeRepository.getStoreOrThrow(storeName);
     if (store.isStoreMetaSystemStoreEnabled() && metaStoreWriter.isPresent()) {
-      metaStoreWriter.get().writeStoreValueSchemas(clusterName, storeName, getValueSchemas(storeName));
+      metaStoreWriter.get().writeStoreValueSchemas(storeName, getValueSchemas(storeName));
     }
     return newValueSchemaEntry;
   }

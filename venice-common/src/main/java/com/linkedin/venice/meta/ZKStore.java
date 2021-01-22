@@ -109,6 +109,14 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
     setupVersionSupplier(() -> this.storeProperties.versions);
   }
 
+  public ZKStore(StoreProperties storeProperties) {
+    if (!isValidStoreName(storeProperties.name.toString())) {
+      throw new VeniceException("Invalid store name: " + storeProperties.name.toString());
+    }
+    this.storeProperties = storeProperties;
+    setupVersionSupplier(() -> this.storeProperties.versions);
+  }
+
   @Override
   public StoreProperties dataModel() {
     return this.storeProperties;

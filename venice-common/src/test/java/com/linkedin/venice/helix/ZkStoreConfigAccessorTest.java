@@ -4,6 +4,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.StoreConfig;
 import java.io.IOException;
+import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -20,7 +21,7 @@ public class ZkStoreConfigAccessorTest {
   public void setUp() {
     zk = ServiceFactory.getZkServer();
     zkClient = ZkClientFactory.newZkClient(zk.getAddress());
-    accessor = new ZkStoreConfigAccessor(zkClient, new HelixAdapterSerializer());
+    accessor = new ZkStoreConfigAccessor(zkClient, new HelixAdapterSerializer(), Optional.empty());
   }
 
   @AfterMethod
@@ -60,7 +61,7 @@ public class ZkStoreConfigAccessorTest {
     String newCluster = "testContainsConfig-new-cluster";
     config.setCluster(newCluster);
     config.setDeleting(true);
-    accessor.updateConfig(config);
+    accessor.updateConfig(config, false);
     Assert.assertEquals(accessor.getStoreConfig(store).getCluster(), newCluster,
         "Store config should be updated correctly.");
     Assert.assertTrue(accessor.getStoreConfig(store).isDeleting(), "Store config should be updated correctly.");

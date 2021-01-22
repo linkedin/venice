@@ -4,6 +4,7 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
 import java.util.ArrayList;
@@ -46,7 +47,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
 
   public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
-    this(zkClient, new ZkStoreConfigAccessor(zkClient, adapterSerializer), refreshAttemptsForZkReconnect,
+    this(zkClient, new ZkStoreConfigAccessor(zkClient, adapterSerializer, Optional.empty()), refreshAttemptsForZkReconnect,
         refreshIntervalForZkReconnectInMs);
   }
 
@@ -107,10 +108,19 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     }
     StoreConfig config = storeConfigMap.get().get(veniceStoreName);
     if (config != null) {
-      return Optional.of(config);
+      return Optional.of(config.cloneStoreConfig());
     } else {
       return Optional.empty();
     }
+  }
+
+  @Override
+  public StoreConfig getStoreConfigOrThrow(String storeName) {
+    Optional<StoreConfig> storeConfig = getStoreConfig(storeName);
+    if (!storeConfig.isPresent()) {
+      throw new VeniceNoStoreException(storeName);
+    }
+    return storeConfig.get();
   }
 
   @Override
