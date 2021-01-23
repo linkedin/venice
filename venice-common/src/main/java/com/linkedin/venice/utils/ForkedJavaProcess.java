@@ -21,6 +21,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -41,6 +42,21 @@ public final class ForkedJavaProcess extends Process {
    * the debugger is attached. Debug mode is not intended to be used as part of the regular suite.
    */
   private static final boolean DEBUG = false;
+  private static final String JAVA_PATH = Paths.get(System.getProperty("java.home"), "bin", "java").toString();
+  private static final List<String> DEFAULT_JAVA_ARGS = new ArrayList() {{
+    add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
+    /*
+      Add log4j2 configuration file. This config will inherit the log4j2 config file from parent process and set up correct logging level.
+     */
+    for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+      if (arg.startsWith("-Dlog4j2")) {
+        add(arg);
+      }
+      if (arg.startsWith("-Dlog4j2.configuration=")) {
+        add("-Dlog4j2.configurationFile=" + arg.split("=")[1]);
+      }
+    }
+  }};
 
   private final Logger logger;
   private final Process process;
@@ -48,26 +64,36 @@ public final class ForkedJavaProcess extends Process {
   private final ExecutorService executorService;
   private final AtomicBoolean isDestroyed = new AtomicBoolean();
 
-  public static ForkedJavaProcess exec(Class appClass, String... args) throws IOException, InterruptedException {
-    LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + Arrays.asList(args));
+  public static ForkedJavaProcess exec(Class appClass, String... args) throws IOException {
+    return exec(appClass, Arrays.asList(args), Collections.emptyList());
+  }
+
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs) throws IOException {
+    LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs);
 
     List<String> command = new ArrayList<>();
-    command.add(Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString());
-    command.add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
+    command.add(JAVA_PATH);
+    command.add("-cp");
+    command.add(getClasspath());
 
-    /**
-     * Add log4j2 configuration file. This config will inherit the log4j2 config file from parent process and set up correct logging level.
-     */
-    for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
-      if (arg.startsWith("-Dlog4j2")) {
-        command.add(arg);
-        if (arg.startsWith("-Dlog4j2.configuration=")) {
-          String log4jConfigFilePath = arg.split("=")[1];
-          command.add("-Dlog4j2.configurationFile=" + log4jConfigFilePath);
-        }
-      }
+    int debugPort = 0;
+    if (DEBUG) {
+      debugPort = Utils.getFreePort();
+      command.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=" + debugPort);
     }
 
+    command.addAll(DEFAULT_JAVA_ARGS);
+    command.addAll(jvmArgs);
+
+    command.add(appClass.getCanonicalName());
+    command.addAll(args);
+
+    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+    Logger logger = Logger.getLogger(appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + (DEBUG ? ", debugPort=" + debugPort : ""));
+    return new ForkedJavaProcess(process, logger);
+  }
+
+  public static String getClasspath() {
     try (ScanResult scanResult = new ClassGraph().scan()) {
       Set<File> classpathDirs = new LinkedHashSet<>();
       for (File file : scanResult.getClasspathFiles()) {
@@ -77,9 +103,9 @@ public final class ForkedJavaProcess extends Process {
           classpathDirs.add(new File(file.getParent(), "*"));
         }
       }
-      /**
-       * Prepend extra_webapp_resources/lib classpath to the forked Java process's classpath so the forked
-       * process will have correct(newest) jar version for every dependencies when deployed in thin-war fashion.
+      /*
+        Prepend extra_webapp_resources/lib classpath to the forked Java process's classpath so the forked
+        process will have correct(newest) jar version for every dependencies when deployed in thin-war fashion.
        */
       for (File file : new ArrayList<>(classpathDirs)) {
         if (!file.getPath().contains("extra_webapp_resources")) {
@@ -87,22 +113,8 @@ public final class ForkedJavaProcess extends Process {
           classpathDirs.add(file);
         }
       }
-      command.add("-cp");
-      command.add(JarUtils.pathElementsToPathStr(classpathDirs));
+      return JarUtils.pathElementsToPathStr(classpathDirs);
     }
-
-    int debugPort = 0;
-    if (DEBUG) {
-      debugPort = Utils.getFreePort();
-      command.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=" + debugPort);
-    }
-
-    command.add(appClass.getCanonicalName());
-    command.addAll(Arrays.asList(args));
-
-    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    Logger logger = Logger.getLogger(appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + (DEBUG ? ", debugPort=" + debugPort : ""));
-    return new ForkedJavaProcess(process, logger);
   }
 
   /**
@@ -166,10 +178,10 @@ public final class ForkedJavaProcess extends Process {
 
     } finally {
       executorService.shutdownNow();
-      /**
-       * Apparently, we can leak FDs if we don't manually close these streams.
-       *
-       * Source: http://www.ryanchapin.com/fv-b-4-689/Too-Many-Open-Files-Errors-When-Using-Runtime-exec---or-ProcessBuilder-start---to-Execute-A-Process.html
+      /*
+        Apparently, we can leak FDs if we don't manually close these streams.
+
+        Source: http://www.ryanchapin.com/fv-b-4-689/Too-Many-Open-Files-Errors-When-Using-Runtime-exec---or-ProcessBuilder-start---to-Execute-A-Process.html
        */
       IOUtils.closeQuietly(process.getInputStream());
       IOUtils.closeQuietly(process.getOutputStream());
@@ -202,7 +214,7 @@ public final class ForkedJavaProcess extends Process {
     }
   }
 
-  public long getPid() {
+  public long pid() {
     return getPidOfProcess(process);
   }
 

@@ -817,12 +817,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public void waitVersion(String storeName, int versionId) {
     try (ControllerClient client = getControllerClient()) {
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-        JobStatusQueryResponse response = client.queryJobStatus(Version.composeKafkaTopic(storeName, versionId));
+        String kafkaTopic = Version.composeKafkaTopic(storeName, versionId);
+        JobStatusQueryResponse response = client.queryJobStatus(kafkaTopic);
         if (response.isError()) {
           throw new VeniceException(response.getError());
         }
         if (response.getStatus().equals(ExecutionStatus.ERROR.toString())) {
-          throw new VeniceException("Unexpected push failure");
+          throw new VeniceException("Unexpected push failure, kafkaTopic=" + kafkaTopic);
         }
 
         StoreResponse storeResponse = client.getStore(storeName);
