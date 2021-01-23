@@ -20,11 +20,11 @@ public class IngestionUtilsTest {
     waitPortBinding(servicePort, MAX_ATTEMPT);
     Assert.assertEquals(forkedIngestionServiceProcess.isAlive(), true);
     long processId = Long.parseLong(executeShellCommand("/usr/sbin/lsof -t -i :" + servicePort).split("\n")[0]);
-    Assert.assertEquals(processId, forkedIngestionServiceProcess.getPid());
+    Assert.assertEquals(processId, forkedIngestionServiceProcess.pid());
     String fullProcessName = executeShellCommand("ps -p " + processId + " -o command");
     Assert.assertEquals(fullProcessName.contains(IngestionService.class.getName()), true);
     IngestionUtils.releaseTargetPortBinding(servicePort);
-    TestUtils.waitForNonDeterministicAssertion(5000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(executeShellCommand("/usr/sbin/lsof -t -i :" + servicePort), "");
     });
   }

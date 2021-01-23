@@ -48,10 +48,11 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
     return (serviceName, dataDirectory) -> {
       int port = Utils.getFreePort();
+      int sslPort = Utils.getFreePort();
       PropertyBuilder builder = new PropertyBuilder()
           .put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)
-          .put(LISTENER_SSL_PORT, sslPortFromPort(port))
+          .put(LISTENER_SSL_PORT, sslPort)
           .put(ZOOKEEPER_ADDRESS, zkAddress)
           .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
@@ -77,16 +78,16 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       if (!D2TestUtils.DEFAULT_TEST_SERVICE_NAME.equals(d2)) {
         D2TestUtils.setupD2Config(zkAddress, false, d2, d2, false);
         d2Servers = D2TestUtils.getD2Servers(
-            zkAddress, new String[] {"http://localhost:" + port, "https://localhost:" + sslPortFromPort(port)}, d2);
+            zkAddress, new String[] {"http://localhost:" + port, "https://localhost:" + sslPort}, d2);
         // Also announce to the default service name (venice-discovery)
         D2TestUtils.setupD2Config(zkAddress, false);
         d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port,
-            "https://localhost:" + sslPortFromPort(port)));
+            "https://localhost:" + sslPort));
       } else {
         D2TestUtils.setupD2Config(zkAddress, false);
         // Announce to d2 by default
         d2Servers = D2TestUtils.getD2Servers(
-            zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
+            zkAddress, "http://localhost:" + port, "https://localhost:" + sslPort);
       }
 
       VeniceProperties routerProperties = builder.build();
@@ -162,9 +163,5 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
   public void refresh() {
     service.refresh();
-  }
-
-  private static int sslPortFromPort(int port) {
-    return port + 1;
   }
 }

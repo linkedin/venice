@@ -16,6 +16,7 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.log4j.Logger;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -113,13 +114,16 @@ public class MirrorMakerWrapper extends ProcessWrapper {
   protected void internalStart() throws Exception {
     mirrorMakerProcess = ForkedJavaProcess.exec(
         MirrorMaker.class,
-        "--consumer.config", consumerConfigPath,
-        "--producer.config", producerConfigPath,
-        "--whitelist", topicWhitelist,
-        "--offset.commit.interval.ms", "1000",
-        "--message.handler", IdentityPartitioningMessageHandler.class.getName(),
-        "--consumer.rebalance.listener", IdentityNewConsumerRebalanceListener.class.getName(),
-        "--rebalance.listener.args", IdentityNewConsumerRebalanceListener.getConfigString(consumerConfigPath, producerConfigPath)
+        Arrays.asList(
+            "--consumer.config", consumerConfigPath,
+            "--producer.config", producerConfigPath,
+            "--whitelist", topicWhitelist,
+            "--offset.commit.interval.ms", "1000",
+            "--message.handler", IdentityPartitioningMessageHandler.class.getName(),
+            "--consumer.rebalance.listener", IdentityNewConsumerRebalanceListener.class.getName(),
+            "--rebalance.listener.args", IdentityNewConsumerRebalanceListener.getConfigString(consumerConfigPath, producerConfigPath)
+        ),
+        Arrays.asList("-Xms64m", "-Xmx128m")
     );
 
     // It's tricky to find a good timeout here... if it's too small it'll never detect any start up failure,
