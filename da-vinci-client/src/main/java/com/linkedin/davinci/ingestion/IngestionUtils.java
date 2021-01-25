@@ -189,7 +189,7 @@ public class IngestionUtils {
    * @param maxAttempt Max number of connection retries before it announces fail to connect.
    * @throws Exception
    */
-  public static void waitPortBinding(int port, int maxAttempt) throws Exception{
+  public static void waitPortBinding(int port, int maxAttempt) throws Exception {
     long waitTime = 100;
     EventLoopGroup workerGroup = new NioEventLoopGroup();
     Bootstrap bootstrap = new Bootstrap();
@@ -246,6 +246,35 @@ public class IngestionUtils {
     }
   }
 
+  public static void waitHealthCheck(IngestionRequestClient client, int maxAttempt) throws Exception {
+    long waitTime = 100;
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.HEARTBEAT.getValue();
+    ingestionTaskCommand.topicName = "";
+    byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
+    HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
+    int retryCount = 0;
+    while (true) {
+      try {
+        FullHttpResponse response = client.sendRequest(httpRequest);
+        if (response.status().equals(HttpResponseStatus.OK)) {
+          logger.info("Ingestion service server health check passed.");
+          break;
+        } else {
+          throw new VeniceException("Got non-OK response from ingestion service: " + response.status());
+        }
+      } catch (Exception e) {
+        retryCount++;
+        if (retryCount > maxAttempt) {
+          logger.info("Fail to pass health-check for ingestion service after " + maxAttempt + " retries.");
+          throw e;
+        }
+        Utils.sleep(waitTime);
+      }
+    }
+  }
+
+
   public static Process startForkedIngestionProcess(VeniceConfigLoader configLoader) {
     int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     try (IngestionRequestClient ingestionRequestClient = new IngestionRequestClient(ingestionServicePort)) {
@@ -255,7 +284,8 @@ public class IngestionUtils {
       Process isolatedIngestionService = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(ingestionServicePort));
       // Wait for server in forked child process to bind the listening port.
       waitPortBinding(ingestionServicePort, 100);
-
+      // Wait for server in forked child process to pass health check.
+      waitHealthCheck(ingestionRequestClient, 100);
       InitializationConfigs initializationConfigs = new InitializationConfigs();
       initializationConfigs.aggregatedConfigs = new HashMap<>();
       configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
