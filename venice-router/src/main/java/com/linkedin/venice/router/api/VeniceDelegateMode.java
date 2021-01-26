@@ -127,10 +127,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   }
 
   public void initReadRequestThrottler(RouterThrottler requestThrottler) {
-    if (null != this.readRequestThrottler) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
-          "ReadRequestThrottle has already been initialized before, and no further update expected!");
-    }
     this.readRequestThrottler = requestThrottler;
   }
 

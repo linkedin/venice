@@ -21,7 +21,6 @@ import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -138,7 +137,6 @@ public class TestVeniceDispatcher {
       doReturn(5).when(routerConfig).getRouterUnhealthyPendingConnThresholdPerRoute();
       doReturn(10l).when(routeHttpRequestStats).getPendingRequestCount(anyString());
     }
-    VeniceHostHealth mockHostHealth = mock(VeniceHostHealth.class);
     LiveInstanceMonitor mockLiveInstanceMonitor = mock(LiveInstanceMonitor.class);
     StorageNodeClient storageNodeClient;
     if (useNettyClient) {
@@ -159,9 +157,8 @@ public class TestVeniceDispatcher {
     } else {
       storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo, mockLiveInstanceMonitor);
     }
-    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo,
+    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockStoreRepo,
         mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats, mock(AggHostHealthStats.class));
-    dispatcher.initReadRequestThrottler(mock(ReadRequestThrottler.class));
     return dispatcher;
   }
 

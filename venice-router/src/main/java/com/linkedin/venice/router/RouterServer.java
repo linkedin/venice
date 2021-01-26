@@ -162,6 +162,8 @@ public class RouterServer extends AbstractVeniceService {
   private Optional<Router> router = Optional.empty();
   private Router secureRouter;
   private DictionaryRetrievalService dictionaryRetrievalService;
+  private RouterThrottler readRequestThrottler;
+  private RouterThrottler noopRequestThrottler;
 
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
@@ -392,7 +394,7 @@ public class RouterServer extends AbstractVeniceService {
 
     VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, storageNodeClient, config,
         routeHttpRequestStats, aggHostHealthStats);
-    dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository,
+    dispatcher = new VeniceDispatcher(config, metadataRepository,
         routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats, aggHostHealthStats);
     scatterGatherMode = new VeniceDelegateMode(config, routerStats, routeHttpRequestStats);
 
@@ -763,16 +765,14 @@ public class RouterServer extends AbstractVeniceService {
         hybridStoreQuotaRepository.get().refresh();
       }
 
-      // Setup read requests throttler.
-      RouterThrottler throttler;
-      if (config.isReadThrottlingEnabled()) {
-        throttler = new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
-            config.getMaxReadCapacityCu(), routerStats.getStatsByType(RequestType.SINGLE_GET), config.getPerStorageNodeReadQuotaBuffer());
-      } else {
-        throttler = new NoopRouterThrottler(routersClusterManager, metadataRepository, routerStats.getStatsByType(RequestType.SINGLE_GET));
-      }
+      readRequestThrottler = new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
+          config.getMaxReadCapacityCu(), routerStats.getStatsByType(RequestType.SINGLE_GET), config.getPerStorageNodeReadQuotaBuffer());
 
-      scatterGatherMode.initReadRequestThrottler(throttler);
+      noopRequestThrottler = new NoopRouterThrottler(routersClusterManager, metadataRepository, routerStats.getStatsByType(RequestType.SINGLE_GET));
+
+      // Setup read requests throttler.
+      setReadRequestThrottling(config.isReadThrottlingEnabled());
+
       if (config.getMultiKeyRoutingStrategy().equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING)) {
         /**
          * This statement should be invoked after {@link #manager} is connected.
@@ -785,7 +785,6 @@ public class RouterServer extends AbstractVeniceService {
         scatterGatherMode.initHelixGroupSelector(helixGroupSelector);
         responseAggregator.initHelixGroupSelector(helixGroupSelector);
       }
-      dispatcher.initReadRequestThrottler(throttler);
 
       // Dictionary retrieval service should start only after "metadataRepository.refresh()" otherwise it won't be able
       // to preload dictionaries from SN.
@@ -846,6 +845,11 @@ public class RouterServer extends AbstractVeniceService {
 
   public VeniceRouterConfig getConfig() {
     return config;
+  }
+
+  public void setReadRequestThrottling(boolean throttle) {
+    RouterThrottler throttler = throttle ? readRequestThrottler : noopRequestThrottler;
+    scatterGatherMode.initReadRequestThrottler(throttler);
   }
 
   /* test-only */
