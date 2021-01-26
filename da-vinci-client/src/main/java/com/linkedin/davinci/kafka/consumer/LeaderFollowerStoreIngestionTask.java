@@ -1399,10 +1399,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long offsetLag = partitionConsumptionStateMap.values().stream()
         //only calculate followers who have received EOP since before that, both leaders and followers
         //consume from VT
-        .filter(pcs -> pcs.isEndOfPushReceived() && !pcs.getLeaderState().equals(LEADER))
-        //the lag is (latest VT offset - consumed VT offset
+        .filter(pcs -> pcs.getOffsetRecord().getUpstreamOffset() != -1  && !pcs.getLeaderState().equals(LEADER))
+        //the lag is (latest VT offset - consumed VT offset)
         .mapToLong(pcs ->
-            cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, pcs.getPartition()) - pcs.getOffsetRecord().getOffset())
+            (cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, pcs.getPartition()) - 1)
+                - pcs.getOffsetRecord().getOffset())
         .sum();
 
     return minZeroLag(offsetLag);

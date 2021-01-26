@@ -220,9 +220,16 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       return ingestionTaskErroredGauge;
     }
 
+    /**
+     * @return This stats is usually aggregated across the nodes so that
+     * we can see the overall lags between leaders and followers.
+     *
+     * we return 0 instead of {@link StatsErrorCode#INACTIVE_STORE_INGESTION_TASK}
+     * so the negative error code will not mess up the aggregation.
+     */
     public long getFollowerOffsetLag() {
       if (ingestionTask == null) {
-        return INACTIVE_STORE_INGESTION_TASK.code;
+        return 0;
       }
       return ingestionTask.getFollowerOffsetLag();
     }
