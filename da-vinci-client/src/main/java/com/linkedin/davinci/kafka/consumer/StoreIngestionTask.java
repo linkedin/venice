@@ -2470,6 +2470,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.topicManagerRepository = topicManagerRepository;
     }
 
+    /**
+     * @return Users of this method should be aware that Kafka will actually
+     * return the next available offset rather the latest used offset. Therefore,
+     * the value will be 1 offset greater than what's expected.
+     */
     long getOffset(String topicName, int partitionId) {
       long now = System.nanoTime();
 
