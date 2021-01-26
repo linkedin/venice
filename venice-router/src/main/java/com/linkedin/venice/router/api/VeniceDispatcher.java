@@ -74,7 +74,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final VeniceRouterConfig routerConfig;
   private final ReadOnlyStoreRepository storeRepository;
 
-  private RouterThrottler readRequestThrottler;
   private final StorageNodeClient storageNodeClient;
   private final PendingRequestThrottler pendingRequestThrottler;
 
@@ -87,14 +86,10 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   private boolean isStateFullHealthCheckEnabled;
 
-  private final RecordSerializer<MultiGetResponseRecordV1> multiGetResponseRecordSerializer =
-      SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
-
   private final LeakedCompletableFutureCleanupService leakedCompletableFutureCleanupService;
 
   public VeniceDispatcher(
       VeniceRouterConfig config,
-      VeniceHostHealth healthMonitor,
       ReadOnlyStoreRepository storeRepository,
       RouterStats perStoreStatsByType,
       MetricsRepository metricsRepository,
@@ -116,17 +111,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     this.leakedCompletableFutureCleanupService.start();
   }
 
-  public void initReadRequestThrottler(RouterThrottler requestThrottler) {
-    if (null != this.readRequestThrottler) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
-          INTERNAL_SERVER_ERROR,
-          "Read request throttler is already initialized.");
-    }
-    this.readRequestThrottler = requestThrottler;
-  }
-
   @Override
   public void dispatch(
       @Nonnull Scatter<Instance, VenicePath, RouterKey> scatter,
@@ -142,14 +126,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     String storeName = path.getStoreName();
     RequestType requestType = path.getRequestType();
     path.recordOriginalRequestStartTimestamp();
-
-    if (null == readRequestThrottler) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(storeName),
-          Optional.of(requestType),
-          INTERNAL_SERVER_ERROR,
-          "Read request throttler is not initialized.");
-    }
 
     if (requestType.equals(RequestType.COMPUTE) || requestType.equals(RequestType.COMPUTE_STREAMING)) {
       if (!storeRepository.isReadComputationEnabled(storeName)) {

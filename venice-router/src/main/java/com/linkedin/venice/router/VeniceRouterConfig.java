@@ -382,6 +382,10 @@ public class VeniceRouterConfig {
     return readThrottlingEnabled;
   }
 
+  public void setReadThrottlingEnabled(boolean readThrottlingEnabled) {
+    this.readThrottlingEnabled = readThrottlingEnabled;
+  }
+
   public long getMaxPendingRequest() {
     return maxPendingRequest;
   }
@@ -555,6 +559,10 @@ public class VeniceRouterConfig {
 
   public boolean isEarlyThrottleEnabled() {
     return earlyThrottleEnabled;
+  }
+
+  public void setEarlyThrottleEnabled(boolean earlyThrottleEnabled) {
+    this.earlyThrottleEnabled = earlyThrottleEnabled;
   }
 
   public boolean isHelixOfflinePushEnabled() { return helixOfflinePushEnabled; }
