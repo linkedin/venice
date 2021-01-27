@@ -21,6 +21,15 @@ import static com.linkedin.davinci.stats.StatsErrorCode.*;
 public class StoreIngestionStats extends AbstractVeniceStats {
   private StoreIngestionTask storeIngestionTask;
 
+  /**
+   * DO NOT REMOVE the aggregated consumption rate metrics
+   * It's needed for Venice-health dashboard.
+   */
+  // The aggregated bytes ingested rate for the entire host
+  private final Sensor totalBytesConsumedSensor;
+  // The aggregated records ingested rate for the entire host
+  private final Sensor totalRecordsConsumedSensor;
+
   /*
    * Bytes read from Kafka by store ingestion task as a total. This metric includes bytes read for all store versions
    * allocated in a storage node reported with its uncompressed data size.
@@ -102,6 +111,9 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     super(metricsRepository, storeName);
     this.storeIngestionTask = null;
 
+    totalBytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
+    totalRecordsConsumedSensor = registerSensor("records_consumed", new Rate());
+
     bytesReadFromKafkaAsUncompressedSizeSensor = registerSensor("bytes_read_from_kafka_as_uncompressed_size", new Rate(), new Total());
     diskQuotaSensor = registerSensor("global_store_disk_quota_allowed",
                                       new Gauge(() -> diskQuotaAllowedGauge), new Max());
@@ -158,6 +170,14 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   public StoreIngestionTask getStoreIngestionTask() {
     return storeIngestionTask;
+  }
+
+  public void recordTotalBytesConsumed(long bytes) {
+    totalBytesConsumedSensor.record(bytes);
+  }
+
+  public void recordTotalRecordsConsumed(int count) {
+    totalRecordsConsumedSensor.record(count);
   }
 
   public void recordBytesReadFromKafkaAsUncompressedSize(long bytes) {
