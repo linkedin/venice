@@ -1357,9 +1357,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (processedRecordNum >= OFFSET_REPORTING_INTERVAL ||
         partitionConsumptionState.isEndOfPushReceived()) {
       int processedRecordSize = partitionConsumptionState.getProcessedRecordSize();
-      // Report metrics
+      /**
+       * Report ingestion throughput metric based on the store version
+       */
       versionedStorageIngestionStats.recordBytesConsumed(storeName, versionNumber, processedRecordSize);
       versionedStorageIngestionStats.recordRecordsConsumed(storeName, versionNumber, processedRecordNum);
+
+      /**
+       * Meanwhile, contribute to the host-level ingestion throughput rate, which aggregates the consumption rate across
+       * all store versions.
+       */
+      storeIngestionStats.recordTotalBytesConsumed(storeName, processedRecordSize);
+      storeIngestionStats.recordTotalRecordsConsumed(storeName, processedRecordNum);
 
       partitionConsumptionState.resetProcessedRecordNum();
       partitionConsumptionState.resetProcessedRecordSize();

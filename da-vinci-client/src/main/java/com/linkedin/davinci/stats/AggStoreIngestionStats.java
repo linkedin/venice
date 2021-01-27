@@ -10,6 +10,20 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
           (metricsRepo, storeName) -> new StoreIngestionStats(metricsRepo, storeName));
   }
 
+  /**
+   * Record a host-level byte consumption rate across all store versions
+   */
+  public void recordTotalBytesConsumed(String storeName, long bytes) {
+    totalStats.recordTotalBytesConsumed(bytes);
+  }
+
+  /**
+   * Record a host-level record consumption rate across all store versions
+   */
+  public void recordTotalRecordsConsumed(String storeName, int count) {
+    totalStats.recordTotalRecordsConsumed(count);
+  }
+
   public void recordStorageQuotaUsed(String storeName, double quota) {
     getStoreStats(storeName).recordStorageQuotaUsed(quota);
   }
