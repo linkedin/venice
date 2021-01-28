@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -19,6 +20,10 @@ public class ComplementSet<T> {
     this.elements = elements;
   }
 
+  public static <T> ComplementSet<T> of(T... elements) {
+    return newSet(Arrays.asList(elements));
+  }
+
   /**
    * This API will reuse the input "elements" which cannot be unmodifiable.
    */
@@ -31,9 +36,6 @@ public class ComplementSet<T> {
    * in critical path.
    */
   public static <T> ComplementSet<T> newSet(Collection<T> elements) {
-    /**
-     * Copy data from input to a new collection in case the input collection is unmodifiable.
-     */
     return wrap(new HashSet<>(elements));
   }
 

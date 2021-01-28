@@ -274,14 +274,14 @@ public class DaVinciBackend implements Closeable {
       }
 
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-      Set<Integer> subPartitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
-      logger.info("Bootstrapping partitions " + subPartitions + " of local version " + kafkaTopicName);
+      Set<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
+      logger.info("Bootstrapping partitions " + partitions + " of " + kafkaTopicName);
 
       if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
         // If ingestion isolation is turned on, we will not subscribe to versions immediately, but instead save all versions of interest.
-        bootstrapVersions.put(version, subPartitions);
+        bootstrapVersions.put(version, partitions);
       } else {
-        storeBackend.subscribe(ComplementSet.wrap(subPartitions), Optional.of(version));
+        storeBackend.subscribe(ComplementSet.wrap(partitions), Optional.of(version));
       }
     }
 
@@ -294,13 +294,13 @@ public class DaVinciBackend implements Closeable {
   }
 
   protected synchronized void completeBootstrapRemotely(Map<Version, Set<Integer>> bootstrapVersions) {
-    bootstrapVersions.forEach((version, subPartitions) -> {
-      logger.info("Bootstrapping partitions " + subPartitions + " of " + version.kafkaTopicName() + " via isolated ingestion service.");
+    bootstrapVersions.forEach((version, partitions) -> {
+      logger.info("Bootstrapping partitions " + partitions + " of " + version.kafkaTopicName() + " via isolated ingestion service.");
       StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
-      for (Integer subPartition : subPartitions) {
-        ingestionReportListener.addVersionPartitionToIngestionMap(version.kafkaTopicName(), subPartition);
+      for (Integer partition : partitions) {
+        ingestionReportListener.addVersionPartitionToIngestionMap(version.kafkaTopicName(), partition);
       }
-      storeBackend.subscribe(ComplementSet.wrap(subPartitions), Optional.of(version));
+      storeBackend.subscribe(ComplementSet.wrap(partitions), Optional.of(version));
     });
   }
 
@@ -411,7 +411,7 @@ public class DaVinciBackend implements Closeable {
 
   Optional<Version> getLatestVersion(String storeName) {
     try {
-      return getLatestVersion(storeRepository.getStoreOrThrow(storeName));
+      return getLatestVersion(getStoreRepository().getStoreOrThrow(storeName));
     } catch (VeniceNoStoreException e) {
       return Optional.empty();
     }
@@ -436,7 +436,7 @@ public class DaVinciBackend implements Closeable {
 
   Optional<Version> getCurrentVersion(String storeName) {
     try {
-      return getCurrentVersion(storeRepository.getStoreOrThrow(storeName));
+      return getCurrentVersion(getStoreRepository().getStoreOrThrow(storeName));
     } catch (VeniceNoStoreException e) {
       return Optional.empty();
     }

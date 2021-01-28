@@ -190,8 +190,8 @@ public class DaVinciClientTest {
       client1.unsubscribeAll();
       // client2 was removed explicitly above via disableAndDeleteStore()
       // client3 is expected to be removed by the factory during bootstrap
-      assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
     }
+    assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
   }
 
   @Test(timeOut = TEST_TIMEOUT * 5)
