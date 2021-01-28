@@ -2,7 +2,7 @@ package com.linkedin.davinci.client;
 
 
 public class DaVinciConfig {
-  private boolean isManaged = false;
+  private boolean isManaged = true;
   private StorageClass storageClass = StorageClass.DISK_BACKED_MEMORY;
   private RemoteReadPolicy remoteReadPolicy = RemoteReadPolicy.FAIL_FAST;
   private long memoryLimit = 0; // 0 means unlimited memory

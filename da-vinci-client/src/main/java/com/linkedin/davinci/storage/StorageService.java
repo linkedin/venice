@@ -257,6 +257,10 @@ public class StorageService extends AbstractVeniceService {
     return storageEngineRepository;
   }
 
+  public AbstractStorageEngine getStorageEngine(String kafkaTopic) {
+    return getStorageEngineRepository().getLocalStorageEngine(kafkaTopic);
+  }
+
   @Override
   public boolean startInner() throws Exception {
     // After Storage Node starts, Helix controller initiates the state transition for the Stores that

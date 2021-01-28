@@ -30,6 +30,7 @@ public class StoreBackend {
   private VersionBackend futureVersion;
 
   StoreBackend(DaVinciBackend backend, String storeName) {
+    logger.info("Opening local store " + storeName);
     this.backend = backend;
     this.storeName = storeName;
     this.config = new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
@@ -37,44 +38,54 @@ public class StoreBackend {
     try {
       backend.getStoreRepository().subscribe(storeName);
     } catch (InterruptedException e) {
-      logger.info("StoreRepository::subscribe was interrupted", e);
+      logger.warn("StoreRepository::subscribe was interrupted", e);
       Thread.currentThread().interrupt();
     }
-    this.config.store();
   }
 
   synchronized void close() {
-    currentVersionRef.clear();
+    if (subscription.isEmpty()) {
+      logger.info("Closing empty local store " + storeName);
+      delete();
+      return;
+    }
+
+    logger.info("Closing local store " + storeName);
+    config.store();
     subscription.clear();
+    currentVersionRef.clear();
 
     if (futureVersion != null) {
-      futureVersion.close();
+      VersionBackend version = futureVersion;
       futureVersion = null;
+      version.close();
     }
 
     if (currentVersion != null) {
-      currentVersion.close();
+      VersionBackend version = currentVersion;
       currentVersion = null;
+      version.close();
     }
+
     backend.getStoreRepository().unsubscribe(storeName);
   }
 
   synchronized void delete() {
     logger.info("Deleting local store " + storeName);
-    currentVersionRef.clear();
+    config.delete();
     subscription.clear();
+    currentVersionRef.clear();
 
     if (futureVersion != null) {
-      futureVersion.delete();
-      futureVersion = null;
+      deleteFutureVersion();
     }
 
     if (currentVersion != null) {
-      currentVersion.delete();
+      VersionBackend version = currentVersion;
       currentVersion = null;
+      version.delete();
     }
 
-    config.delete();
     backend.getStoreRepository().unsubscribe(storeName);
   }
 
@@ -104,17 +115,17 @@ public class StoreBackend {
     return currentVersionRef.get();
   }
 
-  private void setCurrentVersion(VersionBackend version) {
-    logger.info("Switching to a new version " + version);
+  private synchronized void setCurrentVersion(VersionBackend version) {
+    logger.info("Switching to new version " + version + ", currentVersion=" + currentVersion);
     currentVersion = version;
     currentVersionRef.set(version);
   }
 
-  public CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
+  public CompletableFuture subscribe(ComplementSet<Integer> partitions) {
     return subscribe(partitions, Optional.empty());
   }
 
-  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions, Optional<Version> bootstrapVersion) {
+  synchronized CompletableFuture subscribe(ComplementSet<Integer> partitions, Optional<Version> bootstrapVersion) {
     if (currentVersion == null) {
       setCurrentVersion(new VersionBackend(
           backend,
@@ -129,25 +140,21 @@ public class StoreBackend {
                                     ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
     }
 
-    logger.info("Subscribing to partitions, storeName=" + storeName + ", partitions=" + partitions);
-    if (subscription.isEmpty() && !partitions.isEmpty()) {
-      // re-create store config that was potentially deleted by unsubscribe
-      config.store();
-    }
+    logger.info("Subscribing to partitions " + partitions + " of " + storeName);
     subscription.addAll(partitions);
 
-    if (futureVersion != null) {
-      futureVersion.subscribe(partitions).whenComplete((v, t) -> trySwapCurrentVersion());
-    } else if (bootstrapVersion.isPresent()) {
+    if (futureVersion == null) {
       trySubscribeFutureVersion();
+    } else {
+      futureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapCurrentVersion(e));
     }
 
     ReferenceCounted<VersionBackend> ref = getCurrentVersion();
-    return currentVersion.subscribe(partitions).whenComplete((v, t) -> ref.release());
+    return currentVersion.subscribe(partitions).whenComplete((v, e) -> ref.release());
   }
 
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
-    logger.info("Unsubscribing from partitions, storeName=" + storeName + ", partitions=" + subscription);
+    logger.info("Unsubscribing from partitions " + partitions + " of " + storeName);
     subscription.removeAll(partitions);
 
     if (currentVersion != null) {
@@ -159,7 +166,15 @@ public class StoreBackend {
     }
 
     if (subscription.isEmpty()) {
-      config.delete();
+      if (futureVersion != null) {
+        logger.error("Deleting unexpected future version " + futureVersion + ", currentVersion=" + currentVersion);
+        deleteFutureVersion();
+      }
+
+      if (currentVersion != null) {
+        // Using setCurrentVersion() here instead of VersionBackend::delete() to ensure that readers are not disrupted.
+        setCurrentVersion(null);
+      }
     }
   }
 
@@ -173,14 +188,20 @@ public class StoreBackend {
       return;
     }
 
-    logger.info("Subscribing to a future version " + version.kafkaTopicName());
+    logger.info("Subscribing to future version " + version.kafkaTopicName());
     futureVersion = new VersionBackend(backend, version);
-    futureVersion.subscribe(subscription).whenComplete((v, t) -> trySwapCurrentVersion());
+    futureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapCurrentVersion(e));
   }
 
-  // May be called indirectly by readers, so cannot be blocking
+  // May be called indirectly by readers via ReferenceCounted::release(), so cannot be blocking.
   private void deleteVersion(VersionBackend version) {
-    backend.getExecutor().submit(version::delete);
+    backend.getExecutor().execute(version::delete);
+  }
+
+  private void deleteFutureVersion() {
+    VersionBackend version = futureVersion;
+    futureVersion = null;
+    version.delete();
   }
 
   synchronized void deleteOldVersions() {
@@ -188,20 +209,27 @@ public class StoreBackend {
       Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
       int versionNumber = futureVersion.getVersion().getNumber();
       if (!store.getVersion(versionNumber).isPresent()) {
-        logger.info("Deleting obsolete future version " + futureVersion);
-        futureVersion.delete();
-        futureVersion = null;
+        logger.info("Deleting obsolete future version " + futureVersion + ", currentVersion=" + currentVersion);
+        deleteFutureVersion();
       }
     }
   }
 
-  // May be called several times even after version was swapped
-  private synchronized void trySwapCurrentVersion() {
-    if (futureVersion != null && futureVersion.isReadyToServe(subscription)) {
-      logger.info("Ready to serve " + subscription + " partitions of " + futureVersion.getVersion().kafkaTopicName());
-      setCurrentVersion(futureVersion);
+  // May be called several times even after version was swapped.
+  private synchronized void trySwapCurrentVersion(Throwable failure) {
+    if (futureVersion == null) {
+      // Nothing to do here because future version was deleted.
+
+    } else if (futureVersion.isReadyToServe(subscription)) {
+      logger.info("Ready to serve partitions " + subscription + " of " + futureVersion);
+      VersionBackend version = futureVersion;
       futureVersion = null;
+      setCurrentVersion(version);
       trySubscribeFutureVersion();
+
+    } else if (failure != null) {
+      logger.warn("Deleting failed future version " + futureVersion + ", currentVersion=" + currentVersion, failure);
+      deleteFutureVersion();
     }
   }
 }
