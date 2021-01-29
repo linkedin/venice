@@ -65,12 +65,12 @@ public class D2ServiceDiscovery {
       D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse = mapper.readValue(body, D2ServiceDiscoveryResponseV2.class);
       if (d2ServiceDiscoveryResponse.isError()) {
         throw new VeniceClientException(
-            "Could not found d2 service for store: " + storeName + ". " + d2ServiceDiscoveryResponse.getError());
+            "Unable to find d2 service for store: " + storeName + ". " + d2ServiceDiscoveryResponse.getError());
       }
       LOGGER.info("Found d2 service: " + d2ServiceDiscoveryResponse.getD2Service() + " for store: " + storeName);
       return d2ServiceDiscoveryResponse;
     } catch (Exception e) {
-      throw new VeniceClientException("Could not found d2 service for store: " + storeName, e);
+      throw new VeniceClientException("Unable to find d2 service for store: " + storeName, e);
     }
   }
 }

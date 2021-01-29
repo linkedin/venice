@@ -174,7 +174,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     String configPath = getRocksDbEngineConfigPath();
     File storeEngineConfig = new File(configPath);
     if (storeEngineConfig.exists()) {
-      LOGGER.warn("RocksDB engine already exists, will skipp persisting config.");
+      LOGGER.warn("RocksDB engine already exists, will skip persisting config.");
       return;
     }
     try {

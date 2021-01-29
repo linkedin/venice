@@ -185,7 +185,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       partitionAssignment = Optional.of(routingDataRepository.getPartitionAssignments(topicName));
     } else {
       partitionAssignment = Optional.empty();
-      logger.warn("Could not found routing data for topic: " + topicName
+      logger.warn("Unable to find routing data for topic: " + topicName
           + ", it might be caused by the delay of the routing data. Only create per store level throttler.");
     }
     stats.recordQuota(storeName, storeQuotaPerRouter);

@@ -187,6 +187,7 @@ public class SchemaReader implements SchemaRetriever {
   public void close() {
     IOUtils.closeQuietly(storeClient);
   }
+
   void refreshAllValueSchema() throws VeniceClientException {
     String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
     try {
