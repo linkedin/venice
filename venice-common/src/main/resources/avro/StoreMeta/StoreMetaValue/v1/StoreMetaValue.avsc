@@ -146,7 +146,17 @@
                     {"name": "replicationFactor", "type": "int", "default": 3, "doc": "The number of replica this store version is keeping."},
                     {"name": "nativeReplicationSourceFabric", "type": "string", "default": "", "doc": "The source fabric name to be uses in native replication. Remote consumption will happen from kafka in this fabric."},
                     {"name": "incrementalPushEnabled", "type": "boolean", "default": false, "doc": "Flag to see if the store supports incremental push or not"},
-                    {"name": "useVersionLevelIncrementalPushEnabled", "type": "boolean", "default": false, "doc": "Flag to see if incrementalPushEnabled config at StoreVersion should used. This is needed during migration of this config from Store level to Version level. We can deprecate this field later."}
+                    {"name": "useVersionLevelIncrementalPushEnabled", "type": "boolean", "default": false, "doc": "Flag to see if incrementalPushEnabled config at StoreVersion should be used. This is needed during migration of this config from Store level to Version level. We can deprecate this field later."},
+                    {
+                      "name": "hybridConfig",
+                      "type": [
+                        "null",
+                        "com.linkedin.venice.systemstore.schemas.StoreHybridConfig"
+                      ],
+                      "default": null,
+                      "doc": "Properties related to Hybrid Store behavior. If absent (null), then the store is not hybrid."
+                    },
+                    {"name": "useVersionLevelHybridConfig", "type": "boolean", "default": false, "doc": "Flag to see if hybridConfig at StoreVersion should be used. This is needed during migration of this config from Store level to Version level. We can deprecate this field later."}
                   ]
                 }
               },

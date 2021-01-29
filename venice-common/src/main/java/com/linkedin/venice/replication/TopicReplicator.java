@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -113,9 +114,9 @@ public abstract class TopicReplicator {
   /**
    * General verification and topic creation for any {@link TopicReplicator} implementation used for hybrid stores.
    */
-  protected void checkPreconditions(String srcTopicName, String destTopicName, Store store) {
+  protected void checkPreconditions(String srcTopicName, String destTopicName, Optional<HybridStoreConfig> hybridStoreConfig) {
     // Carrying on assuming that there needs to be only one and only TopicManager
-    if (!store.isHybrid()) {
+    if (!hybridStoreConfig.isPresent()) {
       throw new VeniceException("Topic replication is only supported for Hybrid Stores.");
     }
     /**
@@ -139,7 +140,7 @@ public abstract class TopicReplicator {
       getTopicManager().createTopic(srcTopicName,
                                     partitionCount,
                                     replicationFactor,
-                                    store.getHybridStoreConfig().getRetentionTimeInMs(),
+                                    hybridStoreConfig.get().getRetentionTimeInMs(),
                                     false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
                                     Optional.empty(),
                                     false);
@@ -148,15 +149,15 @@ public abstract class TopicReplicator {
        * If real-time topic already exists, check whether its retention time is correct.
        */
       long topicRetentionTimeInMs = getTopicManager().getTopicRetention(srcTopicName);
-      if (topicRetentionTimeInMs != store.getHybridStoreConfig().getRetentionTimeInMs()) {
-        getTopicManager().updateTopicRetention(srcTopicName, store.getHybridStoreConfig().getRetentionTimeInMs());
+      if (topicRetentionTimeInMs != hybridStoreConfig.get().getRetentionTimeInMs()) {
+        getTopicManager().updateTopicRetention(srcTopicName, hybridStoreConfig.get().getRetentionTimeInMs());
       }
     }
   }
 
-  protected long getRewindStartTime(Store store) {
+  protected long getRewindStartTime(Optional<HybridStoreConfig> hybridStoreConfig) {
     // TODO to get a more deterministic timestamp across colo we could use the timestamp from the EOP control message.
-    return getTimer().getMilliseconds() - store.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+    return getTimer().getMilliseconds() - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
   }
 
   abstract public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store);

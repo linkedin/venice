@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -31,7 +32,7 @@ public class TopicReplicatorTest {
     startingOffsets.forEach((integer, aLong) -> startingOffsetsList.add(integer, aLong));
     final Store store = TestUtils.createTestStore(TestUtils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME = 5;
-    store.setHybridStoreConfig(new HybridStoreConfig(REWIND_TIME, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    Optional<HybridStoreConfig> hybridStoreConfig  = Optional.of((new HybridStoreConfig(REWIND_TIME, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)));
     final String sourceTopicName = "source topic name";
     final String destinationTopicName = "destination topic name";
 
@@ -53,11 +54,11 @@ public class TopicReplicatorTest {
 
     // Methods under test
     doCallRealMethod().when(topicReplicator).checkPreconditions(anyString(), anyString(), any());
-    doCallRealMethod().when(topicReplicator).getRewindStartTime(store);
+    doCallRealMethod().when(topicReplicator).getRewindStartTime(hybridStoreConfig);
     doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong(), anyString());
 
-    topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store);
-    long rewindStartTime = topicReplicator.getRewindStartTime(store);
+    topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, hybridStoreConfig);
+    long rewindStartTime = topicReplicator.getRewindStartTime(hybridStoreConfig);
     assertEquals(rewindStartTime, mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME,
         "Rewind start timestamp is not calculated properly");
     topicReplicator.beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
@@ -65,8 +66,7 @@ public class TopicReplicatorTest {
     verify(topicReplicator).beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
     try {
-      store.setHybridStoreConfig(null);
-      topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store);
+      topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, Optional.empty());
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected

@@ -2,6 +2,7 @@ package com.linkedin.venice.replication;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -32,13 +33,19 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
    */
   @Override
   public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store) {
-    checkPreconditions(srcTopicName, destTopicName, store);
-    long bufferReplayStartTime = getRewindStartTime(store);
     Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(destTopicName));
     if (!version.isPresent()) {
       throw new VeniceException("Corresponding version does not exist for topic: " + destTopicName + " in store: "
           + store.getName());
     }
+    Optional<HybridStoreConfig> hybridStoreConfig;
+    if (version.get().isUseVersionLevelHybridConfig()) {
+      hybridStoreConfig = Optional.ofNullable(version.get().getHybridStoreConfig());
+    } else {
+      hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
+    }
+    checkPreconditions(srcTopicName, destTopicName, hybridStoreConfig);
+    long bufferReplayStartTime = getRewindStartTime(hybridStoreConfig);
     String finalDestTopicName = version.get().getPushType().isStreamReprocessing() ?
         Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()) : destTopicName;
     String nativeReplicationSourceKafkaCluster = null;
