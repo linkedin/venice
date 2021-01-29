@@ -1370,6 +1370,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       storeIngestionStats.recordTotalBytesConsumed(storeName, processedRecordSize);
       storeIngestionStats.recordTotalRecordsConsumed(storeName, processedRecordNum);
 
+      /**
+       * Also update this stats seperately for Leader and Follower.
+       */
+      recordProcessedRecordStats(partitionConsumptionState, processedRecordSize, processedRecordNum);
       partitionConsumptionState.resetProcessedRecordNum();
       partitionConsumptionState.resetProcessedRecordSize();
     }
@@ -2582,5 +2586,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The consumer record is a duplicated message.
      */
     DUPLICATE_MESSAGE
+  }
+
+  protected void recordProcessedRecordStats(PartitionConsumptionState partitionConsumptionState, int processedRecordSize, int processedRecordNum) {
+
   }
 }

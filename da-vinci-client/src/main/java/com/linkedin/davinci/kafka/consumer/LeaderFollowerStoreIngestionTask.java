@@ -971,6 +971,28 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  @Override
+  protected void recordProcessedRecordStats(PartitionConsumptionState partitionConsumptionState, int processedRecordSize, int processedRecordNum) {
+    if (partitionConsumptionState.getLeaderState().equals(LEADER)) {
+      versionedStorageIngestionStats.recordLeaderBytesConsumed(storeName, versionNumber, processedRecordSize);
+      versionedStorageIngestionStats.recordLeaderRecordsConsumed(storeName, versionNumber, processedRecordNum);
+      storeIngestionStats.recordTotalLeaderBytesConsumed(processedRecordSize);
+      storeIngestionStats.recordTotalLeaderRecordsConsumed(processedRecordNum);
+    } else {
+      versionedStorageIngestionStats.recordFollowerBytesConsumed(storeName, versionNumber, processedRecordSize);
+      versionedStorageIngestionStats.recordFollowerRecordsConsumed(storeName, versionNumber, processedRecordNum);
+      storeIngestionStats.recordTotalFollowerBytesConsumed(processedRecordSize);
+      storeIngestionStats.recordTotalFollowerRecordsConsumed(processedRecordNum);
+    }
+  }
+
+  private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
+    versionedStorageIngestionStats.recordLeaderBytesProduced(storeName, versionNumber, producedRecordSize);
+    versionedStorageIngestionStats.recordLeaderRecordsProduced(storeName, versionNumber, producedRecordNum);
+    storeIngestionStats.recordTotalLeaderBytesProduced(producedRecordSize);
+    storeIngestionStats.recordTotalLeaderRecordsProduced(producedRecordNum);
+  }
+
   /**
    * The goal of this function is to possibly produce the incoming kafka message consumed from local VT, remote VT, RT or SR topic to
    * local VT if needed. It's decided based on the function output of {@link #shouldProduceToVersionTopic} and message type.
@@ -1466,6 +1488,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
         }
 
+        int producedRecordNum = 0;
+        int producedRecordSize = 0;
         //produce to drainer buffer service for further processing.
         try {
           /**
@@ -1479,6 +1503,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
             producedRecord.setProducedOffset(recordMetadata.offset());
             ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecord);
+
+            producedRecordNum++;
+            producedRecordSize = Math.max(0, recordMetadata.serializedKeySize()) + Math.max(0, recordMetadata.serializedValueSize());
           } else {
             int schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
             for (int i = 0; i < chunkedValueManifest.keysWithChunkIdSuffix.size(); i++) {
@@ -1492,6 +1519,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               ProducedRecord producedRecordForChunk = ProducedRecord.newPutRecord(-1, ByteUtils.extractByteArray(chunkKey), chunkPut);
               producedRecordForChunk.setProducedOffset(-1);
               ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecordForChunk);
+
+              producedRecordNum++;
+              producedRecordSize += chunkKey.remaining() + chunkValue.remaining();
             }
 
             //produce the manifest inside the top-level key
@@ -1512,7 +1542,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 key, manifestPut, producedRecord.getPersistedToDBFuture());
             producedRecordForManifest.setProducedOffset(recordMetadata.offset());
             ingestionTask.produceToStoreBufferService(sourceConsumerRecord, producedRecordForManifest);
+
+            producedRecordNum++;
+            producedRecordSize += key.length + manifest.remaining();
           }
+          recordProducerStats(producedRecordSize, producedRecordNum);
         } catch (Exception oe) {
           boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
           logger.error(consumerTaskId + " received exception in kafka callback thread; EOP received: " + endOfPushReceived + " Topic: " + sourceConsumerRecord.topic() + " Partition: "

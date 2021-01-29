@@ -136,4 +136,27 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordWriteComputeCacheHitCount();
   }
 
+  public void recordTotalLeaderBytesConsumed(long bytes) {
+    totalStats.recordTotalLeaderBytesConsumed(bytes);
+  }
+
+  public void recordTotalLeaderRecordsConsumed(int count) {
+    totalStats.recordTotalLeaderRecordsConsumed(count);
+  }
+
+  public void recordTotalFollowerBytesConsumed(long bytes) {
+    totalStats.recordTotalFollowerBytesConsumed(bytes);
+  }
+
+  public void recordTotalFollowerRecordsConsumed(int count) {
+    totalStats.recordTotalFollowerRecordsConsumed(count);
+  }
+
+  public void recordTotalLeaderBytesProduced(long bytes) {
+    totalStats.recordTotalLeaderBytesProduced(bytes);
+  }
+
+  public void recordTotalLeaderRecordsProduced(int count) {
+    totalStats.recordTotalLeaderRecordsProduced(count);
+  }
 }

@@ -106,6 +106,13 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   private final Sensor writeComputeCacheHitCount;
 
 
+  private final Sensor totalLeaderBytesConsumedSensor;
+  private final Sensor totalLeaderRecordsConsumedSensor;
+  private final Sensor totalFollowerBytesConsumedSensor;
+  private final Sensor totalFollowerRecordsConsumedSensor;
+  private final Sensor totalLeaderBytesProducedSensor;
+  private final Sensor totalLeaderRecordsProducedSensor;
+
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
     super(metricsRepository, storeName);
@@ -166,6 +173,12 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
     writeComputeCacheHitCount = registerSensor("write_compute_cache_hit_count", new Avg(), new Max());
 
+    totalLeaderBytesConsumedSensor = registerSensor("leader_bytes_consumed", new Rate());
+    totalLeaderRecordsConsumedSensor = registerSensor("leader_records_consumed", new Rate());
+    totalFollowerBytesConsumedSensor = registerSensor("follower_bytes_consumed", new Rate());
+    totalFollowerRecordsConsumedSensor = registerSensor("follower_records_consumed", new Rate());
+    totalLeaderBytesProducedSensor = registerSensor("leader_bytes_produced", new Rate());
+    totalLeaderRecordsProducedSensor = registerSensor("leader_records_produced", new Rate());
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -272,6 +285,30 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   public void recordWriteComputeCacheHitCount() {
     writeComputeCacheHitCount.record();
+  }
+
+  public void recordTotalLeaderBytesConsumed(long bytes) {
+    totalLeaderBytesConsumedSensor.record(bytes);
+  }
+
+  public void recordTotalLeaderRecordsConsumed(int count) {
+    totalLeaderRecordsConsumedSensor.record(count);
+  }
+
+  public void recordTotalFollowerBytesConsumed(long bytes) {
+    totalFollowerBytesConsumedSensor.record(bytes);
+  }
+
+  public void recordTotalFollowerRecordsConsumed(int count) {
+    totalFollowerRecordsConsumedSensor.record(count);
+  }
+
+  public void recordTotalLeaderBytesProduced(long bytes) {
+    totalLeaderBytesProducedSensor.record(bytes);
+  }
+
+  public void recordTotalLeaderRecordsProduced(int count) {
+    totalLeaderRecordsProducedSensor.record(count);
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {
