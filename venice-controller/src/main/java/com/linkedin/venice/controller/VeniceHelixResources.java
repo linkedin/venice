@@ -159,7 +159,7 @@ public class VeniceHelixResources implements VeniceResource {
     this.accessController = accessController;
     if (config.getErrorPartitionAutoResetLimit() > 0) {
       errorPartitionResetTask = new ErrorPartitionResetTask(clusterName, helixAdminClient, metadataRepository,
-          routingDataRepository, metricsRepository, config.getErrorPartitionAutoResetLimit(),
+          routingDataRepository, pushMonitor, metricsRepository, config.getErrorPartitionAutoResetLimit(),
           config.getErrorPartitionProcessingCycleDelay());
     }
   }

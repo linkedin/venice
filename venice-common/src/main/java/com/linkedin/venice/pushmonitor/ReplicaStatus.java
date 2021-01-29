@@ -61,7 +61,6 @@ public class ReplicaStatus {
     this.currentProgress = currentProgress;
   }
 
-  @SuppressWarnings("unused") // Used by ZK serialize and deserialize
   public String getIncrementalPushVersion() {
     return incrementalPushVersion;
   }

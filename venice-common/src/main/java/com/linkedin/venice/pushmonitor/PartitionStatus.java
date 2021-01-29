@@ -57,7 +57,6 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
     }
   }
 
-  @SuppressWarnings("unused") // Used by zk serialize and deserialize
   public Collection<ReplicaStatus> getReplicaStatuses() {
     return Collections.unmodifiableCollection(replicaStatusMap.values());
   }
