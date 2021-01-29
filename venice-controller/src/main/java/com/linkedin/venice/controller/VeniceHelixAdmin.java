@@ -237,7 +237,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final MetadataStoreWriter metadataStoreWriter;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
 
-  /**
+    /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
      */
@@ -1785,12 +1785,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 throw new VeniceException("cannot have incremental push because current version is in error status. "
                     + "Version: " + version.getNumber() + " Store:" + storeName);
             }
-            String versionTopic = Version.composeKafkaTopic(storeName, version.getNumber());
-            if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(versionTopic) || isTopicTruncated(versionTopic)) {
-                veniceHelixAdminStats.recordUnexpectedTopicAbsenceCount();
-                throw new VeniceException("Incremental push cannot be started for store: " + storeName + " in cluster: "
-                    + clusterName + " because the version topic: " + versionTopic
-                    + " is either absent or being truncated");
+
+            String kafkaTopic;
+            if (version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+              kafkaTopic = Version.composeRealTimeTopic(storeName);
+            } else {
+              kafkaTopic = Version.composeKafkaTopic(storeName, version.getNumber());
+            }
+
+            if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(kafkaTopic) || isTopicTruncated(kafkaTopic)) {
+              veniceHelixAdminStats.recordUnexpectedTopicAbsenceCount();
+              throw new VeniceException("Incremental push cannot be started for store: " + storeName + " in cluster: "
+                  + clusterName + " because the topic: " + kafkaTopic + " is either absent or being truncated");
             }
             return version;
         } finally {
