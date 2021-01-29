@@ -4,10 +4,14 @@ import com.linkedin.venice.helix.CachedReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -42,6 +46,7 @@ public class ErrorPartitionResetTaskTest {
   private HelixAdminClient helixAdminClient;
   private CachedReadOnlyStoreRepository readOnlyStoreRepository;
   private HelixExternalViewRepository routingDataRepository;
+  private PushMonitor pushMonitor;
   private MetricsRepository metricsRepository;
 
   @BeforeMethod
@@ -49,6 +54,7 @@ public class ErrorPartitionResetTaskTest {
     helixAdminClient = mock(HelixAdminClient.class);
     readOnlyStoreRepository = mock(CachedReadOnlyStoreRepository.class);
     routingDataRepository = mock(HelixExternalViewRepository.class);
+    pushMonitor = mock(PushMonitor.class);
     metricsRepository = new MetricsRepository();
   }
 
@@ -57,19 +63,27 @@ public class ErrorPartitionResetTaskTest {
     errorPartitionResetExecutorService.shutdownNow();
   }
 
-  @Test
-  public void testErrorPartitionReset() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testErrorPartitionReset(boolean isLeaderFollowerEnabled) {
     String clusterName = TestUtils.getUniqueString("testCluster");
     // Setup a store where two of its partitions has exactly one error replica.
     Store store = getStoreWithCurrentVersion();
     String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
     Map<String, List<Instance>> errorStateInstanceMap = new HashMap<>();
+    Map<String, List<Instance>> healthyStateInstanceMap = new HashMap<>();
     errorStateInstanceMap.put(HelixState.ERROR_STATE, Arrays.asList(instances[0]));
-    errorStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[1], instances[2]));
+    if (isLeaderFollowerEnabled) {
+      // if a replica is error, then the left should be 1 leader and 1 standby.
+      errorStateInstanceMap.put(HelixState.LEADER_STATE, Arrays.asList(instances[1]));
+      errorStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[2]));
+      healthyStateInstanceMap.put(HelixState.LEADER_STATE, Arrays.asList(instances[0]));
+      healthyStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[1], instances[2]));
+    } else {
+      errorStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[1], instances[2]));
+      healthyStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[0], instances[1], instances[2]));
+    }
     Partition errorPartition0 = new Partition(0, errorStateInstanceMap);
     Partition errorPartition1 = new Partition(1, errorStateInstanceMap);
-    Map<String, List<Instance>> healthyStateInstanceMap = new HashMap<>();
-    healthyStateInstanceMap.put(HelixState.ONLINE_STATE, Arrays.asList(instances[0], instances[1], instances[2]));
     Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap);
     PartitionAssignment partitionAssignment1 =
         new PartitionAssignment(resourceName, PARTITION_COUNT);
@@ -83,11 +97,14 @@ public class ErrorPartitionResetTaskTest {
     partitionAssignment2.addPartition(errorPartition0);
     partitionAssignment2.addPartition(healthyPartition1);
     partitionAssignment2.addPartition(healthyPartition2);
+    OfflinePushStatus offlinePushStatus = new OfflinePushStatus(resourceName, 3, 3,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 
     doReturn(Arrays.asList(store)).when(readOnlyStoreRepository).getAllStores();
     when(routingDataRepository.getPartitionAssignments(resourceName))
         .thenReturn(partitionAssignment1)
         .thenReturn(partitionAssignment2);
+    when(pushMonitor.getOfflinePushOrThrow(resourceName)).thenReturn(offlinePushStatus);
     ErrorPartitionResetTask errorPartitionResetTask = getErrorPartitionResetTask(clusterName);
     errorPartitionResetExecutorService.submit(errorPartitionResetTask);
 
@@ -156,7 +173,7 @@ public class ErrorPartitionResetTaskTest {
 
   private ErrorPartitionResetTask getErrorPartitionResetTask(String clusterName) {
     return new ErrorPartitionResetTask(clusterName, helixAdminClient, readOnlyStoreRepository, routingDataRepository,
-        metricsRepository, ERROR_PARTITION_RESET_LIMIT, PROCESSING_CYCLE_DELAY);
+        pushMonitor, metricsRepository, ERROR_PARTITION_RESET_LIMIT, PROCESSING_CYCLE_DELAY);
   }
 
   private Store getStoreWithCurrentVersion() {

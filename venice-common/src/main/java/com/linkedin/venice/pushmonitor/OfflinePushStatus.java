@@ -1,7 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -318,7 +317,7 @@ public class OfflinePushStatus {
     return Collections.unmodifiableCollection(partitionIdToStatus.values());
   }
 
-  protected PartitionStatus getPartitionStatus(int partitionId) {
+  public PartitionStatus getPartitionStatus(int partitionId) {
     return partitionIdToStatus.get(partitionId);
   }
 

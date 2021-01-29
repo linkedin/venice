@@ -9,11 +9,16 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
+import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -26,8 +31,9 @@ import org.apache.log4j.Logger;
 /**
  * A task that iterates over store version resources and reset error partitions if they meet the following criteria:
  * 1. The store version resource is the current version.
- * 2. The store version is operating in ONLINE/OFFLINE Helix state model.
- * 3. The error partition only has exactly one error replica.
+ * 2. The error partition only has exactly one error replica.
+ * 3. For L/F model, using EV to check error replicas misses internal error replica states. For example, a replica is
+ * is shown Leader in EV but actually ERROR in offline push status.
  */
 public class ErrorPartitionResetTask implements Runnable, Closeable {
   private static final String TASK_ID_FORMAT = ErrorPartitionResetTask.class.getSimpleName() + " [cluster: %s] ";
@@ -43,6 +49,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
   private final HelixAdminClient helixAdminClient;
   private final ReadOnlyStoreRepository readOnlyStoreRepository;
   private final HelixExternalViewRepository routingDataRepository;
+  private final PushMonitor pushMonitor;
   private final int errorPartitionAutoResetLimit;
   private final long processingCycleDelayMs;
   private final ErrorPartitionStats errorPartitionStats;
@@ -51,13 +58,14 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
 
   public ErrorPartitionResetTask(String clusterName, HelixAdminClient helixAdminClient,
       ReadOnlyStoreRepository readOnlyStoreRepository, HelixExternalViewRepository routingDataRepository,
-      MetricsRepository metricsRepository, int errorPartitionAutoResetLimit, long processingCycleDelayMs) {
+      PushMonitor pushMonitor, MetricsRepository metricsRepository, int errorPartitionAutoResetLimit, long processingCycleDelayMs) {
     taskId = String.format(TASK_ID_FORMAT, clusterName);
     logger = Logger.getLogger(taskId);
     this.clusterName = clusterName;
     this.helixAdminClient = helixAdminClient;
     this.readOnlyStoreRepository = readOnlyStoreRepository;
     this.routingDataRepository = routingDataRepository;
+    this.pushMonitor = pushMonitor;
     this.errorPartitionAutoResetLimit = errorPartitionAutoResetLimit;
     this.processingCycleDelayMs = processingCycleDelayMs;
     errorPartitionStats = new ErrorPartitionStats(metricsRepository, clusterName);
@@ -92,11 +100,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
 
   private void resetApplicableErrorPartitions(Store store) {
     int currentVersion = store.getCurrentVersion();
-    if (currentVersion == Store.NON_EXISTING_VERSION || !store.getVersion(currentVersion).isPresent()
-        || store.getVersion(currentVersion).get().isLeaderFollowerModelEnabled()) {
-      // Currently, Leader/Follower state transitions are short transitions that's difficult to manifest ERROR
-      // partitions due to transient Venice or Zk exceptions. This behavior may change if we ever introduce long
-      // state transitions to Leader/Follower model.
+    if (currentVersion == Store.NON_EXISTING_VERSION || !store.getVersion(currentVersion).isPresent()) {
       return;
     }
     String resourceName = store.getVersion(currentVersion).get().kafkaTopicName();
@@ -106,13 +110,11 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
       Map<Integer, Integer> partitionResetCountMap = errorPartitionResetTracker.computeIfAbsent(resourceName,
           k -> new HashMap<>());
       Map<String, List<String>> resetMap = new HashMap<>();
+      OfflinePushStatus pushStatus = null;
       for (Partition partition : partitionAssignment.getAllPartitions()) {
         List<Instance> errorInstances = partition.getErrorInstances();
         if (errorInstances.isEmpty()) {
-          // Check if the partition reached healthy state after a reset.
-          Set<String> states = partition.getAllInstances().keySet();
-          if (states.size() == 1 && states.contains(HelixState.ONLINE_STATE)
-              && partitionResetCountMap.containsKey(partition.getId())) {
+          if (checkPartitionRecovered(partition, partitionResetCountMap)) {
             partitionResetCountMap.remove(partition.getId());
             errorPartitionStats.recordErrorPartitionRecoveredFromReset();
           }
@@ -130,15 +132,28 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
             // This partition is unrecoverable from reset either due to reset limit or too many error replicas.
             partitionResetCountMap.put(partition.getId(), errorPartitionAutoResetLimit + 1);
             errorPartitionStats.recordErrorPartitionUnrecoverableFromReset();
+            if (pushStatus == null) {
+              // Every time getting offline push status is a read lock. This might cause problems
+              // if we call the get very frequently.
+              pushStatus = pushMonitor.getOfflinePushOrThrow(resourceName);
+            }
             logger.warn("Error partition unrecoverable from reset. Resource: " + resourceName + ", partition: "
                 + partition.getId() + ", reset count: " + currentResetCount);
+            PartitionStatus partitionStatus = pushStatus.getPartitionStatus(partition.getId());
+            // skip printing the hosts the info if partition status is null.
+            if (partitionStatus == null) {
+              logger.warn("Hosts unavailable to retrieve.");
+              continue;
+            }
+            Collection<ReplicaStatus> replicaStatuses= partitionStatus.getReplicaStatuses();
+            replicaStatuses.forEach((i) -> logger.warn(String.format("Host: %s, Offline push status: %s, Details: %s.", i.getInstanceId(), i.getCurrentStatus().name(), i.getIncrementalPushVersion())));
           } else if (errorInstances.size() > 1) {
             // The following scenarios can occur:
             // 1. Helix will trigger recovery re-balance in attempt to bring more replicas ONLINE.
             // 2. The recovery re-balance was successful and we now have excess error replicas that should be reset.
             //    e.g. 2 ERROR 3 ONLINE or 3 ERROR and 2 ONLINE for replication factor of 3 .
             // 3. All replicas are in ERROR state and Helix has given up on this partition until manual intervention.
-            if (partition.getReadyToServeInstances().size() >= store.getReplicationFactor() - 1) {
+            if ((partition.getNumOfTotalInstances() - errorInstances.size()) >= store.getReplicationFactor() - 1) {
               // Only perform reset for scenario 2 since the error partition reset task is not responsible for 1 and 3.
               partitionResetCountMap.put(partition.getId(), currentResetCount + 1);
               for (Instance i : errorInstances) {
@@ -154,9 +169,9 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
           }
         }
       }
-      if (!partitionResetCountMap.isEmpty()) {
-        errorPartitionResetTracker.put(resourceName, partitionResetCountMap);
-      }
+
+      // Update the tracker with newest reset count map
+      errorPartitionResetTracker.put(resourceName, partitionResetCountMap);
       resetMap.forEach((k,v) -> {
         helixAdminClient.resetPartition(clusterName, k, resourceName, v);
         errorPartitionStats.recordErrorPartitionResetAttempt(v.size());
@@ -169,6 +184,14 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
           + " for error partition reset", e);
       errorPartitionStats.recordErrorPartitionResetAttemptErrored();
     }
+  }
+
+  private boolean checkPartitionRecovered(Partition partition, Map<Integer, Integer> partitionResetCountMap) {
+    // Check if the partition reached healthy state after a reset.
+    Set<String> states = partition.getAllInstances().keySet();
+    return partitionResetCountMap.containsKey(partition.getId()) &&
+           ((states.size() == 1 && states.contains(HelixState.ONLINE_STATE)) ||
+           (states.size() == 2 && states.contains(HelixState.LEADER_STATE) && states.contains(HelixState.STANDBY_STATE)));
   }
 
   @Override

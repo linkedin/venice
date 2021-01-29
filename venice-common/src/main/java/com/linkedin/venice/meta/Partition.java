@@ -94,7 +94,7 @@ public class Partition {
    * Find the status of given instance in this partition.
    */
   public String getInstanceStatusById(String instanceId){
-    for(String status:stateToInstancesMap.keySet()){
+    for (String status:stateToInstancesMap.keySet()) {
       List<Instance> instances = stateToInstancesMap.get(status);
       for(Instance instance : instances){
         if(instance.getNodeId().equals(instanceId)){
@@ -103,6 +103,10 @@ public class Partition {
       }
     }
     return null;
+  }
+
+  public int getNumOfTotalInstances() {
+    return stateToInstancesMap.values().stream().mapToInt(List::size).sum();
   }
 
   /**
