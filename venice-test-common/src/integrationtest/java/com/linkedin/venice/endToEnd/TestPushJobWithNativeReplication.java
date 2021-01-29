@@ -12,6 +12,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
@@ -26,7 +27,10 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -269,6 +273,15 @@ public class  TestPushJobWithNativeReplication {
     // Write batch data
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
+
+    //Verify version level hybrid config is set correctly. The current version should be 1.
+    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+    Optional<Version> version = childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
+    HybridStoreConfig hybridConfig = version.get().getHybridStoreConfig();
+    Assert.assertNotNull(hybridConfig);
+    Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), 10);
+    Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 10);
+
 
     // Write Samza data (aggregated mode)
     SystemProducer veniceProducer = null;

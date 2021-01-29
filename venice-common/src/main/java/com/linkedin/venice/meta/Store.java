@@ -449,6 +449,10 @@ public abstract class Store {
       version.setIncrementalPushEnabled(isIncrementalPushEnabled());
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
+
+      version.setHybridStoreConfig(getHybridStoreConfig());
+
+      version.setUseVersionLevelHybridConfig(true);
     }
 
     storeVersionsSupplier.get().add(index, version.dataModel());

@@ -3,6 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.util.Arrays;
@@ -245,6 +246,27 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
     this.storeVersion.useVersionLevelIncrementalPushEnabled = versionLevelIncrementalPushEnabled;
   }
 
+  public HybridStoreConfig getHybridStoreConfig() {
+    if (null == this.storeVersion.hybridConfig) {
+      return null;
+    }
+    return new HybridStoreConfig(this.storeVersion.hybridConfig);
+  }
+
+  public void setHybridStoreConfig(HybridStoreConfig hybridConfig) {
+    if (hybridConfig != null) {
+      this.storeVersion.hybridConfig = hybridConfig.dataModel();
+    }
+  }
+
+  public boolean isUseVersionLevelHybridConfig() {
+    return this.storeVersion.useVersionLevelHybridConfig;
+  }
+
+  public void setUseVersionLevelHybridConfig(boolean versionLevelHybridConfig) {
+    this.storeVersion.useVersionLevelHybridConfig = versionLevelHybridConfig;
+  }
+
   @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
@@ -271,6 +293,8 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
         ", nativeReplicationSourceFabric=" + getNativeReplicationSourceFabric() +
         ", incrementalPushEnabled=" + isIncrementalPushEnabled() +
         ", useVersionLevelIncrementalPushEnabled=" + isUseVersionLevelIncrementalPushEnabled() +
+        ", hybridConfig=" + getHybridStoreConfig() +
+        ", useVersionLevelHybridConfig=" + isUseVersionLevelHybridConfig() +
         '}';
   }
 
@@ -322,6 +346,8 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
     clonedVersion.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     clonedVersion.setIncrementalPushEnabled(isIncrementalPushEnabled());
     clonedVersion.setUseVersionLevelIncrementalPushEnabled(isUseVersionLevelIncrementalPushEnabled());
+    clonedVersion.setHybridStoreConfig(getHybridStoreConfig());
+    clonedVersion.setUseVersionLevelHybridConfig(isUseVersionLevelHybridConfig());
     return clonedVersion;
   }
 

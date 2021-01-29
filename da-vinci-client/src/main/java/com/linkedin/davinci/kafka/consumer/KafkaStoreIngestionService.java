@@ -421,7 +421,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         version.isLeaderFollowerModelEnabled(),
         getKafkaConsumerProperties(veniceStoreConfig),
         isVersionCurrent,
-        Optional.ofNullable(store.getHybridStoreConfig()),
+        version.isUseVersionLevelHybridConfig() ? Optional.ofNullable(version.getHybridStoreConfig()) : Optional.ofNullable(store.getHybridStoreConfig()),
         version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled(),
         veniceStoreConfig,
         version.isBufferReplayEnabledForHybrid(),
