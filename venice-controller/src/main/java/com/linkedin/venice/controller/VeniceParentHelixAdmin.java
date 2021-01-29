@@ -891,8 +891,14 @@ public class VeniceParentHelixAdmin implements Admin {
 
   //This method is only for internal / test use case
   Version getIncrementalPushVersion(Version incrementalPushVersion, ExecutionStatus status) {
-    String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
     String storeName = incrementalPushVersion.getStoreName();
+
+    String incrementalPushTopic;
+    if (incrementalPushVersion.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+      incrementalPushTopic = Version.composeRealTimeTopic(storeName);
+    } else {
+      incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
+    }
 
     if (!status.isTerminal()) {
       throw new VeniceException("Cannot start incremental push since batch push is on going." + " store: " + storeName);

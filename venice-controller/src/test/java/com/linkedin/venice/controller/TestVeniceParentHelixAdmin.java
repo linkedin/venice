@@ -966,24 +966,32 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testGetIncrementalPushVersion() {
-   Version incrementalPushVersion = new Version("testStore", 1);
-   Assert.assertEquals(parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED), incrementalPushVersion);
+    String storeName = "testStore";
+    Version incrementalPushVersion = new Version(storeName, 1);
+    Assert.assertEquals(parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED), incrementalPushVersion);
 
-   try {
-     parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.STARTED);
-     Assert.fail();
-   } catch (VeniceException e) {}
+    try {
+      parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.STARTED);
+      Assert.fail();
+    } catch (VeniceException e) {}
 
-   try {
-     parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.ERROR);
-     Assert.fail();
-   } catch (VeniceException e) {}
+    try {
+      parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.ERROR);
+      Assert.fail();
+    } catch (VeniceException e) {}
 
-   doReturn(true).when(internalAdmin).isTopicTruncated(incrementalPushVersion.kafkaTopicName());
-   try {
-     parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED);
-     Assert.fail();
-   } catch (VeniceException e) {}
+    doReturn(true).when(internalAdmin).isTopicTruncated(incrementalPushVersion.kafkaTopicName());
+    try {
+      parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED);
+      Assert.fail();
+    } catch (VeniceException e) {}
+
+    incrementalPushVersion.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+    doReturn(false).when(internalAdmin).isTopicTruncated(Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED), incrementalPushVersion);
+
+    doReturn(true).when(internalAdmin).isTopicTruncated(Version.composeRealTimeTopic(storeName));
+    Assert.assertThrows(VeniceException.class, () -> parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED));
   }
 
   @Test

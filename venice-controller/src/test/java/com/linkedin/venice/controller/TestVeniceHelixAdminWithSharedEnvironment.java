@@ -1409,4 +1409,39 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getNativeReplicationSourceFabric(), "dc1");
   }
 
+  @Test
+  public void testGetIncrementalPushVersion() {
+    String incrementalEnabledStoreName = TestUtils.getUniqueString("testIncrementalStore");
+    veniceAdmin.addStore(clusterName, incrementalEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    veniceAdmin.incrementVersionIdempotent(clusterName, incrementalEnabledStoreName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, incrementalEnabledStoreName) == 1);
+    veniceAdmin.getIncrementalPushVersion(clusterName, incrementalEnabledStoreName);
+
+    // For incremental push policy PUSH_TO_VERSION_TOPIC, incremental push should fail if version topic is truncated
+    veniceAdmin.truncateKafkaTopic(Version.composeKafkaTopic(incrementalEnabledStoreName, 1));
+    Assert.assertThrows(VeniceException.class, () -> veniceAdmin.getIncrementalPushVersion(clusterName, incrementalEnabledStoreName));
+
+    String incrementalAndHybridEnabledStoreName = TestUtils.getUniqueString("testHybridStore");
+    veniceAdmin.addStore(clusterName, incrementalAndHybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+    veniceAdmin.updateStore(clusterName, incrementalAndHybridEnabledStoreName,
+        new UpdateStoreQueryParams()
+            .setHybridOffsetLagThreshold(1)
+            .setHybridRewindSeconds(0)
+            .setIncrementalPushEnabled(true)
+            .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME));
+    veniceAdmin.incrementVersionIdempotent(clusterName, incrementalAndHybridEnabledStoreName, Version.guidBasedDummyPushId(), 1, 1);
+    String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, incrementalAndHybridEnabledStoreName);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, incrementalAndHybridEnabledStoreName) == 1);
+
+    // For incremental push policy INCREMENTAL_PUSH_SAME_AS_REAL_TIME, incremental push should succeed even if version topic is truncated
+    veniceAdmin.truncateKafkaTopic(Version.composeKafkaTopic(incrementalAndHybridEnabledStoreName, 1));
+    veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName);
+
+    // For incremental push policy INCREMENTAL_PUSH_SAME_AS_REAL_TIME, incremental push should fail if rt topic is truncated
+    veniceAdmin.truncateKafkaTopic(rtTopic);
+    Assert.assertThrows(VeniceException.class, () -> veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName));
+  }
 }
