@@ -32,6 +32,13 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   private static final String RECORDS_CONSUMED_METRIC_NAME = "records_consumed";
   private static final String BYTES_CONSUMED_METRIC_NAME = "bytes_consumed";
 
+  private static final String LEADER_RECORDS_CONSUMED_METRIC_NAME = "leader_records_consumed";
+  private static final String LEADER_BYTES_CONSUMED_METRIC_NAME = "leader_bytes_consumed";
+  private static final String FOLLOWER_RECORDS_CONSUMED_METRIC_NAME = "follower_records_consumed";
+  private static final String FOLLOWER_BYTES_CONSUMED_METRIC_NAME = "follower_bytes_consumed";
+  private static final String LEADER_RECORDS_PRODUCED_METRIC_NAME = "leader_records_produced";
+  private static final String LEADER_BYTES_PRODUCED_METRIC_NAME = "leader_bytes_produced";
+
   public AggVersionedStorageIngestionStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
     super(metricsRepository, storeRepository, StorageIngestionStats::new, StorageIngestionStatsReporter::new);
   }
@@ -86,6 +93,36 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordBytesConsumed(bytes));
   }
 
+  public void recordLeaderRecordsConsumed(String storeName, int version, int count) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderRecordsConsumed(count));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderRecordsConsumed(count));
+  }
+
+  public void recordLeaderBytesConsumed(String storeName, int version, long bytes) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderBytesConsumed(bytes));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderBytesConsumed(bytes));
+  }
+
+  public void recordFollowerRecordsConsumed(String storeName, int version, int count) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordFollowerRecordsConsumed(count));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordFollowerRecordsConsumed(count));
+  }
+
+  public void recordFollowerBytesConsumed(String storeName, int version, long bytes) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordFollowerBytesConsumed(bytes));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordFollowerBytesConsumed(bytes));
+  }
+
+  public void recordLeaderRecordsProduced(String storeName, int version, int count) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderRecordsProduced(count));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderRecordsProduced(count));
+  }
+
+  public void recordLeaderBytesProduced(String storeName, int version, long bytes) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderBytesProduced(bytes));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderBytesProduced(bytes));
+  }
+
   static class StorageIngestionStats {
     private static final MetricConfig METRIC_CONFIG = new MetricConfig();
     private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
@@ -96,9 +133,21 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
     private final Rate recordsConsumedRate;
     private final Rate bytesConsumedRate;
+    private final Rate leaderRecordsConsumedRate;
+    private final Rate leaderBytesConsumedRate;
+    private final Rate followerRecordsConsumedRate;
+    private final Rate followerBytesConsumedRate;
+    private final Rate leaderRecordsProducedRate;
+    private final Rate leaderBytesProducedRate;
 
     private final Sensor recordsConsumedSensor;
     private final Sensor bytesConsumedSensor;
+    private final Sensor leaderRecordsConsumedSensor;
+    private final Sensor leaderBytesConsumedSensor;
+    private final Sensor followerRecordsConsumedSensor;
+    private final Sensor followerBytesConsumedSensor;
+    private final Sensor leaderRecordsProducedSensor;
+    private final Sensor leaderBytesProducedSensor;
 
     public StorageIngestionStats()  {
       recordsConsumedRate = new Rate();
@@ -108,6 +157,31 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       bytesConsumedRate = new Rate();
       bytesConsumedSensor = localMetricRepository.sensor(BYTES_CONSUMED_METRIC_NAME);
       bytesConsumedSensor.add(BYTES_CONSUMED_METRIC_NAME + bytesConsumedRate.getClass().getSimpleName(), bytesConsumedRate);
+
+      leaderRecordsConsumedRate = new Rate();
+      leaderRecordsConsumedSensor = localMetricRepository.sensor(LEADER_RECORDS_CONSUMED_METRIC_NAME);
+      leaderRecordsConsumedSensor.add(LEADER_RECORDS_CONSUMED_METRIC_NAME + leaderRecordsConsumedRate.getClass().getSimpleName(), leaderRecordsConsumedRate);
+
+      leaderBytesConsumedRate = new Rate();
+      leaderBytesConsumedSensor = localMetricRepository.sensor(LEADER_BYTES_CONSUMED_METRIC_NAME);
+      leaderBytesConsumedSensor.add(LEADER_BYTES_CONSUMED_METRIC_NAME + leaderBytesConsumedRate.getClass().getSimpleName(), leaderBytesConsumedRate);
+
+      followerRecordsConsumedRate = new Rate();
+      followerRecordsConsumedSensor = localMetricRepository.sensor(FOLLOWER_RECORDS_CONSUMED_METRIC_NAME);
+      followerRecordsConsumedSensor.add(FOLLOWER_RECORDS_CONSUMED_METRIC_NAME + followerRecordsConsumedRate.getClass().getSimpleName(), followerRecordsConsumedRate);
+
+      followerBytesConsumedRate = new Rate();
+      followerBytesConsumedSensor = localMetricRepository.sensor(FOLLOWER_BYTES_CONSUMED_METRIC_NAME);
+      followerBytesConsumedSensor.add(FOLLOWER_BYTES_CONSUMED_METRIC_NAME + followerBytesConsumedRate.getClass().getSimpleName(), followerBytesConsumedRate);
+
+      leaderRecordsProducedRate = new Rate();
+      leaderRecordsProducedSensor = localMetricRepository.sensor(LEADER_RECORDS_PRODUCED_METRIC_NAME);
+      leaderRecordsProducedSensor.add(LEADER_RECORDS_PRODUCED_METRIC_NAME + leaderRecordsProducedRate.getClass().getSimpleName(), leaderRecordsProducedRate);
+
+      leaderBytesProducedRate = new Rate();
+      leaderBytesProducedSensor = localMetricRepository.sensor(LEADER_BYTES_PRODUCED_METRIC_NAME);
+      leaderBytesProducedSensor.add(LEADER_BYTES_PRODUCED_METRIC_NAME + leaderBytesProducedRate.getClass().getSimpleName(), leaderBytesProducedRate);
+
     }
 
     public void setIngestionTask(StoreIngestionTask ingestionTask) { this.ingestionTask = ingestionTask; }
@@ -175,6 +249,57 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     public void recordBytesConsumed(double value) {
       bytesConsumedSensor.record(value);
     }
+
+    public double getLeaderRecordsConsumed() {
+      return leaderRecordsConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordLeaderRecordsConsumed(double value) {
+      leaderRecordsConsumedSensor.record(value);
+    }
+
+    public double getLeaderBytesConsumed() {
+      return leaderBytesConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordLeaderBytesConsumed(double value) {
+      leaderBytesConsumedSensor.record(value);
+    }
+
+    public double getFollowerRecordsConsumed() {
+      return followerRecordsConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordFollowerRecordsConsumed(double value) {
+      followerRecordsConsumedSensor.record(value);
+    }
+
+    public double getFollowerBytesConsumed() {
+      return followerBytesConsumedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordFollowerBytesConsumed(double value) {
+      followerBytesConsumedSensor.record(value);
+    }
+
+
+    public double getLeaderRecordsProduced() {
+      return leaderRecordsProducedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordLeaderRecordsProduced(double value) {
+      leaderRecordsProducedSensor.record(value);
+    }
+
+    public double getLeaderBytesProduced() {
+      return leaderBytesProducedRate.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordLeaderBytesProduced(double value) {
+      leaderBytesProducedSensor.record(value);
+    }
+
+
   }
 
   static class StorageIngestionStatsReporter extends AbstractVeniceStatsReporter<StorageIngestionStats> {
@@ -196,6 +321,18 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
           new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed()));
       registerSensor(BYTES_CONSUMED_METRIC_NAME,
           new IngestionStatsGauge(this, () -> getStats().getBytesConsumed()));
+      registerSensor(LEADER_RECORDS_CONSUMED_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getLeaderRecordsConsumed()));
+      registerSensor(LEADER_BYTES_CONSUMED_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getLeaderBytesConsumed()));
+      registerSensor(FOLLOWER_RECORDS_CONSUMED_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getFollowerRecordsConsumed()));
+      registerSensor(FOLLOWER_BYTES_CONSUMED_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getFollowerBytesConsumed()));
+      registerSensor(LEADER_RECORDS_PRODUCED_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getLeaderRecordsProduced()));
+      registerSensor(LEADER_BYTES_PRODUCED_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getLeaderBytesProduced()));
     }
 
     // Only register these stats if the store is hybrid.
