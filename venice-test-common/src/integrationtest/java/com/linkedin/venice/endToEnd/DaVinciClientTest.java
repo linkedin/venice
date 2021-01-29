@@ -369,7 +369,7 @@ public class DaVinciClientTest {
       int emptyPartition = (partition + 1) % partitionCount;
       client.subscribe(Collections.singleton(emptyPartition)).get();
       for (int i = 0; i < KEY_COUNT; i++) {
-        final int key = i;
+        int key = i;
         assertThrows(NonLocalAccessException.class, () -> client.get(key).get());
       }
       client.unsubscribe(Collections.singleton(emptyPartition));

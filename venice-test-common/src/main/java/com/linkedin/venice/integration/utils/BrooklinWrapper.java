@@ -1,5 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.utils.Utils;
+
 import com.linkedin.datastream.DatastreamRestClient;
 import com.linkedin.datastream.common.DatastreamException;
 import com.linkedin.datastream.connectors.kafka.KafkaConnectorFactory;
@@ -11,23 +13,20 @@ import com.linkedin.datastream.server.CoordinatorConfig;
 import com.linkedin.datastream.server.DatastreamServer;
 import com.linkedin.datastream.server.EmbeddedDatastreamCluster;
 import com.linkedin.datastream.server.assignment.BroadcastStrategyFactory;
-import com.linkedin.venice.replication.BrooklinTopicReplicator;
-import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Utils;
+
+import org.apache.kafka.clients.producer.ProducerConfig;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import org.apache.kafka.clients.producer.ProducerConfig;
 
-
+import static com.linkedin.venice.replication.BrooklinTopicReplicator.*;
 
 public class BrooklinWrapper extends ProcessWrapper {
-  public static final String TPNAME = BrooklinTopicReplicator.TRANSPORT_PROVIDER_NAME; //Kafka transport provider
-  public static final String CONNECTOR = BrooklinTopicReplicator.BROOKLIN_CONNECTOR_NAME;
-  public static final String SERVICE_NAME = "brooklin";
+  public static final String SERVICE_NAME = "Brooklin";
 
   /**
    * This is package private because the only way to call this should be from
@@ -54,7 +53,7 @@ public class BrooklinWrapper extends ProcessWrapper {
       kafkaConnectorProperties.put("consumer.client.id", "venice-controller-war");
 
       Map<String, Properties> connectorProperties = new HashMap<>();
-      connectorProperties.put(CONNECTOR, kafkaConnectorProperties);
+      connectorProperties.put(BROOKLIN_CONNECTOR_NAME, kafkaConnectorProperties);
 
       /**
        * The intent of this abstraction is to re-use ZK, otherwise Brooklin starts its own embedded ZK...
@@ -154,9 +153,9 @@ public class BrooklinWrapper extends ProcessWrapper {
   private static Properties createOverrideProperties(KafkaCluster brooklinKafkaCluster) {
     Properties overrideProperties = new Properties();
 
-    overrideProperties.put(CoordinatorConfig.CONFIG_DEFAULT_TRANSPORT_PROVIDER, TPNAME);
-    overrideProperties.put(DatastreamServer.CONFIG_TRANSPORT_PROVIDER_NAMES, TPNAME);
-    String tpPrefix = DatastreamServer.CONFIG_TRANSPORT_PROVIDER_PREFIX + TPNAME + ".";
+    overrideProperties.put(CoordinatorConfig.CONFIG_DEFAULT_TRANSPORT_PROVIDER, TRANSPORT_PROVIDER_NAME);
+    overrideProperties.put(DatastreamServer.CONFIG_TRANSPORT_PROVIDER_NAMES, TRANSPORT_PROVIDER_NAME);
+    String tpPrefix = DatastreamServer.CONFIG_TRANSPORT_PROVIDER_PREFIX + TRANSPORT_PROVIDER_NAME + ".";
     overrideProperties.put(tpPrefix + DatastreamServer.CONFIG_FACTORY_CLASS_NAME,
         KafkaTransportProviderAdminFactory.class.getName());
 
@@ -167,5 +166,4 @@ public class BrooklinWrapper extends ProcessWrapper {
 
     return overrideProperties;
   }
-
 }

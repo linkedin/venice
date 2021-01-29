@@ -827,7 +827,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (!consumerHasSubscription()) {
       if (++idleCounter <= MAX_IDLE_COUNTER) {
-        logger.warn(consumerTaskId + " No Partitions are subscribed to for store attempt " + idleCounter);
+        logger.info(consumerTaskId + " Not subscribed to any partitions, idleCounter=" + idleCounter);
         if (usingSharedConsumer) {
           /**
            * The extended sleep is trying to reduce the contention since the consumer is shared and synchronized.
@@ -838,11 +838,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           Thread.sleep(readCycleDelayMs);
         }
-        return;
+      } else {
+        logger.warn(consumerTaskId + " Has expired due to not being subscribed to any partitions for too long.");
+        complete();
       }
-
-      logger.warn(consumerTaskId + " No Partitions are subscribed to for store attempts expired after " + idleCounter);
-      complete();
       return;
     }
     idleCounter = 0;
