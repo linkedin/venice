@@ -5,10 +5,12 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpResponse;
 import org.apache.log4j.Logger;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 
 public class IngestionRequestClientHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
   private static final Logger logger = Logger.getLogger(IngestionRequestClientHandler.class);
-  private FullHttpResponse result;
+  private final AtomicReference<FullHttpResponse> response = new AtomicReference<>();
 
   public IngestionRequestClientHandler() {
   }
@@ -20,8 +22,10 @@ public class IngestionRequestClientHandler extends SimpleChannelInboundHandler<F
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, FullHttpResponse msg) {
-    // Keep a deep copy of the response msg, the original msg will be release once channelRead is finished.
-    result = msg.copy();
+    FullHttpResponse oldResponse = response.getAndSet(msg.retainedDuplicate());
+    if (oldResponse != null) {
+      oldResponse.release();
+    }
     ctx.close();
   }
 
@@ -32,7 +36,7 @@ public class IngestionRequestClientHandler extends SimpleChannelInboundHandler<F
   }
 
   public FullHttpResponse getResponse() {
-    return result;
+    return response.getAndSet(null);
   }
 }
 

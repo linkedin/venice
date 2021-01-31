@@ -40,7 +40,9 @@ public class StoreBackend {
     } catch (InterruptedException e) {
       logger.warn("StoreRepository::subscribe was interrupted", e);
       Thread.currentThread().interrupt();
+      return;
     }
+    this.config.store();
   }
 
   synchronized void close() {
@@ -51,7 +53,6 @@ public class StoreBackend {
     }
 
     logger.info("Closing local store " + storeName);
-    config.store();
     subscription.clear();
     currentVersionRef.clear();
 
@@ -141,6 +142,10 @@ public class StoreBackend {
     }
 
     logger.info("Subscribing to partitions " + partitions + " of " + storeName);
+    if (subscription.isEmpty() && !partitions.isEmpty()) {
+      // Recreate store config that was potentially deleted by unsubscribe.
+      config.store();
+    }
     subscription.addAll(partitions);
 
     if (futureVersion == null) {
@@ -157,23 +162,26 @@ public class StoreBackend {
     logger.info("Unsubscribing from partitions " + partitions + " of " + storeName);
     subscription.removeAll(partitions);
 
-    if (currentVersion != null) {
-      currentVersion.unsubscribe(partitions);
-    }
-
-    if (futureVersion != null) {
-      futureVersion.unsubscribe(partitions);
-    }
-
     if (subscription.isEmpty()) {
+      config.delete();
+
       if (futureVersion != null) {
-        logger.error("Deleting unexpected future version " + futureVersion + ", currentVersion=" + currentVersion);
         deleteFutureVersion();
       }
 
       if (currentVersion != null) {
-        // Using setCurrentVersion() here instead of VersionBackend::delete() to ensure that readers are not disrupted.
-        setCurrentVersion(null);
+        VersionBackend version = currentVersion;
+        currentVersion = null;
+        currentVersionRef.clear();
+        version.delete();
+      }
+    } else {
+      if (currentVersion != null) {
+        currentVersion.unsubscribe(partitions);
+      }
+
+      if (futureVersion != null) {
+        futureVersion.unsubscribe(partitions);
       }
     }
   }

@@ -179,7 +179,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     // Initialize D2Client.
     SSLFactory sslFactory;
     D2Client d2Client;
-    String d2ZkHosts = veniceProperties.getString(D2_CLIENT_ZK_HOSTS_ADDRESS, "");
+    String d2ZkHosts = veniceProperties.getString(D2_CLIENT_ZK_HOSTS_ADDRESS);
     if (veniceProperties.getBoolean(CommonConfigKeys.SSL_ENABLED, false)) {
       try {
         /**
@@ -202,8 +202,9 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     startD2Client(d2Client);
 
     // Create the client config.
-    ClientConfig clientConfig = new ClientConfig();
-    clientConfig.setD2Client(d2Client).setD2ServiceName("venice-discovery");
+    ClientConfig clientConfig = new ClientConfig()
+        .setD2Client(d2Client)
+        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME);
     String clusterName = configLoader.getVeniceClusterConfig().getClusterName();
 
     // Create MetricsRepository
@@ -278,7 +279,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         metricsRepository,
         rocksDBMemoryStats,
         Optional.of(kafkaMessageEnvelopeSchemaReader),
-        Optional.of(clientConfig),
+        Optional.empty(),
         partitionStateSerializer);
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);

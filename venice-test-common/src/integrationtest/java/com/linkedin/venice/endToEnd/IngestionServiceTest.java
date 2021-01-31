@@ -110,6 +110,7 @@ public class IngestionServiceTest {
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     InitializationConfigs initializationConfigs = createInitializationConfigs(baseDataPath);
     initializationConfigs.aggregatedConfigs.put(SERVER_INGESTION_MODE, ISOLATED.toString());
+    initializationConfigs.aggregatedConfigs.put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress());
     sendInitializationMessage(serializeInitializationConfigs(initializationConfigs));
     sendStartConsumptionMessage(testStoreName, 1, 0);
   }
@@ -120,9 +121,10 @@ public class IngestionServiceTest {
 
     // Use Da Vinci bootstrap to test.
     VeniceProperties backendConfig = new PropertyBuilder()
-        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
+        .put(DATA_BASE_PATH, baseDataPath)
         .put(SERVER_INGESTION_MODE, ISOLATED)
-        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
         .build();
 
     D2Client d2Client = new D2ClientBuilder()
@@ -168,6 +170,7 @@ public class IngestionServiceTest {
     initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT, String.valueOf(APPLICATION_PORT));
     initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT, String.valueOf(SERVICE_PORT));
     initializationConfigs.aggregatedConfigs.put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "true");
+    initializationConfigs.aggregatedConfigs.put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress());
     return initializationConfigs;
   }
 
