@@ -191,51 +191,53 @@ public class StorageService extends AbstractVeniceService {
   /**
    * Removes the Store, Partition from the Storage service.
    */
-  public synchronized void dropStorePartition(VeniceStoreConfig storeConfig, int partitionId) {
-    String storeName = storeConfig.getStoreName(); // This is the Kafka topic name
+  public synchronized void dropStorePartition(VeniceStoreConfig storeConfig, int subPartition) {
+    String kafkaTopic = storeConfig.getStoreName();
 
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeName);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      logger.info(storeName + " Store could not be located, ignoring the remove partition message.");
+      logger.warn("Storage engine " + kafkaTopic + " does not exist, ignoring drop partition request.");
       return;
     }
-    storageEngine.dropPartition(partitionId);
-    Set<Integer> assignedPartitions = storageEngine.getPartitionIds();
-    storeConfig.setStorePersistenceType(storageEngine.getType());
-    logger.info("Dropped Partition " + partitionId + " Store " + storeName + " Remaining " + Arrays.toString(assignedPartitions.toArray()));
+    storageEngine.dropPartition(subPartition);
+    Set<Integer> subPartitions = storageEngine.getPartitionIds();
+    logger.info("Dropped sub-partition " + subPartition + " of " + kafkaTopic + ", subPartitions=" + subPartitions);
 
-    if (assignedPartitions.isEmpty()) {
-      // Drop the directory completely.
-      StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
-      factory.removeStorageEngine(storageEngine);
-
-      // Clean up the state
-      storageEngineRepository.removeLocalStorageEngine(storeName);
+    if (subPartitions.isEmpty()) {
+      removeStorageEngine(kafkaTopic);
     }
   }
 
-  public synchronized void removeStorageEngine(String storeName) {
-    AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().getLocalStorageEngine(storeName);
-    VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
-    storeConfig.setStorePersistenceType(storageEngine.getType());
-
-    // drop the partitions + metadata
+  public synchronized void removeStorageEngine(String kafkaTopic) {
+    AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
+    if (storageEngine == null) {
+      logger.warn("Storage engine " + kafkaTopic + " does not exist, ignoring remove request.");
+      return;
+    }
     storageEngine.drop();
 
-    storageEngineRepository.removeLocalStorageEngine(storeName);
+    VeniceStoreConfig storeConfig = configLoader.getStoreConfig(kafkaTopic);
+    storeConfig.setStorePersistenceType(storageEngine.getType());
+
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     factory.removeStorageEngine(storageEngine);
   }
 
-  public synchronized void closeStorageEngine(String storeName) {
-    AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().getLocalStorageEngine(storeName);
-    VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
+  public synchronized void closeStorageEngine(String kafkaTopic) {
+    AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
+    if (storageEngine == null) {
+      logger.warn("Storage engine " + kafkaTopic + " does not exist, ignoring close request.");
+      return;
+    }
+    storageEngine.close();
+
+    VeniceStoreConfig storeConfig = configLoader.getStoreConfig(kafkaTopic);
     storeConfig.setStorePersistenceType(storageEngine.getType());
 
-    storageEngineRepository.removeLocalStorageEngine(storeName).close();
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     factory.closeStorageEngine(storageEngine);
   }
+
   public void cleanupAllStores(VeniceConfigLoader configLoader) {
     // Load local storage and delete them safely.
     // TODO Just clean the data dir in case loading and deleting is too slow.

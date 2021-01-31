@@ -164,7 +164,7 @@ public class DaVinciBackend implements Closeable {
         metricsRepository,
         rocksDBMemoryStats,
         Optional.of(kafkaMessageEnvelopeSchemaReader),
-        Optional.of(clientConfig),
+        Optional.empty(),
         partitionStateSerializer);
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);

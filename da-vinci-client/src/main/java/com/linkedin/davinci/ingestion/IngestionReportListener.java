@@ -178,14 +178,15 @@ public class IngestionReportListener extends AbstractVeniceService {
 
   private void restartForkedProcess() {
     IngestionUtils.startForkedIngestionProcess(configLoader);
-    IngestionRequestClient client = new IngestionRequestClient(this.ingestionServicePort);
-    // Reset heartbeat time.
-    heartbeatTime = -1;
-    topicNameToPartitionSetMap.forEach((topicName, partitionSet) -> {
-      partitionSet.forEach(partitionId -> {
-        IngestionUtils.subscribeTopicPartition(client, topicName, partitionId);
+    try (IngestionRequestClient client = new IngestionRequestClient(this.ingestionServicePort)) {
+      // Reset heartbeat time.
+      heartbeatTime = -1;
+      topicNameToPartitionSetMap.forEach((topicName, partitionSet) -> {
+        partitionSet.forEach(partitionId -> {
+          IngestionUtils.subscribeTopicPartition(client, topicName, partitionId);
+        });
       });
-    });
+    }
     logger.info("Restart forked process completed");
   }
 

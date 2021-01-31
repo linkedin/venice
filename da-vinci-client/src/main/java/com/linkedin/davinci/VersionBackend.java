@@ -90,9 +90,31 @@ public class VersionBackend {
 
   synchronized void close() {
     logger.info("Closing local version " + this);
-    backend.getVersionByTopicMap().remove(version.kafkaTopicName());
+    backend.getVersionByTopicMap().remove(version.kafkaTopicName(), this);
+
+    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
+      logger.info("Sending KILL_CONSUMPTION request to child process to drop metadata for "  + this);
+      IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+      ingestionTaskCommand.commandType = IngestionCommandType.KILL_CONSUMPTION.getValue();
+      ingestionTaskCommand.topicName = version.kafkaTopicName();
+      byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
+      try {
+        IngestionRequestClient client = backend.getIngestionRequestClient();
+        HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
+        FullHttpResponse response = client.sendRequest(httpRequest);
+        logger.info("Received ingestion task report response.");
+        byte[] responseContent = new byte[response.content().readableBytes()];
+        response.content().readBytes(responseContent);
+        response.release();
+        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
+        logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      } catch (Exception e) {
+        throw new VeniceException("Encounter exception when dropping storage engine opened in child process", e);
+      }
+    }
+
+    backend.getIngestionService().killConsumptionTask(version.kafkaTopicName());
     for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
-      backend.getIngestionService().stopConsumptionAndWait(config, entry.getKey(), 1, 30);
       entry.getValue().cancel(true);
     }
     heartbeat.ifPresent(f -> f.cancel(true));
@@ -101,11 +123,7 @@ public class VersionBackend {
   synchronized void delete() {
     logger.info("Deleting local version " + this);
     close();
-    for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
-      backend.getStorageService().dropStorePartition(config, entry.getKey());
-    }
 
-    // Send remote request to isolated ingestion service to stop ingestion.
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       logger.info("Sending DROP_STORE request to child process to drop metadata for "  + this);
       IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
@@ -119,14 +137,15 @@ public class VersionBackend {
         logger.info("Received ingestion task report response.");
         byte[] responseContent = new byte[response.content().readableBytes()];
         response.content().readBytes(responseContent);
+        response.release();
         IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
         logger.info("Received ingestion task report response: " + ingestionTaskReport);
-        // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
-        response.release();
       } catch (Exception e) {
         throw new VeniceException("Encounter exception when dropping storage engine opened in child process", e);
       }
     }
+
+    backend.getStorageService().removeStorageEngine(version.kafkaTopicName());
   }
 
   @Override
@@ -146,8 +165,8 @@ public class VersionBackend {
     return engine;
   }
 
-  public boolean isReportingPushStatus() {
-    return this.reportPushStatus;
+  boolean isReportingPushStatus() {
+    return reportPushStatus;
   }
 
   synchronized void tryStartHeartbeat() {
@@ -217,7 +236,6 @@ public class VersionBackend {
     logger.info("Unsubscribing from sub-partitions " + subPartitions + " of " + this);
     for (Integer id : subPartitions) {
       unsubscribeSubPartition(id);
-      backend.getStorageService().dropStorePartition(config, id);
     }
   }
 
@@ -278,14 +296,39 @@ public class VersionBackend {
 
   private synchronized void unsubscribeSubPartition(int subPartition) {
     if (!subPartitionFutures.containsKey(subPartition)) {
-      logger.info("Sub-partition " + subPartition + " of " + this + " is not subscribed, ignoring unsubscribe request.");
+      logger.warn("Sub-partition " + subPartition + " of " + this + " is not subscribed, ignoring unsubscribe request.");
       return;
     }
+
+    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
+      logger.info("Sending STOP_CONSUMPTION request to child process to drop metadata for "  + this);
+      IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+      ingestionTaskCommand.commandType = IngestionCommandType.STOP_CONSUMPTION.getValue();
+      ingestionTaskCommand.topicName = version.kafkaTopicName();
+      ingestionTaskCommand.partitionId = subPartition;
+      byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
+      try {
+        IngestionRequestClient client = backend.getIngestionRequestClient();
+        HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
+        FullHttpResponse response = client.sendRequest(httpRequest);
+        logger.info("Received ingestion task report response.");
+        byte[] responseContent = new byte[response.content().readableBytes()];
+        response.content().readBytes(responseContent);
+        response.release();
+        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
+        logger.info("Received ingestion task report response: " + ingestionTaskReport);
+      } catch (Exception e) {
+        throw new VeniceException("Encounter exception when dropping storage engine opened in child process", e);
+      }
+    }
+
     backend.getIngestionService().stopConsumptionAndWait(config, subPartition, 1, 30);
     CompletableFuture future = subPartitionFutures.remove(subPartition);
     if (future != null) {
       future.complete(null);
     }
+
+    backend.getStorageService().dropStorePartition(config, subPartition);
     tryStopHeartbeat();
   }
 

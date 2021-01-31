@@ -21,12 +21,17 @@ import com.linkedin.davinci.storage.StorageService;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import org.apache.commons.io.FileUtils;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -37,23 +42,28 @@ import static org.testng.Assert.*;
 
 public class StoreBackendTest {
   Store store;
+  Version version1;
+  Version version2;
+  File baseDataPath;
   DaVinciBackend backend;
   StoreBackend storeBackend;
   Map<String, VersionBackend> versionMap;
 
   @BeforeMethod
   void setup() {
+    baseDataPath = TestUtils.getTempDataDirectory();
     VeniceProperties backendConfig = new PropertyBuilder()
         .put(ConfigKeys.CLUSTER_NAME, "test-cluster")
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.KAFKA_ZK_ADDRESS, "test-kafka-zookeeper")
-        .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getUniqueTempPath())
+        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
         .build();
 
     ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
     doAnswer(answerVoid(Runnable::run)).when(executor).execute(any());
 
+    versionMap = new HashMap<>();
     backend = mock(DaVinciBackend.class);
     when(backend.getExecutor()).thenReturn(executor);
     when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(backendConfig));
@@ -61,28 +71,91 @@ public class StoreBackendTest {
     when(backend.getStoreRepository()).thenReturn(mock(SubscriptionBasedReadOnlyStoreRepository.class));
     when(backend.getStorageService()).thenReturn(mock(StorageService.class));
     when(backend.getIngestionService()).thenReturn(mock(StoreIngestionService.class));
-    when(backend.getVersionByTopicMap()).thenReturn(new HashMap<>());
+    when(backend.getVersionByTopicMap()).thenReturn(versionMap);
     when(backend.getLatestVersion(anyString())).thenCallRealMethod();
     when(backend.getCurrentVersion(anyString())).thenCallRealMethod();
 
     store = new ZKStore("test-store", null, 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+    version1 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 5);
+    store.addVersion(version1);
+    version2 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 3);
+    store.addVersion(version2);
+    store.setCurrentVersion(version1.getNumber());
     when(backend.getStoreRepository().getStoreOrThrow(store.getName())).thenReturn(store);
 
-    versionMap = backend.getVersionByTopicMap();
     storeBackend = new StoreBackend(backend, store.getName());
   }
 
   @Test
-  void testFutureVersionFailure() throws Exception {
-    // Expecting to subscribe to version1 and that version2 is a future version.
-    Version version1 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 10);
-    store.addVersion(version1);
-    Version version2 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 5);
-    store.addVersion(version2);
-    store.setCurrentVersion(version1.getNumber());
+  void testSubscribeEmptyStore() {
+    store.setVersions(Collections.emptyList());
+    store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+    assertThrows(() -> storeBackend.subscribe(ComplementSet.universalSet()));
+  }
 
+  @Test
+  void testSubscribeCurrentVersion() throws Exception {
+    int partition = 0;
+    // Expecting to subscribe to version1 and that version2 is a future version.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version1.kafkaTopicName()).completeSubPartition(partition);
+    subscribeResult.get(0, TimeUnit.SECONDS);
+    // Verify that subscribe selected the current version by default.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
+    }
+
+    // Simulate future version ingestion is complete.
+    versionMap.get(version2.kafkaTopicName()).completeSubPartition(partition);
+    // Verify that future version became current once ingestion is complete.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+    }
+  }
+
+  @Test
+  void testSubscribeStoreWithoutCurrentVersion() throws Exception {
     int partition = 1;
+    store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+    // Expecting to subscribe to the latest version (version2).
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    versionMap.get(version2.kafkaTopicName()).completeSubPartition(partition);
+    subscribeResult.get(0, TimeUnit.SECONDS);
+    // Verify that subscribe selected the latest version as current.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+    }
+  }
+
+  @Test
+  void testSubscribeSpecifiedVersion() throws Exception {
+    Version version3 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 15);
+    store.addVersion(version3);
+    store.setCurrentVersion(version2.getNumber());
+
+    int partition = 2;
+    // Expecting to subscribe to the specified version (version1), which is nether current nor latest.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition), Optional.of(version1));
+    versionMap.get(version1.kafkaTopicName()).completeSubPartition(partition);
+    subscribeResult.get(0, TimeUnit.SECONDS);
+    // Verify that subscribe selected the specified version as current.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
+    }
+
+    // Simulate future version ingestion is complete.
+    versionMap.get(version3.kafkaTopicName()).completeSubPartition(partition);
+    // Verify that future version became current once ingestion is complete.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
+    }
+  }
+
+  @Test
+  void testFutureVersionFailure() throws Exception {
+    int partition = 1;
+    // Expecting to subscribe to version1 and that version2 is a future version.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
     versionMap.get(version1.kafkaTopicName()).completeSubPartition(partition);
     subscribeResult.get(0, TimeUnit.SECONDS);
@@ -93,7 +166,7 @@ public class StoreBackendTest {
     storeBackend.deleteOldVersions();
     // Verify that corresponding Version Backend is deleted exactly once.
     assertFalse(versionMap.containsKey(version2.kafkaTopicName()));
-    verify(backend.getStorageService(), times(1)).dropStorePartition(any(), eq(partition));
+    verify(backend.getStorageService(), times(1)).removeStorageEngine(eq(version2.kafkaTopicName()));
 
     // Simulate new version push and subsequent ingestion failure.
     Version version3 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 15);
@@ -118,64 +191,45 @@ public class StoreBackendTest {
 
   @Test
   void testSubscribeUnsubscribe() throws Exception {
-    Version version1 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 2);
-    store.addVersion(version1);
-
-    // Simulate concurrent unsubscribe call while subscription is pending.
-    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.universalSet());
+    // Simulate concurrent unsubscribe while subscribe is pending.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0, 1));
     versionMap.get(version1.kafkaTopicName()).completeSubPartition(0);
     assertFalse(subscribeResult.isDone());
     storeBackend.unsubscribe(ComplementSet.of(1));
-
-    // Verify that unsubscribe can complete pending subscription without failing it.
+    // Verify that unsubscribe completed pending subscribe without failing it.
     subscribeResult.get(0, TimeUnit.SECONDS);
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       assertTrue(versionRef.get().isSubPartitionReadyToServe(0));
       assertFalse(versionRef.get().isSubPartitionReadyToServe(1));
     }
 
-    // Simulate new version push and subsequent unsubscribe-all call.
-    Version version2 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 5);
-    store.addVersion(version2);
-    storeBackend.trySubscribeFutureVersion();
+    // Simulate unsubscribe from all partitions while future version ingestion is pending.
     storeBackend.unsubscribe(ComplementSet.universalSet());
-
     // Verify that all versions were deleted because subscription set became empty.
     assertTrue(versionMap.isEmpty());
-    verify(backend.getStorageService(), times(2)).dropStorePartition(any(), eq(0));
+    assertEquals(FileUtils.sizeOfDirectory(baseDataPath), 0);
+    verify(backend.getStorageService(), times(store.getVersions().size())).removeStorageEngine(any());
   }
 
   @Test
   void testSubscribeClose() {
-    // Expecting to subscribe to version1 and that version2 is a future version.
-    Version version1 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 10);
-    store.addVersion(version1);
-    Version version2 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 5);
-    store.addVersion(version2);
-    store.setCurrentVersion(version1.getNumber());
-
-    // Simulate concurrent store deletion while subscription is pending.
+    // Simulate concurrent store close while subscribe is pending.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.universalSet());
     storeBackend.close();
-    // Verify that pending subscription fails when store is closed, but none of the versions gets deleted.
+    // Verify that store close aborted pending subscribe, but none of the versions was deleted.
     assertThrows(() -> subscribeResult.getNow(null));
-    verify(backend.getStorageService(), never()).dropStorePartition(any(), anyInt());
+    verify(backend.getStorageService(), never()).removeStorageEngine(any());
   }
 
   @Test
   void testSubscribeDelete() {
-    // Expecting to subscribe to version1 and that version2 is a future version.
-    Version version1 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 10);
-    store.addVersion(version1);
-    Version version2 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 5);
-    store.addVersion(version2);
-    store.setCurrentVersion(version1.getNumber());
-
     // Simulate concurrent store deletion while subscription is pending.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.universalSet());
     storeBackend.delete();
-    // Verify that pending subscription fails when store is deleted and all versions are deleted exactly once.
-    assertThrows(() -> subscribeResult.getNow(null));
-    verify(backend.getStorageService(), times(2)).dropStorePartition(any(), eq(0));
+    // Verify that store delete aborted pending subscribe and that all versions were deleted exactly once.
+    assertThrows(CompletionException.class, () -> subscribeResult.getNow(null));
+    assertTrue(versionMap.isEmpty());
+    assertEquals(FileUtils.sizeOfDirectory(baseDataPath), 0);
+    verify(backend.getStorageService(), times(store.getVersions().size())).removeStorageEngine(any());
   }
 }

@@ -56,7 +56,7 @@ public class IngestionRequestClient implements Closeable {
     logger.info("Request client created for target port: " + port);
   }
 
-  public FullHttpResponse sendRequest(HttpRequest request) throws Exception {
+  public synchronized FullHttpResponse sendRequest(HttpRequest request) throws Exception {
     String host = "localhost";
     ChannelFuture f = bootstrap.connect(host, port).sync();
     f.channel().writeAndFlush(request);
