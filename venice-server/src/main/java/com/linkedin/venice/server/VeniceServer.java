@@ -340,7 +340,7 @@ public class VeniceServer {
    *         are not finished starting.
    */
   public boolean isStarted() {
-    return isStarted.get() && services.stream().allMatch(abstractVeniceService -> abstractVeniceService.isStarted());
+    return isStarted.get() && services.stream().allMatch(abstractVeniceService -> abstractVeniceService.isRunning());
   }
 
   /**

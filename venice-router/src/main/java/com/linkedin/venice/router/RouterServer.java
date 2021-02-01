@@ -213,7 +213,7 @@ public class RouterServer extends AbstractVeniceService {
     Runtime.getRuntime().addShutdownHook(new Thread() {
       @Override
       public void run() {
-        if (server.isStarted()) {
+        if (server.isRunning()) {
           try {
             server.stop();
           } catch (Exception e) {
@@ -694,8 +694,6 @@ public class RouterServer extends AbstractVeniceService {
       zkClient.close();
     }
     heartbeat.stopInner();
-
-    logger.info(this.toString() + " is stopped");
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

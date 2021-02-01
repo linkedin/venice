@@ -16,15 +16,18 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.apache.log4j.Logger;
 
 
 public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
+  private static final Logger logger = Logger.getLogger(ParticipantStoreConsumptionTask.class);
 
   private static final String CLIENT_STATS_PREFIX = "venice-client";
   private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  private final Logger logger = Logger.getLogger(ParticipantStoreConsumptionTask.class);
+  private final AtomicBoolean isClosing = new AtomicBoolean();
   private final ParticipantStoreConsumptionStats stats;
   private final StoreIngestionService storeIngestionService;
   private final long participantMessageConsumptionDelayMs;
@@ -52,7 +55,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
     logger.info("Started running " + getClass().getSimpleName());
     String exceptionMessage = "Exception thrown while running " + getClass().getSimpleName() + " thread";
 
-    for (;;) {
+    while (!isClosing.get()) {
       try {
         Thread.sleep(participantMessageConsumptionDelayMs);
 
@@ -108,6 +111,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
 
   @Override
   public void close() {
+    isClosing.set(true);
     clientMap.values().forEach(AvroGenericStoreClient::close);
   }
 }

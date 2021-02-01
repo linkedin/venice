@@ -2,11 +2,13 @@ package com.linkedin.davinci.notifier;
 
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 
+import java.io.Closeable;
+
 
 /**
  * Interface for listening to Notifications for Store consumption.
  */
-public interface VeniceNotifier {
+public interface VeniceNotifier extends Closeable {
   /**
    * Consumption is started for a store and partition
    */
