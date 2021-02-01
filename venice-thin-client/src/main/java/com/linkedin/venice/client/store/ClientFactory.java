@@ -97,10 +97,7 @@ public class ClientFactory {
       return new D2TransportClient(d2ServiceName, clientConfig.getD2Client());
     }
 
-    return new D2TransportClient(clientConfig.getVeniceURL(),
-        d2ServiceName,
-        clientConfig.getD2BasePath(),
-        clientConfig.getD2ZkTimeout());
+    return new D2TransportClient(d2ServiceName, clientConfig);
   }
 
   public static TransportClient getTransportClient(ClientConfig clientConfig) {

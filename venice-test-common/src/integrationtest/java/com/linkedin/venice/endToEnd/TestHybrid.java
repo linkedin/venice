@@ -203,7 +203,7 @@ public class TestHybrid {
    * @param isLeaderFollowerModelEnabled Whether to enable Leader/Follower state transition model.
    * @param chunkingEnabled Whether chunking should be enabled (only supported in {@param isLeaderFollowerModelEnabled} is true).
    */
-  @Test(dataProvider = "testPermutations", timeOut = 180 * Time.MS_PER_SECOND)
+  @Test(dataProvider = "testPermutations", timeOut = 180 * Time.MS_PER_SECOND, groups = {"flaky"})
   public void testHybridEndToEnd(boolean multiDivStream, boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();

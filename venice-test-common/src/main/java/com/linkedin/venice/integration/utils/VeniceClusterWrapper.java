@@ -19,6 +19,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -176,11 +177,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(sslToStorageNodes));
         featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(sslToKafka));
         if (!veniceRouterWrappers.isEmpty()) {
-          featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
-                  // Set d2 configs as KafkaStoreIngestionService ClientConfig.cloneConfig enables d2routing anyway
-                  .setVeniceURL(zkAddress)
-                  .setD2ServiceName(D2TestUtils.getD2ServiceName(clusterToD2, clusterName))
-          );
+          ClientConfig clientConfig = new ClientConfig()
+              .setVeniceURL(zkAddress)
+              .setD2ServiceName(D2TestUtils.getD2ServiceName(clusterToD2, clusterName))
+              .setSslEngineComponentFactory(SslUtils.getLocalSslFactory());
+          featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
         featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(isKafkaOpenSSLEnabled));
 

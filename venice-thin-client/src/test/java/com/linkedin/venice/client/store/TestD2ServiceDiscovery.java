@@ -24,9 +24,7 @@ public class TestD2ServiceDiscovery {
         // Set up client config to use the d2 service that router serving for
         clientConfig.setD2ServiceName(router.getRouterD2Service()).setVeniceURL(zk.getAddress());
         // Find the d2 service for that store.
-        try (D2TransportClient client = new D2TransportClient(zk.getAddress(), router.getRouterD2Service(),
-            clientConfig.getD2BasePath(),
-            clientConfig.getD2ZkTimeout())) {
+        try (D2TransportClient client = new D2TransportClient(router.getRouterD2Service(), clientConfig)) {
           String d2ServiceName = new D2ServiceDiscovery().discoverD2Service(client, storeName).getD2Service();
           Assert.assertEquals(d2ServiceName, router.getD2ServiceNameForCluster(router.getClusterName()),
               "Should find the correct d2 service associated with the given cluster.");

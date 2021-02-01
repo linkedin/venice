@@ -157,6 +157,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   @Override
   protected void internalStop() throws Exception {
     kafkaServer.shutdown();
+    kafkaServer.awaitShutdown();
   }
 
   @Override

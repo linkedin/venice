@@ -19,9 +19,12 @@ import com.linkedin.r2.message.stream.entitystream.EntityStream;
 import com.linkedin.r2.message.stream.entitystream.EntityStreams;
 import com.linkedin.r2.message.stream.entitystream.ReadHandle;
 import com.linkedin.r2.message.stream.entitystream.Reader;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaData;
 import java.net.URI;
@@ -64,20 +67,26 @@ public class D2TransportClient extends TransportClient {
 
   /**
    * Construct by customized zookeeper and other configs.
-   * @param zkConnection
    * @param d2ServiceName
-   * @param zkBasePath
-   * @param zkTimeout
+   * @param clientConfig
    */
-  public D2TransportClient(String zkConnection, String d2ServiceName, String zkBasePath, int zkTimeout) {
-    this.d2ServiceName = d2ServiceName;
+  public D2TransportClient(String d2ServiceName, ClientConfig clientConfig) {
     D2ClientBuilder builder = new D2ClientBuilder()
-        .setZkHosts(zkConnection)
-        .setZkSessionTimeout(zkTimeout, TimeUnit.MILLISECONDS)
-        .setZkStartupTimeout(zkTimeout, TimeUnit.MILLISECONDS)
-        .setLbWaitTimeout(zkTimeout, TimeUnit.MILLISECONDS)
-        .setBasePath(zkBasePath);
-    d2Client = builder.build();
+        .setZkHosts(clientConfig.getVeniceURL())
+        .setZkSessionTimeout(clientConfig.getD2ZkTimeout(), TimeUnit.MILLISECONDS)
+        .setZkStartupTimeout(clientConfig.getD2ZkTimeout(), TimeUnit.MILLISECONDS)
+        .setLbWaitTimeout(clientConfig.getD2ZkTimeout(), TimeUnit.MILLISECONDS)
+        .setBasePath(clientConfig.getD2BasePath());
+
+    SSLEngineComponentFactory sslFactory = clientConfig.getSslEngineComponentFactory();
+    if (sslFactory != null) {
+      builder.setIsSSLEnabled(sslFactory.isSslEnabled());
+      builder.setSSLContext(sslFactory.getSSLContext());
+      builder.setSSLParameters(sslFactory.getSSLParameters());
+    }
+
+    this.d2ServiceName = d2ServiceName;
+    this.d2Client = builder.build();
     this.privateD2Client = true;
 
     D2ClientUtils.startClient(d2Client);
