@@ -39,6 +39,10 @@ public class ComplementSet<T> {
     return wrap(new HashSet<>(elements));
   }
 
+  public static <T> ComplementSet<T> newSet(ComplementSet<T> other) {
+    return new ComplementSet<>(other.isComplement, new HashSet<>(other.elements));
+  }
+
   public static <T> ComplementSet<T> emptySet() {
     return new ComplementSet<>(false, new HashSet<>());
   }
@@ -83,10 +87,10 @@ public class ComplementSet<T> {
     } else {
       if (other.isComplement) {
         // X + (1 - Y) = 1 - (Y - X)
-        Collection<T> temp = elements;
+        Set<T> savedElements = elements;
         isComplement = true;
         elements = new HashSet<>(other.elements);
-        elements.removeAll(temp);
+        elements.removeAll(savedElements);
       } else {
         // X + Y
         elements.addAll(other.elements);
@@ -98,10 +102,10 @@ public class ComplementSet<T> {
     if (isComplement) {
       if (other.isComplement) {
         // (1 - X) - (1 - Y) = Y - X
-        Collection<T> temp = elements;
+        Set<T> savedElements = elements;
         isComplement = false;
         elements = new HashSet<>(other.elements);
-        elements.removeAll(temp);
+        elements.removeAll(savedElements);
       } else {
         // (1 - X) - Y = 1 - (X + Y)
         elements.addAll(other.elements);

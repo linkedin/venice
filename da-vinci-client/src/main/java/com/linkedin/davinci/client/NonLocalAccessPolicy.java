@@ -1,8 +1,8 @@
 package com.linkedin.davinci.client;
 
-public enum RemoteReadPolicy {
+public enum NonLocalAccessPolicy {
   /**
-   * If a read is issued for a non-local partition, it will throw an exception.
+   * If a read is issued for a non-local partition, it will throw {@link NonLocalAccessException}.
    * This is a good policy for applications that expect local access performance
    * and where a mis-alignment of partitioning strategy ought to fail fast and
    * loudly, rather than silently degrade performance.
@@ -16,8 +16,6 @@ public enum RemoteReadPolicy {
    * for applications where the workload is skewed towards a few partitions, which
    * are subscribed to, yet still needs access to all other partitions as well for
    * a less intensive portion of the workload.
-   *
-   * N.B.: This setting will not be available at first.
    */
-  QUERY_REMOTELY,
+  QUERY_VENICE,
 }

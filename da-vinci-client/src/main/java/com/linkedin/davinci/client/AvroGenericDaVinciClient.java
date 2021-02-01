@@ -1,12 +1,12 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -18,8 +18,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.VersionBackend;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
@@ -45,7 +45,7 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
-  private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClient.class);
+  protected final Logger logger = Logger.getLogger(getClass());
 
   private static class ReusableObjects {
     final ByteBuffer rawValue = ByteBuffer.allocate(1024 * 1024);
@@ -59,7 +59,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private final ClientConfig clientConfig;
   private final VeniceProperties backendConfig;
   private final Optional<Set<String>> managedClients;
-  private final AtomicBoolean isReady = new AtomicBoolean(false);
+  private final AtomicBoolean ready = new AtomicBoolean(false);
+  // TODO: Implement copy-on-write ComplementSet to support concurrent modification and reading.
+  private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
 
   private RecordSerializer<K> keySerializer;
   private AvroGenericStoreClient<K, V> veniceClient;
@@ -96,26 +98,44 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
 
   @Override
   public CompletableFuture<Void> subscribeAll() {
-    throwIfNotReady();
-    return storeBackend.subscribe(ComplementSet.universalSet());
+    return subscribe(ComplementSet.universalSet());
   }
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
+    return subscribe(ComplementSet.wrap(partitions));
+  }
+
+  protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
-    return storeBackend.subscribe(ComplementSet.wrap(partitions));
+    subscription.addAll(partitions);
+    return storeBackend.subscribe(partitions);
   }
 
   @Override
   public void unsubscribeAll() {
-    throwIfNotReady();
-    storeBackend.unsubscribe(ComplementSet.universalSet());
+    unsubscribe(ComplementSet.universalSet());
   }
 
   @Override
   public void unsubscribe(Set<Integer> partitions) {
+    unsubscribe(ComplementSet.wrap(partitions));
+  }
+
+  protected void unsubscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
-    storeBackend.unsubscribe(ComplementSet.wrap(partitions));
+    if (daVinciConfig.isIsolated()) {
+      ComplementSet<Integer> notSubscribedPartitions = ComplementSet.newSet(partitions);
+      notSubscribedPartitions.removeAll(subscription);
+      if (!notSubscribedPartitions.isEmpty()) {
+        logger.warn("Partitions " + notSubscribedPartitions + " of " + getStoreName() +
+                         " are not subscribed, ignoring unsubscribe request.");
+        partitions = ComplementSet.newSet(partitions);
+        partitions.removeAll(notSubscribedPartitions);
+      }
+    }
+    subscription.removeAll(partitions);
+    storeBackend.unsubscribe(partitions);
   }
 
   @Override
@@ -128,21 +148,21 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
-      if (null == versionBackend) {
-        if (isRemoteReadAllowed()) {
+      if (versionBackend == null) {
+        if (isVeniceQueryAllowed()) {
           return veniceClient.get(key);
         }
         storeBackend.getStats().recordUnhealthyRequest();
-        throw new VeniceException("Unable to find a ready version, storeName=" + getStoreName());
+        throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
       }
 
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-      int subPartitionId = versionBackend.getSubPartition(keyBytes);
+      int subPartition = versionBackend.getSubPartition(keyBytes);
 
-      if (versionBackend.isSubPartitionReadyToServe(subPartitionId)) {
+      if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
         V value = versionBackend.read(
-            subPartitionId,
+            subPartition,
             keyBytes,
             getChunkingAdapter(),
             reusableObjects.binaryDecoder,
@@ -151,13 +171,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
         return CompletableFuture.completedFuture(value);
       }
 
-      if (isRemoteReadAllowed()) {
+      if (isVeniceQueryAllowed()) {
         return veniceClient.get(key);
       }
 
-      if (!versionBackend.getStorageEngine().containsPartition(subPartitionId)) {
+      if (!isSubPartitionSubscribed(versionBackend, subPartition)) {
         storeBackend.getStats().recordUnhealthyRequest();
-        throw new VeniceException("Cannot access not-subscribed partition, version=" + versionBackend +", subPartition=" + subPartitionId);
+        throw new NonLocalAccessException(versionBackend.toString(), subPartition);
       }
       return CompletableFuture.completedFuture(null);
     }
@@ -168,24 +188,24 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
-      if (null == versionBackend) {
-        if (isRemoteReadAllowed()) {
+      if (versionBackend == null) {
+        if (isVeniceQueryAllowed()) {
           return veniceClient.batchGet(keys);
         }
         storeBackend.getStats().recordUnhealthyRequest();
-        throw new VeniceException("Unable to find a ready version, storeName=" + getStoreName());
+        throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
       }
 
       Map<K, V> result = new HashMap<>();
-      Set<K> remoteKeys = new HashSet<>();
+      Set<K> missingKeys = new HashSet<>();
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       for (K key : keys) {
         byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-        int subPartitionId = versionBackend.getSubPartition(keyBytes);
+        int subPartition = versionBackend.getSubPartition(keyBytes);
 
-        if (versionBackend.isSubPartitionReadyToServe(subPartitionId)) {
+        if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
           V value = versionBackend.read(
-              subPartitionId,
+              subPartition,
               keyBytes,
               getChunkingAdapter(),
               reusableObjects.binaryDecoder,
@@ -196,37 +216,51 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
             result.put(key, value);
           }
 
-        } else if (isRemoteReadAllowed()) {
-          remoteKeys.add(key);
+        } else if (isVeniceQueryAllowed()) {
+          missingKeys.add(key);
 
-        } else if (!versionBackend.getStorageEngine().containsPartition(subPartitionId)) {
+        } else if (!isSubPartitionSubscribed(versionBackend, subPartition)) {
           storeBackend.getStats().recordUnhealthyRequest();
-          throw new VeniceException("Cannot access not-subscribed partition, version=" + versionBackend + ", subPartition=" + subPartitionId);
+          throw new NonLocalAccessException(versionBackend.toString(), subPartition);
         }
       }
 
-      if (remoteKeys.isEmpty()) {
+      if (missingKeys.isEmpty()) {
         return CompletableFuture.completedFuture(result);
       }
 
-      return veniceClient.batchGet(remoteKeys).thenApply(remoteResult -> {
-        result.putAll(remoteResult);
+      return veniceClient.batchGet(missingKeys).thenApply(veniceResult -> {
+        result.putAll(veniceResult);
         return result;
       });
     }
   }
 
-  protected boolean isReady() {
-    return isReady.get();
+  public boolean isReady() {
+    return ready.get();
   }
 
-  protected boolean isRemoteReadAllowed() {
-    return daVinciConfig.getRemoteReadPolicy().equals(RemoteReadPolicy.QUERY_REMOTELY);
+  protected boolean isVeniceQueryAllowed() {
+    return daVinciConfig.getNonLocalAccessPolicy().equals(NonLocalAccessPolicy.QUERY_VENICE);
+  }
+
+  protected boolean isSubPartitionReadyToServe(VersionBackend versionBackend, int subPartition) {
+    if (daVinciConfig.isIsolated() && !subscription.contains(versionBackend.getUserPartition(subPartition))) {
+      return false;
+    }
+    return versionBackend.isSubPartitionReadyToServe(subPartition);
+  }
+
+  protected boolean isSubPartitionSubscribed(VersionBackend versionBackend, int subPartition) {
+    if (daVinciConfig.isIsolated()) {
+      return subscription.contains(versionBackend.getUserPartition(subPartition));
+    }
+    return versionBackend.isSubPartitionSubscribed(subPartition);
   }
 
   protected void throwIfNotReady() {
     if (!isReady()) {
-      throw new VeniceException("Da Vinci client is not ready, storeName=" + getStoreName());
+      throw new VeniceClientException("Da Vinci client is not ready, storeName=" + getStoreName());
     }
   }
 
@@ -237,7 +271,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private D2ServiceDiscoveryResponseV2 discoverService() {
     try (TransportClient client = getTransportClient(clientConfig)) {
       if (!(client instanceof D2TransportClient)) {
-        throw new VeniceException("Venice service discovery requires D2 client" +
+        throw new VeniceClientException("Venice service discovery requires D2 client" +
                                             ", storeName=" + getStoreName() +
                                             ", clientClass=" + client.getClass());
       }
@@ -250,7 +284,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
                       ", kafkaBootstrapServers=" + response.getKafkaBootstrapServers());
       return response;
     } catch (Throwable e) {
-      throw new VeniceException("Failed venice service discovery for " + getStoreName(), e);
+      throw new VeniceClientException("Unable to discover Venice service, storeName=" + getStoreName(), e);
     }
   }
 
@@ -269,11 +303,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     if (kafkaBootstrapServers == null) {
       kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
     }
-    boolean suppressLiveUpdates = daVinciConfig.isSuppressingLiveUpdates()
-        || backendConfig.getBoolean(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, false);
-
     VeniceProperties config = new PropertyBuilder()
-            /** Allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
             .put(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
             .put(SERVER_ENABLE_KAFKA_OPENSSL, false)
             .put(backendConfig.toProperties())
@@ -282,8 +312,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
             .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
             .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
-                daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
-            .put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, suppressLiveUpdates)
+                daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
             .build();
     logger.info("backendConfig=" + config.toString(true));
     return new VeniceConfigLoader(config, config);
@@ -303,7 +332,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   @Override
   public synchronized void start() {
     if (isReady()) {
-      throw new VeniceException("Da Vinci client is already started, storeName=" + getStoreName());
+      throw new VeniceClientException("Da Vinci client is already started, storeName=" + getStoreName());
     }
     logger.info("Starting Da Vinci client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
@@ -319,15 +348,15 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       Schema keySchema = daVinciBackend.get().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
       keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);
 
-      if (isRemoteReadAllowed()) {
+      if (isVeniceQueryAllowed()) {
         veniceClient = getAndStartAvroClient(clientConfig);
       }
 
-      isReady.set(true);
+      ready.set(true);
       logger.info("Da Vinci client started successfully, storeName=" + getStoreName());
     } catch (Throwable e) {
       daVinciBackend.release();
-      throw new VeniceException("Unable to start Da Vinci client, storeName=" + getStoreName(), e);
+      throw new VeniceClientException("Unable to start Da Vinci client, storeName=" + getStoreName(), e);
     }
   }
 
@@ -336,14 +365,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     throwIfNotReady();
     try {
       logger.info("Closing Da Vinci client, storeName=" + getStoreName());
-      isReady.set(false);
+      ready.set(false);
       if (veniceClient != null) {
         veniceClient.close();
       }
       daVinciBackend.release();
       logger.info("Closed Da Vinci client, storeName=" + getStoreName());
     } catch (Throwable e) {
-      throw new VeniceException("Unable to close Da Vinci client, storeName=" + getStoreName(), e);
+      throw new VeniceClientException("Unable to close Da Vinci client, storeName=" + getStoreName(), e);
     }
   }
 }

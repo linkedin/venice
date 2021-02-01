@@ -2,17 +2,36 @@ package com.linkedin.davinci.client;
 
 
 public class DaVinciConfig {
-  private boolean isManaged = true;
-  private StorageClass storageClass = StorageClass.DISK_BACKED_MEMORY;
-  private RemoteReadPolicy remoteReadPolicy = RemoteReadPolicy.FAIL_FAST;
-  private long memoryLimit = 0; // 0 means unlimited memory
+  /**
+   * Indicates whether client's local state is managed by Da Vinci or by application. The flag has no effect unless
+   * the feature is enabled at the factory level by providing a set of required managed stores. Da Vinci automatically
+   * removes local state of unused managed stores.
+   */
+  private boolean managed = true;
 
   /**
-   * If true, ingestion will freeze once the partition is ready to serve,
-   * or ingestion will not start if local data exists.
+   * Indicates whether client is isolated from accessing partitions of other clients created for the same store.
+   * It's application responsibility to ensure that subscription of isolated clients does not overlap, otherwise
+   * isolated is not guaranteed since all such clients share the same {@link com.linkedin.davinci.StoreBackend}.
    */
-  private boolean suppressLiveUpdates = false;
+  private boolean isolated = false;
 
+  /**
+   * Indicates what storage tier to use for client's local state.
+   */
+  private StorageClass storageClass = StorageClass.MEMORY_BACKED_BY_DISK;
+
+  /**
+   * Indicates how to handle access to not-subscribed partitions.
+   */
+  private NonLocalAccessPolicy nonLocalAccessPolicy = NonLocalAccessPolicy.FAIL_FAST;
+
+  /**
+   * Indicates total memory limit in bytes per store, where zero means no limit. The limit is best effort and its
+   * precision greatly depends on granularity, the recommended limit granularity is 1GB. Da Vinci stalls ingestion
+   * of new data when the limit is met.
+   */
+  private long memoryLimit = 0;
 
   public DaVinciConfig() {
   }
@@ -20,18 +39,27 @@ public class DaVinciConfig {
   public DaVinciConfig clone() {
     return new DaVinciConfig()
                .setManaged(isManaged())
+               .setIsolated(isIsolated())
                .setStorageClass(getStorageClass())
-               .setRemoteReadPolicy(getRemoteReadPolicy())
-               .setMemoryLimit(getMemoryLimit())
-               .setSuppressLiveUpdates(isSuppressingLiveUpdates());
+               .setNonLocalAccessPolicy(getNonLocalAccessPolicy())
+               .setMemoryLimit(getMemoryLimit());
   }
 
   public boolean isManaged() {
-    return isManaged;
+    return managed;
   }
 
-  public DaVinciConfig setManaged(boolean isManaged) {
-    this.isManaged = isManaged;
+  public DaVinciConfig setManaged(boolean managed) {
+    this.managed = managed;
+    return this;
+  }
+
+  public boolean isIsolated() {
+    return isolated;
+  }
+
+  public DaVinciConfig setIsolated(boolean isolated) {
+    this.isolated = isolated;
     return this;
   }
 
@@ -44,12 +72,12 @@ public class DaVinciConfig {
     return this;
   }
 
-  public RemoteReadPolicy getRemoteReadPolicy() {
-    return remoteReadPolicy;
+  public NonLocalAccessPolicy getNonLocalAccessPolicy() {
+    return nonLocalAccessPolicy;
   }
 
-  public DaVinciConfig setRemoteReadPolicy(RemoteReadPolicy remoteReadPolicy) {
-    this.remoteReadPolicy = remoteReadPolicy;
+  public DaVinciConfig setNonLocalAccessPolicy(NonLocalAccessPolicy nonLocalAccessPolicy) {
+    this.nonLocalAccessPolicy = nonLocalAccessPolicy;
     return this;
   }
 
@@ -59,18 +87,6 @@ public class DaVinciConfig {
 
   public DaVinciConfig setMemoryLimit(long memoryLimit) {
     this.memoryLimit = memoryLimit;
-    return this;
-  }
-
-  public boolean isSuppressingLiveUpdates() {
-    return suppressLiveUpdates;
-  }
-
-  /**
-   * Freeze ingestion if ready to serve or local data exists
-   */
-  public DaVinciConfig setSuppressLiveUpdates(boolean suppressLiveUpdates) {
-    this.suppressLiveUpdates = suppressLiveUpdates;
     return this;
   }
 }
