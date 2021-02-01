@@ -70,6 +70,7 @@ import static org.testng.Assert.*;
  * The suite also uses constructor {@link StoreMigrationTest#StoreMigrationTest(boolean)} to test both Online/Offline
  * model and Leader/Follower model.
  */
+@Test(groups = "flaky")
 public class StoreMigrationTest {
   private static final String STORE_NAME = "testStore";
   private static final String OWNER = "";
