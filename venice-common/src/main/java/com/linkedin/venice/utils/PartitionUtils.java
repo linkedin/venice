@@ -1,20 +1,21 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import java.util.HashSet;
-import java.util.Properties;
-import java.util.Set;
-import java.util.stream.IntStream;
+
 import org.apache.log4j.Logger;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Properties;
 
 public class PartitionUtils {
   private static final Logger logger = Logger.getLogger(PartitionUtils.class);
@@ -52,29 +53,36 @@ public class PartitionUtils {
     }
   }
 
-  public static Set<Integer> getSubPartitions(Set<Integer> userPartitions, int amplificationFactor) {
+  private static void checkAmplificationFactor(int amplificationFactor) {
     if (amplificationFactor < 1) {
-      throw new VeniceClientException(
-          String.format("Invalid amplificationFactor %d. amplificationFactor must be >= 1.", amplificationFactor));
+      throw new VeniceException(
+          String.format("Invalid amplification factor %d. Amplification factor must be >= 1.", amplificationFactor));
     }
-    Set<Integer> subPartitions = new HashSet<>();
-    for (int userPartition : userPartitions) {
-      IntStream.range(userPartition * amplificationFactor, (userPartition + 1) * amplificationFactor)
-          .forEach(subPartitions::add);
+  }
+
+  public static List<Integer> getSubPartitions(Collection<Integer> userPartitions, int amplificationFactor) {
+    checkAmplificationFactor(amplificationFactor);
+    List<Integer> subPartitions = new ArrayList<>();
+    for (Integer userPartition : userPartitions) {
+      int subPartition = userPartition * amplificationFactor;
+      for (int i = 0; i < amplificationFactor; ++i, ++subPartition) {
+        subPartitions.add(subPartition);
+      }
     }
     return subPartitions;
   }
 
-  public static Set<Integer> getUserPartitions(Set<Integer> subPartitions, int amplificationFactor) {
-    if (amplificationFactor < 1) {
-      throw new VeniceClientException(
-          String.format("Invalid amplificationFactor %d. amplificationFactor must be >= 1.", amplificationFactor));
-    }
-    Set<Integer> userPartitions = new HashSet<>();
-    for (int subPartition : subPartitions) {
-      userPartitions.add(subPartition / amplificationFactor);
+  public static List<Integer> getUserPartitions(Collection<Integer> subPartitions, int amplificationFactor) {
+    List<Integer> userPartitions = new ArrayList<>();
+    for (Integer subPartition : subPartitions) {
+      userPartitions.add(getUserPartition(subPartition, amplificationFactor));
     }
     return userPartitions;
+  }
+
+  public static int getUserPartition(int subPartition, int amplificationFactor) {
+    checkAmplificationFactor(amplificationFactor);
+    return subPartition / amplificationFactor;
   }
 
   public static VenicePartitioner getVenicePartitioner(PartitionerConfig config) {

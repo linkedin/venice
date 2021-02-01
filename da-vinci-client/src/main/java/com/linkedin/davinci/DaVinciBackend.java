@@ -60,6 +60,7 @@ import java.io.Closeable;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -174,7 +175,7 @@ public class DaVinciBackend implements Closeable {
      * record all store versions that are up-to-date and close all storage engines. This will make sure child process
      * can open RocksDB stores.
      */
-    Map<Version, Set<Integer>> bootstrapVersions = new HashMap<>();
+    Map<Version, List<Integer>> bootstrapVersions = new HashMap<>();
     bootstrap(managedClients, bootstrapVersions);
 
     if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
@@ -230,7 +231,7 @@ public class DaVinciBackend implements Closeable {
     storeRepository.registerStoreDataChangedListener(storeChangeListener);
   }
 
-  protected synchronized void bootstrap(Optional<Set<String>> managedClients, Map<Version, Set<Integer>> bootstrapVersions) {
+  protected synchronized void bootstrap(Optional<Set<String>> managedClients, Map<Version, List<Integer>> bootstrapVersions) {
     for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
       String kafkaTopicName = storageEngine.getName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
@@ -274,14 +275,14 @@ public class DaVinciBackend implements Closeable {
       }
 
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-      Set<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
+      List<Integer> partitions = PartitionUtils.getUserPartitions(storageEngine.getPartitionIds(), amplificationFactor);
       logger.info("Bootstrapping partitions " + partitions + " of " + kafkaTopicName);
 
       if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
         // If ingestion isolation is turned on, we will not subscribe to versions immediately, but instead save all versions of interest.
         bootstrapVersions.put(version, partitions);
       } else {
-        storeBackend.subscribe(ComplementSet.wrap(partitions), Optional.of(version));
+        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
       }
     }
 
@@ -293,14 +294,14 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  protected synchronized void completeBootstrapRemotely(Map<Version, Set<Integer>> bootstrapVersions) {
+  protected synchronized void completeBootstrapRemotely(Map<Version, List<Integer>> bootstrapVersions) {
     bootstrapVersions.forEach((version, partitions) -> {
       logger.info("Bootstrapping partitions " + partitions + " of " + version.kafkaTopicName() + " via isolated ingestion service.");
       StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
       for (Integer partition : partitions) {
         ingestionReportListener.addVersionPartitionToIngestionMap(version.kafkaTopicName(), partition);
       }
-      storeBackend.subscribe(ComplementSet.wrap(partitions), Optional.of(version));
+      storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
   }
 

@@ -2,5 +2,5 @@ package com.linkedin.davinci.client;
 
 public enum StorageClass {
   DISK,
-  DISK_BACKED_MEMORY,
+  MEMORY_BACKED_BY_DISK,
 }

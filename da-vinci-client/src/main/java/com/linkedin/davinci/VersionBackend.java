@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.ingestion.IngestionRequestClient;
-import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 
@@ -29,8 +28,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -61,7 +58,7 @@ public class VersionBackend {
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
    * to PushStatusStore. The heartbeat job will be cancelled once the push completes or VersionBackend is closed.
    */
-  private Optional<Future> heartbeat = Optional.empty();
+  private Future heartbeat;
   private final int heartbeatInterval;
 
   VersionBackend(DaVinciBackend backend, Version version) {
@@ -114,10 +111,13 @@ public class VersionBackend {
     }
 
     backend.getIngestionService().killConsumptionTask(version.kafkaTopicName());
+    if (heartbeat != null) {
+      heartbeat.cancel(true);
+    }
+
     for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
       entry.getValue().cancel(true);
     }
-    heartbeat.ifPresent(f -> f.cancel(true));
   }
 
   synchronized void delete() {
@@ -157,7 +157,7 @@ public class VersionBackend {
     return version;
   }
 
-  public AbstractStorageEngine getStorageEngine() {
+  private AbstractStorageEngine getStorageEngine() {
     AbstractStorageEngine engine = storageEngine.get();
     if (engine == null) {
       throw new VeniceException("Storage engine is not ready, version=" + this);
@@ -170,8 +170,8 @@ public class VersionBackend {
   }
 
   synchronized void tryStartHeartbeat() {
-    if (isReportingPushStatus() && !heartbeat.isPresent()) {
-      heartbeat = Optional.of(backend.getExecutor().scheduleAtFixedRate(
+    if (isReportingPushStatus() && heartbeat == null) {
+      heartbeat = backend.getExecutor().scheduleAtFixedRate(
           () -> {
             try {
               backend.getPushStatusStoreWriter().writeHeartbeat(version.getStoreName());
@@ -181,16 +181,14 @@ public class VersionBackend {
           },
           0,
           heartbeatInterval,
-          TimeUnit.SECONDS));
+          TimeUnit.SECONDS);
     }
   }
 
   synchronized void tryStopHeartbeat() {
-    if (!isReportingPushStatus()) {
-      return;
-    }
-    if (subPartitionFutures.values().stream().allMatch(CompletableFuture::isDone)) {
-      heartbeat.ifPresent(f -> f.cancel(true));
+    if (heartbeat != null && subPartitionFutures.values().stream().allMatch(CompletableFuture::isDone)) {
+      heartbeat.cancel(true);
+      heartbeat = null;
     }
   }
 
@@ -221,7 +219,7 @@ public class VersionBackend {
   }
 
   synchronized CompletableFuture<?> subscribe(ComplementSet<Integer> partitions) {
-    Set<Integer> subPartitions = getSubPartitions(partitions);
+    List<Integer> subPartitions = getSubPartitions(partitions);
     logger.info("Subscribing to sub-partitions " + subPartitions + " of " + this);
 
     List<CompletableFuture> futures = new ArrayList<>(subPartitions.size());
@@ -232,7 +230,7 @@ public class VersionBackend {
   }
 
   synchronized void unsubscribe(ComplementSet<Integer> partitions) {
-    Set<Integer> subPartitions = getSubPartitions(partitions);
+    List<Integer> subPartitions = getSubPartitions(partitions);
     logger.info("Unsubscribing from sub-partitions " + subPartitions + " of " + this);
     for (Integer id : subPartitions) {
       unsubscribeSubPartition(id);
@@ -243,14 +241,23 @@ public class VersionBackend {
     return partitioner.getPartitionId(keyBytes, subPartitionCount);
   }
 
-  private Set<Integer> getSubPartitions(ComplementSet<Integer> partitions) {
+  public int getUserPartition(int subPartition) {
+    int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
+    return PartitionUtils.getUserPartition(subPartition, amplificationFactor);
+  }
+
+  private List<Integer> getSubPartitions(ComplementSet<Integer> partitions) {
     int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
     return PartitionUtils.getSubPartitions(
         IntStream.range(0, version.getPartitionCount())
             .filter(partitions::contains)
             .boxed()
-            .collect(Collectors.toSet()),
+            .collect(Collectors.toList()),
         amplificationFactor);
+  }
+
+  public boolean isSubPartitionSubscribed(Integer subPartition) {
+    return subPartitionFutures.containsKey(subPartition);
   }
 
   public boolean isSubPartitionReadyToServe(Integer subPartition) {
@@ -275,7 +282,7 @@ public class VersionBackend {
 
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       backend.getIngestionReportListener().addVersionPartitionToIngestionMap(version.kafkaTopicName(), subPartition);
-      IngestionUtils.subscribeTopicPartition(backend.getIngestionRequestClient(), version.kafkaTopicName(), subPartition);
+      subscribeTopicPartition(backend.getIngestionRequestClient(), version.kafkaTopicName(), subPartition);
     } else {
       // Create partition in storage engine for ingestion.
       storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
@@ -337,8 +344,8 @@ public class VersionBackend {
     tryStopHeartbeat();
   }
 
-  synchronized void completeSubPartitionExceptionally(int subPartition, Exception e) {
-    subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).completeExceptionally(e);
+  synchronized void completeSubPartitionExceptionally(int subPartition, Throwable exception) {
+    subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).completeExceptionally(exception);
     tryStopHeartbeat();
   }
 }
