@@ -564,11 +564,12 @@ public class RouterServer extends AbstractVeniceService {
     Consumer<ChannelPipeline> noop = pipeline -> {};
     Consumer<ChannelPipeline> addSslInitializer = pipeline -> {pipeline.addFirst("SSL Initializer", sslInitializer);};
     HealthCheckHandler secureRouterHealthCheckHander = new HealthCheckHandler(healthCheckStats);
+    RouterThrottleHandler routerThrottleHandler = new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config);
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
-      pipeline.addLast("RouterThrottleHandler", new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
+      pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
@@ -576,6 +577,7 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("StoreAclHandler", aclHandler);
+      pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);
     };
 
