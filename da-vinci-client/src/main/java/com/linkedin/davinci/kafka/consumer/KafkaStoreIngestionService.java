@@ -52,6 +52,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -117,16 +118,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
   private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
-  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  private final ExecutorService participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
+  private ExecutorService participantStoreConsumerExecutorService;
 
   private ExecutorService ingestionExecutorService;
 
-  // Need to make sure that the service has started before start running KafkaConsumptionTask.
-  private final AtomicBoolean isRunning;
-
-  private ParticipantStoreConsumptionTask participantStoreConsumptionTask = null;
+  private ParticipantStoreConsumptionTask participantStoreConsumptionTask;
 
   private StoreIngestionTaskFactory ingestionTaskFactory;
 
@@ -166,11 +163,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository) {
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
-    this.partitionStateSerializer = partitionStateSerializer;
-
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
-    this.isRunning = new AtomicBoolean(false);
-
     this.veniceConfigLoader = veniceConfigLoader;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
@@ -367,22 +360,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public boolean startInner() {
-    logger.info("Enabling ingestion executor service and ingestion tasks.");
     ingestionExecutorService = Executors.newCachedThreadPool();
     topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
-    isRunning.set(true);
 
     storeBufferService.start();
     if (null != aggKafkaConsumerService) {
       aggKafkaConsumerService.start();
     }
     if (participantStoreConsumptionTask != null) {
+      participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
     // Although the StoreConsumptionTasks are now running in their own threads, there is no async
     // process that needs to finish before the KafkaStoreIngestionService can be considered
     // started, so we are done with the start up process.
-
     return true;
   }
 
@@ -421,7 +412,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         version.isLeaderFollowerModelEnabled(),
         getKafkaConsumerProperties(veniceStoreConfig),
         isVersionCurrent,
-        version.isUseVersionLevelHybridConfig() ? Optional.ofNullable(version.getHybridStoreConfig()) : Optional.ofNullable(store.getHybridStoreConfig()),
+        Optional.ofNullable(version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig()),
         version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled(),
         veniceStoreConfig,
         version.isBufferReplayEnabledForHybrid(),
@@ -432,7 +423,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitioner);
   }
 
-  private void shutdownExecutorService(ExecutorService executorService, boolean force) {
+  private static void shutdownExecutorService(ExecutorService executorService, boolean force) {
     if (null == executorService) {
       return;
     }
@@ -442,7 +433,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       executorService.shutdown();
     }
     try {
-      executorService.awaitTermination(30, TimeUnit.SECONDS);
+      if (!executorService.awaitTermination(60, TimeUnit.SECONDS) && !force) {
+        executorService.shutdownNow();
+      }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
@@ -454,44 +447,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public void stopInner() throws Exception {
-    logger.info("Shutting down Kafka consumer service");
-    isRunning.set(false);
-
+    IOUtils.closeQuietly(participantStoreConsumptionTask);
     shutdownExecutorService(participantStoreConsumerExecutorService, true);
-    if (participantStoreConsumptionTask != null) {
-      participantStoreConsumptionTask.close();
-    }
-    topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
-    /**
-     * We would like to gracefully shutdown {@link #ingestionExecutorService}, so that it
-     * will have an opportunity to checkpoint the processed offset.
+
+    /*
+     * We would like to gracefully shutdown {@link #ingestionExecutorService},
+     * so that it will have an opportunity to checkpoint the processed offset.
      */
+    topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
     shutdownExecutorService(ingestionExecutorService, false);
     shutdownExecutorService(cacheWarmingExecutorService, true);
 
-    if (null != aggKafkaConsumerService) {
-      aggKafkaConsumerService.stop();
-    }
+    IOUtils.closeQuietly(aggKafkaConsumerService);
+    IOUtils.closeQuietly(storeBufferService);
 
-    if (null != storeBufferService) {
-      storeBufferService.stop();
-    }
+    onlineOfflineNotifiers.forEach(VeniceNotifier::close);
+    leaderFollowerNotifiers.forEach(VeniceNotifier::close);
+    IOUtils.closeQuietly(metaStoreWriter);
 
-    // N.B close() should be idempotent
-    for (VeniceNotifier notifier : onlineOfflineNotifiers) {
-      notifier.close();
-    }
-
-    for (VeniceNotifier notifier : leaderFollowerNotifiers) {
-      notifier.close();
-    }
-
-    if (null != metaStoreWriter) {
-      metaStoreWriter.close();
-    }
-
-    kafkaMessageEnvelopeSchemaReader.ifPresent(sr -> sr.close());
-    logger.info("Shut down complete");
+    kafkaMessageEnvelopeSchemaReader.ifPresent(SchemaReader::close);
   }
 
   /**
@@ -504,11 +478,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public synchronized void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if(consumerTask == null || !consumerTask.isRunning()) {
+    if (consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = createConsumerTask(veniceStore, partitionId);
       topicNameToIngestionTaskMap.put(topic, consumerTask);
       versionedStorageIngestionStats.setIngestionTask(topic, consumerTask);
-      if(!isRunning.get()) {
+      if (!isRunning()) {
         logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
         return;
       }
@@ -545,7 +519,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public synchronized void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
     String topic = veniceStoreConfig.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if(consumerTask != null && consumerTask.isRunning()) {
+    if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.promoteToLeader(topic, partitionId, checker);
     } else {
       logger.warn("Ignoring standby to leader transition message for Topic " + topic + " Partition " + partitionId);
@@ -556,7 +530,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public synchronized void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
     String topic = veniceStoreConfig.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if(consumerTask != null && consumerTask.isRunning()) {
+    if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.demoteToStandby(topic, partitionId, checker);
     } else {
       logger.warn("Ignoring leader to standby transition message for Topic " + topic + " Partition " + partitionId);
@@ -642,7 +616,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public synchronized void stopConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if(consumerTask != null && consumerTask.isRunning()) {
+    if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.unSubscribePartition(topic, partitionId);
     } else {
       logger.warn("Ignoring stop consumption message for Topic " + topic + " Partition " + partitionId);
@@ -685,7 +659,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public void resetConsumptionOffset(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if(consumerTask != null && consumerTask.isRunning()) {
+    if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
     }
     logger.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
@@ -698,35 +672,41 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @return true if a kill is needed and called, otherwise false
    */
   @Override
-  public synchronized boolean killConsumptionTask(String topicName) {
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topicName);
-    boolean killed = false;
-    if (consumerTask != null) {
-      if (consumerTask.isRunning()) {
-        consumerTask.kill();
-        killed = true;
-        logger.info("Killed consumption task for Topic " + topicName);
-      } else {
-        logger.warn("Ignoring kill signal for Topic " + topicName);
-      }
-      // cleanup the map regardless if the task was running or not to prevent mem leak where errored tasks will linger
-      // in the map since isRunning is set to false already.
-      topicNameToIngestionTaskMap.remove(topicName);
-      if (null != aggKafkaConsumerService) {
-        aggKafkaConsumerService.detach(consumerTask);
-      }
-
-      /**
-       * For the same store, there will be only one task emitting metrics, if this is the only task that is emitting
-       * metrics, it means the latest ongoing push job is killed. In such case, find the largest version in the task
-       * map and enable metric emission.
-       */
-      if (consumerTask.isMetricsEmissionEnabled()) {
-        consumerTask.disableMetricsEmission();
-        updateStatsEmission(topicNameToIngestionTaskMap, Version.parseStoreFromKafkaTopicName(topicName));
-      }
+  public boolean killConsumptionTask(String topicName) {
+    if (!isRunning()) {
+      throw new VeniceException("KafkaStoreIngestionService is not running.");
     }
-    return killed;
+
+    synchronized (this) {
+      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topicName);
+      boolean killed = false;
+      if (consumerTask != null) {
+        if (consumerTask.isRunning()) {
+          consumerTask.kill();
+          killed = true;
+          logger.info("Killed consumption task for Topic " + topicName);
+        } else {
+          logger.warn("Ignoring kill signal for Topic " + topicName);
+        }
+        // cleanup the map regardless if the task was running or not to prevent mem leak where errored tasks will linger
+        // in the map since isRunning is set to false already.
+        topicNameToIngestionTaskMap.remove(topicName);
+        if (null != aggKafkaConsumerService) {
+          aggKafkaConsumerService.detach(consumerTask);
+        }
+
+        /**
+         * For the same store, there will be only one task emitting metrics, if this is the only task that is emitting
+         * metrics, it means the latest ongoing push job is killed. In such case, find the largest version in the task
+         * map and enable metric emission.
+         */
+        if (consumerTask.isMetricsEmissionEnabled()) {
+          consumerTask.disableMetricsEmission();
+          updateStatsEmission(topicNameToIngestionTaskMap, Version.parseStoreFromKafkaTopicName(topicName));
+        }
+      }
+      return killed;
+    }
   }
 
   @Override

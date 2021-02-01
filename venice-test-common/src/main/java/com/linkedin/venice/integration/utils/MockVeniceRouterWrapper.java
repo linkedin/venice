@@ -149,7 +149,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     TestUtils.waitForNonDeterministicCompletion(
         IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
         TimeUnit.MILLISECONDS,
-        () -> service.isStarted());
+        () -> service.isRunning());
   }
 
   @Override
