@@ -1,20 +1,25 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushstatus.PushStatusStoreReader;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
@@ -30,12 +35,18 @@ import static org.testng.Assert.*;
 
 
 public class PushStatusStoreTest {
+  private static final int TEST_TIMEOUT = 60_000; // ms
+
   private VeniceClusterWrapper cluster;
   private VeniceControllerWrapper parentController;
   private ControllerClient parentControllerClient;
+  private D2Client d2Client;
+  private PushStatusStoreReader reader;
+  private Properties h2vProperties;
+  private String storeName;
 
   @BeforeMethod
-  public void setup() {
+  public void setup() throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     Utils.thisIsLocalhost();
@@ -54,43 +65,48 @@ public class PushStatusStoreTest {
             cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
             new VeniceProperties(controllerConfig), false);
     parentControllerClient = new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
+    d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
+    reader = new PushStatusStoreReader(d2Client, TimeUnit.MINUTES.toSeconds(10));
+
+    storeName = TestUtils.getUniqueString("store");
+    // Produce input data.
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
+    // Setup H2V job properties.
+    h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
+
+    // set up push status store
+    String owner = "test";
+    String zkSharedPushStatusStoreName = VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(cluster.getClusterName());
+    assertFalse(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner).isError());
+    assertFalse(parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName).isError());
+    assertFalse(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA).isError());
+    assertFalse(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)).isError());
+    assertFalse(parentControllerClient.createDaVinciPushStatusStore(storeName).isError());
   }
 
   @AfterMethod
   public void cleanup() {
+    reader.close();
+    D2ClientUtils.shutdownClient(d2Client);
     IOUtils.closeQuietly(parentControllerClient);
     IOUtils.closeQuietly(parentController);
     IOUtils.closeQuietly(cluster);
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testKafkaPushJob() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
-    String owner = "test";
-    String zkSharedPushStatusStoreName = VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(cluster.getClusterName());
-    parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner);
-    parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName);
-    parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA).isError();
-    parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
-    parentControllerClient.createDaVinciPushStatusStore(storeName).isError();
-
-    // Produce input data.
-    File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
-
-    // Setup H2V job properties.
-    Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
-
-    DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster);
-    daVinciClient.subscribeAll().get();
-    runH2V(h2vProperties, 2, cluster);
-
-    // clean up
-    daVinciClient.close();
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      daVinciClient.subscribeAll().get();
+      runH2V(h2vProperties, 2, cluster);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        assertEquals(reader.getPartitionStatus(storeName, 2, 0, Optional.empty()).size(), 1);
+      });
+    }
 
     String pushStatusStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), 1);
@@ -105,46 +121,45 @@ public class PushStatusStoreTest {
     });
   }
 
-  @Test(timeOut = 30 * Time.MS_PER_SECOND)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPush() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
-    String owner = "test";
-    String zkSharedPushStatusStoreName = VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(cluster.getClusterName());
-    parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner);
-    parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName);
-    parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA).isError();
-    parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setIncrementalPushEnabled(true)
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
-    parentControllerClient.createDaVinciPushStatusStore(storeName);
-
-    // Produce input data.
-    File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
-
-    // Setup H2V job properties.
-    Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
+    assertFalse(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setIncrementalPushEnabled(true)).isError());
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      daVinciClient.subscribeAll().get();
+      h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
+      runH2V(h2vProperties, 1, cluster);
+    }
+  }
 
-    DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster);
-    daVinciClient.subscribeAll().get();
-    h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAutomaticPurge() throws Exception {
+    // setup initial version
     runH2V(h2vProperties, 1, cluster);
-
-    // clean up
-    daVinciClient.close();
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      daVinciClient.subscribeAll().get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
+      });
+      runH2V(h2vProperties, 2, cluster);
+      runH2V(h2vProperties, 3, cluster);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 0);
+      });
+    }
   }
 
   private static void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long h2vStart = System.currentTimeMillis();
     String jobName = TestUtils.getUniqueString("batch-job-" + expectedVersionNumber);
-    KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties);
-    job.run();
-    String storeName = (String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP);
-    cluster.waitVersion(storeName, expectedVersionNumber);
-    logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+    try (KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties)) {
+      job.run();
+      String storeName = (String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP);
+      cluster.waitVersion(storeName, expectedVersionNumber);
+      logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+    }
   }
 
 }
