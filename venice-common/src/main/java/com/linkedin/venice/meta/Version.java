@@ -142,6 +142,9 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setUseVersionLevelHybridConfig(boolean versionLevelHybridConfig);
 
+  boolean isActiveActiveReplicationEnabled();
+
+  void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled);
 
   Version cloneVersion();
 

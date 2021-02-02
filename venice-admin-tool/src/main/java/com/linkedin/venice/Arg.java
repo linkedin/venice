@@ -98,7 +98,8 @@ public enum Arg {
   LOG_METADATA("log-metedata", "lm", false, "Only log the metadata for each kafka message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC("native-replication-source-fabric", "nrsf", true, "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."),
   PRINCIPAL("principal", "p", true, "Principal to add/modify/delete ACLs"),
-  REPLICATE_ALL_CONFIGS("replicate-all-configs", "rac", false,"Whether all unchanged store configs in parent controller will be replicated to child controllers");
+  REPLICATE_ALL_CONFIGS("replicate-all-configs", "rac", false,"Whether all unchanged store configs in parent controller will be replicated to child controllers"),
+  ACTIVE_ACTIVE_REPLICATION_ENABLED("active-active-replication-enabled", "aa", true, "A parameter flag to enable/disable Active/Active replication feature for a store");
 
   private final String argName;
   private final String first;

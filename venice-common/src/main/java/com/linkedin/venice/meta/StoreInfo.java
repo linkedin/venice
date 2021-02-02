@@ -56,6 +56,7 @@ public class StoreInfo {
     storeInfo.setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
     storeInfo.setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     storeInfo.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
+    storeInfo.setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     return storeInfo;
   }
   /**
@@ -272,6 +273,11 @@ public class StoreInfo {
    * Whether or not Da Vinci push status system store is enabled for this Venice store.
    */
   private boolean daVinciPushStatusStoreEnabled;
+
+  /**
+   * Whether or not active/active replication is currently enabled for this store.
+   */
+  private boolean activeActiveReplicationEnabled;
 
   public StoreInfo() {
   }
@@ -658,5 +664,13 @@ public class StoreInfo {
 
   public void setDaVinciPushStatusStoreEnabled(boolean DaVinciPushStatusStoreEnabled) {
     this.daVinciPushStatusStoreEnabled = storeMetadataSystemStoreEnabled;
+  }
+
+  public boolean isActiveActiveReplicationEnabled() {
+    return activeActiveReplicationEnabled;
+  }
+
+  public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
+    this.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
   }
 }

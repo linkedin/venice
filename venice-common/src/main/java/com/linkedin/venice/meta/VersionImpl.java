@@ -285,6 +285,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isActiveActiveReplicationEnabled() {
+    return this.storeVersion.activeActiveReplicationEnabled;
+  }
+
+  @Override
+  public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
+    this.storeVersion.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }
@@ -312,6 +322,7 @@ public class VersionImpl implements Version {
         ", useVersionLevelIncrementalPushEnabled=" + isUseVersionLevelIncrementalPushEnabled() +
         ", hybridConfig=" + getHybridStoreConfig() +
         ", useVersionLevelHybridConfig=" + isUseVersionLevelHybridConfig() +
+        ", activeActiveReplicationEnabled=" + isActiveActiveReplicationEnabled() +
         '}';
   }
 
@@ -365,6 +376,7 @@ public class VersionImpl implements Version {
     clonedVersion.setUseVersionLevelIncrementalPushEnabled(isUseVersionLevelIncrementalPushEnabled());
     clonedVersion.setHybridStoreConfig(getHybridStoreConfig());
     clonedVersion.setUseVersionLevelHybridConfig(isUseVersionLevelHybridConfig());
+    clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     return clonedVersion;
   }
 

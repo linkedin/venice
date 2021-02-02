@@ -2698,6 +2698,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setActiveActiveReplicationEnabled(String clusterName, String storeName,
+        boolean activeActiveReplicationEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setActiveActiveReplicationEnabled(activeActiveReplicationEnabled);
+            return store;
+        });
+    }
     /**
      * This function will check whether the store update will cause the case that a store can not have the specified
      * hybrid store and incremental push configs.
@@ -2787,6 +2794,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Integer> replicationFactor = params.getReplicationFactor();
         Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
         Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
+        Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
 
         Optional<HybridStoreConfig> hybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
@@ -2943,9 +2951,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                  */
                 boolean isLeaderFollowerModelEnabled = getStore(clusterName, storeName).isLeaderFollowerModelEnabled();
                 if(!isLeaderFollowerModelEnabled && nativeReplicationEnabled.get()) {
-                    throw new VeniceException("Native Replication cannot be enabled on a store which does not have leader/follower mode enabled!");
+                    throw new VeniceException("Native Replication cannot be enabled on store " + storeName + " which does not have leader/follower mode enabled!");
                 }
                 setNativeReplicationEnabled(clusterName, storeName, nativeReplicationEnabled.get());
+            }
+
+            if (activeActiveReplicationEnabled.isPresent()) {
+                boolean isLeaderFollowerModelEnabled = getStore(clusterName, storeName).isLeaderFollowerModelEnabled();
+                if (!isLeaderFollowerModelEnabled && activeActiveReplicationEnabled.get()) {
+                    throw new VeniceException("Active active replication cannot be enabled on store " + storeName + " which does not have L/F mode enabled.");
+                }
+                setActiveActiveReplicationEnabled(clusterName, storeName, activeActiveReplicationEnabled.get());
             }
 
             if(pushStreamSourceAddress.isPresent()) {

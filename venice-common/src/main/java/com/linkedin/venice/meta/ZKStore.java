@@ -641,6 +641,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public boolean isActiveActiveReplicationEnabled() {
+    return this.storeProperties.activeActiveReplicationEnabled;
+  }
+
+  @Override
+  public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
+    this.storeProperties.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
+  }
+
+  @Override
   public Map<String, SystemStoreAttributes> getSystemStores() {
     Map<String, SystemStoreAttributes> systemStoreMap = new HashMap<>();
     this.storeProperties.systemStores.forEach( (k, v) -> systemStoreMap.put(k.toString(), new SystemStoreAttributesImpl(v)));
@@ -753,6 +763,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     clonedStore.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     clonedStore.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
     clonedStore.setStoreMetaSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
+    clonedStore.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     for (StoreVersion storeVersion : this.storeProperties.versions) {
       clonedStore.forceAddVersion(new VersionImpl(storeVersion).cloneVersion(), true);
     }
