@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -23,6 +24,10 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams() {
     super();
+    /**
+     * By default, parent controllers will not replicate unchanged store configs to child controllers.
+     */
+    setReplicateAllConfigs(false);
   }
 
   private ObjectMapper mapper = new ObjectMapper();
@@ -386,6 +391,26 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getString(NATIVE_REPLICATION_SOURCE_FABRIC);
   }
 
+  public UpdateStoreQueryParams setUpdatedConfigsList(List<String> updatedConfigsList) {
+    return putStringList(UPDATED_CONFIGS_LIST, updatedConfigsList);
+  }
+
+  public Optional<List<String>> getUpdatedConfigsList() {
+    return getStringList(UPDATED_CONFIGS_LIST);
+  }
+
+  public UpdateStoreQueryParams setReplicateAllConfigs(boolean replicateAllConfigs) {
+    return putBoolean(REPLICATE_ALL_CONFIGS, replicateAllConfigs);
+  }
+
+  public Optional<Boolean> getReplicateAllConfigs() {
+    return getBoolean(REPLICATE_ALL_CONFIGS);
+  }
+
+  public void cloneConfig(String configKey, UpdateStoreQueryParams sourceParams) {
+    this.params.put(configKey, sourceParams.params.get(configKey));
+  }
+
   //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {
     return (UpdateStoreQueryParams) add(name, value);
@@ -436,6 +461,29 @@ public class UpdateStoreQueryParams extends QueryParams {
     } else {
       try {
         return Optional.of(mapper.readValue(params.get(name), Map.class));
+      } catch (IOException e) {
+        throw new VeniceException(e.getMessage());
+      }
+    }
+  }
+
+  private UpdateStoreQueryParams putStringList(String name, List<String> value) {
+    try {
+      return (UpdateStoreQueryParams) add(
+          name,
+          mapper.writeValueAsString(value)
+      );
+    } catch (JsonProcessingException e) {
+      throw new VeniceException(e.getMessage());
+    }
+  }
+
+  private Optional<List<String>> getStringList(String name) {
+    if (!params.containsKey(name)) {
+      return Optional.empty();
+    } else {
+      try {
+        return Optional.of(mapper.readValue(params.get(name), List.class));
       } catch (IOException e) {
         throw new VeniceException(e.getMessage());
       }

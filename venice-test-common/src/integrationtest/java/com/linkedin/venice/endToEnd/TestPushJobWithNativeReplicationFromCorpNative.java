@@ -156,6 +156,14 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
     ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
 
+    /**
+     * Check the update store command in parent controller has been propagated into child controllers, before
+     * sending any commands directly into child controllers, which can help avoid race conditions.
+     */
+    TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
+    TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+    TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, true);
+
     //disable L/F+ native replication for dc-1 and dc-2.
     UpdateStoreQueryParams updateStoreParams1 = new UpdateStoreQueryParams()
         .setLeaderFollowerModel(false)
@@ -163,8 +171,15 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     TestPushUtils.updateStore(clusterName, storeName, dc1Client, updateStoreParams1);
     TestPushUtils.updateStore(clusterName, storeName, dc2Client, updateStoreParams1);
 
+    /**
+     * Run an update store command against parent controller to update an irrelevant store config; other untouched configs
+     * should not be updated.
+     */
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    UpdateStoreQueryParams irrelevantUpdateStoreParams = new UpdateStoreQueryParams().setReadComputationEnabled(true);
+    TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, irrelevantUpdateStoreParams);
 
-    //verify all the datacenter is configurd correctly.
+    //verify all the datacenter is configured correctly.
     TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
     TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, false);
     TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, false);
@@ -225,6 +240,14 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
     ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
+
+    /**
+     * Check the update store command in parent controller has been propagated into child controllers, before
+     * sending any commands directly into child controllers, which can help avoid race conditions.
+     */
+    TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
+    TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+    TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, true);
 
     //disable L/F+ native replication for dc-2.
     UpdateStoreQueryParams updateStoreParams1 = new UpdateStoreQueryParams()

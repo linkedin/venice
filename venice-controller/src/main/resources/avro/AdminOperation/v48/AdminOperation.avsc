@@ -494,7 +494,7 @@
             },
             {
               "name": "replicateAllConfigs",
-              "doc": "A flag to indicate whether all store configs in parent cluster will be replicated to child clusters",
+              "doc": "A flag to indicate whether all store configs in parent cluster will be replicated to child clusters; true by default, so that existing UpdateStore messages in Admin topic will behave the same as before.",
               "type": "boolean",
               "default": true
             }

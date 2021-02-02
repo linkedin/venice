@@ -65,7 +65,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(47, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"), // , AdminOperation.class),
+  ADMIN_OPERATION(48, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"), // , AdminOperation.class),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
