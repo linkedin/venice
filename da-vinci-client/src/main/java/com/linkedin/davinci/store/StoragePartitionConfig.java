@@ -1,5 +1,8 @@
 package com.linkedin.davinci.store;
 
+import java.util.Objects;
+
+
 /**
  * Storage partition level config, which could be used to specify partition specific config when
  * initializing/opening the corresponding {@link AbstractStoragePartition}.
@@ -10,6 +13,7 @@ public class StoragePartitionConfig {
   private boolean deferredWrite;
   private boolean readOnly;
   private boolean writeOnlyConfig;
+  private boolean disableAutoCompaction;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
     this.storeName = storeName;
@@ -17,6 +21,7 @@ public class StoragePartitionConfig {
     this.deferredWrite = false;
     this.readOnly = false;
     this.writeOnlyConfig = true;
+    this.disableAutoCompaction = false;
   }
 
   public String getStoreName() {
@@ -57,45 +62,36 @@ public class StoragePartitionConfig {
     }
   }
 
+  public boolean isDisableAutoCompaction() {
+    return disableAutoCompaction;
+  }
+
+  public void setDisableAutoCompaction(boolean disableAutoCompaction) {
+    this.disableAutoCompaction = disableAutoCompaction;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof StoragePartitionConfig)) {
+    if (o == null || getClass() != o.getClass()) {
       return false;
     }
-
     StoragePartitionConfig that = (StoragePartitionConfig) o;
-
-    if (partitionId != that.partitionId) {
-      return false;
-    }
-    if (deferredWrite != that.deferredWrite) {
-      return false;
-    }
-    if (readOnly != that.readOnly) {
-      return false;
-    }
-    if (writeOnlyConfig != that.writeOnlyConfig) {
-      return false;
-    }
-    return storeName.equals(that.storeName);
+    return partitionId == that.partitionId && deferredWrite == that.deferredWrite && readOnly == that.readOnly
+        && writeOnlyConfig == that.writeOnlyConfig && disableAutoCompaction == that.disableAutoCompaction
+        && storeName.equals(that.storeName);
   }
 
   @Override
   public int hashCode() {
-    int result = storeName.hashCode();
-    result = 31 * result + partitionId;
-    result = 31 * result + (deferredWrite ? 1 : 0);
-    result = 31 * result + (readOnly ? 1 : 0);
-    result = 31 * result + (writeOnlyConfig ? 1 : 0);
-    return result;
+    return Objects.hash(storeName, partitionId, deferredWrite, readOnly, writeOnlyConfig, disableAutoCompaction);
   }
 
   @Override
   public String toString() {
     return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite +
-        ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig;
+        ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", disableAutoCompaction: " + disableAutoCompaction;
   }
 }

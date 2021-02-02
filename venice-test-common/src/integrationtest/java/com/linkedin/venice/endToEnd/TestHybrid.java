@@ -463,6 +463,8 @@ public class TestHybrid {
   public void testSamzaBatchLoad(boolean isLeaderFollowerModelEnabled) throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
+    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    extraProperties.setProperty(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, "false");
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
     SystemProducer veniceBatchProducer = null, veniceStreamProducer = null;

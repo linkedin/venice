@@ -13,6 +13,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -83,7 +84,9 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -256,6 +259,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final boolean suppressLiveUpdates;
 
+  /**
+   * This flag indicates whether the auto-compaction should be disabled for Samza Reprocessing Job.
+   * This feature has the assumption that most of the keys produced by Samza Reprocessing Job are
+   * unique, so we won't be too concerned about the storage amplification even though the storage size
+   * could be doubled during one-time manual compaction after receiving EOP.
+   * Since the compaction won't happen at the same time across all the storage partitions (different storage partition
+   * will hit EOP at different time and there are limit number of compaction threads), the storage
+   * amplification can be acceptable (need some experiment in prod).
+   *
+   * If this feature is proved to be useful, we could apply this optimization more widely to the
+   * regular hybrid store since we assume Kafka Log Compaction will help keep the most recent
+   * entry for each key.
+   */
+  private final boolean disableAutoCompactionForSamzaReprocessingJob;
+  /**
+   * This map is used to track the manual compaction progress for each partition.
+   * This map won't be cleaned up even the compaction is done since it is being used in {@link #produceToStoreBufferServiceOrKafka}
+   * to decide whether any incoming messages should be filtered or errored.
+   */
+  private final Map<Integer, CompletableFuture<Void>> dbCompactFutureMap = new VeniceConcurrentHashMap<>();
+  /**
+   * This map is used to track the point where the manual compaction starts.
+   * Since the messages including EOP and the following will be skipped when manual compaction is triggered, we will
+   * leverage this map to re-subscribe the same topic partition when manual compaction is done.
+   */
+  private final Map<Integer, ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> eopControlMessageMap = new VeniceConcurrentHashMap<>();
+  /**
+   * This set is used to track all the partitions whose consumption has been resumed after the completed compaction.
+   * So that {@link #checkLongRunningDBCompaction()} won't execute the same consumption resumption more than once.
+   */
+  private final Set<Integer> consumptionResumedPartitionSet = new HashSet<>();
+
   // Used to construct VenicePartitioner
   private final VenicePartitioner venicePartitioner;
 
@@ -379,6 +414,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.suppressLiveUpdates = serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
 
     this.venicePartitioner = venicePartitioner;
+    /**
+     * The reason to use a different field name here is that the naming convention will be consistent with RocksDB.
+     */
+    this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
   }
 
   protected void validateState() {
@@ -507,10 +546,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return checksum;
       });
     }
+    if (!sorted && disableAutoCompactionForSamzaReprocessingJob) {
+      /**
+       * Disable auto-compaction for Samza Reprocessing Job.
+       */
+      storagePartitionConfig.setDisableAutoCompaction(true);
+    }
     storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)
         .beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
     logger.info("Started batch write to store: " + kafkaVersionTopic + ", partition: " + partitionId +
-        " with checkpointed database info: " + checkpointedDatabaseInfo + " and sorted: " + sorted);
+        " with checkpointed database info: " + checkpointedDatabaseInfo + " and sorted: " + sorted +
+        " and disabledAutoCompaction: " + storagePartitionConfig.isDisableAutoCompaction());
   }
 
   private StoragePartitionConfig getStoragePartitionConfig(int partitionId, boolean sorted,
@@ -704,10 +750,151 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int recordQueuedToDrainer = 0;
     int recordProducedToKafka = 0;
     double elapsedTimeForProducingToKafka = 0;
+    /**
+     * This set is used to track all partitions, where manual compaction gets triggered in this iteration.
+     * Once the manual compaction is triggered, all the following messages belonging to the same partition
+     * will be dropped.
+     */
+    Set<Integer> compactingPartitions = new HashSet<>();
+
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
       if (!shouldProcessRecord(record)) {
         continue;
       }
+
+      if (disableAutoCompactionForSamzaReprocessingJob) {
+        int consumingPartition = record.partition();
+        if (compactingPartitions.contains(consumingPartition)) {
+          /**
+           * Skip all the leftover messages since some previous message (EOP specifically for current logic) triggers one-time compaction.
+           */
+          continue;
+        }
+        CompletableFuture<Void> dbCompactFuture = dbCompactFutureMap.get(consumingPartition);
+        if (dbCompactFuture != null) {
+          /**
+           * One-time db compaction happened before.
+           */
+          if (!dbCompactFuture.isDone()) {
+            throw new VeniceException(
+                "Unexpected to receive any new messages while the DB compaction is still " + "ongoing for store: " +
+                    kafkaVersionTopic + ", partition: " + consumingPartition);
+          } else {
+            if (dbCompactFuture.isCompletedExceptionally()) {
+              try {
+                dbCompactFuture.get();
+              } catch (ExecutionException e) {
+                throw new VeniceException(
+                    "Unexpected to receive any new message since the one-time db compaction failed " + "for store: " +
+                        kafkaVersionTopic + ", partition: " + consumingPartition + " with exception: " + e);
+              }
+            }
+          }
+        } else {
+          /**
+           * Try to check whether the current message is EOP or not.
+           */
+          KafkaKey kafkaKey = record.key();
+          if (kafkaKey.isControlMessage() && ControlMessageType.valueOf((ControlMessage) record.value().payloadUnion) == ControlMessageType.END_OF_PUSH) {
+            Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+            if (!storeVersionState.isPresent()) {
+              /**
+               * EOP is received, but {@link StoreVersionState} for current store is not available, which indicates that
+               * this is a small push, but to be consistent, we will flush all the pending messages in the drainer queue, and wait
+               * for the {@link StoreVersionState} to show up.
+               */
+              PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(consumingPartition);
+              if (null == partitionConsumptionState) {
+                /**
+                 * Defensive coding.
+                 */
+                logger.error(
+                    "Encountered null 'PartitionConsumptionState' when trying to apply delay compaction to topic: " +
+                        kafkaVersionTopic + ", partition: " + consumingPartition);
+              }
+              waitForAllMessageToBeProcessedFromTopicPartition(record.topic(), record.partition(),
+                  partitionConsumptionState);
+              storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+              if (!storeVersionState.isPresent()) {
+                throw new VeniceException(
+                    "Failed to get StoreVersionState after draining all the pending messages for topic: " +
+                        kafkaVersionTopic + ", partition: " + consumingPartition);
+              }
+            }
+
+            if (storeVersionState.get().sorted) {
+              /**
+               * The batch part is sorted, which indicates the push job is mostly from VPJ, so no delay compaction is required.
+               * Nothing needs to be done here
+               */
+            } else {
+              /**
+               * The batch part is unordered, and this is a targeted use case to leverage the delay compaction to improve the
+               * ingestion performance for the batch part.
+               * Since {@link #beginBatchWrite} will disable auto compaction, and we will need to do one-time manual compaction
+               * here before processing EOP.
+               *
+               * There are several steps needed to be done here:
+               * 1. Temporarily pause the consumption since during the manual compaction, and the RocksDB update will become very slow,
+               *    so, the messages for this specific topic partition after triggering manual compaction could saturate the buffer queue,
+               *    which will affect the ingestion speed of all other tenants.
+               * 2. Drain all the pending messages belonging to the specific topic partition.
+               * 3. Trigger a one-time manual compaction.
+               * 4. Abandon all the following messages including EOP, and there are several reasons:
+               *    a. Not processing EOP will let us not involve the completion reporting logic, and it will guarantee
+               *       the RocksDB will be compacted before reporting completion.
+               *    b. Not processing EOP has another benefit to make this behavior idempotent, and it means this logic
+               *       will be executed even there is a restart in the middle of the manual RocksDB compaction.
+               *    c. All the following messages will be blocked by this manual compaction.
+               * 5. {@link #checkLongRunningDBCompaction()}  will periodically check the compaction status and once the compaction
+               *    is done, it will resume the consumption from the point where messages gets dropped.
+               */
+              /**
+               * In theory, there should be only one consumer for Samza Reprocessing topic.
+               */
+              String consumingTopic = record.topic();
+              Collection<KafkaConsumerWrapper> consumers = getConsumer();
+              if (consumers.size() != 1) {
+                throw new VeniceException("Only one consumer is expected before processing EOP for topic: " +
+                    kafkaVersionTopic + ", partition: " + consumingPartition);
+              }
+              getConsumer().forEach(consumer -> consumer.pause(consumingTopic, consumingPartition));
+              logger.info("Paused consumption to topic: " + consumingTopic + ", partition: " + consumingPartition +
+                  " because of one-time db compaction");
+              PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(consumingPartition);
+              if (null == partitionConsumptionState) {
+                /**
+                 * Defensive coding.
+                 */
+                logger.error(
+                    "Encountered null 'PartitionConsumptionState' when trying to apply delay compaction to topic: " +
+                        kafkaVersionTopic + ", partition: " + consumingPartition);
+              }
+              waitForAllMessageToBeProcessedFromTopicPartition(record.topic(), consumingPartition,
+                  partitionConsumptionState);
+              logger.info("All pending messages belonging to topic: " + consumingTopic + ", partition: " +
+                  consumingPartition + " are persisted, for one-time db compaction");
+
+              // Trigger one-time compaction
+              AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+              if (null == engine) {
+                throw new VeniceException("Storage Engine for store: " + kafkaVersionTopic + " has been closed");
+              }
+              AbstractStoragePartition storagePartition = engine.getPartitionOrThrow(consumingPartition);
+              dbCompactFutureMap.put(record.partition(), storagePartition.compactDB());
+              eopControlMessageMap.put(consumingPartition, record);
+              logger.info("Triggered one time db compaction for store: " + kafkaVersionTopic + ", partition: " + consumingPartition);
+              compactingPartitions.add(consumingPartition);
+              /**
+               * Skip the EOP control message after triggering the manual db compaction.
+               */
+              continue;
+            }
+          }
+        }
+      }
+
+
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
       processedRecord.add(record);
@@ -931,6 +1118,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       while (isRunning()) {
         processConsumerActions();
         checkLongRunningTaskState();
+        checkLongRunningDBCompaction();
         processMessages(serverConfig.isSharedConsumerPoolEnabled());
       }
 
@@ -989,6 +1177,70 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     } finally {
       internalClose();
+    }
+  }
+
+  /**
+   * This function is used to check whether the long-running db compaction is done or not.
+   * Once it is done, it will try to resume the consumption if the current consumer is still subscribing the corresponding
+   * topic partition.
+   */
+  private void checkLongRunningDBCompaction() {
+    if (!disableAutoCompactionForSamzaReprocessingJob) {
+      return;
+    }
+    if (dbCompactFutureMap.isEmpty()) {
+      // Nothing to check
+      return;
+    }
+    for (Map.Entry<Integer, CompletableFuture<Void>> entry : dbCompactFutureMap.entrySet()) {
+      int partition = entry.getKey();
+      CompletableFuture<Void> dbCompactFuture = entry.getValue();
+      if (dbCompactFuture.isDone() && !consumptionResumedPartitionSet.contains(partition)) {
+        /**
+         * We couldn't clean up {@link #dbCompactFutureMap} for the completed db compaction since this completed
+         * future in the map will be used in {@link #produceToStoreBufferServiceOrKafka}.
+         */
+        consumptionResumedPartitionSet.add(partition);
+        if (dbCompactFuture.isCompletedExceptionally()) {
+          try {
+            dbCompactFuture.get();
+          } catch (Exception e) {
+            throw new VeniceException("One-time manual db compaction for store: " + kafkaVersionTopic + ", partition: "
+                + partition + " failed with exception", e);
+          }
+        } else {
+          logger.info("One-time compaction is done for store: " + kafkaVersionTopic + ", partition: " + partition +
+              ", will resume the consumption");
+          // Resume the consumption
+          Collection<KafkaConsumerWrapper> consumers = getConsumer();
+          if (consumers.size() != 1) {
+            throw new VeniceException("Only one consumer is expected for store: " + kafkaVersionTopic +
+                " when manual compaction is running");
+          }
+          ConsumerRecord<KafkaKey, KafkaMessageEnvelope> eopControlMessage = eopControlMessageMap.get(partition);
+          if (null == eopControlMessage) {
+            throw new VeniceException("EOP control message wasn't persisted before the manual compaction for store: " +
+                kafkaVersionTopic + ", partition: " + partition);
+          }
+          consumers.forEach(consumer -> {
+            String consumingTopic = eopControlMessage.topic();
+            if (consumer.hasSubscription(consumingTopic, partition)) {
+              /**
+               * We need to re-subscribe the topic partition from the EOP control message
+               */
+              consumer.unSubscribe(consumingTopic, partition);
+              long resumedOffset = eopControlMessage.offset() - 1;
+              consumer.subscribe(consumingTopic, partition, resumedOffset);
+              logger.info("Current consumer has resumed consumption to topic: " + consumingTopic + ", partition: " +
+                  partition + " with offset: " + resumedOffset);
+            } else {
+              logger.info("Current consumer isn't subscribing to topic: " + consumingTopic + ", partition: " +
+                  partition + ", so we won't resume the consumption");
+            }
+          });
+        }
+      }
     }
   }
 
@@ -1180,6 +1432,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         partitionConsumptionStateMap.remove(partition);
         kafkaDataIntegrityValidator.clearPartition(partition);
+
+        // Clean up the db compaction state.
+        if (disableAutoCompactionForSamzaReprocessingJob) {
+          dbCompactFutureMap.remove(partition);
+        }
         break;
       case RESET_OFFSET:
         /**

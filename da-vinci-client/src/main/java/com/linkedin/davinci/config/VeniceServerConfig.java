@@ -216,6 +216,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final String systemSchemaClusterName;
 
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
+  private final boolean enableAutoCompactionForSamzaReprocessingJob;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -328,6 +329,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties.getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10)); // default 10 mins
+    enableAutoCompactionForSamzaReprocessingJob = serverProperties.getBoolean(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
   }
 
   public int getListenerPort() {
@@ -615,5 +617,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getSharedConsumerNonExistingTopicCleanupDelayMS() {
     return sharedConsumerNonExistingTopicCleanupDelayMS;
+  }
+
+  public boolean isEnableAutoCompactionForSamzaReprocessingJob() {
+    return enableAutoCompactionForSamzaReprocessingJob;
   }
 }

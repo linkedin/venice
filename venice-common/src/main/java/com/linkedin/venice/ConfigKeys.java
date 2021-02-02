@@ -505,6 +505,12 @@ public class ConfigKeys {
   public static final String SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS = "server.shared.cosnumer.non.existing.topic.cleanup.delay.ms";
 
   /**
+   * This config is used to control whether Storage Node should enable auto compaction for Samza Reprocessing Job or not.
+   * Default: true
+   */
+  public static final String SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED = "server.auto.compaction.for.samza.reprocessing.job.enabled";
+
+  /**
    * This config will determine whether live update will be suppressed. When the feature is turned on, ingestion will stop
    * once a partition is ready to serve; after Da Vinci client restarts or server restarts, if local data exists, ingestion
    * will not start in Da Vinci or report ready-to-serve immediately without ingesting new data in Venice.

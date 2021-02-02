@@ -3,6 +3,7 @@ package com.linkedin.davinci.store;
 import java.util.Map;
 import java.nio.ByteBuffer;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import org.apache.log4j.Logger;
 
@@ -96,5 +97,13 @@ public abstract class AbstractStoragePartition {
   public void warmUp() {
     // Do nothing by default
     LOGGER.info("Warming up is not implemented by default");
+  }
+
+  /**
+   * One-time database compaction.
+   * @return CompletableFuture to track the compaction progress.
+   */
+  public CompletableFuture<Void> compactDB() {
+    return CompletableFuture.completedFuture(null);
   }
 }
