@@ -407,6 +407,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(REPLICATE_ALL_CONFIGS);
   }
 
+  public UpdateStoreQueryParams setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
+    return putBoolean(ACTIVE_ACTIVE_REPLICATION_ENABLED, activeActiveReplicationEnabled);
+  }
+
+  public Optional<Boolean> getActiveActiveReplicationEnabled() {
+    return getBoolean(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+  }
+
   public void cloneConfig(String configKey, UpdateStoreQueryParams sourceParams) {
     this.params.put(configKey, sourceParams.params.get(configKey));
   }

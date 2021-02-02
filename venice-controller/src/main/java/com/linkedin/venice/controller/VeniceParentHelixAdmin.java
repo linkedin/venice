@@ -1229,6 +1229,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> replicationFactor = params.getReplicationFactor();
       Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
       Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
+      Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -1284,7 +1285,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isLeaderFollowerModelEnabled = (!leaderFollowerModelEnabled.isPresent() && store.isLeaderFollowerModelEnabled())
                                              || (leaderFollowerModelEnabled.isPresent() && leaderFollowerModelEnabled.get());
       if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !isLeaderFollowerModelEnabled)  {
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for a store which is not leader follower enabled");
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + storeName + " since it's not on L/F state model");
       }
       setStore.nativeReplicationEnabled = nativeReplicationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, NATIVE_REPLICATION_ENABLED))
@@ -1292,6 +1293,12 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.pushStreamSourceAddress = pushStreamSourceAddress
           .map(addToUpdatedConfigList(updatedConfigsList, PUSH_STREAM_SOURCE_ADDRESS))
           .orElseGet(store::getPushStreamSourceAddress);
+      if (activeActiveReplicationEnabled.isPresent() && activeActiveReplicationEnabled.get() && !isLeaderFollowerModelEnabled) {
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Active/Active Replication cannot be enabled for store " + storeName + " since it's not on L/F state model");
+      }
+      setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
+          .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
+          .orElseGet(store::isActiveActiveReplicationEnabled);
 
       if (!(partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent())) {
         setStore.partitionerConfig = null;

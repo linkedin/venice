@@ -119,4 +119,6 @@ public class ControllerApiConstants {
   public static final String UPDATED_CONFIGS_LIST = "updated_configs_list";
 
   public static final String REPLICATE_ALL_CONFIGS = "replicate_all_configs";
+
+  public static final String ACTIVE_ACTIVE_REPLICATION_ENABLED = "active_active_replication_enabled";
 }

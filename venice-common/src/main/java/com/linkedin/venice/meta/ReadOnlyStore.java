@@ -374,6 +374,14 @@ public class ReadOnlyStore implements Store {
       throw new UnsupportedOperationException();
     }
     @Override
+    public boolean isActiveActiveReplicationEnabled() {
+      return this.delegate.isActiveActiveReplicationEnabled();
+    }
+    @Override
+    public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
+      throw new UnsupportedOperationException();
+    }
+    @Override
     public Version cloneVersion() {
       return this.delegate.cloneVersion();
     }
@@ -911,6 +919,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isActiveActiveReplicationEnabled() {
+    return this.delegate.isActiveActiveReplicationEnabled();
+  }
+
+  @Override
+  public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
     throw new UnsupportedOperationException();
   }
 

@@ -430,6 +430,8 @@ public class AdminExecutionTask implements Callable<Void> {
 
     params.setNativeReplicationSourceFabric(message.nativeReplicationSourceFabric == null ? null : message.nativeReplicationSourceFabric.toString());
 
+    params.setActiveActiveReplicationEnabled(message.activeActiveReplicationEnabled);
+
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {
       finalParams = params;

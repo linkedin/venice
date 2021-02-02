@@ -528,6 +528,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isActiveActiveReplicationEnabled() {
+    return zkSharedStore.isActiveActiveReplicationEnabled();
+  }
+
+  @Override
+  public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
+    throwUnsupportedOperationException("setActiveActiveReplicationEnabled");
+  }
+
+  @Override
   public Map<String, SystemStoreAttributes> getSystemStores() {
     throw new VeniceException("Method: 'getSystemStores' is not supported inside SystemStore");
   }

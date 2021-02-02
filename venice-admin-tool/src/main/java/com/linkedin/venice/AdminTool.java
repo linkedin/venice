@@ -689,6 +689,7 @@ public class AdminTool {
     longParam(cmd, Arg.BACKUP_VERSION_RETENTION_MS, p -> params.setBackupVersionRetentionMs(p), argSet);
     integerParam(cmd, Arg.REPLICATION_FACTOR, p -> params.setReplicationFactor(p), argSet);
     genericParam(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC, s -> s, p -> params.setNativeReplicationSourceFabric(p), argSet);
+    booleanParam(cmd, Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED, p -> params.setActiveActiveReplicationEnabled(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.

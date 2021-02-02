@@ -1449,4 +1449,37 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.truncateKafkaTopic(rtTopic);
     Assert.assertThrows(VeniceException.class, () -> veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName));
   }
+
+  @Test
+  public void testVersionLevelActiveActiveReplicationConfig() {
+    TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
+
+    TopicManager mockedTopicManager = mock(TopicManager.class);
+    TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any());
+    veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
+    String storeName = TestUtils.getUniqueString("test-store");
+    String pushJobId1 = "test-push-job-id-1";
+    veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    /**
+     * Enable L/F and Active/Active replication
+     */
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setLeaderFollowerModel(true)
+        .setActiveActiveReplicationEnabled(true));
+
+    /**
+     * Add version 1
+     */
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
+        false, true, Version.PushType.BATCH, null, null, Optional.empty());
+    // Version 1 should exist.
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
+    // A/A version level config should be true
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).get().isActiveActiveReplicationEnabled());
+
+    //set topic original topic manager back
+    veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
+  }
 }

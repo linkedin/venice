@@ -177,6 +177,8 @@ public abstract class AbstractStore implements Store {
       version.setHybridStoreConfig(getHybridStoreConfig());
 
       version.setUseVersionLevelHybridConfig(true);
+
+      version.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     }
 
     storeVersionsSupplier.getForUpdate().add(index, version.dataModel());

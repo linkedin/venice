@@ -168,4 +168,38 @@ public class TestParentControllerWithMultiDataCenter {
         c -> c.updateStore(storeName, failUpdateStoreParamsOnParent));
     Assert.assertTrue(failedUpdateStoreResponse.isError());
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testEnableActiveActiveReplicationConfig() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = TestUtils.getUniqueString("store");
+
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+
+    /**
+     * Create a test store
+     */
+    NewStoreResponse newStoreResponse = parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName,
+        "", "\"string\"", "\"string\""));
+    Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    /**
+     * Test Active/Active replication config
+     */
+    ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    UpdateStoreQueryParams updateStoreToEnableAARepl = new UpdateStoreQueryParams()
+        .setLeaderFollowerModel(true)
+        .setActiveActiveReplicationEnabled(true);
+    TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
+    TestUtils.waitForNonDeterministicAssertion(900, TimeUnit.SECONDS, false, true, () -> {
+      StoreResponse storeResponse = dc0Client.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      StoreInfo storeInfo = storeResponse.getStore();
+
+      Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
+      Assert.assertTrue(storeInfo.isActiveActiveReplicationEnabled());
+    });
+  }
 }

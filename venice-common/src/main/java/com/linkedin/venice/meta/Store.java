@@ -2,9 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.systemstore.schemas.StoreVersion;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
@@ -13,16 +11,13 @@ import org.apache.avro.specific.SpecificRecord;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 
 /**
@@ -304,6 +299,10 @@ public interface Store {
   String getNativeReplicationSourceFabric();
 
   void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric);
+
+  boolean isActiveActiveReplicationEnabled();
+
+  void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled);
 
   Map<String, SystemStoreAttributes> getSystemStores();
 
