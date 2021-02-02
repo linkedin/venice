@@ -36,7 +36,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
-import com.linkedin.venice.meta.IngestionAction;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -99,17 +99,17 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           if (logger.isDebugEnabled()) {
             logger.debug("Received INIT message: " + msg.toString());
           }
-          InitializationConfigs initializationConfigs = parseIngestionInitialization(msg);
+          InitializationConfigs initializationConfigs = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           handleIngestionInitialization(initializationConfigs);
-          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, "OK!"));
+          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
           break;
         case COMMAND:
           if (logger.isDebugEnabled()) {
             logger.debug("Received COMMAND message " + msg.toString());
           }
-          IngestionTaskCommand ingestionTaskCommand = parseIngestionTaskCommand(msg);
+          IngestionTaskCommand ingestionTaskCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport report = handleIngestionTaskCommand(ingestionTaskCommand);
-          byte[] serializedReport = serializeIngestionTaskReport(report);
+          byte[] serializedReport = serializeIngestionActionResponse(action, report);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedReport));
           break;
         case METRIC:
@@ -117,23 +117,29 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
             logger.debug("Received METRIC message.");
           }
           IngestionMetricsReport metricsReport = handleMetricsRequest();
-          byte[] serializedMetricsReport = serializeIngestionMetricsReport(metricsReport);
+          byte[] serializedMetricsReport = serializeIngestionActionResponse(action, metricsReport);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetricsReport));
+          break;
+        case HEARTBEAT:
+          if (logger.isDebugEnabled()) {
+            logger.debug("Received HEARTBEAT message.");
+          }
+          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
           break;
         case UPDATE_METADATA:
           if (logger.isDebugEnabled()) {
             logger.debug("Received UPDATE_METADATA message.");
           }
-          IngestionStorageMetadata ingestionStorageMetadata = parseIngestionStorageMetadataUpdate(msg);
+          IngestionStorageMetadata ingestionStorageMetadata = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport metadataUpdateReport = handleIngestionStorageMetadataUpdate(ingestionStorageMetadata);
-          byte[] serializedMetadataUpdateReport = serializeIngestionTaskReport(metadataUpdateReport);
+          byte[] serializedMetadataUpdateReport = serializeIngestionActionResponse(action, metadataUpdateReport);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetadataUpdateReport));
           break;
         case SHUTDOWN_COMPONENT:
           logger.info("Received SHUTDOWN_COMPONENT message.");
-          ProcessShutdownCommand processShutdownCommand = parseProcessShutdownCommand(msg);
+          ProcessShutdownCommand processShutdownCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport shutdownTaskReport = handleProcessShutdownCommand(processShutdownCommand);
-          byte[] serializedShutdownTaskReport = serializeIngestionTaskReport(shutdownTaskReport);
+          byte[] serializedShutdownTaskReport = serializeIngestionActionResponse(action, shutdownTaskReport);
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedShutdownTaskReport));
           break;
         default:
@@ -141,7 +147,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       }
     } catch (UnsupportedOperationException e) {
       // Here we only handles the bad requests exception. Other errors are handled in exceptionCaught() method.
-      logger.error("Caught unrecognized request action:" + e.getMessage());
+      logger.error("Caught unrecognized request action:", e);
       ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.BAD_REQUEST, e.getMessage()));
     }
   }
@@ -152,7 +158,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getMessage()));
     ctx.close();
   }
-
 
   private void handleIngestionInitialization(InitializationConfigs initializationConfigs) {
     logger.info("Received aggregated configs: " + initializationConfigs.aggregatedConfigs);
@@ -335,13 +340,17 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         case IS_PARTITION_CONSUMING:
           report.isPositive = storeIngestionService.isPartitionConsuming(storeConfig, partitionId);
           break;
-        case DROP_STORE:
+        case REMOVE_STORAGE_ENGINE:
           ingestionService.getStorageService().removeStorageEngine(ingestionTaskCommand.topicName.toString());
           logger.info("Remaining storage engines after dropping: " + ingestionService.getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().toString());
           break;
-        case HEARTBEAT:
-          report.isPositive = true;
-          break;
+        case REMOVE_PARTITION:
+          if (storeIngestionService.isPartitionConsuming(storeConfig, partitionId)) {
+            storeIngestionService.stopConsumptionAndWait(storeConfig, partitionId, 1, 30);
+            logger.info("Partition: " + partitionId + " of topic: " + topicName + " has stopped consumption.");
+          }
+          ingestionService.getStorageService().dropStorePartition(storeConfig, partitionId);
+          logger.info("Partition: " + partitionId + " of topic: " + topicName + " has been removed.");
         default:
           break;
       }
@@ -468,22 +477,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     }
   }
 
-  private InitializationConfigs parseIngestionInitialization(FullHttpRequest httpRequest) {
-    return deserializeInitializationConfigs(readHttpRequestContent(httpRequest));
-  }
-
-  private IngestionTaskCommand parseIngestionTaskCommand(FullHttpRequest httpRequest) {
-    return deserializeIngestionTaskCommand(readHttpRequestContent(httpRequest));
-  }
-
-  private IngestionStorageMetadata parseIngestionStorageMetadataUpdate(FullHttpRequest httpRequest) {
-    return deserializeIngestionStorageMetadata(readHttpRequestContent(httpRequest));
-  }
-
-  private ProcessShutdownCommand parseProcessShutdownCommand(FullHttpRequest httpRequest) {
-    return deserializeProcessShutdownCommand(readHttpRequestContent(httpRequest));
-  }
-
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset, String message) {
@@ -559,7 +552,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.partitionId = partitionId;
       report.offset = offset;
       ingestionService.reportIngestionStatus(report);
-
     }
 
     @Override
@@ -571,7 +563,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.partitionId = partitionId;
       report.offset = offset;
       ingestionService.reportIngestionStatus(report);
-
     }
 
     @Override
@@ -583,7 +574,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.partitionId = partitionId;
       report.offset = offset;
       ingestionService.reportIngestionStatus(report);
-
     }
 
     @Override

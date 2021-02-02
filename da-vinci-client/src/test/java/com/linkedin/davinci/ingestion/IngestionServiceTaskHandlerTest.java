@@ -1,12 +1,10 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.ingestion.IngestionService;
-import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.davinci.ingestion.handler.IngestionServiceTaskHandler;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.IngestionAction;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.utils.TestUtils;
 
 import io.netty.buffer.Unpooled;

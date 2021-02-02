@@ -244,7 +244,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
 
     logger.info("Started dropping store: " + getName());
-    // partitionList is implementaion of SparseConcurrentList which sets element to null on `remove`. So its fine
+    // partitionList is implementation of SparseConcurrentList which sets element to null on `remove`. So its fine
     // to call size() while removing elements from the list.
     for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
       if (!containsPartition(partitionId)) {

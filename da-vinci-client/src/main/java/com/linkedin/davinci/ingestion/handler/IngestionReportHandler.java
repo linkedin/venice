@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.davinci.ingestion.IngestionReportListener;
 import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -38,7 +39,7 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
   @Override
   public void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
     // Decode ingestion report from incoming http request content.
-    IngestionTaskReport report = deserializeIngestionTaskReport(readHttpRequestContent(msg));
+    IngestionTaskReport report = deserializeIngestionActionRequest(IngestionAction.REPORT, readHttpRequestContent(msg));
     logger.info("Received ingestion task report " + report + " from ingestion service.");
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
@@ -87,7 +88,7 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
         logger.warn("Received unsupported ingestion report:\n" + report.toString() + "\n it will be ignored for now.");
       }
     }
-    ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, "OK!"));
+    ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
   }
 
   @Override

@@ -10,7 +10,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -32,7 +31,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 import static java.lang.Thread.*;
 
 
@@ -213,7 +211,7 @@ public class IngestionService extends AbstractVeniceService {
       // Use async to avoid deadlock waiting in StoreBufferDrainer
       ingestionExecutor.execute(() -> stopIngestionAndReportIngestionStatus(report));
     } else {
-      sendIngestionReport(report);
+      reportClient.reportIngestionTask(report);
     }
   }
 
@@ -250,19 +248,7 @@ public class IngestionService extends AbstractVeniceService {
     } else {
       logger.error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
     }
-    sendIngestionReport(report);
-  }
-
-  private void sendIngestionReport(IngestionTaskReport report) {
-    String topicName = report.topicName.toString();
-    int partitionId = report.partitionId;
-    byte[] serializedReport = serializeIngestionTaskReport(report);
-    try {
-      logger.info("Sending ingestion report for version:  " + topicName + " partition id:" + partitionId);
-      reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));
-    } catch (Exception ex) {
-      logger.warn("Failed to send report with exception for topic: " + topicName + ", partition: " + partitionId , ex);
-    }
+    reportClient.reportIngestionTask(report);
   }
 
   public static void main(String[] args) throws Exception {

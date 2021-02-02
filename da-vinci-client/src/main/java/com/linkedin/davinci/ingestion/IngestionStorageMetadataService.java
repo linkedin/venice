@@ -2,25 +2,18 @@ package com.linkedin.davinci.ingestion;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
-import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.log4j.Logger;
-
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 
 
 /**
@@ -143,28 +136,6 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
   }
 
   private synchronized void updateRemoteStorageMetadataService(IngestionStorageMetadata ingestionStorageMetadata) {
-    byte[] content = serializeIngestionStorageMetadata(ingestionStorageMetadata);
-    try {
-      HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.UPDATE_METADATA, content);
-      FullHttpResponse response = client.sendRequest(httpRequest);
-      if (response.status().equals(HttpResponseStatus.OK)) {
-        byte[] responseContent = new byte[response.content().readableBytes()];
-        response.content().readBytes(responseContent);
-        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
-        if (logger.isDebugEnabled()) {
-          logger.debug("Received ingestion task report response: " + ingestionTaskReport);
-        }
-      } else {
-        logger.warn("Received bad ingestion task report response: " + response.status() + " for topic: " + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId);
-      }
-      // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
-      response.release();
-    } catch (Exception e) {
-      /**
-       * We only log the exception when failing to persist metadata updates into child process.
-       * Child process might crashed, but it will be respawned and will be able to receive future updates.
-       */
-      logger.warn("Encounter exception when sending metadata updates to child process for topic: " + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId, e);
-    }
+    client.updateMetadata(ingestionStorageMetadata);
   }
 }
