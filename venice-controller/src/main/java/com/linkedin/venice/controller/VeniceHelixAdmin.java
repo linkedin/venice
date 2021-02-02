@@ -80,7 +80,9 @@ import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
+import com.linkedin.venice.pushstatus.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.pushstatus.PushStatusStoreReader;
+import com.linkedin.venice.pushstatus.PushStatusStoreVeniceWriterCache;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
@@ -236,6 +238,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final String pushJobStatusStoreClusterName;
     private final MetadataStoreWriter metadataStoreWriter;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
+    private final Optional<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
 
     /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -358,8 +361,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             pushStatusStoreReader = Optional.of(new PushStatusStoreReader(d2Client.get(),
                 commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
+            pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(getVeniceWriterFactory()));
         } else {
             pushStatusStoreReader = Optional.empty();
+            pushStatusStoreDeleter = Optional.empty();
         }
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -1962,6 +1967,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (deletedVersion.get().getPushType().isStreamReprocessing()) {
                         truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, versionNumber));
                     }
+                }
+                if (store.isDaVinciPushStatusStoreEnabled() && pushStatusStoreDeleter.isPresent()) {
+                    pushStatusStoreDeleter.get().deletePushStatus(storeName, deletedVersion.get().getNumber(), Optional.empty(), deletedVersion.get().getPartitionCount());
                 }
             }
         } finally {
@@ -4280,6 +4288,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         metadataStoreWriter.close();
         IOUtils.closeQuietly(topicManagerRepository);
         pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
+        pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
     }
 
     /**

@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -24,6 +23,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatus.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatus.PushStatusStoreVeniceWriterCache;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.security.SSLFactory;
@@ -642,6 +643,20 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
         updatePushJobDetailsWithConfigs();
         sendPushJobDetails();
+
+        // delete outdated incremental push status
+        // TODO(xnma): if KafkaPushJob might hang forever, incremental push status wont get purged.
+        // Design and implement a better scenario when Da Vinci have incremental push use cases.
+        if (pushJobSetting.isIncrementalPush && versionTopicInfo.daVinciPushStatusStoreEnabled) {
+          try (PushStatusStoreRecordDeleter pushStatusStoreDeleter =
+              new PushStatusStoreRecordDeleter(new VeniceWriterFactory(getVeniceWriterProperties(versionTopicInfo)))) {
+            pushStatusStoreDeleter.deletePushStatus(
+                pushJobSetting.storeName,
+                versionTopicInfo.version,
+                pushJobSetting.incrementalPushVersion, versionTopicInfo.partitionCount
+            );
+          }
+        }
       } else {
         logger.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
       }
@@ -1167,9 +1182,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (null == veniceWriterProperties) {
       veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
-      veniceWriterProperties.setProperty(PARTITIONER_CLASS, versionTopicInfo.partitionerClass);
-      veniceWriterProperties.putAll(versionTopicInfo.partitionerParams);
-      veniceWriterProperties.setProperty(AMPLIFICATION_FACTOR, String.valueOf(versionTopicInfo.amplificationFactor));
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
       }
