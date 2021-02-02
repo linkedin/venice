@@ -20,6 +20,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -52,6 +53,7 @@ import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -62,6 +64,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -84,6 +87,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
 import static org.mockito.Mockito.*;
 
@@ -749,8 +753,8 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
-  @Test
-  public void testSetStore() throws Exception{
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSetStore(boolean replicateAllConfigs) throws Exception{
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
     executor.submit(task);
     veniceWriter.put(emptyKeyBytes,
@@ -796,6 +800,32 @@ public class TestAdminConsumptionTask {
     partitionerConfig.partitionerParams = new HashMap<>();
     partitionerConfig.partitionerClass = "dummyClassName";
     setStore.partitionerConfig = partitionerConfig;
+
+    if (replicateAllConfigs) {
+      setStore.replicateAllConfigs = true;
+      setStore.updatedConfigsList = Collections.emptyList();
+    } else {
+      setStore.replicateAllConfigs = false;
+      setStore.updatedConfigsList = new LinkedList<>();
+      setStore.updatedConfigsList.add(OWNER);
+      setStore.updatedConfigsList.add(PARTITION_COUNT);
+      setStore.updatedConfigsList.add(VERSION);
+      setStore.updatedConfigsList.add(ENABLE_READS);
+      setStore.updatedConfigsList.add(ENABLE_WRITES);
+      setStore.updatedConfigsList.add(ACCESS_CONTROLLED);
+      setStore.updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
+      setStore.updatedConfigsList.add(STORE_MIGRATION);
+      setStore.updatedConfigsList.add(WRITE_COMPUTATION_ENABLED);
+      setStore.updatedConfigsList.add(READ_COMPUTATION_ENABLED);
+      setStore.updatedConfigsList.add(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
+      setStore.updatedConfigsList.add(REWIND_TIME_IN_SECONDS);
+      setStore.updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
+      setStore.updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
+      setStore.updatedConfigsList.add(ETLED_PROXY_USER_ACCOUNT);
+      setStore.updatedConfigsList.add(AMPLIFICATION_FACTOR);
+      setStore.updatedConfigsList.add(PARTITIONER_CLASS);
+      setStore.updatedConfigsList.add(PARTITIONER_PARAMS);
+    }
 
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();

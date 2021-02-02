@@ -47,7 +47,6 @@ public class ControllerApiConstants {
   public static final String CLIENT_DECOMPRESSION_ENABLED = "client_decompression_enabled";
   public static final String CHUNKING_ENABLED = "chunking_enabled";
   public static final String INCREMENTAL_PUSH_ENABLED = "incremental_push_enabled";
-  public static final String BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR = "bootstrap-to-online-timeout-in-hour";
   public static final String SINGLE_GET_ROUTER_CACHE_ENABLED = "single_get_router_cache_enabled";
   public static final String BATCH_GET_ROUTER_CACHE_ENABLED = "batch_get_router_cache_enabled";
   public static final String BATCH_GET_LIMIT = "batch_get_limit";
@@ -116,4 +115,8 @@ public class ControllerApiConstants {
   public static final String MIGRATION_DUPLICATE_STORE = "migration_duplicate_store";
 
   public static final String NATIVE_REPLICATION_SOURCE_FABRIC = "native_replication_source_fabric";
+
+  public static final String UPDATED_CONFIGS_LIST = "updated_configs_list";
+
+  public static final String REPLICATE_ALL_CONFIGS = "replicate_all_configs";
 }

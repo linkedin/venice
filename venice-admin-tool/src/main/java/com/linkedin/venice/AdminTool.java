@@ -691,6 +691,12 @@ public class AdminTool {
     genericParam(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC, s -> s, p -> params.setNativeReplicationSourceFabric(p), argSet);
 
     /**
+     * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
+     */
+    boolean replicateAllConfigs = cmd.hasOption(Arg.REPLICATE_ALL_CONFIGS.toString());
+    params.setReplicateAllConfigs(replicateAllConfigs);
+
+    /**
      * By default when SRE updates storage quota using AdminTool, we will set the bypass as true,
      * i.e. hybrid store storage quota will not be added overhead ratio automatically.
      */

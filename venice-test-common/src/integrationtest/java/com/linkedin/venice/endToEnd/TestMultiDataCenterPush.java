@@ -36,6 +36,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import io.tehuti.Metric;
 
+import java.util.Collections;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
@@ -398,6 +399,8 @@ public class TestMultiDataCenterPush {
     updateStore.currentVersion = 1;
     updateStore.enableReads = true;
     updateStore.enableWrites = true;
+    updateStore.replicateAllConfigs = true;
+    updateStore.updatedConfigsList = Collections.emptyList();
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;

@@ -426,12 +426,25 @@ public class AdminExecutionTask implements Callable<Void> {
 
     params.setNativeReplicationSourceFabric(message.nativeReplicationSourceFabric == null ? null : message.nativeReplicationSourceFabric.toString());
 
+    final UpdateStoreQueryParams finalParams;
+    if (message.replicateAllConfigs) {
+      finalParams = params;
+    } else {
+      if (message.updatedConfigsList == null || message.updatedConfigsList.size() == 0) {
+        throw new VeniceException("UpdateStore failed for store " + storeName + ". replicateAllConfigs flag was off "
+            + "but there was no config updates.");
+      }
+      finalParams = new UpdateStoreQueryParams();
+      for (CharSequence updatedConfigName : message.updatedConfigsList) {
+        finalParams.cloneConfig(updatedConfigName.toString(), params);
+      }
+    }
     if (checkPreConditionForReplicateUpdateStore(clusterName, storeName,
         message.isMigrating, message.enableReads, message.enableWrites, message.migrationDuplicateStore)) {
-      admin.replicateUpdateStore(clusterName, storeName, params);
+      admin.replicateUpdateStore(clusterName, storeName, finalParams);
     }
 
-    admin.updateStore(clusterName, storeName, params);
+    admin.updateStore(clusterName, storeName, finalParams);
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
