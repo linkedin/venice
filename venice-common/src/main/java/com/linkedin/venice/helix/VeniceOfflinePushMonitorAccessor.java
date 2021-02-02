@@ -99,6 +99,11 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     Iterator<OfflinePushStatus> iterator = offlinePushStatuses.iterator();
     while (iterator.hasNext()) {
       OfflinePushStatus pushStatus = iterator.next();
+      if (pushStatus == null) {
+        logger.warn("Found null push status in cluster: " + clusterName);
+        iterator.remove();
+        continue;
+      }
       if (pushStatus.getCurrentStatus().isTaskStatus()) {
           List<PartitionStatus> partitionStatuses = getPartitionStatuses(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartition());
           pushStatus.setPartitionStatuses(partitionStatuses);
