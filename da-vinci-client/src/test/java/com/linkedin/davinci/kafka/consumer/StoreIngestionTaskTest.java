@@ -94,6 +94,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -337,7 +338,7 @@ public class StoreIngestionTaskTest {
       Optional<HybridStoreConfig> hybridStoreConfig,
       Optional<DiskUsage> diskUsageForTest,
       boolean isLeaderFollowerModelEnabled) throws Exception{
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest, isLeaderFollowerModelEnabled);
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest, true, isLeaderFollowerModelEnabled);
   }
 
   private void runTest(PollStrategy pollStrategy,
@@ -347,6 +348,7 @@ public class StoreIngestionTaskTest {
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean incrementalPushEnabled,
       Optional<DiskUsage> diskUsageForTest,
+      boolean isAutoCompactionEnabledForSamzaReprocessingJob,
       boolean isLeaderFollowerModelEnabled) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
@@ -403,7 +405,7 @@ public class StoreIngestionTaskTest {
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
     doReturn(rocksDBServerConfig).when(veniceServerConfig).getRocksDBServerConfig();
-
+    doReturn(isAutoCompactionEnabledForSamzaReprocessingJob).when(veniceServerConfig).isEnableAutoCompactionForSamzaReprocessingJob();
 
     EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
     EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);
@@ -1507,7 +1509,7 @@ public class StoreIngestionTaskTest {
         verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
         verify(mockLogNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), true, Optional.empty(), isLeaderFollowerModelEnabled);
+    }, Optional.empty(), true, Optional.empty(), true, isLeaderFollowerModelEnabled);
   }
 
 
@@ -1538,7 +1540,49 @@ public class StoreIngestionTaskTest {
             );
             verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
           });
-        }, Optional.empty(), false, Optional.empty(), isLeaderFollowerModelEnabled
+        }, Optional.empty(), false, Optional.empty(), true, isLeaderFollowerModelEnabled
+    );
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDelayCompactionForSamzaReprocessingWorkload(boolean isLeaderFollowerModelEnabled) throws Exception {
+    veniceWriter.broadcastStartOfPush(false, new HashMap<>());
+    long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    //Continue to write some message after EOP
+    veniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID);
+
+    mockStorageMetadataService = new InMemoryStorageMetadataService();
+    // To pass back the mock storage partition initialized in a lamba function
+    final CompletableFuture<AbstractStoragePartition> mockStoragePartitionWrapper = new CompletableFuture<>();
+
+    //Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
+    runTest(new RandomPollStrategy(), getSet(PARTITION_FOO),
+        () -> {
+          doReturn(false).when(veniceServerConfig).isEnableAutoCompactionForSamzaReprocessingJob();
+          mockAbstractStorageEngine.addStoragePartition(PARTITION_FOO);
+          AbstractStoragePartition mockPartition = mock(AbstractStoragePartition.class);
+          mockStoragePartitionWrapper.complete(mockPartition);
+          doReturn(mockPartition).when(mockAbstractStorageEngine).getPartitionOrThrow(PARTITION_FOO);
+          doReturn(CompletableFuture.completedFuture(null)).when(mockPartition).compactDB();
+        },
+        () -> {
+          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            // Consumer should pause the consumption before EOP
+            verify(mockKafkaConsumer).pause(topic, PARTITION_FOO);
+            verify(mockStoragePartitionWrapper.get()).compactDB();
+            // Consumer should resume the consumption right before EOP
+            verify(mockKafkaConsumer).subscribe(eq(topic), eq(PARTITION_FOO), eq(fooOffset));
+
+            verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+            //since notifier reporting happens before offset update, it actually reports previous offsets
+            verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+            // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for batch push job.
+            verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
+                longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
+            );
+          });
+        }, Optional.empty(), false, Optional.empty(), false, isLeaderFollowerModelEnabled
     );
   }
 

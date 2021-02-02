@@ -11,6 +11,7 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 
 import com.linkedin.venice.utils.LatencyUtils;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
@@ -56,7 +57,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private static Logger LOGGER = Logger.getLogger(RocksDBStoragePartition.class);
 
   /**
-   * This field is being stored during offset checkpointing in {@link com.linkedin.venice.kafka.consumer.StoreIngestionTask}.
+   * This field is being stored during offset checkpointing in {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}.
    * With the field, RocksDB could recover properly during restart.
    *
    * Essentially, during recovery, this class will remove all the un-committed files after {@link #ROCKSDB_LAST_FINISHED_SST_FILE_NO},
@@ -115,9 +116,10 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    *
    */
   private final Options options;
-  private final RocksDB rocksDB;
+  private RocksDB rocksDB;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
+  private final RocksDBThrottler rocksDBThrottler;
   /**
    * Whether the input is sorted or not.
    */
@@ -168,7 +170,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     this.envOptions.setUseDirectWrites(false);
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.expectedChecksumSupplier = Optional.empty();
-
+    this.rocksDBThrottler = rocksDbThrottler;
     try {
       if (this.readOnly) {
         this.rocksDB = rocksDbThrottler.openReadOnly(options, fullPathForPartitionDB);
@@ -251,6 +253,12 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       options.setAllowMmapReads(true);
       options.useCappedPrefixExtractor(rocksDBServerConfig.getCappedPrefixExtractorLength());
     } else {
+      /**
+       * Auto compaction setting.
+       * For now, this optimization won't apply to the plaintable format.
+       */
+      options.setDisableAutoCompactions(storagePartitionConfig.isDisableAutoCompaction());
+
       // Cache index and bloom filter in block cache
       // and share the same cache across all the RocksDB databases
       BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
@@ -693,7 +701,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     return deferredWrite == partitionConfig.isDeferredWrite() &&
                readOnly == partitionConfig.isReadOnly() &&
-               writeOnly == partitionConfig.isWriteOnlyConfig();
+               writeOnly == partitionConfig.isWriteOnlyConfig() &&
+              options.disableAutoCompactions() == partitionConfig.isDisableAutoCompaction();
   }
 
   /**
@@ -741,5 +750,37 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     } finally {
       iterator.close();
     }
+  }
+
+  @Override
+  public synchronized CompletableFuture<Void> compactDB() {
+    if (!this.options.disableAutoCompactions()) {
+      // Auto compaction is on, so no need to do manual compaction.
+      return CompletableFuture.completedFuture(null);
+    }
+    CompletableFuture<Void> dbCompactFuture = new CompletableFuture<>();
+    /**
+     * Start an async db compact thread.
+     */
+    Thread dbCompactThread = new Thread(() -> {
+      try {
+        LOGGER.info("Start the manual compaction for database: " + storeName + ", partition: " + partitionId);
+        rocksDB.compactRange();
+        rocksDB.close();
+        // Reopen the database with auto compaction on
+        this.options.setDisableAutoCompactions(false);
+        rocksDB = rocksDBThrottler.open(options, fullPathForPartitionDB);
+        dbCompactFuture.complete(null);
+        LOGGER.info("Manual compaction for database: " + storeName + ", partition: " + partitionId +
+            " is done, and the database was re-opened with auto compaction enabled");
+      } catch (Exception e) {
+        LOGGER.error("Failed to compact database: " + storeName + ", partition: " + partitionId, e);
+        dbCompactFuture.completeExceptionally(e);
+      }
+    });
+    dbCompactThread.setName("DB-Compact-thread-" + storeName + "_" + partitionId);
+    dbCompactThread.start();
+
+    return dbCompactFuture;
   }
 }
