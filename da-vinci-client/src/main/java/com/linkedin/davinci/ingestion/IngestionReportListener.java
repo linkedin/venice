@@ -2,10 +2,6 @@ package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.channel.IngestionReportChannelInitializer;
-import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
-import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
-import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
-import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -18,9 +14,6 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
@@ -30,7 +23,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 import static java.lang.Thread.*;
 
 
@@ -177,13 +169,13 @@ public class IngestionReportListener extends AbstractVeniceService {
   }
 
   private void restartForkedProcess() {
-    IngestionUtils.startForkedIngestionProcess(configLoader);
     try (IngestionRequestClient client = new IngestionRequestClient(this.ingestionServicePort)) {
+      client.startForkedIngestionProcess(configLoader);
       // Reset heartbeat time.
       heartbeatTime = -1;
       topicNameToPartitionSetMap.forEach((topicName, partitionSet) -> {
         partitionSet.forEach(partitionId -> {
-          IngestionUtils.subscribeTopicPartition(client, topicName, partitionId);
+          client.startConsumption(topicName, partitionId);
         });
       });
     }
@@ -191,26 +183,9 @@ public class IngestionReportListener extends AbstractVeniceService {
   }
 
   private void collectIngestionServiceMetrics() {
-    if (logger.isDebugEnabled()) {
-      logger.debug("Sending metrics collection request to isolated ingestion service.");
-    }
-    byte[] content = new byte[0];
-    HttpRequest httpRequest = metricsClient.buildHttpRequest(IngestionAction.METRIC, content);
-    try {
-      FullHttpResponse response = metricsClient.sendRequest(httpRequest);
-      byte[] responseContent = new byte[response.content().readableBytes()];
-      response.content().readBytes(responseContent);
-      IngestionMetricsReport metricsReport = deserializeIngestionMetricsReport(responseContent);
-      if (logger.isDebugEnabled()) {
-        logger.debug("Collecting " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
-      }
-      ingestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
+    if (metricsClient.collectMetrics(ingestionProcessStats)) {
       // Update heartbeat time.
       heartbeatTime = System.currentTimeMillis();
-      // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
-      response.release();
-    } catch (Exception e) {
-      logger.warn("Unable to collect metrics from ingestion service", e);
     }
   }
 
@@ -219,21 +194,9 @@ public class IngestionReportListener extends AbstractVeniceService {
     if (logger.isDebugEnabled()) {
       logger.info("Checking heartbeat timeout at " + currentTimeMillis + ", current heartbeat: " + heartbeatTime);
     }
-    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
-    ingestionTaskCommand.commandType = IngestionCommandType.HEARTBEAT.getValue();
-    ingestionTaskCommand.topicName = "";
-    byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
-    HttpRequest httpRequest = heartbeatClient.buildHttpRequest(IngestionAction.COMMAND, content);
-    try {
-      FullHttpResponse response = heartbeatClient.sendRequest(httpRequest);
-      if (response.status().equals(HttpResponseStatus.OK)) {
-        // Update heartbeat time.
-        heartbeatTime = System.currentTimeMillis();
-      }
-      // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
-      response.release();
-    } catch (Exception e) {
-      logger.warn("Unable to get heartbeat from ingestion service", e);
+    if (heartbeatClient.sendHeartbeatRequest()) {
+      // Update heartbeat time.
+      heartbeatTime = System.currentTimeMillis();
     }
 
     if (heartbeatTime != -1) {
@@ -243,6 +206,4 @@ public class IngestionReportListener extends AbstractVeniceService {
       }
     }
   }
-
-
 }

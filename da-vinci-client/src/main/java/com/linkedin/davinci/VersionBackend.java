@@ -1,10 +1,6 @@
 package com.linkedin.davinci;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
-import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
-import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
-import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -14,12 +10,8 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.ingestion.IngestionRequestClient;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-
-import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpRequest;
 
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.log4j.Logger;
@@ -35,7 +27,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 import static com.linkedin.venice.ConfigKeys.*;
 
 
@@ -92,24 +83,7 @@ public class VersionBackend {
     backend.getVersionByTopicMap().remove(version.kafkaTopicName(), this);
 
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      logger.info("Sending KILL_CONSUMPTION request to child process to drop metadata for "  + this);
-      IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
-      ingestionTaskCommand.commandType = IngestionCommandType.KILL_CONSUMPTION.getValue();
-      ingestionTaskCommand.topicName = version.kafkaTopicName();
-      byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
-      try {
-        IngestionRequestClient client = backend.getIngestionRequestClient();
-        HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
-        FullHttpResponse response = client.sendRequest(httpRequest);
-        logger.info("Received ingestion task report response.");
-        byte[] responseContent = new byte[response.content().readableBytes()];
-        response.content().readBytes(responseContent);
-        response.release();
-        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
-        logger.info("Received ingestion task report response: " + ingestionTaskReport);
-      } catch (Exception e) {
-        throw new VeniceException("Encounter exception when dropping storage engine opened in child process", e);
-      }
+        backend.getIngestionRequestClient().killConsumptionTask(version.kafkaTopicName());
     }
 
     backend.getIngestionService().killConsumptionTask(version.kafkaTopicName());
@@ -127,26 +101,9 @@ public class VersionBackend {
     close();
 
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      logger.info("Sending DROP_STORE request to child process to drop metadata for "  + this);
-      IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
-      ingestionTaskCommand.commandType = IngestionCommandType.DROP_STORE.getValue();
-      ingestionTaskCommand.topicName = version.kafkaTopicName();
-      byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
-      try {
-        IngestionRequestClient client = backend.getIngestionRequestClient();
-        HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
-        FullHttpResponse response = client.sendRequest(httpRequest);
-        logger.info("Received ingestion task report response.");
-        byte[] responseContent = new byte[response.content().readableBytes()];
-        response.content().readBytes(responseContent);
-        response.release();
-        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
-        logger.info("Received ingestion task report response: " + ingestionTaskReport);
-      } catch (Exception e) {
-        throw new VeniceException("Encounter exception when dropping storage engine opened in child process", e);
-      }
+      logger.info("Sending REMOVE_STORAGE_ENGINE request to child process to drop metadata for "  + this);
+      backend.getIngestionRequestClient().removeStorageEngine(version.kafkaTopicName());
     }
-
     backend.getStorageService().removeStorageEngine(version.kafkaTopicName());
   }
 
@@ -282,7 +239,7 @@ public class VersionBackend {
 
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       backend.getIngestionReportListener().addVersionPartitionToIngestionMap(version.kafkaTopicName(), subPartition);
-      subscribeTopicPartition(backend.getIngestionRequestClient(), version.kafkaTopicName(), subPartition);
+      backend.getIngestionRequestClient().startConsumption(version.kafkaTopicName(), subPartition);
     } else {
       // Create partition in storage engine for ingestion.
       storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
@@ -308,25 +265,8 @@ public class VersionBackend {
     }
 
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      logger.info("Sending STOP_CONSUMPTION request to child process to drop metadata for "  + this);
-      IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
-      ingestionTaskCommand.commandType = IngestionCommandType.STOP_CONSUMPTION.getValue();
-      ingestionTaskCommand.topicName = version.kafkaTopicName();
-      ingestionTaskCommand.partitionId = subPartition;
-      byte[] content = serializeIngestionTaskCommand(ingestionTaskCommand);
-      try {
-        IngestionRequestClient client = backend.getIngestionRequestClient();
-        HttpRequest httpRequest = client.buildHttpRequest(IngestionAction.COMMAND, content);
-        FullHttpResponse response = client.sendRequest(httpRequest);
-        logger.info("Received ingestion task report response.");
-        byte[] responseContent = new byte[response.content().readableBytes()];
-        response.content().readBytes(responseContent);
-        response.release();
-        IngestionTaskReport ingestionTaskReport = deserializeIngestionTaskReport(responseContent);
-        logger.info("Received ingestion task report response: " + ingestionTaskReport);
-      } catch (Exception e) {
-        throw new VeniceException("Encounter exception when dropping storage engine opened in child process", e);
-      }
+      // Will stop ingestion and remove the partition in the IngestionService if the partition is being ingested by Ingestion Service.
+      backend.getIngestionRequestClient().unsubscribeTopicPartition(version.kafkaTopicName(), subPartition);
     }
 
     backend.getIngestionService().stopConsumptionAndWait(config, subPartition, 1, 30);
