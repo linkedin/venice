@@ -9,9 +9,9 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
-import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -26,6 +26,7 @@ import static com.linkedin.davinci.ingestion.IngestionUtils.*;
  */
 public class IngestionRequestClient implements AutoCloseable, Closeable {
   private static final Logger logger = Logger.getLogger(IngestionRequestClient.class);
+
   private final IngestionRequestTransport ingestionRequestTransport;
 
   public IngestionRequestClient(int port) {

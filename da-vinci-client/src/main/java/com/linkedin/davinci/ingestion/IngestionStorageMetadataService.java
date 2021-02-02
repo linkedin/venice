@@ -1,5 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
+import com.linkedin.davinci.stats.MetadataUpdateStats;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -8,12 +10,21 @@ import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.Closeable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
+
+import static java.lang.Thread.*;
 
 
 /**
@@ -29,19 +40,32 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private final Map<String, Map<Integer, OffsetRecord>> topicPartitionOffsetRecordMap = new VeniceConcurrentHashMap<>();
   private final Map<String, StoreVersionState> topicStoreVersionStateMap = new VeniceConcurrentHashMap<>();
+  private final ExecutorService metadataUpdateService = Executors.newSingleThreadExecutor();
+  private final Queue<IngestionStorageMetadata> metadataUpdateQueue = new ConcurrentLinkedDeque<>();
+  private final MetadataUpdateStats metadataUpdateStats;
 
-  public IngestionStorageMetadataService(int targetPort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+  public IngestionStorageMetadataService(int targetPort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, MetadataUpdateStats metadataUpdateStats) {
     this.client = new IngestionRequestClient(targetPort);
     this.partitionStateSerializer = partitionStateSerializer;
+    this.metadataUpdateStats = metadataUpdateStats;
   }
 
   @Override
   public boolean startInner() throws Exception {
+    metadataUpdateService.execute(new MetadataUpdateWorker());
     return false;
   }
 
   @Override
   public void stopInner() throws Exception {
+    metadataUpdateService.shutdown();
+    try {
+      if (!metadataUpdateService.awaitTermination(5, TimeUnit.SECONDS)) {
+        metadataUpdateService.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      currentThread().interrupt();
+    }
     client.close();
   }
 
@@ -136,6 +160,49 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
   }
 
   private synchronized void updateRemoteStorageMetadataService(IngestionStorageMetadata ingestionStorageMetadata) {
-    client.updateMetadata(ingestionStorageMetadata);
+    metadataUpdateQueue.add(ingestionStorageMetadata);
+    metadataUpdateStats.recordMetadataUpdateQueueLength(metadataUpdateQueue.size());
+  }
+
+  /**
+   * MetadataUpdateWorker is a Runnable class that pushes local metadata update on the FIFO basis. It will retry updates
+   * when updates failed due to connection lost or child process crashes.
+   */
+  class MetadataUpdateWorker implements Runnable, Closeable {
+    private final AtomicBoolean isRunning = new AtomicBoolean(true);
+    private final int checkUpdateQueueInterval = 1000;
+    private final int retryUpdateInterval = 100;
+
+    @Override
+    public void close() throws IOException {
+      isRunning.set(false);
+    }
+
+    @Override
+    public void run() {
+      while (isRunning.get()) {
+        try {
+          /**
+           * Here it leaves room for future optimization: if the metadata update volumes is large in classical Venice
+           * and this sequential update approach is lagging, we can transform it into batch update.
+           */
+          while (!metadataUpdateQueue.isEmpty()) {
+            boolean isSuccess = client.updateMetadata(metadataUpdateQueue.peek());
+            if (isSuccess) {
+              metadataUpdateQueue.remove();
+              metadataUpdateStats.recordMetadataUpdateQueueLength(metadataUpdateQueue.size());
+            } else {
+              Thread.sleep(retryUpdateInterval);
+            }
+          }
+          Thread.sleep(checkUpdateQueueInterval);
+        } catch (InterruptedException ie) {
+          break;
+        } catch (Throwable e) {
+          logger.error("Unexpected throwable while running " + getClass().getSimpleName(), e);
+          metadataUpdateStats.recordMetadataQueueUpdateError(1.0);
+        }
+      }
+    }
   }
 }

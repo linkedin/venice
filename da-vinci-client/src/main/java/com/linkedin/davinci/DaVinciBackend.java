@@ -11,6 +11,7 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.NativeMetadataRepository;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -148,7 +149,7 @@ public class DaVinciBackend implements Closeable {
 
     // TODO: May need to reorder the object to make it looks cleaner.
     storageMetadataService = backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)
-        ? new IngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer)
+        ? new IngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository))
         : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
 
     ingestionService = new KafkaStoreIngestionService(

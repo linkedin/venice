@@ -77,6 +77,7 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionServiceTaskHandler.class);
   private static final RedundantExceptionFilter redundantExceptionFilter = RedundantExceptionFilter.getRedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
+  private static final byte[] dummyContent = new byte[0];
   private final IngestionService ingestionService;
 
   public IngestionServiceTaskHandler(IngestionService ingestionService) {
@@ -418,27 +419,15 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       }
       switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
         case PUT_OFFSET_RECORD:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Put OffsetRecord");
-          }
           ingestionService.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array(), ingestionService.getPartitionStateSerializer()));
           break;
         case CLEAR_OFFSET_RECORD:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Clear OffsetRecord");
-          }
           ingestionService.getStorageMetadataService().clearOffset(topicName, partitionId);
           break;
         case PUT_STORE_VERSION_STATE:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Put StoreVersionState");
-          }
           ingestionService.getStorageMetadataService().put(topicName, IngestionUtils.deserializeStoreVersionState(topicName, ingestionStorageMetadata.payload.array()));
           break;
         case CLEAR_STORE_VERSION_STATE:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Clear StoreVersionState");
-          }
           ingestionService.getStorageMetadataService().clearStoreVersionState(topicName);
           break;
         default:
