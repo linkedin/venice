@@ -12,7 +12,7 @@ import static org.apache.avro.Schema.Type.*;
 
 
 public class TestWriteComputeSchemaAdapter {
-  private String recordSchemaStr = "{" +
+  static String recordSchemaStr = "{" +
       "  \"namespace\" : \"example.avro\",  " +
       "  \"type\": \"record\",   " +
       "  \"name\": \"User\",     " +
@@ -23,7 +23,7 @@ public class TestWriteComputeSchemaAdapter {
       "  ] " +
       " } ";
 
-  private String recordOfArraySchemaStr = "{\n"
+  static String recordOfArraySchemaStr = "{\n"
       +"  \"type\" : \"record\",\n"
       +"  \"name\" : \"testRecord\",\n"
       +"  \"namespace\" : \"avro.example\",\n"
@@ -44,7 +44,7 @@ public class TestWriteComputeSchemaAdapter {
       +"  } ]\n"
       +"}";
 
-  private String recordOfUnionWithCollectionStr = "{\n"
+  static String recordOfUnionWithCollectionStr = "{\n"
       + "  \"type\": \"record\",\n" + "  \"name\": \"testRecord\",\n"
       + "  \"namespace\": \"avro.example\",\n"
       + "  \"fields\": [\n" + "    {\n"
@@ -72,7 +72,7 @@ public class TestWriteComputeSchemaAdapter {
       + "  ]\n"
       + "}";
 
-  private String recordOfUnionWithTwoCollectionsStr = "{\n"
+  static String recordOfUnionWithTwoCollectionsStr = "{\n"
       + "  \"type\": \"record\",\n"
       + "  \"name\": \"testRecord\",\n"
       + "  \"namespace\": \"avro.example\",\n"
@@ -106,7 +106,7 @@ public class TestWriteComputeSchemaAdapter {
       + "  ]\n"
       + "}";
 
-  private String recordOfNullableArrayStr = "{\n"
+  static String recordOfNullableArrayStr = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"testRecord\",\n"
       + "  \"fields\" : [ {\n"

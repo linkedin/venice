@@ -77,7 +77,7 @@ public class WriteComputeSchemaValidator {
       } else {
         subTypesSchema = Schema.createUnion(subtypesWithoutNoOp);
       }
-      if (!validateSchema(field.schema(), subTypesSchema)) {
+      if (!validateSchema(field.schema(), subTypesSchema, true)) {
         return false;
       }
     }
