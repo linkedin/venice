@@ -3468,13 +3468,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             boolean allInstancesCompleted = true;
             for (Map.Entry<CharSequence, Integer> entry : instances.entrySet()) {
                 ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
-                if (status != completeStatus && pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
-                    allInstancesCompleted = false;
-                    if (status != middleStatus) {
+                if (status == middleStatus) {
+                    if (allInstancesCompleted && pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
+                        allInstancesCompleted = false;
+                    }
+                } else if (status != completeStatus) {
+                    if ((allInstancesCompleted || allMiddleStatusReceived)
+                        && pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
+                        allInstancesCompleted = false;
                         allMiddleStatusReceived = false;
-                        if (status == ExecutionStatus.ERROR) {
-                            erroredInstances.add(entry.getKey().toString());
-                        }
+                    }
+                    if (status == ExecutionStatus.ERROR) {
+                        erroredInstances.add(entry.getKey().toString());
                     }
                 }
             }
