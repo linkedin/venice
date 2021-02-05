@@ -2947,7 +2947,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (regularVersionETLEnabled.isPresent() || futureVersionETLEnabled.isPresent() || etledUserProxyAccount.isPresent()) {
-                ETLStoreConfig etlStoreConfig = new ETLStoreConfig(etledUserProxyAccount.get(), regularVersionETLEnabled.get(), futureVersionETLEnabled.get());
+                ETLStoreConfig etlStoreConfig = new ETLStoreConfig(
+                    etledUserProxyAccount.orElse(originalStore.getEtlStoreConfig().getEtledUserProxyAccount()),
+                    regularVersionETLEnabled.orElse(originalStore.getEtlStoreConfig().isRegularVersionETLEnabled()),
+                    futureVersionETLEnabled.orElse(originalStore.getEtlStoreConfig().isFutureVersionETLEnabled()));
                 storeMetadataUpdate(clusterName, storeName, store -> {
                     store.setEtlStoreConfig(etlStoreConfig);
                     return store;
