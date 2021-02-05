@@ -17,17 +17,52 @@
       "type": "long"
     },
     {
-      "name": "isEndOfPushReceived",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isComplete",
+      "name": "isCompleted",
       "type": "boolean",
       "default": false
     },
     {
       "name": "isError",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isStarted",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isRestarted",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isEndOfPushReceived",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isStartOfBufferReplayReceived",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isStartOfIncrementalPushReceived",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isEndOfIncrementalPushReceived",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isProgress",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isTopicSwitchReceived",
       "type": "boolean",
       "default": false
     },
@@ -38,7 +73,7 @@
       "default": false
     },
     {
-      "name": "errorMessage",
+      "name": "message",
       "type": "string",
       "default": ""
     },

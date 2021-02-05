@@ -2,9 +2,11 @@ package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.davinci.ingestion.channel.IngestionServiceChannelInitializer;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -13,10 +15,7 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -27,9 +26,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -67,8 +64,6 @@ public class IngestionService extends AbstractVeniceService {
 
   //TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
-
-  public Map<String, Map<Integer, CompletableFuture<IngestionTaskReport>>> topicPartitionIngestionFuture = new VeniceConcurrentHashMap<>();
 
   public IngestionService(int servicePort) {
     this.servicePort = servicePort;
@@ -213,55 +208,57 @@ public class IngestionService extends AbstractVeniceService {
     return storeVersionStateSerializer;
   }
 
-  public ExecutorService getIngestionExecutor() {
-    return ingestionExecutor;
+  public void reportIngestionStatus(IngestionTaskReport report) {
+    if (report.isCompleted || report.isError) {
+      // Use async to avoid deadlock waiting in StoreBufferDrainer
+      ingestionExecutor.execute(() -> stopIngestionAndReportIngestionStatus(report));
+    } else {
+      sendIngestionReport(report);
+    }
   }
 
-  public void reportIngestionCompletion(IngestionTaskReport report) {
+  /**
+   * Handle the logic of COMPLETED/ERROR here since we need to stop related ingestion task and close RocksDB partition.
+   * Since the logic takes time to wait for completion, we need to execute it in async fashion to prevent blocking other operations.
+   */
+  private void stopIngestionAndReportIngestionStatus(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
-    logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
 
     VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
     // Make sure partition is not consuming so we can safely close the rocksdb partition
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, 60);
+    // Close RocksDB partition in Ingestion Service.
     getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
-    logger.info("Closed partition: " + partitionId + " of topic: " + topicName);
+    logger.info("Partition: " + partitionId + " of topic: " + topicName + " closed.");
 
-    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partitionId);
-    logger.info("OffsetRecord of topic " + topicName + " , partition " + partitionId + " " + offsetRecord.toString());
-    report.offsetRecord = ByteBuffer.wrap(offsetRecord.toBytes());
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
-    if (storeVersionState.isPresent()) {
-      report.storeVersionState = ByteBuffer.wrap(IngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
+    if (report.isCompleted) {
+      logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
+      // Set offset record in ingestion report.
+      OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partitionId);
+      report.offsetRecord = ByteBuffer.wrap(offsetRecord.toBytes());
+      logger.info("OffsetRecord of topic " + topicName + " , partition " + partitionId + " " + offsetRecord.toString());
+
+      // Set store version state in ingestion report.
+      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
+      if (storeVersionState.isPresent()) {
+        report.storeVersionState = ByteBuffer.wrap(IngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
+      } else {
+        throw new VeniceException("StoreVersionState does not exist for version " + topicName);
+      }
     } else {
-      throw new VeniceException("StoreVersionState does not exist for version " + topicName);
+      logger.error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
     }
-
-    byte[] serializedReport = serializeIngestionTaskReport(report);
-    try {
-      logger.info("Sending ingestion completion report for version:  " + topicName + " partition id:" + partitionId + " offset:" + offset);
-      reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));
-    } catch (Exception e) {
-      logger.warn("Failed to send report with exception for topic: " + topicName + ", partition: " + partitionId , e);
-    }
+    sendIngestionReport(report);
   }
 
-  public void reportIngestionError(IngestionTaskReport report) {
+  private void sendIngestionReport(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
-    logger.warn("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.errorMessage);
-
-    VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
-    // Make sure partition is not consuming so we can safely close the rocksdb partition
-    getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 10, 10);
-    getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
-    logger.info("Close error partition: " + partitionId + " of topic: " + topicName);
-
     byte[] serializedReport = serializeIngestionTaskReport(report);
     try {
-      logger.info("Sending ingestion error report for version:  " + topicName + " partition id:" + partitionId);
+      logger.info("Sending ingestion report for version:  " + topicName + " partition id:" + partitionId);
       reportClient.sendRequest(reportClient.buildHttpRequest(IngestionAction.REPORT, serializedReport));
     } catch (Exception ex) {
       logger.warn("Failed to send report with exception for topic: " + topicName + ", partition: " + partitionId , ex);

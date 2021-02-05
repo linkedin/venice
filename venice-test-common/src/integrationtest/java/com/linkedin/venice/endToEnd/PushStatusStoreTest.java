@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatus.PushStatusStoreReader;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -33,6 +34,8 @@ import org.testng.annotations.Test;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -106,10 +109,20 @@ public class PushStatusStoreTest {
     IOUtils.closeQuietly(cluster);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testKafkaPushJob() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testKafkaPushJob(boolean isIsolated) throws Exception {
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
+    int applicationListenerPort = Utils.getFreePort();
+    int servicePort = Utils.getFreePort();
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(SERVER_INGESTION_MODE, isIsolated ? ISOLATED : BUILT_IN)
+        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
+        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
+        .build();
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       runH2V(h2vProperties, 2, cluster);
