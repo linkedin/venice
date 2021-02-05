@@ -1088,7 +1088,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * override the DIV info for messages from RT; as a result, both leaders and followers will persisted duplicated
            * messages to disk, and potentially rewind a k/v pair to an old value.
            */
-          versionedDIVStats.recordDuplicateMsg(storeName, versionNumber);
+          divErrorMetricCallback.get().execute(e);
           if (logger.isDebugEnabled()) {
             logger.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
           }

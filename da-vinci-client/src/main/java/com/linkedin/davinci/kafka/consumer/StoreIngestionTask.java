@@ -1767,7 +1767,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         sizeOfPersistedData = keySize + valueSize;
       }
     } catch (DuplicateDataException e) {
-      versionedDIVStats.recordDuplicateMsg(storeName, versionNumber);
       divErrorMetricCallback.get().execute(e);
       if (logger.isDebugEnabled()) {
         logger.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
