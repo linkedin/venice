@@ -159,4 +159,9 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
   public void recordTotalLeaderRecordsProduced(int count) {
     totalStats.recordTotalLeaderRecordsProduced(count);
   }
+
+  public void recordChecksumVerificationFailure(String storeName) {
+    totalStats.recordChecksumVerificationFailure();
+    getStoreStats(storeName).recordChecksumVerificationFailure();
+  }
 }

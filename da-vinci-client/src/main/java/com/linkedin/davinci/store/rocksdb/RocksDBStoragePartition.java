@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -532,14 +533,10 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
           byte[] checksumToMatch = expectedChecksumSupplier.get().get();
           long startMs = System.currentTimeMillis();
           if (!verifyChecksum(fullPathForLastFinishedSSTFile, recordNumInLastSSTFile, checksumToMatch)) {
-            throw new VeniceException(
+            throw new VeniceChecksumException(
                 "verifyChecksum: last sstFile checksum didn't match for store: " + storeName + ", partition: " + partitionId
                     + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: " + recordNumInLastSSTFile
                     + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
-          } else {
-            LOGGER.info("verifyChecksum: last sstFile checksum did match for store: " + storeName + ", partition: " + partitionId
-                + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: " + recordNumInLastSSTFile
-                + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
           }
         }
       } else {

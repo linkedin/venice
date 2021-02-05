@@ -1432,6 +1432,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     lastProducerException = e;
   }
 
+  public void recordChecksumVerificationFailure() {
+    storeIngestionStats.recordChecksumVerificationFailure(storeName);
+  }
+
   /**
    * @return the total lag for all subscribed partitions between the real-time buffer topic and this consumption task.
    */
