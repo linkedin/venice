@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion.handler;
 
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.davinci.ingestion.IngestionReportListener;
 import com.linkedin.davinci.ingestion.IngestionUtils;
@@ -41,6 +42,7 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
     logger.info("Received ingestion task report " + report + " from ingestion service.");
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
+    long offset = report.offset;
 
     // Sync up offset record & store version state before report ingestion complete to parent process.
     if (ingestionReportListener.getStorageMetadataService() != null) {
@@ -58,18 +60,33 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
 
     // Relay the notification to parent service's listener.
     if (ingestionReportListener.getIngestionNotifier() != null) {
-      if (report.isComplete) {
-        ingestionReportListener.getIngestionNotifier().completed(topicName, partitionId, report.offset);
+      VeniceNotifier notifier = ingestionReportListener.getIngestionNotifier();
+      if (report.isCompleted) {
+        notifier.completed(topicName, partitionId, report.offset);
         ingestionReportListener.removeVersionPartitionFromIngestionMap(topicName, partitionId);
       } else if (report.isError) {
-        ingestionReportListener.getIngestionNotifier().error(topicName, partitionId, report.errorMessage.toString(), new VeniceException(report.errorMessage.toString()));
+        notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString()));
         ingestionReportListener.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+      } else if (report.isStarted) {
+        notifier.started(topicName, partitionId);
+      } else if (report.isRestarted) {
+        notifier.restarted(topicName, partitionId, offset);
+      } else if (report.isEndOfPushReceived) {
+        notifier.endOfPushReceived(topicName, partitionId, offset);
+      } else if (report.isStartOfBufferReplayReceived) {
+        notifier.startOfBufferReplayReceived(topicName, partitionId, offset);
+      } else if (report.isStartOfIncrementalPushReceived) {
+        notifier.startOfIncrementalPushReceived(topicName, partitionId, offset);
+      } else if (report.isEndOfIncrementalPushReceived) {
+        notifier.endOfIncrementalPushReceived(topicName, partitionId, offset);
+      } else if (report.isTopicSwitchReceived) {
+        notifier.topicSwitchReceived(topicName, partitionId, offset);
+      } else if (report.isProgress) {
+        notifier.progress(topicName, partitionId, offset);
       } else {
-        logger.info("Received unsupported ingestion report, it will be ignored for now.");
+        logger.warn("Received unsupported ingestion report:\n" + report.toString() + "\n it will be ignored for now.");
       }
     }
-
-
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, "OK!"));
   }
 

@@ -52,7 +52,6 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -63,9 +62,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
@@ -300,7 +297,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
     IngestionTaskReport report = new IngestionTaskReport();
     report.isPositive = true;
-    report.errorMessage = "";
+    report.message = "";
     report.topicName = topicName;
     report.partitionId = partitionId;
     try {
@@ -322,21 +319,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           // Ingestion Service needs store repository to subscribe to the store.
           ingestionService.getStoreRepository().subscribe(storeName);
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
-
-          Map<Integer, CompletableFuture<IngestionTaskReport>> partitionFutureMap = ingestionService.topicPartitionIngestionFuture.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
-          CompletableFuture<IngestionTaskReport> future = new CompletableFuture<>();
-          // Use async to avoid deadlock waiting in StoreBufferDrainer
-          future.whenCompleteAsync(
-              (result, exception) -> {
-                if (!result.isError) {
-                  ingestionService.reportIngestionCompletion(result);
-                } else {
-                  ingestionService.reportIngestionError(result);
-                }
-              }, ingestionService.getIngestionExecutor()
-          );
-          partitionFutureMap.put(partitionId, future);
-          ingestionService.topicPartitionIngestionFuture.putIfAbsent(topicName, partitionFutureMap);
 
           storageService.openStoreForNewPartition(storeConfig, partitionId);
           storeIngestionService.startConsumption(storeConfig, partitionId);
@@ -367,7 +349,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       logger.error("Encounter exception while handling ingestion command", e);
       report.isPositive = false;
       report.isError = true;
-      report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
+      report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
   }
@@ -398,7 +380,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
     IngestionTaskReport report = new IngestionTaskReport();
     report.isPositive = true;
-    report.errorMessage = "";
+    report.message = "";
     report.topicName = topicName;
     report.partitionId = partitionId;
     try {
@@ -437,7 +419,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       logger.error("Encounter exception while updating storage metadata", e);
       report.isPositive = false;
       report.isError = true;
-      report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
+      report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
   }
@@ -445,7 +427,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
   private IngestionTaskReport handleProcessShutdownCommand(ProcessShutdownCommand processShutdownCommand) {
     IngestionTaskReport report = new IngestionTaskReport();
     report.isPositive = true;
-    report.errorMessage = "";
+    report.message = "";
     report.topicName = "";
     try {
       if (!ingestionService.isInitiated()) {
@@ -465,7 +447,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       logger.error("Encounter exception while shutting down ingestion components in forked process", e);
       report.isPositive = false;
       report.isError = true;
-      report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
+      report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
   }
@@ -504,40 +486,115 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
-    public void completed(String kafkaTopic, int partitionId, long offset) {
+    public void completed(String kafkaTopic, int partitionId, long offset, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isComplete = true;
-      report.isEndOfPushReceived = true;
-      report.isError = false;
-      report.errorMessage = "";
+      report.isCompleted = true;
+      report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
+      ingestionService.reportIngestionStatus(report);
 
-      // Complete and remove corresponding topic partition's future.
-      CompletableFuture<IngestionTaskReport> future = ingestionService.topicPartitionIngestionFuture.get(kafkaTopic).remove(partitionId);
-      future.complete(report);
-      if (ingestionService.topicPartitionIngestionFuture.get(kafkaTopic).size() == 0) {
-        ingestionService.topicPartitionIngestionFuture.remove(kafkaTopic);
-      }
     }
 
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isComplete = false;
-      report.isEndOfPushReceived = false;
       report.isError = true;
-      report.errorMessage = e.getClass().getSimpleName() + "_" + e.getMessage();
+      report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
+      ingestionService.reportIngestionStatus(report);
+    }
 
-      // Complete and remove corresponding topic partition's future.
-      CompletableFuture<IngestionTaskReport> future = ingestionService.topicPartitionIngestionFuture.get(kafkaTopic).remove(partitionId);
-      future.complete(report);
-      if (ingestionService.topicPartitionIngestionFuture.get(kafkaTopic).size() == 0) {
-        ingestionService.topicPartitionIngestionFuture.remove(kafkaTopic);
-      }
+    @Override
+    public void started(String kafkaTopic, int partitionId, String message) {
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isStarted = true;
+      report.message = message;
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      ingestionService.reportIngestionStatus(report);
+    }
+
+    @Override
+    public void restarted(String kafkaTopic, int partitionId, long offset, String message) {
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isRestarted = true;
+      report.message = message;
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      report.offset = offset;
+      ingestionService.reportIngestionStatus(report);
+    }
+
+    @Override
+    public void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isRestarted = true;
+      report.message = message;
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      report.offset = offset;
+      ingestionService.reportIngestionStatus(report);
+    }
+
+    @Override
+    public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isStartOfBufferReplayReceived = true;
+      report.message = message;
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      report.offset = offset;
+      ingestionService.reportIngestionStatus(report);
+    }
+
+    @Override
+    public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isStartOfIncrementalPushReceived = true;
+      report.message = incrementalPushVersion;
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      report.offset = offset;
+      ingestionService.reportIngestionStatus(report);
+
+    }
+
+    @Override
+    public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isEndOfIncrementalPushReceived = true;
+      report.message = incrementalPushVersion;
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      report.offset = offset;
+      ingestionService.reportIngestionStatus(report);
+
+    }
+
+    @Override
+    public void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isTopicSwitchReceived = true;
+      report.message = message;
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      report.offset = offset;
+      ingestionService.reportIngestionStatus(report);
+
+    }
+
+    @Override
+    public void progress(String kafkaTopic, int partitionId, long offset, String message) {
+      IngestionTaskReport report = new IngestionTaskReport();
+      report.isProgress = true;
+      report.message = message;
+      report.topicName = kafkaTopic;
+      report.partitionId = partitionId;
+      report.offset = offset;
+      ingestionService.reportIngestionStatus(report);
     }
   };
 }

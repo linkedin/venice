@@ -7,16 +7,23 @@ package com.linkedin.venice.ingestion.protocol;
 
 @SuppressWarnings("all")
 public class IngestionTaskReport extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"IngestionTaskReport\",\"namespace\":\"com.linkedin.venice.ingestion.protocol\",\"fields\":[{\"name\":\"topicName\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"partitionId\",\"type\":\"int\"},{\"name\":\"offset\",\"type\":\"long\"},{\"name\":\"isEndOfPushReceived\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isComplete\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isError\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isPositive\",\"type\":\"boolean\",\"doc\":\"A true/false flag to respond whether a partition is consuming\",\"default\":false},{\"name\":\"errorMessage\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"offsetRecord\",\"type\":[\"null\",\"bytes\"],\"default\":null},{\"name\":\"storeVersionState\",\"type\":[\"null\",\"bytes\"],\"default\":null}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"IngestionTaskReport\",\"namespace\":\"com.linkedin.venice.ingestion.protocol\",\"fields\":[{\"name\":\"topicName\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"partitionId\",\"type\":\"int\"},{\"name\":\"offset\",\"type\":\"long\"},{\"name\":\"isCompleted\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isError\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isStarted\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isRestarted\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isEndOfPushReceived\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isStartOfBufferReplayReceived\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isStartOfIncrementalPushReceived\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isEndOfIncrementalPushReceived\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isProgress\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isTopicSwitchReceived\",\"type\":\"boolean\",\"default\":false},{\"name\":\"isPositive\",\"type\":\"boolean\",\"doc\":\"A true/false flag to respond whether a partition is consuming\",\"default\":false},{\"name\":\"message\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"offsetRecord\",\"type\":[\"null\",\"bytes\"],\"default\":null},{\"name\":\"storeVersionState\",\"type\":[\"null\",\"bytes\"],\"default\":null}]}");
   public java.lang.CharSequence topicName;
   public int partitionId;
   public long offset;
-  public boolean isEndOfPushReceived;
-  public boolean isComplete;
+  public boolean isCompleted;
   public boolean isError;
+  public boolean isStarted;
+  public boolean isRestarted;
+  public boolean isEndOfPushReceived;
+  public boolean isStartOfBufferReplayReceived;
+  public boolean isStartOfIncrementalPushReceived;
+  public boolean isEndOfIncrementalPushReceived;
+  public boolean isProgress;
+  public boolean isTopicSwitchReceived;
   /** A true/false flag to respond whether a partition is consuming */
   public boolean isPositive;
-  public java.lang.CharSequence errorMessage;
+  public java.lang.CharSequence message;
   public java.nio.ByteBuffer offsetRecord;
   public java.nio.ByteBuffer storeVersionState;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
@@ -26,13 +33,20 @@ public class IngestionTaskReport extends org.apache.avro.specific.SpecificRecord
     case 0: return topicName;
     case 1: return partitionId;
     case 2: return offset;
-    case 3: return isEndOfPushReceived;
-    case 4: return isComplete;
-    case 5: return isError;
-    case 6: return isPositive;
-    case 7: return errorMessage;
-    case 8: return offsetRecord;
-    case 9: return storeVersionState;
+    case 3: return isCompleted;
+    case 4: return isError;
+    case 5: return isStarted;
+    case 6: return isRestarted;
+    case 7: return isEndOfPushReceived;
+    case 8: return isStartOfBufferReplayReceived;
+    case 9: return isStartOfIncrementalPushReceived;
+    case 10: return isEndOfIncrementalPushReceived;
+    case 11: return isProgress;
+    case 12: return isTopicSwitchReceived;
+    case 13: return isPositive;
+    case 14: return message;
+    case 15: return offsetRecord;
+    case 16: return storeVersionState;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -43,13 +57,20 @@ public class IngestionTaskReport extends org.apache.avro.specific.SpecificRecord
     case 0: topicName = (java.lang.CharSequence)value$; break;
     case 1: partitionId = (java.lang.Integer)value$; break;
     case 2: offset = (java.lang.Long)value$; break;
-    case 3: isEndOfPushReceived = (java.lang.Boolean)value$; break;
-    case 4: isComplete = (java.lang.Boolean)value$; break;
-    case 5: isError = (java.lang.Boolean)value$; break;
-    case 6: isPositive = (java.lang.Boolean)value$; break;
-    case 7: errorMessage = (java.lang.CharSequence)value$; break;
-    case 8: offsetRecord = (java.nio.ByteBuffer)value$; break;
-    case 9: storeVersionState = (java.nio.ByteBuffer)value$; break;
+    case 3: isCompleted = (java.lang.Boolean)value$; break;
+    case 4: isError = (java.lang.Boolean)value$; break;
+    case 5: isStarted = (java.lang.Boolean)value$; break;
+    case 6: isRestarted = (java.lang.Boolean)value$; break;
+    case 7: isEndOfPushReceived = (java.lang.Boolean)value$; break;
+    case 8: isStartOfBufferReplayReceived = (java.lang.Boolean)value$; break;
+    case 9: isStartOfIncrementalPushReceived = (java.lang.Boolean)value$; break;
+    case 10: isEndOfIncrementalPushReceived = (java.lang.Boolean)value$; break;
+    case 11: isProgress = (java.lang.Boolean)value$; break;
+    case 12: isTopicSwitchReceived = (java.lang.Boolean)value$; break;
+    case 13: isPositive = (java.lang.Boolean)value$; break;
+    case 14: message = (java.lang.CharSequence)value$; break;
+    case 15: offsetRecord = (java.nio.ByteBuffer)value$; break;
+    case 16: storeVersionState = (java.nio.ByteBuffer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

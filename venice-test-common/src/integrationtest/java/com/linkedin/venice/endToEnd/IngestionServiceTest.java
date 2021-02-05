@@ -149,8 +149,8 @@ public class IngestionServiceTest {
   public void testIngestionReportListener() throws Exception {
     IngestionTaskReport ingestionTaskReport = new IngestionTaskReport();
     ingestionTaskReport.topicName = "";
-    ingestionTaskReport.errorMessage = "";
-    ingestionTaskReport.isComplete = true;
+    ingestionTaskReport.message = "";
+    ingestionTaskReport.isCompleted = true;
     ingestionTaskReport.isEndOfPushReceived = true;
     byte[] content = serializeIngestionTaskReport(ingestionTaskReport);
     sendReportMessage(content);
@@ -192,7 +192,7 @@ public class IngestionServiceTest {
       FullHttpResponse response = client.sendRequest(httpRequest);
       Assert.assertEquals(response.status(), HttpResponseStatus.OK);
       IngestionTaskReport report = deserializeIngestionTaskReport(readHttpResponseContent(response));
-      Assert.assertEquals(report.errorMessage.toString(), "");
+      Assert.assertEquals(report.message.toString(), "");
       Assert.assertTrue(report.isPositive);
     }
   }
