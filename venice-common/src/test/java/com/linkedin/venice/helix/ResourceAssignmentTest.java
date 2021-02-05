@@ -96,6 +96,20 @@ public class ResourceAssignmentTest {
     Assert.assertTrue(deletedResources.contains("3"));
   }
 
+  @Test
+  public void testUpdateResourceAssignmentNoChange() {
+    //init 2 resource assignments
+    ResourceAssignment resourceAssignment = new ResourceAssignment();
+    ResourceAssignment newResourceAssignment = new ResourceAssignment();    for (String resource : new String[] {"1", "2"}) {
+      resourceAssignment.setPartitionAssignment(resource, getDefaultPartitionAssignment(resource, HelixState.STANDBY));
+      newResourceAssignment.setPartitionAssignment(resource, getDefaultPartitionAssignment(resource, HelixState.STANDBY));
+    }
+    ResourceAssignmentChanges changes = resourceAssignment.updateResourceAssignment(newResourceAssignment);
+    Set<String> deletedResources = changes.deletedResources;
+    Set<String> updatedResources = changes.updatedResources;    Assert.assertEquals(deletedResources.size(), 0);
+    Assert.assertEquals(updatedResources.size(), 0);
+  }
+
   private PartitionAssignment getDefaultPartitionAssignment(String topicName, HelixState helixState) {
     Partition partition = getDefaultPartition(0, 1, helixState);
     PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
@@ -112,4 +126,5 @@ public class ResourceAssignmentTest {
 
     return new Partition(partitionId, stateToInstancesMap);
   }
+
 }
