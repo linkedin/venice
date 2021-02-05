@@ -210,7 +210,7 @@ public class StoreClientPerfTest {
     LOGGER.info(sb.toString());
   }
 
-  private static class TestComputeRequestBuilder extends AvroComputeRequestBuilderV2<String> {
+  private static class TestComputeRequestBuilder extends AvroComputeRequestBuilderV3<String> {
     public TestComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
         Optional<ClientStats> stats, Optional<ClientStats> streamingStats, long preRequestTimeInNS) {
       super(latestValueSchema, storeClient, stats, streamingStats);

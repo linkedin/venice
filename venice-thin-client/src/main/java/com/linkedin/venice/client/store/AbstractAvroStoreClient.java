@@ -550,10 +550,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       final InternalAvroStoreClient computeStoreClient, final long preRequestTimeInNS)  {
     if (reuseObjectsForSerialization) {
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
-      return new AvroComputeRequestBuilderV2<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats,
+      return new AvroComputeRequestBuilderV3<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats,
           true, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
     } else {
-      return new AvroComputeRequestBuilderV2<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
+      return new AvroComputeRequestBuilderV3<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
     }
   }
 
@@ -571,7 +571,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   /**
-   * This function is only being used by {@link AvroComputeRequestBuilderV2#execute(Set)}.
+   * This function is only being used by {@link AvroComputeRequestBuilderV3#execute(Set)}.
    *
    * @param computeRequestWrapper
    * @param keys
