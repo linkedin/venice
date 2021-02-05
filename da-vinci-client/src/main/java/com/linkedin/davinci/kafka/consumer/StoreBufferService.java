@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.common.Measurable;
+import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -166,6 +167,9 @@ public class StoreBufferService extends AbstractVeniceService {
             ingestionTask.setLastDrainerException(ee);
             if (producedRecord != null) {
               producedRecord.completePersistedToDBFuture(ee);
+            }
+            if (e instanceof VeniceChecksumException) {
+              ingestionTask.recordChecksumVerificationFailure();
             }
           } else {
             break;

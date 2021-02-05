@@ -113,6 +113,8 @@ public class StoreIngestionStats extends AbstractVeniceStats {
   private final Sensor totalLeaderBytesProducedSensor;
   private final Sensor totalLeaderRecordsProducedSensor;
 
+  private final Sensor checksumVerificationFailureSensor;
+
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
     super(metricsRepository, storeName);
@@ -179,6 +181,9 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     totalFollowerRecordsConsumedSensor = registerSensor("follower_records_consumed", new Rate());
     totalLeaderBytesProducedSensor = registerSensor("leader_bytes_produced", new Rate());
     totalLeaderRecordsProducedSensor = registerSensor("leader_records_produced", new Rate());
+
+    checksumVerificationFailureSensor = registerSensor("checksum_verification_failure", new Count());
+
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -309,6 +314,10 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   public void recordTotalLeaderRecordsProduced(int count) {
     totalLeaderRecordsProducedSensor.record(count);
+  }
+
+  public void recordChecksumVerificationFailure() {
+    checksumVerificationFailureSensor.record();
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {
