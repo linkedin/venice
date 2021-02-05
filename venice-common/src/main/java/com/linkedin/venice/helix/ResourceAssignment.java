@@ -82,7 +82,7 @@ public class ResourceAssignment {
     return newAssignment.getAssignedResources()
         .stream()
         .filter(newResource -> !containsResource(newResource)
-            || getPartitionAssignment(newResource).hashCode() != newAssignment.getPartitionAssignment(newResource).hashCode())
+            || !getPartitionAssignment(newResource).equals(newAssignment.getPartitionAssignment(newResource)))
         .collect(Collectors.toSet());
   }
 
