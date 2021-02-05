@@ -3460,7 +3460,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED : ExecutionStatus.COMPLETED;
         ExecutionStatus middleStatus = incrementalPushVersion.isPresent() ?
             ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED : ExecutionStatus.END_OF_PUSH_RECEIVED;
-        List<String> erroredInstances = new ArrayList<>();
+        Optional<String> erroredInstance = Optional.empty();
         String storeName = version.getStoreName();
         int completedPartitions = 0;
         for (int partitionId = 0; partitionId < version.getPartitionCount(); partitionId++) {
@@ -3473,13 +3473,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         allInstancesCompleted = false;
                     }
                 } else if (status != completeStatus) {
-                    if ((allInstancesCompleted || allMiddleStatusReceived)
-                        && pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
-                        allInstancesCompleted = false;
-                        allMiddleStatusReceived = false;
-                    }
-                    if (status == ExecutionStatus.ERROR) {
-                        erroredInstances.add(entry.getKey().toString());
+                    if (allInstancesCompleted || allMiddleStatusReceived) {
+                        if (pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
+                            allInstancesCompleted = false;
+                            allMiddleStatusReceived = false;
+                            if (status == ExecutionStatus.ERROR) {
+                                erroredInstance = Optional.of(entry.getKey().toString());
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -3492,13 +3494,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (completedPartitions > 0) {
             details += completedPartitions + "/" + version.getPartitionCount() + " partitions completed in Da Vinci.";
         }
-        if (!erroredInstances.isEmpty()) {
-            details += erroredInstances.size() + " instances failed in Da Vinci, they are ";
-            // list first 3 to prevent bloating the response size
-            for (int i = 0; i < erroredInstances.size() && i < 3; i++) {
-                details += erroredInstances.get(i);
-            }
-            details += "...";
+        if (erroredInstance.isPresent()) {
+            details += "Found a failed instance in Da Vinci, it is " + erroredInstance;
         }
         if (details.length() != 0) {
             statusDetail = Optional.of(details);
@@ -3509,7 +3506,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return new Pair<>(completeStatus, statusDetail);
         } else if (allMiddleStatusReceived) {
             return new Pair<>(middleStatus, statusDetail);
-        } else if (!erroredInstances.isEmpty()) {
+        } else if (erroredInstance.isPresent()) {
             return new Pair<>(ExecutionStatus.ERROR, statusDetail);
         } else {
             return new Pair<>(ExecutionStatus.STARTED, statusDetail);
