@@ -188,8 +188,8 @@ public class StorageNodeComputeTest {
             .dotProduct("member_feature", p, "member_score")
             .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
             .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
-//          .count("namemap", "namemap_count")
-//          .count("member_feature", "member_feature_count")
+            .count("namemap", "namemap_count")
+            .count("member_feature", "member_feature_count")
             .execute(keySet)
             /**
              * Added 2s timeout as a safety net as ideally each request should take sub-second.
@@ -210,8 +210,8 @@ public class StorageNodeComputeTest {
           float parameterVectorMagnitude = (float) Math.sqrt((float)(cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
           float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
           Assert.assertEquals((float) entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
-         // Assert.assertEquals((int) entry.getValue().get("member_feature_count"),  2);
-         // Assert.assertEquals((int) entry.getValue().get("namemap_count"),  0);
+          Assert.assertEquals((int) entry.getValue().get("member_feature_count"),  2);
+          Assert.assertEquals((int) entry.getValue().get("namemap_count"),  0);
 
           // check hadamard product
           List<Float> hadamardProductResult = new ArrayList<>(2);
