@@ -20,10 +20,18 @@ import static com.linkedin.venice.CommonConfigKeys.*;
 public class SslUtils {
   private static final Logger logger = Logger.getLogger(SslUtils.class);
 
-  // Self-signed cert, expires 2027, use keystore as truststore since self-signed.
-  // cert has CN=localhost
+  /**
+   * Self-signed cert, expires 2027, use keystore as truststore since self-signed.
+   * cert has CN=localhost
+   *
+   * IMPORTANT NOTE: the "localhost.jks", "localhost.cert", "localhost.key" and "localhost.p12" files only exist
+   *                 in the code base; do not try to load this files in actual hosts
+   */
   public static final String LOCAL_PASSWORD = "dev_pass";
-  public static final String LOCAL_KEYSTORE_PATH = getPathForResource("localhost.jks");
+  private static final String LOCAL_KEYSTORE_P12 = "localhost.p12";
+  private static final String LOCAL_KEYSTORE_JKS = "localhost.jks";
+  private static final String LOCAL_CERT = "localhost.cert";
+  private static final String LOCAL_KEY = "localhost.key";
 
   /**
    * This function should be used in test cases only.
@@ -51,11 +59,12 @@ public class SslUtils {
    * @return an instance of {@link SSLEngineComponentFactoryImpl.Config} with local SSL config.
    */
   public static SSLEngineComponentFactoryImpl.Config getLocalSslConfig() {
+    String keyStorePath = getPathForResource(LOCAL_KEYSTORE_JKS);
     SSLEngineComponentFactoryImpl.Config sslConfig = new SSLEngineComponentFactoryImpl.Config();
-    sslConfig.setKeyStoreFilePath(LOCAL_KEYSTORE_PATH);
+    sslConfig.setKeyStoreFilePath(keyStorePath);
     sslConfig.setKeyStorePassword(LOCAL_PASSWORD);
     sslConfig.setKeyStoreType("JKS");
-    sslConfig.setTrustStoreFilePath(LOCAL_KEYSTORE_PATH);
+    sslConfig.setTrustStoreFilePath(keyStorePath);
     sslConfig.setTrustStoreFilePassword(LOCAL_PASSWORD);
     sslConfig.setSslEnabled(true);
     return sslConfig;
@@ -81,12 +90,13 @@ public class SslUtils {
    * @return an instance of {@link Properties} that contains local SSL configs.
    */
   public static Properties getVeniceLocalSslProperties() {
+    String keyStorePath = getPathForResource(LOCAL_KEYSTORE_JKS);
     Properties sslProperties = new Properties();
     sslProperties.setProperty(SSL_ENABLED, "true");
     sslProperties.setProperty(SSL_KEYSTORE_TYPE, "JKS");
-    sslProperties.setProperty(SSL_KEYSTORE_LOCATION, LOCAL_KEYSTORE_PATH);
+    sslProperties.setProperty(SSL_KEYSTORE_LOCATION, keyStorePath);
     sslProperties.setProperty(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
-    sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, LOCAL_KEYSTORE_PATH);
+    sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, keyStorePath);
     sslProperties.setProperty(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
     return sslProperties;
   }
