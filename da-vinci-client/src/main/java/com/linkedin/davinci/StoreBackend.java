@@ -15,6 +15,7 @@ import org.apache.log4j.Logger;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 
 public class StoreBackend {
@@ -154,13 +155,30 @@ public class StoreBackend {
       futureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapCurrentVersion(e));
     }
 
-    ReferenceCounted<VersionBackend> ref = getCurrentVersion();
-    return currentVersion.subscribe(partitions).whenComplete((v, e) -> ref.release());
+    return currentVersion.subscribe(partitions).exceptionally(e -> {
+      synchronized (this) {
+        if (currentVersion != null && currentVersion.isReadyToServe(subscription)) {
+          return null;
+        }
+      }
+      if (e instanceof CompletionException) {
+        throw (CompletionException) e;
+      }
+      throw new CompletionException(e);
+    });
   }
 
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
     logger.info("Unsubscribing from partitions " + partitions + " of " + storeName);
     subscription.removeAll(partitions);
+
+    if (currentVersion != null) {
+      currentVersion.unsubscribe(partitions);
+    }
+
+    if (futureVersion != null) {
+      futureVersion.unsubscribe(partitions);
+    }
 
     if (subscription.isEmpty()) {
       config.delete();
@@ -174,14 +192,6 @@ public class StoreBackend {
         currentVersion = null;
         currentVersionRef.clear();
         version.delete();
-      }
-    } else {
-      if (currentVersion != null) {
-        currentVersion.unsubscribe(partitions);
-      }
-
-      if (futureVersion != null) {
-        futureVersion.unsubscribe(partitions);
       }
     }
   }

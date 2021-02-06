@@ -266,10 +266,10 @@ public class VersionBackend {
   }
 
   private synchronized CompletableFuture subscribeSubPartition(int subPartition) {
-    CompletableFuture partitionFuture = subPartitionFutures.get(subPartition);
-    if (null != partitionFuture) {
+    CompletableFuture future = subPartitionFutures.get(subPartition);
+    if (future != null) {
       logger.info("Sub-partition " + subPartition + " of " + this + " is subscribed, ignoring subscribe request.");
-      return partitionFuture;
+      return future;
     }
 
     // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.

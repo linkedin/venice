@@ -1,6 +1,7 @@
 package com.linkedin.davinci;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -91,7 +92,7 @@ public class StoreBackendTest {
   void testSubscribeEmptyStore() {
     store.setVersions(Collections.emptyList());
     store.setCurrentVersion(Store.NON_EXISTING_VERSION);
-    assertThrows(() -> storeBackend.subscribe(ComplementSet.universalSet()));
+    assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.universalSet()));
   }
 
   @Test
@@ -115,7 +116,27 @@ public class StoreBackendTest {
   }
 
   @Test
-  void testSubscribeStoreWithoutCurrentVersion() throws Exception {
+  void testSubscribeSlowCurrentVersion() throws Exception {
+    int partition = 0;
+    // Expecting to subscribe to version1 and that version2 is a future version.
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    assertFalse(subscribeResult.isDone());
+    // Verify that subscribe selected the current version by default.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
+    }
+
+    // Simulate future version ingestion is complete.
+    versionMap.get(version2.kafkaTopicName()).completeSubPartition(partition);
+    subscribeResult.get(0, TimeUnit.SECONDS);
+    // Verify that future version became current once ingestion is complete.
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+    }
+  }
+
+  @Test
+  void testSubscribeWithoutCurrentVersion() throws Exception {
     int partition = 1;
     store.setCurrentVersion(Store.NON_EXISTING_VERSION);
     // Expecting to subscribe to the latest version (version2).
@@ -129,7 +150,7 @@ public class StoreBackendTest {
   }
 
   @Test
-  void testSubscribeSpecifiedVersion() throws Exception {
+  void testSubscribeBootstrapVersion() throws Exception {
     Version version3 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 15);
     store.addVersion(version3);
     store.setCurrentVersion(version2.getNumber());
@@ -204,7 +225,9 @@ public class StoreBackendTest {
     }
 
     // Simulate unsubscribe from all partitions while future version ingestion is pending.
+    subscribeResult = storeBackend.subscribe(ComplementSet.universalSet());
     storeBackend.unsubscribe(ComplementSet.universalSet());
+    subscribeResult.get(0, TimeUnit.SECONDS);
     // Verify that all versions were deleted because subscription set became empty.
     assertTrue(versionMap.isEmpty());
     assertEquals(FileUtils.sizeOfDirectory(baseDataPath), 0);
@@ -217,7 +240,7 @@ public class StoreBackendTest {
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.universalSet());
     storeBackend.close();
     // Verify that store close aborted pending subscribe, but none of the versions was deleted.
-    assertThrows(() -> subscribeResult.getNow(null));
+    assertThrows(CompletionException.class, () -> subscribeResult.getNow(null));
     verify(backend.getStorageService(), never()).removeStorageEngine(any());
   }
 
