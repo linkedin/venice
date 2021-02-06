@@ -152,7 +152,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
         if (isVeniceQueryAllowed()) {
           return veniceClient.get(key);
         }
-        storeBackend.getStats().recordUnhealthyRequest();
+        storeBackend.getStats().recordBadRequest();
         throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
       }
 
@@ -176,7 +176,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       }
 
       if (!isSubPartitionSubscribed(versionBackend, subPartition)) {
-        storeBackend.getStats().recordUnhealthyRequest();
+        storeBackend.getStats().recordBadRequest();
         throw new NonLocalAccessException(versionBackend.toString(), subPartition);
       }
       return CompletableFuture.completedFuture(null);
@@ -192,7 +192,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
         if (isVeniceQueryAllowed()) {
           return veniceClient.batchGet(keys);
         }
-        storeBackend.getStats().recordUnhealthyRequest();
+        storeBackend.getStats().recordBadRequest();
         throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
       }
 
@@ -220,7 +220,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
           missingKeys.add(key);
 
         } else if (!isSubPartitionSubscribed(versionBackend, subPartition)) {
-          storeBackend.getStats().recordUnhealthyRequest();
+          storeBackend.getStats().recordBadRequest();
           throw new NonLocalAccessException(versionBackend.toString(), subPartition);
         }
       }

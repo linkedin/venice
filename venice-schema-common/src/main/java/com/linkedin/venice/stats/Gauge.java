@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import io.tehuti.metrics.Measurable;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 
@@ -12,32 +13,41 @@ import io.tehuti.metrics.MetricConfig;
  * store and ratio.
  */
 public class Gauge implements MeasurableStat {
-  private ParameteredTehutiOps ops;
 
-  public Gauge(ParameteredTehutiOps ops) {
-    this.ops = ops;
-  }
-
-  public Gauge(TehutiOps ops) {
-    this.ops = ops;
-  }
-
-  @Override
-  public void record(MetricConfig config, double value, long now) {}
-
-  @Override
-  public double measure(MetricConfig config, long now) {
-    return ops.measure(config, now);
-  }
-
-  public interface TehutiOps extends ParameteredTehutiOps {
+  public interface SimpleMeasurable extends Measurable {
     default double measure(MetricConfig config, long now) {
       return measure();
     }
     double measure();
   }
 
-  public interface ParameteredTehutiOps {
-    double measure(MetricConfig config, long now);
+  private double value;
+  private final Measurable measurable;
+
+  public Gauge() {
+    this(Double.NaN);
+  }
+
+  public Gauge(double value) {
+    this.value = value;
+    this.measurable = (SimpleMeasurable) () -> this.value;
+  }
+
+  public Gauge(Measurable measurable) {
+    this.measurable = measurable;
+  }
+
+  public Gauge(SimpleMeasurable measurable) {
+    this.measurable = measurable;
+  }
+
+  @Override
+  public void record(MetricConfig config, double value, long now) {
+    this.value = value;
+  }
+
+  @Override
+  public double measure(MetricConfig config, long now) {
+    return measurable.measure(config, now);
   }
 }

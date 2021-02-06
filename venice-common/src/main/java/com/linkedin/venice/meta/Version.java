@@ -3,14 +3,16 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
+
+import org.codehaus.jackson.annotate.JsonIgnore;
+import org.codehaus.jackson.annotate.JsonProperty;
+
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 /**
  * Class defines the version of Venice store.
@@ -107,6 +109,14 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
 
   public long getCreatedTime() {
     return this.storeVersion.createdTime;
+  }
+
+  public Duration getAge() {
+    return Duration.ofMillis(System.currentTimeMillis() - getCreatedTime());
+  }
+
+  public void setAge(Duration age) {
+    this.storeVersion.createdTime = System.currentTimeMillis() - age.toMillis();
   }
 
   public VersionStatus getStatus() {
