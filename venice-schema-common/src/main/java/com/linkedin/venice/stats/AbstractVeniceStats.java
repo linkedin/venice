@@ -1,20 +1,19 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Percentiles;
 
-import java.util.Arrays;
 import java.util.Map;
 import java.util.function.Supplier;
 
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
 
 public class AbstractVeniceStats {
-
   public static final String DELIMITER = "--";
 
   private final MetricsRepository metricsRepository;
@@ -90,10 +89,5 @@ public class AbstractVeniceStats {
       resourceName = "." + resourceName;
     }
     return resourceName + AbstractVeniceStats.DELIMITER + sensorName;
-  }
-
-
-  public void close() {
-    metricsRepository.close();
   }
 }

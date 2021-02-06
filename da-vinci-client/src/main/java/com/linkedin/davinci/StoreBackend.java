@@ -7,7 +7,6 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 
-import com.linkedin.davinci.client.ClientStats;
 import com.linkedin.davinci.config.StoreBackendConfig;
 
 import org.apache.log4j.Logger;
@@ -24,7 +23,7 @@ public class StoreBackend {
 
   private final DaVinciBackend backend;
   private final String storeName;
-  private final ClientStats stats;
+  private final StoreBackendStats stats;
   private final StoreBackendConfig config;
   private final Set<Integer> faultyVersions = new HashSet<>();
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
@@ -37,7 +36,7 @@ public class StoreBackend {
     this.backend = backend;
     this.storeName = storeName;
     this.config = new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
-    this.stats = new ClientStats(backend.getMetricsRepository(), storeName);
+    this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeName);
     try {
       backend.getStoreRepository().subscribe(storeName);
     } catch (InterruptedException e) {
@@ -61,13 +60,13 @@ public class StoreBackend {
 
     if (futureVersion != null) {
       VersionBackend version = futureVersion;
-      futureVersion = null;
+      setFutureVersion(null);
       version.close();
     }
 
     if (currentVersion != null) {
       VersionBackend version = currentVersion;
-      currentVersion = null;
+      setCurrentVersion(null);
       version.close();
     }
 
@@ -86,7 +85,7 @@ public class StoreBackend {
 
     if (currentVersion != null) {
       VersionBackend version = currentVersion;
-      currentVersion = null;
+      setCurrentVersion(null);
       version.delete();
     }
 
@@ -106,7 +105,7 @@ public class StoreBackend {
     backend.setMemoryLimit(storeName, memoryLimit);
   }
 
-  public ClientStats getStats() {
+  public StoreBackendStats getStats() {
     return stats;
   }
 
@@ -118,6 +117,12 @@ public class StoreBackend {
     logger.info("Switching to new version " + version + ", currentVersion=" + currentVersion);
     currentVersion = version;
     currentVersionRef.set(version);
+    stats.recordCurrentVersion(version);
+  }
+
+  private void setFutureVersion(VersionBackend version) {
+    futureVersion = version;
+    stats.recordFutureVersion(version);
   }
 
   public CompletableFuture subscribe(ComplementSet<Integer> partitions) {
@@ -186,8 +191,8 @@ public class StoreBackend {
 
       if (currentVersion != null) {
         VersionBackend version = currentVersion;
-        currentVersion = null;
         currentVersionRef.clear();
+        setCurrentVersion(null);
         version.delete();
       }
     }
@@ -204,7 +209,7 @@ public class StoreBackend {
     }
 
     logger.info("Subscribing to future version " + version.kafkaTopicName());
-    futureVersion = new VersionBackend(backend, version);
+    setFutureVersion(new VersionBackend(backend, version));
     futureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapCurrentVersion(e));
   }
 
@@ -222,7 +227,7 @@ public class StoreBackend {
 
   private void deleteFutureVersion() {
     VersionBackend version = futureVersion;
-    futureVersion = null;
+    setFutureVersion(null);
     version.delete();
   }
 
@@ -245,7 +250,7 @@ public class StoreBackend {
     } else if (futureVersion.isReadyToServe(subscription)) {
       logger.info("Ready to serve partitions " + subscription + " of " + futureVersion);
       VersionBackend version = futureVersion;
-      futureVersion = null;
+      setFutureVersion(null);
       setCurrentVersion(version);
       trySubscribeFutureVersion();
 

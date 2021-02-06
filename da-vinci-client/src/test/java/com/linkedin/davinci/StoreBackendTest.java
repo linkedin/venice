@@ -27,6 +27,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.File;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -49,6 +50,7 @@ public class StoreBackendTest {
   DaVinciBackend backend;
   StoreBackend storeBackend;
   Map<String, VersionBackend> versionMap;
+  MetricsRepository metricsRepository;
 
   @BeforeMethod
   void setup() {
@@ -65,10 +67,11 @@ public class StoreBackendTest {
     doAnswer(answerVoid(Runnable::run)).when(executor).execute(any());
 
     versionMap = new HashMap<>();
+    metricsRepository = new MetricsRepository();
     backend = mock(DaVinciBackend.class);
     when(backend.getExecutor()).thenReturn(executor);
     when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(backendConfig));
-    when(backend.getMetricsRepository()).thenReturn(new MetricsRepository());
+    when(backend.getMetricsRepository()).thenReturn(metricsRepository);
     when(backend.getStoreRepository()).thenReturn(mock(SubscriptionBasedReadOnlyStoreRepository.class));
     when(backend.getStorageService()).thenReturn(mock(StorageService.class));
     when(backend.getIngestionService()).thenReturn(mock(StoreIngestionService.class));
@@ -98,6 +101,10 @@ public class StoreBackendTest {
   @Test
   void testSubscribeCurrentVersion() throws Exception {
     int partition = 0;
+    version1.setAge(Duration.ofHours(1));
+    version2.setAge(Duration.ofMinutes(5));
+    assertEquals(metricsRepository.getMetric("." + store.getName() + "--data_age_ms.Gauge").value(), Double.NaN);
+
     // Expecting to subscribe to version1 and that version2 is a future version.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
     versionMap.get(version1.kafkaTopicName()).completeSubPartition(partition);
@@ -107,12 +114,21 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
 
+    assertEquals(metricsRepository.getMetric("." + store.getName() + "--current_version.Gauge").value(), (double) version1.getNumber());
+    assertEquals(metricsRepository.getMetric("." + store.getName() + "--future_version.Gauge").value(), (double) version2.getNumber());
+    assertTrue(Math.abs(metricsRepository.getMetric("." + store.getName() + "--data_age_ms.Gauge").value() - version1.getAge().toMillis()) <
+                  TimeUnit.SECONDS.toMillis(1));
+
     // Simulate future version ingestion is complete.
     versionMap.get(version2.kafkaTopicName()).completeSubPartition(partition);
     // Verify that future version became current once ingestion is complete.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
     }
+
+    assertEquals(metricsRepository.getMetric("." + store.getName() + "--current_version.Gauge").value(), (double) version2.getNumber());
+    assertTrue(Math.abs(metricsRepository.getMetric("." + store.getName() + "--data_age_ms.Gauge").value() - version2.getAge().toMillis()) <
+                   TimeUnit.SECONDS.toMillis(1));
   }
 
   @Test

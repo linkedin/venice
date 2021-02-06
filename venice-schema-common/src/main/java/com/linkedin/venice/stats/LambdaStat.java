@@ -1,5 +1,7 @@
 package com.linkedin.venice.stats;
 
+import io.tehuti.metrics.Measurable;
+
 /**
  * @deprecated, use {@link Gauge} instead.
  *
@@ -8,10 +10,11 @@ package com.linkedin.venice.stats;
  */
 @Deprecated
 public class LambdaStat extends Gauge {
-  public LambdaStat(ParameteredTehutiOps ops) {
-    super(ops);
+  public LambdaStat(Measurable measurable) {
+    super(measurable);
   }
-  public LambdaStat(TehutiOps ops) {
-    super(ops);
+
+  public LambdaStat(SimpleMeasurable measurable) {
+    super(measurable);
   }
 }
