@@ -72,8 +72,8 @@ public class ResourceAssignmentTest {
     Assert.assertEquals(deletedResources.size(), 1);
     Assert.assertTrue(deletedResources.contains("4"));
 
-    Assert.assertEquals(updatedResources.size(), 4);
-    Assert.assertTrue(updatedResources.containsAll(Stream.of("1", "2", "3", "5").collect(Collectors.toSet())));
+    Assert.assertEquals(updatedResources.size(), 3);
+    Assert.assertTrue(updatedResources.containsAll(Stream.of("2", "3", "5").collect(Collectors.toSet())));
   }
 
   @Test
