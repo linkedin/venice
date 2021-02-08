@@ -78,7 +78,9 @@ public class VersionBackend {
     this.suppressLiveUpdates = this.config.freezeIngestionIfReadyToServeOrLocalDataExists();
     this.storageEngine.set(backend.getStorageService().getStorageEngine(version.kafkaTopicName()));
     Store store = backend.getStoreRepository().getStoreOrThrow(version.getStoreName());
-    this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled();
+    // push status store must be enabled both in Da Vinci and the store
+    this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled() &&
+      this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.heartbeatInterval = this.config.getClusterProperties().getInt(
         PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS,
         DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);

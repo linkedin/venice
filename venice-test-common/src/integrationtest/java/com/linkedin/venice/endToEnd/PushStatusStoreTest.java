@@ -2,6 +2,8 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -11,9 +13,11 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatus.PushStatusStoreReader;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -42,6 +46,7 @@ public class PushStatusStoreTest {
   private D2Client d2Client;
   private PushStatusStoreReader reader;
   private Properties h2vProperties;
+  private VeniceProperties backendConfig;
   private String storeName;
 
   @BeforeMethod
@@ -74,6 +79,12 @@ public class PushStatusStoreTest {
     writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
     // Setup H2V job properties.
     h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
+    backendConfig = new PropertyBuilder()
+        .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .build();
 
     // set up push status store
     String owner = "test";
@@ -99,7 +110,7 @@ public class PushStatusStoreTest {
   public void testKafkaPushJob() throws Exception {
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       runH2V(h2vProperties, 2, cluster);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -126,7 +137,7 @@ public class PushStatusStoreTest {
         .setIncrementalPushEnabled(true)).isError());
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
       runH2V(h2vProperties, 1, cluster);
@@ -137,7 +148,7 @@ public class PushStatusStoreTest {
   public void testAutomaticPurge() throws Exception {
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
-    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
