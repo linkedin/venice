@@ -114,7 +114,7 @@ public abstract class TestRestartServerDuringIngestion {
     Properties properties = new Properties();
     properties.put(KafkaPushJob.VENICE_URL_PROP, veniceUrl);
     properties.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
-    TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties);
+    TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
     TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
 
     // Create a new version

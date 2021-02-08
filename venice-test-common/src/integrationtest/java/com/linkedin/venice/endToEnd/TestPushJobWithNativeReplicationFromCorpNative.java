@@ -150,7 +150,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
             .setLeaderFollowerModel(true)
             .setNativeReplicationEnabled(true);
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
     ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
@@ -185,12 +185,12 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, false);
 
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+      job.run();
 
-    //Verify the kafka URL being returned to the push job is the same as corp-venice-native kafka url.
-    Assert.assertEquals(job.getKafkaUrl(), corpVeniceNativeKafka.getAddress());
-
+      //Verify the kafka URL being returned to the push job is the same as corp-venice-native kafka url.
+      Assert.assertEquals(job.getKafkaUrl(), corpVeniceNativeKafka.getAddress());
+    }
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       // Current version should become 1
       for (int version : parentController.getVeniceAdmin()
@@ -235,7 +235,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
             .setNativeReplicationEnabled(true)
             .setNativeReplicationSourceFabric("dc-2");
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
     ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
@@ -260,12 +260,12 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
     TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, false);
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+      job.run();
 
-    //Verify the kafka URL being returned to the push job is the same as dc-2 kafka url.
-    Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-
+      //Verify the kafka URL being returned to the push job is the same as dc-2 kafka url.
+      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+    }
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       // Current version should become 1
       for (int version : parentController.getVeniceAdmin()

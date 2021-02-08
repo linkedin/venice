@@ -157,6 +157,7 @@ public class TestHybrid {
       TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
         // Now the store should have version 1
         JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, versionNumber));
+        Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
         assertEquals(jobStatus.getStatus(), "COMPLETED");
       });
 

@@ -268,10 +268,9 @@ public class TestVsonStoreBatch {
       Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
       extraProps.accept(props);
 
-      createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props, storeParms);
+      createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props, storeParms).close();
 
-      KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
-      job.run();
+      TestPushUtils.runPushJob("Test Batch push job", props);
       MetricsRepository metricsRepository = new MetricsRepository();
       avroClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)

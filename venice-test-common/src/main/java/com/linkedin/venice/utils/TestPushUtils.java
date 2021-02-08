@@ -1122,4 +1122,9 @@ public class TestPushUtils {
       "}";
   }
 
+  public static void runPushJob(String jobId, Properties props) {
+    try (KafkaPushJob job = new KafkaPushJob(jobId, props)) {
+      job.run();
+    }
+  }
 }

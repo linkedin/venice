@@ -21,6 +21,7 @@ import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -91,7 +92,7 @@ public abstract class TestBatch {
     String storeName = TestUtils.getUniqueString("store");
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props);
+    createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props).close();
 
     //Query store
     try(AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
@@ -644,18 +645,14 @@ public abstract class TestBatch {
 
     if (Utils.isNullOrEmpty(existingStore)) {
       createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props,
-          storeParms, addDerivedSchema);
+          storeParms, addDerivedSchema).close();
     }
 
-    KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
-    job.run();
+    TestPushUtils.runPushJob("Test Batch push job", props);
 
     if (multiPushJobs) {
-      job = new KafkaPushJob("Test Batch push job 2", props);
-      job.run();
-
-      job = new KafkaPushJob("Test Batch push job 3", props);
-      job.run();
+      TestPushUtils.runPushJob("Test Batch push job 2", props);
+      TestPushUtils.runPushJob("Test Batch push job 3", props);
     }
 
     veniceCluster.refreshAllRouterMetaData();
@@ -994,37 +991,40 @@ public abstract class TestBatch {
     }
     props.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
     props.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
-    createStoreForJob(veniceCluster, recordSchema, props);
+    createStoreForJob(veniceCluster, recordSchema, props).close();
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+      job.run();
+      // Verify job properties
+      Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
+      Assert.assertEquals(job.getInputDirectory(), inputDirPath);
+      String schema =
+          "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
+      Assert.assertEquals(job.getFileSchemaString(), schema);
+      Assert.assertEquals(job.getKeySchemaString(), STRING_SCHEMA);
+      Assert.assertEquals(job.getValueSchemaString(), STRING_SCHEMA);
+      Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
-    // Verify job properties
-    Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
-    Assert.assertEquals(job.getInputDirectory(), inputDirPath);
-    String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
-    Assert.assertEquals(job.getFileSchemaString(), schema);
-    Assert.assertEquals(job.getKeySchemaString(), STRING_SCHEMA);
-    Assert.assertEquals(job.getValueSchemaString(), STRING_SCHEMA);
-    Assert.assertEquals(job.getInputFileDataSize(), 3872);
+      veniceCluster.refreshAllRouterMetaData();
 
-    veniceCluster.refreshAllRouterMetaData();
+      // Verify the data in Venice Store
+      String routerUrl = veniceCluster.getRandomRouterURL();
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        for (int i = 1; i <= 100; ++i) {
+          String expected = "test_name_" + i;
+          String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
+          Assert.assertEquals(actual, expected);
+        }
 
-    // Verify the data in Venice Store
-    String routerUrl = veniceCluster.getRandomRouterURL();
-    try (AvroGenericStoreClient<String, Object> client =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-      for (int i = 1; i <= 100; ++i) {
-        String expected = "test_name_" + i;
-        String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
-        Assert.assertEquals(actual, expected);
+        try (ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl)) {
+          JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
+          Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
+          Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
+              "After job is complete, status should reflect that");
+          // We won't verify progress any more here since we decided to disable this feature
+        }
       }
-
-      ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
-      JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
-      Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
-          "After job is complete, status should reflect that");
-      // We won't verify progress any more here since we decided to disable this feature
     }
   }
 }
