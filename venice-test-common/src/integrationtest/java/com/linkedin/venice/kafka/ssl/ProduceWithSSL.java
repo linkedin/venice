@@ -11,6 +11,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -141,13 +142,11 @@ public class ProduceWithSSL {
 
       Assert.assertEquals(System.getProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION), filePath);
 
-      createStoreForJob(cluster, recordSchema, props);
+      createStoreForJob(cluster, recordSchema, props).close();
       String controllerUrl = cluster.getAllControllersURLs();
       ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), controllerUrl);
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 0, "Push has not been start, current should be 0");
-      KafkaPushJob job = new KafkaPushJob("Test push job", props);
-      job.run();
-
+      TestPushUtils.runPushJob("Test push job", props);
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
         int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
         return currentVersion == 1;

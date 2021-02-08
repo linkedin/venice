@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -136,13 +137,14 @@ public class  TestPushJobWithNativeReplication {
         .setPartitionCount(partitionCount)
         .setLeaderFollowerModel(true)
         .setNativeReplicationEnabled(true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+      job.run();
 
-    //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-    Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+      //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+    }
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       // Current version should become 1
@@ -200,12 +202,12 @@ public class  TestPushJobWithNativeReplication {
         .setPartitionCount(1)
         .setLeaderFollowerModel(true)
         .setNativeReplicationEnabled(true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
-    new Thread(() -> {
-      KafkaPushJob job = new KafkaPushJob("Test push job", props);
-      job.run();
-    }).start();
+    Thread pushJobThread = new Thread(() -> {
+      TestPushUtils.runPushJob("Test push job", props);
+    });
+    pushJobThread.start();
 
     /**
      * Restart leader SN (server1) to trigger leadership handover during batch consumption.
@@ -244,6 +246,7 @@ public class  TestPushJobWithNativeReplication {
         }
       }
     });
+    pushJobThread.join();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -268,11 +271,10 @@ public class  TestPushJobWithNativeReplication {
             .setHybridRewindSeconds(10)
             .setHybridOffsetLagThreshold(10);
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
     // Write batch data
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
 
     //Verify version level hybrid config is set correctly. The current version should be 1.
     VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
@@ -331,18 +333,15 @@ public class  TestPushJobWithNativeReplication {
         .setIncrementalPushEnabled(true)
         .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
     // Write batch data
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
-
+    TestPushUtils.runPushJob("Test push job", props);
 
     //Run incremental push job
     props.setProperty(INCREMENTAL_PUSH, "true");
     TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDir);
-    KafkaPushJob job1 = new KafkaPushJob("Test incremental push job", props);
-    job1.run();
+    TestPushUtils.runPushJob("Test incremental push job", props);
 
     //Verify following in child controller
     VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);

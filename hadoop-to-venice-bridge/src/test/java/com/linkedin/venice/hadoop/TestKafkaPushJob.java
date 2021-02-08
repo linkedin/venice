@@ -8,6 +8,7 @@ import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -166,8 +167,7 @@ public class TestKafkaPushJob {
     veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
@@ -187,8 +187,7 @@ public class TestKafkaPushJob {
     // Override with not-existing key field
     props.put(KEY_FIELD_PROP, "id1");
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
 
     // No need for asserts, because we are expecting an exception to be thrown!
   }
@@ -212,9 +211,7 @@ public class TestKafkaPushJob {
     // Override with not-existing value field
     props.put(VALUE_FIELD_PROP, "name1");
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
-
+    TestPushUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
@@ -238,9 +235,7 @@ public class TestKafkaPushJob {
     props.put(KEY_FIELD_PROP, "");
     props.put(VALUE_FIELD_PROP, "name1");
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
-
+    TestPushUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
@@ -264,8 +259,7 @@ public class TestKafkaPushJob {
     veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
 
     // No need for asserts, because we are expecting an exception to be thrown!
   }
@@ -306,13 +300,13 @@ public class TestKafkaPushJob {
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    createStoreForJob(veniceCluster, recordSchema, props);
+    createStoreForJob(veniceCluster, recordSchema, props).close();
     String jobName = "Test push job";
 
     // Run job with different key schema (from 'string' to 'int')
     props.setProperty(KEY_FIELD_PROP, "age");
-    KafkaPushJob job = new KafkaPushJob(jobName, props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
+
   }
 
   /**
@@ -328,13 +322,13 @@ public class TestKafkaPushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    createStoreForJob(veniceCluster, recordSchema, props);
+    createStoreForJob(veniceCluster, recordSchema, props).close();
     String jobName = "Test push job";
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(VALUE_FIELD_PROP, "age");
     props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "2");
-    KafkaPushJob job = new KafkaPushJob(jobName, props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
+
   }
 
   /**
@@ -389,9 +383,8 @@ public class TestKafkaPushJob {
     props.put(ENABLE_WRITE_COMPUTE, true);
     props.put(INCREMENTAL_PUSH, true);
 
-    String jobName = "Test push job";
-    KafkaPushJob job = new KafkaPushJob(jobName, props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
+
   }
 
   /**
@@ -420,9 +413,8 @@ public class TestKafkaPushJob {
     props.put(ENABLE_WRITE_COMPUTE, true);
     props.put(INCREMENTAL_PUSH, false);
 
-    String jobName = "Test push job";
-    KafkaPushJob job = new KafkaPushJob(jobName, props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
+
   }
 
   /**
@@ -451,8 +443,6 @@ public class TestKafkaPushJob {
     props.put(ENABLE_WRITE_COMPUTE, true);
     props.put(INCREMENTAL_PUSH, true);
 
-    String jobName = "Test push job";
-    KafkaPushJob job = new KafkaPushJob(jobName, props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
   }
 }

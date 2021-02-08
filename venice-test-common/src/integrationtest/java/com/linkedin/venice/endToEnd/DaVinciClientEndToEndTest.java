@@ -8,6 +8,7 @@ import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -127,8 +128,7 @@ public class DaVinciClientEndToEndTest {
   private static void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long h2vStart = System.currentTimeMillis();
     String jobName = TestUtils.getUniqueString("batch-job-" + expectedVersionNumber);
-    KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties);
-    job.run();
+    TestPushUtils.runPushJob(jobName, h2vProperties);
     String storeName = (String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
     logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));

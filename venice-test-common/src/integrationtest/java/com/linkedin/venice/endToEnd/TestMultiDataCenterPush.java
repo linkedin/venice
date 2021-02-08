@@ -29,6 +29,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -116,100 +117,102 @@ public class TestMultiDataCenterPush {
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
-    createStoreForJob(clusterName, recordSchema, props);
+    createStoreForJob(clusterName, recordSchema, props).close();
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
-
-    // Verify job properties
-    Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
-    for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
-      Assert.assertEquals(version, 1);
-    }
-    Assert.assertEquals(job.getInputDirectory(), inputDirPath);
-    String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
-    Assert.assertEquals(job.getFileSchemaString(), schema);
-    Assert.assertEquals(job.getKeySchemaString(), STRING_SCHEMA);
-    Assert.assertEquals(job.getValueSchemaString(), STRING_SCHEMA);
-    Assert.assertEquals(job.getInputFileDataSize(), 3872);
-
-    // Verify the data in Venice Store
-    for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
-      VeniceMultiClusterWrapper veniceCluster = childClusters.get(dataCenterIndex);
-      String routerUrl = veniceCluster.getClusters().get(clusterName).getRandomRouterURL();
-      try(AvroGenericStoreClient<String, Object> client =
-          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= 100; ++i) {
-          String expected = "test_name_" + i;
-          String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
-          Assert.assertEquals(actual, expected);
-        }
-
-        ControllerClient controllerClient = new ControllerClient(clusterName, routerUrl);
-        JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
-        Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
-            "After job is complete, status should reflect that");
-        // We won't verify progress any more here since we decided to disable this feature
+    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+      job.run();
+      // Verify job properties
+      Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
+      for (int version : parentController.getVeniceAdmin()
+          .getCurrentVersionsForMultiColos(clusterName, storeName)
+          .values()) {
+        Assert.assertEquals(version, 1);
       }
+      Assert.assertEquals(job.getInputDirectory(), inputDirPath);
+      String schema =
+          "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
+      Assert.assertEquals(job.getFileSchemaString(), schema);
+      Assert.assertEquals(job.getKeySchemaString(), STRING_SCHEMA);
+      Assert.assertEquals(job.getValueSchemaString(), STRING_SCHEMA);
+      Assert.assertEquals(job.getInputFileDataSize(), 3872);
+
+      // Verify the data in Venice Store
+      for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+        VeniceMultiClusterWrapper veniceCluster = childClusters.get(dataCenterIndex);
+        String routerUrl = veniceCluster.getClusters().get(clusterName).getRandomRouterURL();
+        try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+          for (int i = 1; i <= 100; ++i) {
+            String expected = "test_name_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
+            Assert.assertEquals(actual, expected);
+          }
+
+          ControllerClient controllerClient = new ControllerClient(clusterName, routerUrl);
+          JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
+          Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
+          Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
+              "After job is complete, status should reflect that");
+          // We won't verify progress any more here since we decided to disable this feature
+        }
+      }
+
+      /**
+       * To speed up integration test, here reuses the same test case to verify topic clean up logic.
+       *
+       * TODO: update service factory to allow specifying {@link com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE}
+       * and {@link com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE} to reduce job run times.
+       */
+      job.run();
+      job.run();
+
+      String v1Topic = storeName + "_v1";
+      String v2Topic = storeName + "_v2";
+      String v3Topic = storeName + "_v3";
+
+      // Verify the topics in parent controller
+      TopicManager parentTopicManager = parentController.getVeniceAdmin().getTopicManager();
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v1Topic), "Topic: " + v1Topic + " should be deleted after push");
+        Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v2Topic), "Topic: " + v2Topic + " should be deleted after push");
+        Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v3Topic), "Topic: " + v3Topic + " should be deleted after push");
+      });
+
+      // Verify the topics in child controller
+      TopicManager childTopicManager = childControllers.get(0).get(0).getVeniceAdmin().getTopicManager();
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Assert.assertFalse(childTopicManager.containsTopicAndAllPartitionsAreOnline(v1Topic), "Topic: " + v1Topic + " should be deleted after 3 pushes");
+      });
+      Assert.assertTrue(childTopicManager.containsTopicAndAllPartitionsAreOnline(v2Topic), "Topic: " + v2Topic + " should be kept after 3 pushes");
+      Assert.assertTrue(childTopicManager.containsTopicAndAllPartitionsAreOnline(v3Topic), "Topic: " + v3Topic + " should be kept after 3 pushes");
+
+      /**
+       * In order to speed up integration test, reuse the multi data center cluster for hybrid store RT topic retention time testing
+       */
+      String hybridStoreName = TestUtils.getUniqueString("hybrid_store");
+      Properties pushJobPropsForHybrid = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, hybridStoreName);
+      // Create a hybrid store.
+      createStoreForJob(clusterName, recordSchema, pushJobPropsForHybrid).close();
+      /**
+       * Set a high rewind time, higher than the default 5 days retention time.
+       */
+      long highRewindTimeInSecond = 30l * Time.SECONDS_PER_DAY; // Rewind time is one month.
+      try (ControllerClient controllerClientToParent = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+        controllerClientToParent.updateStore(hybridStoreName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(highRewindTimeInSecond).setHybridOffsetLagThreshold(10));
+      }
+      /**
+       * A batch push for hybrid store would trigger the child fabrics to create RT topic.
+       */
+      TestPushUtils.runPushJob("Test push for hybrid", pushJobPropsForHybrid);
+
+      /**
+       * RT topic retention time should be longer than the rewind time.
+       */
+      String realTimeTopic = hybridStoreName + "_rt";
+      long topicRetentionTimeInSecond = TimeUnit.MILLISECONDS.toSeconds(childTopicManager.getTopicRetention(realTimeTopic));
+      Assert.assertTrue(topicRetentionTimeInSecond >= highRewindTimeInSecond);
     }
-
-    /**
-     * To speed up integration test, here reuses the same test case to verify topic clean up logic.
-     *
-     * TODO: update service factory to allow specifying {@link com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE}
-     * and {@link com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE} to reduce job run times.
-     */
-    job.run();
-    job.run();
-
-    String v1Topic = storeName + "_v1";
-    String v2Topic = storeName + "_v2";
-    String v3Topic = storeName + "_v3";
-
-    // Verify the topics in parent controller
-    TopicManager parentTopicManager = parentController.getVeniceAdmin().getTopicManager();
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,() -> {
-      Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v1Topic), "Topic: " + v1Topic + " should be deleted after push");
-      Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v2Topic), "Topic: " + v2Topic + " should be deleted after push");
-      Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v3Topic), "Topic: " + v3Topic + " should be deleted after push");
-    });
-
-    // Verify the topics in child controller
-    TopicManager childTopicManager = childControllers.get(0).get(0).getVeniceAdmin().getTopicManager();
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,() -> {
-      Assert.assertFalse(childTopicManager.containsTopicAndAllPartitionsAreOnline(v1Topic), "Topic: " + v1Topic + " should be deleted after 3 pushes");
-    });
-    Assert.assertTrue(childTopicManager.containsTopicAndAllPartitionsAreOnline(v2Topic), "Topic: " + v2Topic + " should be kept after 3 pushes");
-    Assert.assertTrue(childTopicManager.containsTopicAndAllPartitionsAreOnline(v3Topic), "Topic: " + v3Topic + " should be kept after 3 pushes");
-
-    /**
-     * In order to speed up integration test, reuse the multi data center cluster for hybrid store RT topic retention time testing
-     */
-    String hybridStoreName = TestUtils.getUniqueString("hybrid_store");
-    Properties pushJobPropsForHybrid = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, hybridStoreName);
-    // Create a hybrid store.
-    createStoreForJob(clusterName, recordSchema, pushJobPropsForHybrid);
-    /**
-     * Set a high rewind time, higher than the default 5 days retention time.
-     */
-    long highRewindTimeInSecond = 30l * Time.SECONDS_PER_DAY; // Rewind time is one month.
-    ControllerClient controllerClientToParent = new ControllerClient(clusterName, parentController.getControllerUrl());
-    controllerClientToParent.updateStore(hybridStoreName, new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(highRewindTimeInSecond)
-        .setHybridOffsetLagThreshold(10));
-
-    /**
-     * A batch push for hybrid store would trigger the child fabrics to create RT topic.
-     */
-    KafkaPushJob pushJobForHybrid = new KafkaPushJob("Test push job for hybrid", pushJobPropsForHybrid);
-    pushJobForHybrid.run();
-
-    /**
-     * RT topic retention time should be longer than the rewind time.
-     */
-    String realTimeTopic = hybridStoreName + "_rt";
-    long topicRetentionTimeInSecond = TimeUnit.MILLISECONDS.toSeconds(childTopicManager.getTopicRetention(realTimeTopic));
-    Assert.assertTrue(topicRetentionTimeInSecond >= highRewindTimeInSecond);
   }
 
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*", timeOut = TEST_TIMEOUT)
@@ -222,10 +225,9 @@ public class TestMultiDataCenterPush {
     String storeName = TestUtils.getUniqueString("store");
     String childControllerUrl = childControllers.get(0).get(0).getControllerUrl();
     Properties props = defaultH2VProps(childControllerUrl, inputDirPath, storeName);
-    createStoreForJob(clusterName, recordSchema, props);
+    createStoreForJob(clusterName, recordSchema, props).close();
 
-    KafkaPushJob job = new KafkaPushJob("Test push job", props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
   }
 
   @DataProvider (name = "testEmptyPushDataProvider")
@@ -295,22 +297,22 @@ public class TestMultiDataCenterPush {
     String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, CompressionStrategy.NO_OP, false, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, CompressionStrategy.NO_OP, false, true).close();
 
-    KafkaPushJob job = new KafkaPushJob("Test batch push job", props);
-    job.run();
+    TestPushUtils.runPushJob("Test push job", props);
 
     // create an incremental push job
     writeSimpleAvroFileWithUserSchema2(inputDir);
     props.setProperty(INCREMENTAL_PUSH, "true");
-    KafkaPushJob incrementalPushJob = new KafkaPushJob("Test incremental push job", props);
-    incrementalPushJob.run();
 
-    Admin.OfflinePushStatusInfo offlinePushStatusInfo = parentControllers.get(0)
-        .getVeniceAdmin()
-        .getOffLinePushStatus(clusterName, incrementalPushJob.getKafkaTopic(), incrementalPushJob.getIncrementalPushVersion());
-    Assert.assertEquals(offlinePushStatusInfo.getExecutionStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+    try (KafkaPushJob incrementalPushJob = new KafkaPushJob("Test incremental push job", props)) {
+      incrementalPushJob.run();
 
+      Admin.OfflinePushStatusInfo offlinePushStatusInfo = parentControllers.get(0)
+          .getVeniceAdmin()
+          .getOffLinePushStatus(clusterName, incrementalPushJob.getKafkaTopic(), incrementalPushJob.getIncrementalPushVersion());
+      Assert.assertEquals(offlinePushStatusInfo.getExecutionStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+    }
     // validate the client can read data
     for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
       VeniceMultiClusterWrapper veniceCluster = childClusters.get(dataCenterIndex);

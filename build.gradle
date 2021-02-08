@@ -187,7 +187,7 @@ subprojects {
     }
 
     testLogging {
-      events 'failed', 'skipped'
+      events 'started', 'passed', 'failed', 'skipped'
       showStandardStreams = false // to mute the DDS Router's noisy behavior...
       exceptionFormat = 'full'
     }
