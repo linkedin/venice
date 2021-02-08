@@ -73,8 +73,8 @@ public class StoreBackendTest {
     when(backend.getStorageService()).thenReturn(mock(StorageService.class));
     when(backend.getIngestionService()).thenReturn(mock(StoreIngestionService.class));
     when(backend.getVersionByTopicMap()).thenReturn(versionMap);
-    when(backend.getLatestVersion(anyString())).thenCallRealMethod();
-    when(backend.getCurrentVersion(anyString())).thenCallRealMethod();
+    when(backend.getLatestVersion(anyString(), anySet())).thenCallRealMethod();
+    when(backend.getCurrentVersion(anyString(), anySet())).thenCallRealMethod();
 
     store = new ZKStore("test-store", null, 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
@@ -193,21 +193,36 @@ public class StoreBackendTest {
     Version version3 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 15);
     store.addVersion(version3);
     storeBackend.trySubscribeFutureVersion();
+
+    // Simulate new version push while faulty future version is being ingested.
+    Version version4 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 20);
+    store.addVersion(version4);
+    storeBackend.trySubscribeFutureVersion();
+
     versionMap.get(version3.kafkaTopicName()).completeSubPartitionExceptionally(partition, new Exception());
     // Verify that neither of the bad versions became current.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
 
-    // Simulate new version push and subsequent successful ingestion.
-    Version version4 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 20);
-    store.addVersion(version4);
-    storeBackend.trySubscribeFutureVersion();
     versionMap.get(version4.kafkaTopicName()).completeSubPartition(partition);
     // Verify that successfully ingested version became current.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version4.getNumber());
     }
+
+    // Simulate new version push and subsequent ingestion failure.
+    Version version5 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 30);
+    store.addVersion(version5);
+    storeBackend.trySubscribeFutureVersion();
+    versionMap.get(version5.kafkaTopicName()).completeSubPartitionExceptionally(partition, new Exception());
+    // Verify that corresponding Version Backend is deleted exactly once.
+    assertFalse(versionMap.containsKey(version5.kafkaTopicName()));
+    verify(backend.getStorageService(), times(1)).removeStorageEngine(eq(version5.kafkaTopicName()));
+
+    // Verify that faulty version will not be tried again.
+    storeBackend.trySubscribeFutureVersion();
+    assertFalse(versionMap.containsKey(version5.kafkaTopicName()));
   }
 
   @Test

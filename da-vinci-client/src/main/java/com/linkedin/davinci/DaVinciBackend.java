@@ -255,7 +255,7 @@ public class DaVinciBackend implements Closeable {
         currentThread().interrupt();
       }
 
-      Version version = getLatestVersion(storeName).orElse(null);
+      Version version = getLatestVersion(storeName, Collections.emptySet()).orElse(null);
       if (version == null || !version.kafkaTopicName().equals(kafkaTopicName)) {
         // The version is not the latest, so it will be deleted.
         logger.info("Deleting obsolete local version " + kafkaTopicName);
@@ -384,7 +384,7 @@ public class DaVinciBackend implements Closeable {
     return storageService;
   }
 
-  public IngestionReportListener getIngestionReportListener() {
+  IngestionReportListener getIngestionReportListener() {
     return ingestionReportListener;
   }
 
@@ -396,30 +396,44 @@ public class DaVinciBackend implements Closeable {
     return versionByTopicMap;
   }
 
-  public void registerRocksDBMemoryLimit(String storeName, long limit) {
+  void setMemoryLimit(String storeName, long memoryLimit) {
     if (rocksDBMemoryStats != null) {
-      rocksDBMemoryStats.registerStore(storeName, limit);
+      rocksDBMemoryStats.registerStore(storeName, memoryLimit);
     }
   }
 
-  public IngestionRequestClient getIngestionRequestClient() {
+  IngestionRequestClient getIngestionRequestClient() {
     return ingestionRequestClient;
   }
 
-  public PushStatusStoreWriter getPushStatusStoreWriter() {
+  PushStatusStoreWriter getPushStatusStoreWriter() {
     return pushStatusStoreWriter;
   }
 
-  Optional<Version> getLatestVersion(String storeName) {
+  Optional<Version> getLatestVersion(String storeName, Set<Integer> faultyVersions) {
     try {
-      return getLatestVersion(getStoreRepository().getStoreOrThrow(storeName));
+      return getLatestVersion(getStoreRepository().getStoreOrThrow(storeName), faultyVersions);
     } catch (VeniceNoStoreException e) {
       return Optional.empty();
     }
   }
 
-  static Optional<Version> getLatestVersion(Store store) {
-    return store.getVersions().stream().max(Comparator.comparing(Version::getNumber));
+  static Optional<Version> getLatestVersion(Store store, Set<Integer> faultyVersions) {
+    return store.getVersions().stream().filter(v -> !faultyVersions.contains(v.getNumber()))
+               .max(Comparator.comparing(Version::getNumber));
+  }
+
+  Optional<Version> getCurrentVersion(String storeName, Set<Integer> faultyVersions) {
+    try {
+      return getCurrentVersion(getStoreRepository().getStoreOrThrow(storeName), faultyVersions);
+    } catch (VeniceNoStoreException e) {
+      return Optional.empty();
+    }
+  }
+
+  static Optional<Version> getCurrentVersion(Store store, Set<Integer> faultyVersions) {
+    int versionNumber = store.getCurrentVersion();
+    return faultyVersions.contains(versionNumber) ? Optional.empty() : store.getVersion(versionNumber);
   }
 
   protected void reportPushStatus(String kafkaTopic, int subPartition, ExecutionStatus status) {
@@ -433,18 +447,6 @@ public class DaVinciBackend implements Closeable {
       pushStatusStoreWriter.writePushStatus(version.getStoreName(), version.getNumber(), subPartition, status,
           incrementalPushVersion);
     }
-  }
-
-  Optional<Version> getCurrentVersion(String storeName) {
-    try {
-      return getCurrentVersion(getStoreRepository().getStoreOrThrow(storeName));
-    } catch (VeniceNoStoreException e) {
-      return Optional.empty();
-    }
-  }
-
-  static Optional<Version> getCurrentVersion(Store store) {
-    return store.getVersion(store.getCurrentVersion());
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {

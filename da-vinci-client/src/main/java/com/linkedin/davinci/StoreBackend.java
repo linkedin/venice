@@ -1,7 +1,6 @@
 package com.linkedin.davinci;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ComplementSet;
@@ -13,7 +12,9 @@ import com.linkedin.davinci.config.StoreBackendConfig;
 
 import org.apache.log4j.Logger;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -23,8 +24,9 @@ public class StoreBackend {
 
   private final DaVinciBackend backend;
   private final String storeName;
-  private final StoreBackendConfig config;
   private final ClientStats stats;
+  private final StoreBackendConfig config;
+  private final Set<Integer> faultyVersions = new HashSet<>();
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
   private final ConcurrentRef<VersionBackend> currentVersionRef = new ConcurrentRef<>(this::deleteVersion);
   private VersionBackend currentVersion;
@@ -101,12 +103,7 @@ public class StoreBackend {
   }
 
   public void setMemoryLimit(long memoryLimit) {
-    PersistenceType engineType = backend.getConfigLoader().getVeniceServerConfig().getPersistenceType();
-    if (engineType != PersistenceType.ROCKS_DB) {
-      logger.warn("Memory limit is only supported for RocksDB engines, storeName=" + storeName + ", engineType=" + engineType);
-      return;
-    }
-    backend.registerRocksDBMemoryLimit(storeName, memoryLimit);
+    backend.setMemoryLimit(storeName, memoryLimit);
   }
 
   public ClientStats getStats() {
@@ -132,8 +129,8 @@ public class StoreBackend {
       setCurrentVersion(new VersionBackend(
           backend,
           bootstrapVersion.orElseGet(
-              () -> backend.getCurrentVersion(storeName).orElseGet(
-                  () -> backend.getLatestVersion(storeName).orElseThrow(
+              () -> backend.getCurrentVersion(storeName, faultyVersions).orElseGet(
+                  () -> backend.getLatestVersion(storeName, faultyVersions).orElseThrow(
                       () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName))))));
 
     } else if (bootstrapVersion.isPresent()) {
@@ -155,16 +152,16 @@ public class StoreBackend {
       futureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapCurrentVersion(e));
     }
 
-    return currentVersion.subscribe(partitions).exceptionally(e -> {
+    VersionBackend savedVersion = currentVersion;
+    return currentVersion.subscribe(partitions).exceptionally(failure -> {
       synchronized (this) {
+        addFaultyVersion(savedVersion, failure);
+        // Don't propagate failure to subscribe() caller, if future version has become current and is ready to serve.
         if (currentVersion != null && currentVersion.isReadyToServe(subscription)) {
           return null;
         }
       }
-      if (e instanceof CompletionException) {
-        throw (CompletionException) e;
-      }
-      throw new CompletionException(e);
+      throw (failure instanceof CompletionException) ? (CompletionException) failure : new CompletionException(failure);
     });
   }
 
@@ -201,7 +198,7 @@ public class StoreBackend {
       return;
     }
 
-    Version version = backend.getLatestVersion(storeName).orElse(null);
+    Version version = backend.getLatestVersion(storeName, faultyVersions).orElse(null);
     if (version == null || version.getNumber() <= currentVersion.getVersion().getNumber()) {
       return;
     }
@@ -209,6 +206,13 @@ public class StoreBackend {
     logger.info("Subscribing to future version " + version.kafkaTopicName());
     futureVersion = new VersionBackend(backend, version);
     futureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapCurrentVersion(e));
+  }
+
+  private synchronized void addFaultyVersion(VersionBackend version, Throwable failure) {
+    logger.warn("Failed to ingest version " + version +
+                    ", currentVersion=" + currentVersion +
+                    ", faultyVersions=" + faultyVersions, failure);
+    faultyVersions.add(version.getVersion().getNumber());
   }
 
   // May be called indirectly by readers via ReferenceCounted::release(), so cannot be blocking.
@@ -246,8 +250,10 @@ public class StoreBackend {
       trySubscribeFutureVersion();
 
     } else if (failure != null) {
-      logger.warn("Deleting failed future version " + futureVersion + ", currentVersion=" + currentVersion, failure);
+      addFaultyVersion(futureVersion, failure);
+      logger.info("Deleting faulty future version " + futureVersion + ", currentVersion=" + currentVersion);
       deleteFutureVersion();
+      trySubscribeFutureVersion();
     }
   }
 }
