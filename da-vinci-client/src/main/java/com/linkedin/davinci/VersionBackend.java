@@ -218,7 +218,7 @@ public class VersionBackend {
     return getSubPartitions(partitions).stream().allMatch(this::isSubPartitionReadyToServe);
   }
 
-  synchronized CompletableFuture<?> subscribe(ComplementSet<Integer> partitions) {
+  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     List<Integer> subPartitions = getSubPartitions(partitions);
     logger.info("Subscribing to sub-partitions " + subPartitions + " of " + this);
 
@@ -237,13 +237,13 @@ public class VersionBackend {
     }
   }
 
-  public int getSubPartition(byte[] keyBytes) {
-    return partitioner.getPartitionId(keyBytes, subPartitionCount);
-  }
-
   public int getUserPartition(int subPartition) {
     int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
     return PartitionUtils.getUserPartition(subPartition, amplificationFactor);
+  }
+
+  public int getSubPartition(byte[] keyBytes) {
+    return partitioner.getPartitionId(keyBytes, subPartitionCount);
   }
 
   private List<Integer> getSubPartitions(ComplementSet<Integer> partitions) {
@@ -273,11 +273,9 @@ public class VersionBackend {
     }
 
     // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
-    if (suppressLiveUpdates && storageEngine.get() != null) {
-      AbstractStorageEngine engine = storageEngine.get();
-      if (engine.containsPartition(subPartition)) {
-        return subPartitionFutures.computeIfAbsent(subPartition, k -> CompletableFuture.completedFuture(null));
-      }
+    AbstractStorageEngine engine = storageEngine.get();
+    if (suppressLiveUpdates && engine != null && engine.containsPartition(subPartition)) {
+      return subPartitionFutures.computeIfAbsent(subPartition, k -> CompletableFuture.completedFuture(null));
     }
 
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {

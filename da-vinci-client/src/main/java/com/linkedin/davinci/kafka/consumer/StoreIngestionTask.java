@@ -224,7 +224,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Set<String> everSubscribedTopics = new HashSet<>();
   private boolean orderedWritesOnly = true;
 
-  private Optional<RocksDBMemorryEnforcement> rocksDBMemoryEnforcer;
+  private Optional<RocksDBMemoryEnforcement> rocksDBMemoryEnforcer;
 
   private final ExecutorService cacheWarmingThreadPool;
   /**
@@ -411,7 +411,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // TODO: support memory limiter with shared consumer
         throw new VeniceException("RocksDBMemoryEnforcement can not work with shared consumer.");
       }
-      this.rocksDBMemoryEnforcer = Optional.of(new RocksDBMemorryEnforcement(
+      this.rocksDBMemoryEnforcer = Optional.of(new RocksDBMemoryEnforcement(
          this
       ));
     } else {
