@@ -16,7 +16,7 @@ dependencies {
   implementation libraries.helix
   implementation libraries.kafka
   implementation libraries.avroUtilFastserde
-
+  implementation libraries.caffeine
   testImplementation project(':venice-test-common')
   testImplementation libraries.kafkaClientsTest
 }

@@ -11,6 +11,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -79,7 +80,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       VenicePartitioner venicePartitioner,
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
-      int amplificationFactor) {
+      int amplificationFactor,
+      Optional<ObjectCacheBackend> cacheBackend) {
     super(
         consumerFactory,
         kafkaConsumerProperties,
@@ -116,7 +118,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         venicePartitioner,
         storeVersionPartitionCount,
         isIsolatedIngestion,
-        amplificationFactor);
+        amplificationFactor,
+        cacheBackend);
     if (amplificationFactor != 1) {
       throw new VeniceException("amplificationFactor is not supported in Online/Offline state model");
     }

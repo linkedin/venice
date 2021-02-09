@@ -10,6 +10,7 @@ import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -57,7 +58,9 @@ public class StoreIngestionTaskFactory {
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
       int amplificationFactor,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      StorageEngineBackedCompressorFactory compressorFactory,
+      Optional<ObjectCacheBackend> cacheBackend
+  ) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -99,7 +102,8 @@ public class StoreIngestionTaskFactory {
           storeVersionPartitionCount,
           isIsolatedIngestion,
           amplificationFactor,
-          compressorFactory);
+          compressorFactory,
+          cacheBackend);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.kafkaClientFactory,
@@ -136,7 +140,8 @@ public class StoreIngestionTaskFactory {
           venicePartitioner,
           storeVersionPartitionCount,
           isIsolatedIngestion,
-          amplificationFactor);
+          amplificationFactor,
+          cacheBackend);
     }
   }
 

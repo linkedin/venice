@@ -20,6 +20,8 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -86,12 +88,15 @@ public class DaVinciBackend implements Closeable {
   private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
   private final DaVinciIngestionBackend ingestionBackend;
   private final StorageEngineBackedCompressorFactory compressorFactory;
+  private final Optional<ObjectCacheBackend> cacheBackend;
+
 
   public DaVinciBackend(
       ClientConfig clientConfig,
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
-      ICProvider icProvider) {
+      ICProvider icProvider,
+      Optional<ObjectCacheConfig> cacheConfig) {
     logger.info("Creating Da Vinci backend");
     VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
     this.configLoader = configLoader;
@@ -143,9 +148,9 @@ public class DaVinciBackend implements Closeable {
         : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     // Start storage metadata service
     ((AbstractVeniceService)storageMetadataService).start();
-
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
+    cacheBackend = cacheConfig.map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
     ingestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
         configLoader,
@@ -158,7 +163,12 @@ public class DaVinciBackend implements Closeable {
         Optional.of(kafkaMessageEnvelopeSchemaReader),
         Optional.empty(),
         partitionStateSerializer,
-        compressorFactory);
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        cacheBackend);
+
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
 
@@ -168,6 +178,15 @@ public class DaVinciBackend implements Closeable {
      * can open RocksDB stores.
      */
     Map<Version, List<Integer>> bootstrapVersions = new HashMap<>();
+
+    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
+      if (cacheConfig.isPresent()) {
+        // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL settings),
+        // could add further validation.  If the process isn't ingesting data, then it can't maintain the object cache with
+        // a correct view of the data.
+        throw new IllegalArgumentException("Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
+      }
+    }
 
     if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.BUILT_IN)) {
       ingestionBackend = new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
@@ -193,6 +212,7 @@ public class DaVinciBackend implements Closeable {
     }
 
     storeRepository.registerStoreDataChangedListener(storeChangeListener);
+    cacheBackend.ifPresent(objectCacheBackend -> storeRepository.registerStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
   }
 
   protected synchronized void bootstrap(Optional<Set<String>> managedClients, Map<Version, List<Integer>> bootstrapVersions) {
@@ -271,6 +291,7 @@ public class DaVinciBackend implements Closeable {
   @Override
   public synchronized void close() {
     storeRepository.unregisterStoreDataChangedListener(storeChangeListener);
+    cacheBackend.ifPresent(objectCacheBackend -> storeRepository.unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
     for (StoreBackend storeBackend : storeByNameMap.values()) {
       storeBackend.close();
     }
@@ -337,6 +358,10 @@ public class DaVinciBackend implements Closeable {
     return storeRepository;
   }
 
+  public ObjectCacheBackend getObjectCache() {
+    return cacheBackend.get();
+  }
+
   public ReadOnlySchemaRepository getSchemaRepository() {
     return schemaRepository;
   }
@@ -351,6 +376,14 @@ public class DaVinciBackend implements Closeable {
 
   public DaVinciIngestionBackend getIngestionBackend() {
     return ingestionBackend;
+  }
+
+  public boolean compareCacheSettings(Optional<ObjectCacheConfig> config) {
+    if (!cacheBackend.isPresent()) {
+      return !config.isPresent();
+    }
+    return cacheBackend.filter(objectCacheBackend -> objectCacheBackend.getStoreCacheConfig().equals(config.orElse(null)))
+            .isPresent();
   }
 
   Map<String, VersionBackend> getVersionByTopicMap() {

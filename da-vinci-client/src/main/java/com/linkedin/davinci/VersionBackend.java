@@ -109,7 +109,7 @@ public class VersionBackend {
     return version.kafkaTopicName();
   }
 
-  Version getVersion() {
+  public Version getVersion() {
     return version;
   }
 

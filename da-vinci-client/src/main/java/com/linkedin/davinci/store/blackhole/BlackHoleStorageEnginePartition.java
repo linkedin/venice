@@ -23,8 +23,19 @@ public class BlackHoleStorageEnginePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public <K, V> void put(K key, V value) {
+    // sah dude
+  }
+
+  @Override
   public byte[] get(byte[] key) {
     // I think this is what you're looking for...
+    return null;
+  }
+
+  @Override
+  public <K, V> V get(K key) {
+    // this is fun
     return null;
   }
 

@@ -1,5 +1,14 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.DaVinciBackend;
+import com.linkedin.davinci.StoreBackend;
+import com.linkedin.davinci.VersionBackend;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -19,14 +28,6 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.davinci.DaVinciBackend;
-import com.linkedin.davinci.StoreBackend;
-import com.linkedin.davinci.VersionBackend;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
-
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
@@ -35,12 +36,14 @@ import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
@@ -72,6 +75,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private AvroGenericStoreClient<K, V> veniceClient;
   private StoreBackend storeBackend;
   private static ReferenceCounted<DaVinciBackend> daVinciBackend;
+  private ObjectCacheBackend cacheBackend;
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
@@ -138,6 +142,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   @Override
   public void unsubscribeAll() {
     unsubscribe(ComplementSet.universalSet());
+    if (isOnHeapCacheEnabled()) {
+      dropAllCachePartitions();
+    }
   }
 
   @Override
@@ -166,31 +173,24 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     return get(key, null);
   }
 
-  @Override
-  public CompletableFuture<V> get(K key, V reusableValue) {
-    throwIfNotReady();
+
+  // TODO: This is 'almost' the same logic for the batchGet path.  We could probably wrap this function and adapt it to the
+  // batchget api (where sometimes the batchget is just for a single key).  Advantages would be to remove duplicate code.
+  private CompletableFuture<V> readFromLocalStorage(K key, V reusableValue) {
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
-      if (versionBackend == null) {
-        if (isVeniceQueryAllowed()) {
-          return veniceClient.get(key);
-        }
-        storeBackend.getStats().recordBadRequest();
-        throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
-      }
-
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
       int subPartition = versionBackend.getSubPartition(keyBytes);
 
       if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
         V value = versionBackend.read(
-            subPartition,
-            keyBytes,
-            getChunkingAdapter(),
-            reusableObjects.binaryDecoder,
-            reusableObjects.rawValue,
-            reusableValue);
+                subPartition,
+                keyBytes,
+                getChunkingAdapter(),
+                reusableObjects.binaryDecoder,
+                reusableObjects.rawValue,
+                reusableValue);
         return CompletableFuture.completedFuture(value);
       }
 
@@ -207,19 +207,38 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
+  public CompletableFuture<V> get(K key, V reusableValue) {
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
         if (isVeniceQueryAllowed()) {
-          return veniceClient.batchGet(keys);
+          return veniceClient.get(key);
         }
         storeBackend.getStats().recordBadRequest();
         throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
       }
 
-      Map<K, V> result = new HashMap<>();
+      if (isOnHeapCacheEnabled()) {
+        return cacheBackend.get(key, versionBackend.getVersion(), (k, executor) -> this.readFromLocalStorage(k, null));
+      } else {
+        return readFromLocalStorage(key, reusableValue);
+      }
+    }
+  }
+
+  CompletableFuture<Map<K,V>> batchGetFromLocalStorage(Iterable<K> keys) {
+    // expose underlying getAll functionality.
+    Map<K, V> result = new HashMap<>();
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      VersionBackend versionBackend = versionRef.get();
+      if (versionBackend == null) {
+        if (isVeniceQueryAllowed()) {
+          return veniceClient.batchGet(new HashSet<>((Collection<K>) keys));
+        }
+        storeBackend.getStats().recordBadRequest();
+        throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
+      }
       Set<K> missingKeys = new HashSet<>();
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       for (K key : keys) {
@@ -228,12 +247,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
 
         if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
           V value = versionBackend.read(
-              subPartition,
-              keyBytes,
-              getChunkingAdapter(),
-              reusableObjects.binaryDecoder,
-              reusableObjects.rawValue,
-              null); // TODO: Consider supporting object re-use for batch get as well.
+                  subPartition,
+                  keyBytes,
+                  getChunkingAdapter(),
+                  reusableObjects.binaryDecoder,
+                  reusableObjects.rawValue,
+                  null); // TODO: Consider supporting object re-use for batch get as well.
           // The result should only contain entries for the keys that have a value associated with them
           if (value != null) {
             result.put(key, value);
@@ -259,6 +278,25 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
   }
 
+  @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
+    throwIfNotReady();
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      VersionBackend versionBackend = versionRef.get();
+      if (isOnHeapCacheEnabled()) {
+        return cacheBackend.getAll(keys, versionBackend.getVersion(), (ks) -> {
+          try {
+            return batchGetFromLocalStorage(ks).get();
+          } catch (InterruptedException|ExecutionException e) {
+            throw new VeniceClientException("Error performing batch get while loading cache!!", e);
+          }
+        },(k, executor) -> this.readFromLocalStorage(k, null));
+      } else {
+        return this.batchGetFromLocalStorage(keys);
+      }
+    }
+  }
+
   public boolean isReady() {
     return ready.get();
   }
@@ -281,6 +319,19 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       return subscription.contains(userPartition);
     }
     return versionBackend.isPartitionSubscribed(userPartition);
+  }
+
+  protected boolean isOnHeapCacheEnabled() {
+    return daVinciConfig.isHeapObjectCacheEnabled();
+  }
+
+  private void dropAllCachePartitions() {
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      VersionBackend versionBackend = versionRef.get();
+      if (null != versionBackend) {
+        cacheBackend.clearCachedPartitions(versionBackend.getVersion());
+      }
+    }
   }
 
   protected void throwIfNotReady() {
@@ -350,11 +401,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     return new VeniceConfigLoader(config, config);
   }
 
+
   private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
-      Optional<Set<String>> managedClients, ICProvider icProvider) {
+      Optional<Set<String>> managedClients, ICProvider icProvider, Optional<ObjectCacheConfig> cacheBackend) {
     if (daVinciBackend == null) {
-      daVinciBackend = new ReferenceCounted<>(
-          new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider),
+      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheBackend),
           backend -> {
             daVinciBackend = null;
             backend.close();
@@ -364,6 +415,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       // client is released the backend can be safely deleted since meta system stores are meaningless without user stores
       // and they are cheap to re-bootstrap.
       daVinciBackend.retain();
+    }
+    if(!daVinciBackend.get().compareCacheSettings(cacheBackend)) {
+      throw new VeniceClientException("Cannot initialize multiple clients with different cache settings!!");
     }
   }
 
@@ -379,7 +433,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
     logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader, managedClients, icProvider);
+    initBackend(clientConfig, configLoader, managedClients, icProvider, isOnHeapCacheEnabled() ? Optional.of(daVinciConfig.getCacheConfig()):Optional.empty());
+    if (isOnHeapCacheEnabled()) {
+      cacheBackend = daVinciBackend.get().getObjectCache();
+    }
 
     try {
       storeBackend = getBackend().getStoreOrThrow(getStoreName());
@@ -414,6 +471,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       }
       daVinciBackend.release();
       logger.info("Client is closed successfully, storeName=" + getStoreName());
+      if (cacheBackend != null) {
+        cacheBackend.close();
+      }
     } catch (Throwable e) {
       throw new VeniceClientException("Unable to close Da Vinci client, storeName=" + getStoreName(), e);
     }

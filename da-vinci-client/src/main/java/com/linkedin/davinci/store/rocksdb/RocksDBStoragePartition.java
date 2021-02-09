@@ -475,6 +475,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public <K, V> void put(K key, V value) {
+    throw new UnsupportedOperationException("Method not implemented!!");
+  }
+
+  @Override
   public byte[] get(byte[] key) {
     readCloseRWLock.readLock().lock();
     try {
@@ -509,6 +514,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     } finally {
       readCloseRWLock.readLock().unlock();
     }
+  }
+
+  @Override
+  public <K, V> V get(K key) {
+    throw new UnsupportedOperationException("Method not implemented!!");
   }
 
   @Override

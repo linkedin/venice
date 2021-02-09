@@ -222,8 +222,8 @@ public class VeniceServer {
         readOnlyZKSharedSchemaRepository,
         icProvider,
         false,
-        compressorFactory);
-
+        compressorFactory,
+        Optional.empty());
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();

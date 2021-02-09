@@ -15,6 +15,7 @@ import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -190,7 +191,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
       int amplificationFactor,
-      StorageEngineBackedCompressorFactory compressorFactory) {
+      StorageEngineBackedCompressorFactory compressorFactory,
+      Optional<ObjectCacheBackend> cacheBackend) {
     super(
         consumerFactory,
         kafkaConsumerProperties,
@@ -227,7 +229,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         venicePartitioner,
         storeVersionPartitionCount,
         isIsolatedIngestion,
-        amplificationFactor);
+        amplificationFactor,
+        cacheBackend);
     /**
      * We are going to apply fast leader failover for {@link com.linkedin.venice.common.VeniceSystemStoreType#META_STORE}
      * since it is time sensitive, and if the split-brain problem happens in prod, we could design a way to periodically

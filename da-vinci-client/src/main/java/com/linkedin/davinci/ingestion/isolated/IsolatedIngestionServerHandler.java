@@ -279,7 +279,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
         helixReadOnlyZKSharedSchemaRepository,
         null,
         true,
-        compressorFactory);
+        compressorFactory,
+        Optional.empty());
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);
     isolatedIngestionServer.setStoreIngestionService(storeIngestionService);

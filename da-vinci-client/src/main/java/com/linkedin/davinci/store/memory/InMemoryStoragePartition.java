@@ -1,10 +1,9 @@
 package com.linkedin.davinci.store.memory;
 
-import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.utils.ByteArray;
-
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
@@ -46,6 +45,11 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     put(key, value);
   }
 
+  @Override
+  public <K, V> void put(K key, V value) {
+    throw new UnsupportedOperationException("Method not implemented!!");
+  }
+
   public byte[] get(byte[] key)
       throws PersistenceFailureException {
     ByteArray k = new ByteArray(key);
@@ -53,6 +57,11 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
       return partitionDb.get(k).get();
     }
     return null;
+  }
+
+  @Override
+  public <K, V> V get(K key) {
+    throw new UnsupportedOperationException("Method not implemented!!");
   }
 
   @Override

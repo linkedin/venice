@@ -18,6 +18,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -152,6 +153,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private ParticipantStoreConsumptionTask participantStoreConsumptionTask;
 
   private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
+  // TODO: This could be a composite storage engine which keeps secondary storage engines updated in lockstep with a primary
+  // source.  This could be a view of the data, or in our case a cache, or both potentially.
+  private Optional<ObjectCacheBackend> cacheBackend = Optional.empty();
 
   private final SharedKafkaProducerService sharedKafkaProducerService;
 
@@ -174,7 +178,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       StorageEngineBackedCompressorFactory compressorFactory) {
     this(storageEngineRepository, veniceConfigLoader, storageMetadataService, clusterInfoProvider, metadataRepo, schemaRepo,
         metricsRepository, rocksDBMemoryStats, kafkaMessageEnvelopeSchemaReader, clientConfig, partitionStateSerializer,
-        Optional.empty(), null, false, compressorFactory);
+        Optional.empty(), null, false, compressorFactory, Optional.empty());
   }
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
@@ -191,7 +195,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository,
                                     ICProvider icProvider,
                                     boolean isIsolatedIngestion,
-                                    StorageEngineBackedCompressorFactory compressorFactory) {
+                                    StorageEngineBackedCompressorFactory compressorFactory,
+                                    Optional<ObjectCacheBackend> cacheBackend) {
+    this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -498,7 +504,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         version.getPartitionCount(),
         isIsolatedIngestion,
         amplificationFactor,
-        compressorFactory);
+        compressorFactory,
+        cacheBackend);
   }
 
   private static void shutdownExecutorService(ExecutorService executorService, boolean force) {
