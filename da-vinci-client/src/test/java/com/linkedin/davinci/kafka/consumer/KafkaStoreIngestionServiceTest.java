@@ -94,7 +94,11 @@ public class KafkaStoreIngestionServiceTest {
        Optional.empty(),
        Optional.empty(),
        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-       compressorFactory);
+       Optional.empty(),
+       null,
+       false,
+       compressorFactory,
+       Optional.empty());
 
    String mockStoreName = "test";
    String mockSimilarStoreName = "testTest";
@@ -167,7 +171,11 @@ public class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        compressorFactory);
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        Optional.empty());
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";

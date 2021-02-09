@@ -324,6 +324,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.put(key, value);
   }
 
+  public <K, V> void put(int partitionId, K key, V value) {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    partition.put(key, value);
+  }
+
   public byte[] get(int partitionId, byte[] key) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     return partition.get(key);
@@ -337,6 +342,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public byte[] get(int partitionId, ByteBuffer keyBuffer) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     return partition.get(keyBuffer);
+  }
+
+  public <K, V> V get(int partitionId, K key) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    return partition.get(key);
   }
 
   public void delete(int partitionId, byte[] key) throws VeniceException {

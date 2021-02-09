@@ -60,6 +60,7 @@ ext.libraries = [
     brooklinKafkaTransport: 'com.github.datastream:datastream-kafka_2.11:38.0.13',
     brooklinTest: 'com.linkedin.brooklin-li-common:brooklin-test-pub:82.0.6',
     bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
+    caffeine: 'com.github.ben-manes.caffeine:caffeine:2.8.5',
     commonsCodec: 'commons-codec:commons-codec:1.4',
     commonsIo: 'commons-io:commons-io:2.4',
     helix: 'org.apache.helix:helix-core:1.0.1.24',

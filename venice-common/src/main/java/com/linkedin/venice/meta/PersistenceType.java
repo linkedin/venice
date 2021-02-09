@@ -28,7 +28,12 @@ public enum PersistenceType {
     /**
      * Fastest lock-free most secure of all storage engines. Ignores data put in it, always returns null.
      */
-    BLACK_HOLE(3);
+    BLACK_HOLE(3),
+
+    /**
+     * Similar to IN_MEMORY but with different retention rules of data (that is, data is evicted under certain circumstances)
+     */
+    CACHE(4);
 
     public final int value;
 

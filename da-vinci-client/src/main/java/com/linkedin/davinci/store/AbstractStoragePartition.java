@@ -34,6 +34,8 @@ public abstract class AbstractStoragePartition {
 
   public abstract void put(byte[] key, ByteBuffer value);
 
+  public abstract <K, V> void put(K key, V value);
+
   /**
    * Get a value from the partition database
    * @param key key to be retrieved
@@ -45,6 +47,15 @@ public abstract class AbstractStoragePartition {
     // Naive default impl is not optimized... only storage engines that support the optimization implement it.
     return ByteBuffer.wrap(get(key));
   }
+
+  /**
+   * Get a Value from the partition database
+   * @param key key to be retrieved
+   * @param <K> the type for Key
+   * @param <V> the type for the return value
+   * @return null if the key does not exist, V value if it exists
+   */
+  public abstract <K, V> V get(K key);
 
   public abstract byte[] get(ByteBuffer key);
 

@@ -1,5 +1,7 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+
 
 public class DaVinciConfig {
   /**
@@ -33,16 +35,25 @@ public class DaVinciConfig {
    */
   private long memoryLimit = 0;
 
+  /**
+   * Cache settings
+   */
+  private boolean heapObjectCacheEnabled = false;
+  private ObjectCacheConfig cacheConfig;
+
   public DaVinciConfig() {
   }
 
+
   public DaVinciConfig clone() {
     return new DaVinciConfig()
-               .setManaged(isManaged())
-               .setIsolated(isIsolated())
-               .setStorageClass(getStorageClass())
-               .setNonLocalAccessPolicy(getNonLocalAccessPolicy())
-               .setMemoryLimit(getMemoryLimit());
+            .setManaged(isManaged())
+            .setIsolated(isIsolated())
+            .setStorageClass(getStorageClass())
+            .setNonLocalAccessPolicy(getNonLocalAccessPolicy())
+            .setMemoryLimit(getMemoryLimit())
+            .enableHeapObjectCacheEnabled(isHeapObjectCacheEnabled())
+            .setCacheConfig(getCacheConfig());
   }
 
   @Override
@@ -53,6 +64,7 @@ public class DaVinciConfig {
                ", storageClass=" + storageClass +
                ", nonLocalAccessPolicy=" + nonLocalAccessPolicy +
                ", memoryLimit=" + memoryLimit +
+               ", objectHeapCacheEnabled=" + heapObjectCacheEnabled +
                "}";
   }
 
@@ -96,8 +108,26 @@ public class DaVinciConfig {
     return memoryLimit;
   }
 
+  public boolean isHeapObjectCacheEnabled() {
+    return heapObjectCacheEnabled;
+  }
+
+  public ObjectCacheConfig getCacheConfig() {
+    return cacheConfig;
+  }
+
   public DaVinciConfig setMemoryLimit(long memoryLimit) {
     this.memoryLimit = memoryLimit;
+    return this;
+  }
+
+  public DaVinciConfig enableHeapObjectCacheEnabled(boolean heapObjectCacheEnabled) {
+    this.heapObjectCacheEnabled = heapObjectCacheEnabled;
+    return this;
+  }
+
+  public DaVinciConfig setCacheConfig(ObjectCacheConfig cacheConfig) {
+    this.cacheConfig = cacheConfig;
     return this;
   }
 }

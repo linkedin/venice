@@ -92,7 +92,7 @@ public class PushTimeoutTest {
         mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
         mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
-        mock(StorageEngineBackedCompressorFactory.class));
+        mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     leaderFollowerStoreIngestionTask.run();
 
@@ -176,7 +176,7 @@ public class PushTimeoutTest {
         mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
         mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
-        mock(StorageEngineBackedCompressorFactory.class));
+        mock(StorageEngineBackedCompressorFactory.class), Optional.empty());
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     /**
      * Since the mock consumer would show 0 subscription, the ingestion task will close after a few iteration.

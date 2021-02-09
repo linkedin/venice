@@ -14,6 +14,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -306,6 +307,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Used to construct VenicePartitioner
   protected final VenicePartitioner venicePartitioner;
 
+
   //Total number of partition for this store version
   protected final int storeVersionPartitionCount;
 
@@ -318,6 +320,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean isIsolatedIngestion;
 
   protected final ReportStatusAdapter reportStatusAdapter;
+  private final Optional<ObjectCacheBackend> cacheBackend;
 
   protected final AmplificationAdapter amplificationAdapter;
 
@@ -357,7 +360,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       VenicePartitioner venicePartitioner,
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
-      int amplificationFactor) {
+      int amplificationFactor,
+      Optional<ObjectCacheBackend> cacheBackend) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -460,12 +464,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       pushTimeoutInMs = HOURS.toMillis(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
     }
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
-
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.amplificationFactor = amplificationFactor;
     this.subPartitionCount = storeVersionPartitionCount * amplificationFactor;
     this.reportStatusAdapter = new ReportStatusAdapter(new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion));
     this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
+    this.cacheBackend = cacheBackend;
   }
 
   public boolean isFutureVersion() {
@@ -612,6 +616,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     logger.info("Started batch write to store: " + kafkaVersionTopic + ", partition: " + partitionId +
         " with checkpointed database info: " + checkpointedDatabaseInfo + " and sorted: " + sorted +
         " and disabledAutoCompaction: " + storagePartitionConfig.isDisableAutoCompaction());
+    if (cacheBackend.isPresent()) {
+      if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
+        cacheBackend.get().getStorageEngine(kafkaVersionTopic).beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
+      }
+    }
   }
 
   private StoragePartitionConfig getStoragePartitionConfig(int partitionId, boolean sorted,
@@ -2032,6 +2041,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
     storageEngine.endBatchWrite(storagePartitionConfig);
 
+    if (cacheBackend.isPresent()) {
+      if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
+        cacheBackend.get().getStorageEngine(kafkaVersionTopic).endBatchWrite(storagePartitionConfig);
+      }
+    }
+
     /**
      * The checksum verification is not used after EOP, so completely reset it.
      */
@@ -2393,6 +2408,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void writeToStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes, ByteBuffer putValue) {
     long putStartTimeNs = System.nanoTime();
     storageEngine.put(partition, keyBytes, putValue);
+    if (cacheBackend.isPresent()) {
+      if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
+        cacheBackend.get().getStorageEngine(kafkaVersionTopic).put(partition, keyBytes, putValue);
+      }
+    }
     if (logger.isTraceEnabled()) {
       logger.trace(consumerTaskId + " : Completed PUT to Store: " + kafkaVersionTopic + " in " +
           (System.nanoTime() - putStartTimeNs) + " ns at " + System.currentTimeMillis());
@@ -2535,6 +2555,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         long deleteStartTimeNs = System.nanoTime();
         storageEngine.delete(producedPartition, keyBytes);
+        if (cacheBackend.isPresent()) {
+          if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
+            cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(producedPartition, keyBytes);
+          }
+        }
 
         if (logger.isTraceEnabled()) {
           logger.trace(
