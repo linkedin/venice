@@ -111,10 +111,12 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
     return this.storeVersion.createdTime;
   }
 
+  @JsonIgnore
   public Duration getAge() {
     return Duration.ofMillis(System.currentTimeMillis() - getCreatedTime());
   }
 
+  @JsonIgnore
   public void setAge(Duration age) {
     this.storeVersion.createdTime = System.currentTimeMillis() - age.toMillis();
   }
