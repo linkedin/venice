@@ -1080,6 +1080,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throwStoreAlreadyExists(clusterName, storeName);
         }
 
+        if (!VeniceSystemStoreUtils.isSystemStore(storeName) &&
+            multiClusterConfigs.getConfigForCluster(clusterName).isMetadataSystemStoreAutoMaterializeEnabled()) {
+            // Ensure any previously materialized metadata system store VT/RT is completed cleaned up before proceeding.
+            Store zkSharedMetadataStore = repository.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix());
+            if (zkSharedMetadataStore != null) {
+                checkPreviouslyMaterializedMetadataTopics(storeName, zkSharedMetadataStore.getCurrentVersion());
+            }
+        }
+
         // Check whether the schema is valid or not
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema);
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
@@ -4436,15 +4445,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             zkSharedStoreMetadata);
         String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
         String metadataVTName = Version.composeKafkaTopic(metadataStoreName, metadataStoreVersionNumber);
-        String metadataRTName = Version.composeRealTimeTopic(metadataStoreName);
-        if (getTopicManager().containsTopic(metadataVTName) && isTopicTruncated(metadataVTName)) {
-            throw new VeniceRetriableException("Waiting for previously materialized VT to be deleted for store: "
-                + metadataStoreName + ", version: " + metadataStoreVersionNumber);
-        }
-        if (getTopicManager().containsTopic(metadataRTName) && isTopicTruncated(metadataRTName)) {
-            throw new VeniceRetriableException("Waiting for previously materialized RT to be deleted for store: "
-                + metadataStoreName);
-        }
+        checkPreviouslyMaterializedMetadataTopics(storeName, metadataStoreVersionNumber);
         /**
          * We need to check whether the resource is alive in current cluster.
          */
@@ -4473,6 +4474,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store.setStoreMetadataSystemStoreEnabled(true);
             return store;
         });
+    }
+
+    private void checkPreviouslyMaterializedMetadataTopics(String storeName, int metadataStoreVersionNumber) {
+        String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
+        String metadataVTName = Version.composeKafkaTopic(metadataStoreName, metadataStoreVersionNumber);
+        String metadataRTName = Version.composeRealTimeTopic(metadataStoreName);
+        if (getTopicManager().containsTopic(metadataVTName) && isTopicTruncated(metadataVTName)) {
+            throw new VeniceRetriableException("Waiting for previously materialized VT to be deleted for store: "
+                + metadataStoreName + ", version: " + metadataStoreVersionNumber);
+        }
+        if (getTopicManager().containsTopic(metadataRTName) && isTopicTruncated(metadataRTName)) {
+            throw new VeniceRetriableException("Waiting for previously materialized RT to be deleted for store: "
+                + metadataStoreName);
+        }
     }
 
     @Override

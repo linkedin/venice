@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
@@ -237,7 +238,11 @@ public class TopicCleanupService extends AbstractVeniceService {
         .max(Integer::compare)
         .get();
 
-    final long maxVersionNumberToDelete = maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
+    String storeName = Version.parseStoreFromKafkaTopicName(veniceTopics.iterator().next());
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    // Do not preserve any VT for zk shared system stores. TODO revisit the behavior after multi version support.
+    final long maxVersionNumberToDelete = systemStoreType != null && systemStoreType.isStoreZkShared() ?
+        maxVersion : maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
 
     return veniceTopics.stream()
         /** Consider only truncated topics */
