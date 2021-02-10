@@ -509,8 +509,8 @@ public class AdminExecutionTask implements Callable<Void> {
             pushType, remoteKafkaBootstrapServers);
       }
     } else {
-      if (VeniceSystemStoreUtils.isZkSharedStore(clusterName, storeName)) {
-        // New version for the Zk shared metadata store.
+      if (VeniceSystemStoreUtils.isStoreHostingSharedMetadata(clusterName, storeName)) {
+        // New version for the store hosting shared metadata for all metadata system stores.
         admin.newZkSharedStoreVersion(clusterName, storeName);
       } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
         // Materialize a metadata store for a specific Venice store.

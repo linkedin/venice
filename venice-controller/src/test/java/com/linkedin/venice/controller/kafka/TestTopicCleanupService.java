@@ -1,8 +1,10 @@
 package com.linkedin.venice.controller.kafka;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -99,6 +101,27 @@ public class TestTopicCleanupService {
     List<String> actualResult3 = topicCleanupService.extractVeniceTopicsToCleanup(topicRetentions3);
     actualResult3.sort(String::compareTo);
     Assert.assertEquals(actualResult3, expectedResult3);
+
+    // Test minNumberOfUnusedKafkaTopicsToPreserve = 1 for regular store topics and zk shared system store topics
+    Map<String, Long> topicRetentions4 = new HashMap<>();
+    topicRetentions4.put("store1_v1", LOW_RETENTION_POLICY);
+    topicRetentions4.put("store1_v2", LOW_RETENTION_POLICY);
+    topicRetentions4.put("store1_v3", LOW_RETENTION_POLICY);
+    topicRetentions4.put("store1_v4", LOW_RETENTION_POLICY);
+    List<String> expectedResult4 = Arrays.asList("store1_v1", "store1_v2", "store1_v3");
+    List<String> actualResult4 = topicCleanupService.extractVeniceTopicsToCleanup(topicRetentions4);
+    actualResult4.sort(String::compareTo);
+    Assert.assertEquals(actualResult4, expectedResult4);
+
+    Map<String, Long> topicRetentions5 = new HashMap<>();
+    String systemStoreName = VeniceSystemStoreType.METADATA_STORE.getSystemStoreName("store1");
+    topicRetentions5.put(Version.composeKafkaTopic(systemStoreName, 1), LOW_RETENTION_POLICY);
+    topicRetentions5.put(Version.composeKafkaTopic(systemStoreName, 2), LOW_RETENTION_POLICY);
+    List<String> expectedResult5 = Arrays.asList(Version.composeKafkaTopic(systemStoreName, 1),
+        Version.composeKafkaTopic(systemStoreName, 2));
+    List<String> actualResult5 = topicCleanupService.extractVeniceTopicsToCleanup(topicRetentions5);
+    actualResult5.sort(String::compareTo);
+    Assert.assertEquals(actualResult5, expectedResult5);
   }
 
   @Test
