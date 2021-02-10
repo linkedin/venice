@@ -3,12 +3,12 @@ package com.linkedin.venice.router;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
-import io.netty.util.AsciiString;
 import io.netty.util.ReferenceCountUtil;
 import java.net.InetSocketAddress;
 import org.apache.log4j.Logger;
@@ -21,7 +21,6 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 @ChannelHandler.Sharable
 public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger logger = Logger.getLogger(HealthCheckHandler.class);
-  private static final AsciiString ALLOWED_METHODS = AsciiString.of("GET,POST,OPTIONS");
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
@@ -39,7 +38,7 @@ public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest>
       isHealthCheck = true;
     } else if (msg.method().equals(HttpMethod.GET)) {
       VenicePathParserHelper helper = new VenicePathParserHelper(msg.uri());
-      if (TYPE_HEALTH_CHECK.equals(helper.getResourceType())) {
+      if (TYPE_HEALTH_CHECK.equals(helper.getResourceType()) && Utils.isNullOrEmpty(helper.getResourceName())) {
         isHealthCheck = true;
       }
     }

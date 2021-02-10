@@ -16,7 +16,6 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -150,6 +149,27 @@ public class TestRouter {
 
       MetricsRepository metrics = router.getMetricsRepository();
       Assert.assertEquals(metrics.getMetric(".security--ssl_error.Count").value(), 1.);
+    }
+  }
+
+  @Test
+  public void testRouterRespondsToAdminOperations() throws ExecutionException, InterruptedException, IOException {
+    try (
+        ZkServerWrapper zk = ServiceFactory.getZkServer();
+        MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
+
+      SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
+      SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
+      try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setSSLStrategy(sslSessionStrategy).build()) {
+
+        httpClient.start();
+        HttpGet request = new HttpGet("https://" + router.getHost() + ":" + router.getSslPort() + "/admin/readQuotaThrottle");
+        HttpResponse response = httpClient.execute(request, null).get();
+        Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
+      }
+
+      MetricsRepository metrics = router.getMetricsRepository();
+      Assert.assertEquals(metrics.getMetric(".security--ssl_error.Count").value(), 0.);
     }
   }
 }
