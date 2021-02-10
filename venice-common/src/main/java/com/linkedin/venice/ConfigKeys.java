@@ -1438,4 +1438,10 @@ public class ConfigKeys {
    */
   public static final String CLIENT_META_SYSTEM_STORE_VERSION_MAP = "client.meta.system.store.version.map";
 
+
+  /**
+   * Lease timeout for leaving quota disabled for a router. If quota was disabled through an API, it will be reset after
+   * lease expiry.
+   */
+  public static final String ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS = "router.read.quota.throttling.lease.timeout.ms";
 }

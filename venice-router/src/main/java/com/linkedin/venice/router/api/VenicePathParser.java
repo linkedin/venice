@@ -55,6 +55,14 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   public static final String TYPE_STORAGE = "storage";
   public static final String TYPE_COMPUTE = "compute";
 
+  // Admin tasks
+  public static final String TASK_READ_QUOTA_THROTTLE = "readQuotaThrottle";
+
+  // Admin actions
+  public static final String ACTION_ENABLE = "enable";
+  public static final String ACTION_DISABLE = "disable";
+
+
   // Right now, we hardcoded url path for getting master controller to be same as the one
   // being used in Venice Controller, so that ControllerClient can use the same API to get
   // master controller without knowing whether the host is Router or Controller.
@@ -64,6 +72,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_CLUSTER_DISCOVERY = "discover_cluster";
   public static final String TYPE_HEALTH_CHECK = "admin";
+  public static final String TYPE_ADMIN = "admin"; // Creating a new variable name for code sanity
   public static final String TYPE_RESOURCE_STATE = "resource_state";
 
   private final VeniceVersionFinder versionFinder;

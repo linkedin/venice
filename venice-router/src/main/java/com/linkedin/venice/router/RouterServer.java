@@ -47,6 +47,7 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
+import com.linkedin.venice.router.stats.AdminOperationsStats;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
@@ -516,6 +517,9 @@ public class RouterServer extends AbstractVeniceService {
 
     VerifySslHandler unsecureVerifySslHandler = new VerifySslHandler(securityStats, config.isEnforcingSecureOnly());
     HealthCheckStats healthCheckStats = new HealthCheckStats(this.metricsRepository, "healthcheck_stats");
+    AdminOperationsStats adminOperationsStats = new AdminOperationsStats(this.metricsRepository, "admin_stats", config);
+    AdminOperationsHandler adminOperationsHandler = new AdminOperationsHandler(accessController.orElse(null), this, adminOperationsStats);
+
     if (!config.isEnforcingSecureOnly()) {
       router = Optional.of(Router.builder(scatterGather)
           .name("VeniceRouterHttp")
@@ -531,6 +535,7 @@ public class RouterServer extends AbstractVeniceService {
             pipeline.addLast("HealthCheckHandler", new HealthCheckHandler(healthCheckStats));
             pipeline.addLast("VerifySslHandler", unsecureVerifySslHandler);
             pipeline.addLast("MetadataHandler", metaDataHandler);
+            pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
             addStreamingHandler(pipeline);
           })
           .idleTimeout(3, TimeUnit.HOURS)
@@ -569,6 +574,7 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
+      pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);
     };
@@ -576,6 +582,7 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
+      pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
       pipeline.addLast("StoreAclHandler", aclHandler);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);

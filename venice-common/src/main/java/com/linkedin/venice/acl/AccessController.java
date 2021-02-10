@@ -31,6 +31,15 @@ public interface AccessController {
   boolean hasAccessToTopic(X509Certificate clientCert, String resource, String method) throws AclException;
 
   /**
+   * Check if client has permission to execute a particular admin operation.
+   *
+   * @param clientCert the X509Certificate submitted by client
+   * @param operation the operation being performed
+   * @return {@code true} if client has permission to access, otherwise {@code false}.
+   */
+  boolean hasAccessToAdminOperation(X509Certificate clientCert, String operation) throws AclException;
+
+  /**
    * Check whether the client is the whitelist admin users.
    *
    * @param clientCert the X509Certificate submitted by client

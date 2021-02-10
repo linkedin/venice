@@ -111,6 +111,7 @@ public class VeniceRouterConfig {
   private int maxConcurrentClientSslHandshakes;
   private int clientSslHandshakeAttempts;
   private long clientSslHandshakeBackoffMs;
+  private long readQuotaThrottlingLeaseTimeoutMs;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -234,6 +235,8 @@ public class VeniceRouterConfig {
     maxConcurrentClientSslHandshakes = props.getInt(ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES, 100);
     clientSslHandshakeAttempts = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS, 5);
     clientSslHandshakeBackoffMs = props.getLong(ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
+
+    readQuotaThrottlingLeaseTimeoutMs = props.getLong(ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS, 6 * Time.MS_PER_HOUR);
 
     String helixVirtualGroupFieldNameInDomain = props.getString(ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN,
         GROUP_FIELD_NAME_IN_DOMAIN);
@@ -677,5 +680,9 @@ public class VeniceRouterConfig {
 
   public long getClientSslHandshakeBackoffMs() {
     return clientSslHandshakeBackoffMs;
+  }
+
+  public long getReadQuotaThrottlingLeaseTimeoutMs() {
+    return readQuotaThrottlingLeaseTimeoutMs;
   }
 }
