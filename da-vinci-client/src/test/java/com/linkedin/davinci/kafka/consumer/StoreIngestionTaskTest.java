@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
+import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.davinci.helix.LeaderFollowerStateModelNotifier;
 import com.linkedin.davinci.helix.OnlineOfflineStateModelNotifier;
@@ -1015,6 +1016,50 @@ public class StoreIngestionTaskTest {
       throw new VeniceException(msg.toString(), e);
     }
   }
+
+  /**
+   * In this test, {@link #PARTITION_FOO} will finish a regular push, and then get some more messages afterwards,
+   * including a corrupt message followed by a missing message and a good one.
+   * We expect the Notifier to not report any errors after the EOP.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDIVErrorMessagesNotFailFastAfterEOP(boolean isLeaderFollowerModelEnabled) throws Exception {
+    VeniceWriter veniceWriterCorrupted = getCorruptedVeniceWriter(putValueToCorrupt);
+
+    // do a batch push
+    veniceWriterCorrupted.broadcastStartOfPush(new HashMap<>());
+    long lastOffsetBeforeEOP = getOffset(veniceWriterCorrupted.put(putKeyBar, putValue, SCHEMA_ID));
+    veniceWriterCorrupted.broadcastEndOfPush(new HashMap<>());
+
+    // simulate the version swap.
+    isCurrentVersion = () -> true;
+
+    // After the end of push, the venice writer continue puts a corrupt data and end the segment.
+    getOffset(veniceWriterCorrupted.put(putKeyFoo, putValueToCorrupt, SCHEMA_ID));
+    veniceWriterCorrupted.endSegment(PARTITION_FOO, true);
+
+    // a missing msg
+    long fooOffsetToSkip = getOffset(veniceWriterCorrupted.put(putKeyFoo, putValue, SCHEMA_ID));
+    // a normal msg
+    long lastOffset = getOffset(veniceWriterCorrupted.put(putKeyFoo2, putValue, SCHEMA_ID));
+    veniceWriterCorrupted.close();
+
+    PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(),
+        getSet(new Pair(new TopicPartition(topic, PARTITION_FOO), fooOffsetToSkip)));
+
+    logger.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
+
+    runTest(pollStrategy, getSet(PARTITION_FOO), () -> {}, () -> {
+      for (Object[] args : mockNotifierError) {
+        Assert.assertFalse(
+            args[0].equals(topic)
+                && args[1].equals(PARTITION_FOO)
+                && ((String)args[2]).length() > 0
+                && args[3] instanceof FatalDataValidationException);
+      }
+    }, isLeaderFollowerModelEnabled);
+  }
+
 
   /**
    * In this test, the {@link #PARTITION_FOO} will receive a well-formed message, while the {@link #PARTITION_BAR} will
