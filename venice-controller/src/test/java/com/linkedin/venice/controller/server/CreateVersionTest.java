@@ -3,7 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
 import java.security.cert.X509Certificate;
@@ -156,12 +157,12 @@ public class CreateVersionTest {
     Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     store.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
-    store.setHybridStoreConfig(new HybridStoreConfig(0, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(0, 1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
 
     doReturn(store).when(admin).getStore(clusterName, storeName);
 
     // Setting up a version that doesn't have the incremental policy set as INCREMENTAL_PUSH_SAME_AS_REAL_TIME
-    Version version = new Version(storeName, 1, pushJobId1);
+    Version version = new VersionImpl(storeName, 1, pushJobId1);
     version.setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
     doReturn(version).when(admin).incrementVersionIdempotent(clusterName, storeName, pushJobId1, 0, 0,
         Version.PushType.INCREMENTAL, false, false, null, Optional.empty());

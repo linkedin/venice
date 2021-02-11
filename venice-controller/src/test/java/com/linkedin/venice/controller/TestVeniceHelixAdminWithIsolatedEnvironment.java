@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -92,7 +93,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Thread.sleep(1000l);
     //New master controller create resource and trigger state transition on participant.
     newMaster.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-    Version newVersion = new Version(storeName, 2);
+    Version newVersion = new VersionImpl(storeName, 2);
     Assert.assertEquals(newMaster.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
         ExecutionStatus.STARTED, "Can not trigger state transition from new master");
     //Start original controller again, now it should become leader again based on Helix's logic.

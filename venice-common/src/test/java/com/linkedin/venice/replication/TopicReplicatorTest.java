@@ -4,9 +4,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.MockTime;
-import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -32,7 +32,7 @@ public class TopicReplicatorTest {
     startingOffsets.forEach((integer, aLong) -> startingOffsetsList.add(integer, aLong));
     final Store store = TestUtils.createTestStore(TestUtils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME = 5;
-    Optional<HybridStoreConfig> hybridStoreConfig  = Optional.of((new HybridStoreConfig(REWIND_TIME, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)));
+    Optional<HybridStoreConfig> hybridStoreConfig  = Optional.of((new HybridStoreConfigImpl(REWIND_TIME, 1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)));
     final String sourceTopicName = "source topic name";
     final String destinationTopicName = "destination topic name";
 

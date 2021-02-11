@@ -13,13 +13,16 @@ import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
@@ -168,7 +171,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   public Store getStore(String storeName) {
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
       Store store = metaStoreMap.get(storeName);
-      return store == null ? null : store.cloneStore();
+      return store == null ? null : new ReadOnlyStore(store);
     } else {
       return super.getStore(storeName);
     }
@@ -179,7 +182,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
       Store store = metaStoreMap.get(storeName);
       if (store != null) {
-        return store.cloneStore();
+        return new ReadOnlyStore(store);
       }
       throw new VeniceNoStoreException(storeName);
     } else {
@@ -233,11 +236,11 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     Store mockedStore = new ZKStore(metaStoreName, "venice-system", 0, PersistenceType.ROCKS_DB, RoutingStrategy.HASH,
         ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     mockedStore.setPartitionCount(VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
-    mockedStore.setHybridStoreConfig(new HybridStoreConfig(VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
+    mockedStore.setHybridStoreConfig(new HybridStoreConfigImpl(VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
         OFFSET_LAG_THRESHOLD_FOR_META_STORE, TimeUnit.MINUTES.toSeconds(1)));
     mockedStore.setLeaderFollowerModelEnabled(true);
     mockedStore.setWriteComputationEnabled(true);
-    Version currentVersion = new Version(metaStoreName, metaStoreVersions.get(regularStoreName), MOCKED_PUSH_ID,
+    Version currentVersion = new VersionImpl(metaStoreName, metaStoreVersions.get(regularStoreName), MOCKED_PUSH_ID,
         VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
     mockedStore.addVersion(currentVersion);
     mockedStore.setCurrentVersion(currentVersion.getNumber());

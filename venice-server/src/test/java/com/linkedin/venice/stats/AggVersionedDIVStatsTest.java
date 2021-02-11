@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
@@ -100,7 +101,7 @@ public class AggVersionedDIVStatsTest {
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 0d);
 
     //v1 starts pushing
-    Version version = new Version(storeName, 1);
+    Version version = new VersionImpl(storeName, 1);
     mockStore.addVersion(version);
     stats.handleStoreChanged(mockStore);
 
@@ -134,7 +135,7 @@ public class AggVersionedDIVStatsTest {
     //v1 becomes the current version and v2 starts pushing
     version.setStatus(VersionStatus.ONLINE);
     mockStore.setCurrentVersionWithoutCheck(1);
-    Version version2 = new Version(storeName, 2);
+    Version version2 = new VersionImpl(storeName, 2);
     mockStore.addVersion(version2);
 
 
@@ -223,7 +224,7 @@ public class AggVersionedDIVStatsTest {
 
 
     //v3 finishes pushing and the status becomes to be online
-    Version version3 = new Version(storeName, 3);
+    Version version3 = new VersionImpl(storeName, 3);
     version3.setStatus(VersionStatus.ONLINE);
     mockStore.addVersion(version3);
     mockStore.deleteVersion(1);

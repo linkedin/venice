@@ -25,6 +25,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -32,6 +33,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.DeepCopyStorageMetadataService;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -316,7 +318,7 @@ public class StoreIngestionTaskTest {
 
   private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
     runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
-        Optional.of(new HybridStoreConfig(100, 100, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)),
+        Optional.of(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)),
         Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
@@ -397,7 +399,7 @@ public class StoreIngestionTaskTest {
     doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(veniceServerConfig).getKafkaBootstrapServers();
     doReturn(false).when(veniceServerConfig).isHybridQuotaEnabled();
     Store mockStore = mock(Store.class);
-    Version version = new Version(storeNameWithoutVersionInfo, 1, "1", partitions.size());
+    Version version = new VersionImpl(storeNameWithoutVersionInfo, 1, "1", partitions.size());
     doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
@@ -725,7 +727,7 @@ public class StoreIngestionTaskTest {
         () -> {
           Store mockStore = mock(Store.class);
           doReturn(true).when(mockStore).isHybrid();
-          doReturn(Optional.of(new Version("storeName", 1))).when(mockStore).getVersion(1);
+          doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
           doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
           doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
         },
@@ -1448,7 +1450,7 @@ public class StoreIngestionTaskTest {
     when(mockTopicManager.getLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
 
     mockStorageMetadataService = new InMemoryStorageMetadataService();
-    hybridStoreConfig = Optional.of(new HybridStoreConfig(10, 20, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    hybridStoreConfig = Optional.of(new HybridStoreConfigImpl(10, 20, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     runTest(ALL_PARTITIONS, () -> {
           veniceWriter.broadcastStartOfPush(new HashMap<>());
           for (int i = 0; i < MESSAGES_BEFORE_EOP; i++) {

@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Map;
 import java.util.Optional;
@@ -162,7 +163,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
 
     // Test to update a system store
     Store systemStore = writeRepoAdapter.getStore(systemStoreType.getSystemStoreName(anotherRegularStoreName));
-    systemStore.addVersion(new Version(systemStore.getName(), 1, "test_push_id_1"));
+    systemStore.addVersion(new VersionImpl(systemStore.getName(), 1, "test_push_id_1"));
     writeRepoAdapter.updateStore(systemStore);
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       Map<String, SystemStoreAttributes> systemStores = readOnlyRepo.getStore(anotherRegularStoreName).getSystemStores();

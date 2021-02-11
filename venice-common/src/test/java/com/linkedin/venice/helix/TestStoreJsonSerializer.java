@@ -2,9 +2,12 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
@@ -24,7 +27,7 @@ public class TestStoreJsonSerializer {
         throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
         store.increaseVersion();
-        HybridStoreConfig hybridStoreConfig = new HybridStoreConfig(1000, 1000, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
+        HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1000, 1000, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
         store.setHybridStoreConfig(hybridStoreConfig);
         store.setReadQuotaInCU(100);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
@@ -36,10 +39,10 @@ public class TestStoreJsonSerializer {
         Assert.assertEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
 
         // Verify consistency between the two equals()...
-        newStore.setHybridStoreConfig(new HybridStoreConfig(1000, 1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+        newStore.setHybridStoreConfig(new HybridStoreConfigImpl(1000, 1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
         Assert.assertNotEquals(store, newStore);
         Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
-        newStore.setHybridStoreConfig(new HybridStoreConfig(1, 1000, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+        newStore.setHybridStoreConfig(new HybridStoreConfigImpl(1, 1000, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
         Assert.assertNotEquals(store, newStore);
         Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
     }
@@ -98,21 +101,20 @@ public class TestStoreJsonSerializer {
     @Test
     public void testSerializationWithSystemStores() throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
-        store.addVersion(new Version(store.getName(), 1, "test_push_id"));
+        store.addVersion(new VersionImpl(store.getName(), 1, "test_push_id"));
 
-        SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributes();
+        SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
         systemStoreAttributes.setCurrentVersion(1);
         systemStoreAttributes.setLargestUsedVersionNumber(1);
         VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.META_STORE;
         String systemStoreName = systemStoreType.getSystemStoreName(store.getName());
-        Version systemStoreVersion = new Version(systemStoreName, 1, "test_push_id");
+        Version systemStoreVersion = new VersionImpl(systemStoreName, 1, "test_push_id");
         systemStoreAttributes.setVersions(Arrays.asList(systemStoreVersion));
         Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
         systemStores.put(systemStoreType.getPrefix(), systemStoreAttributes);
         store.setSystemStores(systemStores);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] serializedBytes = serializer.serialize(store, "test");
-
         Store deserializedStore = serializer.deserialize(serializedBytes, "test");
         Assert.assertTrue(deserializedStore.getVersion(1).isPresent(), "Version 1 should exist");
         Map<String, SystemStoreAttributes> deserializedStoreSystemStores = deserializedStore.getSystemStores();

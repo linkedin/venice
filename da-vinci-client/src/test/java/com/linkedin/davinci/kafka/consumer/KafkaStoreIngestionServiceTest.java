@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -173,8 +174,8 @@ public class KafkaStoreIngestionServiceTest {
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     Store toBeDeletedStore = new ZKStore(deletedStoreName, "unit-test", 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
-    mockStore.addVersion(new Version(storeName, 1, "test-job-id"));
-    toBeDeletedStore.addVersion(new Version(deletedStoreName, 1, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    toBeDeletedStore.addVersion(new VersionImpl(deletedStoreName, 1, "test-job-id"));
     doReturn(mockStore).when(mockmetadataRepo).getStore(storeName);
     doReturn(toBeDeletedStore).when(mockmetadataRepo).getStore(deletedStoreName);
     doReturn(mockStore).when(mockmetadataRepo).getStoreOrThrow(storeName);
@@ -185,10 +186,10 @@ public class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic1, veniceProperties), 0);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 1,
         "Unexpected number of ingesting topics with version status of not ONLINE");
-    mockStore.getVersion(1).get().setStatus(VersionStatus.ONLINE);
+    mockStore.updateVersionStatus(1, VersionStatus.ONLINE);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 0,
        "Expecting an empty set since all ingesting topics have version status of ONLINE");
-    mockStore.addVersion(new Version(storeName, 2, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id"));
     doReturn(new Pair<>(mockStore, mockStore.getVersion(2).get())).when(mockmetadataRepo).waitVersion(eq(storeName), eq(2), any());
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic2, veniceProperties), 0);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(invalidTopic, veniceProperties), 0);
@@ -196,7 +197,7 @@ public class KafkaStoreIngestionServiceTest {
     doReturn(null).when(mockmetadataRepo).getStore(deletedStoreName);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 2,
         "Invalid and in flight ingesting topics should be included in the returned set");
-    mockStore.getVersion(2).get().setStatus(VersionStatus.ONLINE);
+    mockStore.updateVersionStatus(2, VersionStatus.ONLINE);
     mockStore.deleteVersion(1);
     Set<String> results = kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline();
     assertTrue(results.size() == 2 && results.contains(invalidTopic) && results.contains(topic1),

@@ -28,7 +28,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
-import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -37,6 +37,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -72,6 +73,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.meta.HybridStoreConfig.*;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static org.mockito.Mockito.*;
 
 
@@ -189,7 +191,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.isPresent() ? hybridTimeLagThreshold.get()
             : DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
         systemStores.get(storeName)
-            .setHybridStoreConfig(new HybridStoreConfig(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get(), finalHybridTimeLagThreshold));
+            .setHybridStoreConfig(new HybridStoreConfigImpl(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get(), finalHybridTimeLagThreshold));
       }
     }
 
@@ -199,7 +201,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot add version to store " + storeName + " because it's missing.");
       }
-      Version version = new Version(storeName, 1, "test-id");
+      Version version = new VersionImpl(storeName, 1, "test-id");
       version.setReplicationFactor(replicationFactor);
       List<Version> versions = new ArrayList<>();
       versions.add(version);
@@ -727,7 +729,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testIdempotentIncrementVersionWhenNoPreviousTopics() {
     String storeName = TestUtils.getUniqueString("test_store");
     String pushJobId = TestUtils.getUniqueString("push_job_id");
-    doReturn(new Version(storeName, 1, pushJobId)).when(internalAdmin)
+    doReturn(new VersionImpl(storeName, 1, pushJobId)).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
@@ -797,7 +799,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     String pushJobId = "test_push_id";
     String pushJobId2 = "test_push_id2";
-    store.addVersion(new Version(storeName, 1, pushJobId));
+    store.addVersion(new VersionImpl(storeName, 1, pushJobId));
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
@@ -821,7 +823,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .when(topicManager)
         .listTopics();
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    Version version = new Version(storeName, 1, pushJobId);
+    Version version = new VersionImpl(storeName, 1, pushJobId);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
@@ -860,11 +862,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .listTopics();
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    Version version = new Version(storeName, 1, pushJobId + "_different");
+    Version version = new VersionImpl(storeName, 1, pushJobId + "_different");
     store.addVersion(version);
     doReturn(true).when(internalAdmin).isTopicTruncated(previousKafkaTopic);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(new Version(storeName, 1, pushJobId)).when(internalAdmin)
+    doReturn(new VersionImpl(storeName, 1, pushJobId)).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty());
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
@@ -895,7 +897,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .when(topicManager)
         .listTopics();
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    Version version = new Version(storeName, 1, Version.guidBasedDummyPushId());
+    Version version = new VersionImpl(storeName, 1, Version.guidBasedDummyPushId());
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
@@ -914,8 +916,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = "test_store";
     Store testStore = new ZKStore(storeName, "test_owner", -1, PersistenceType.ROCKS_DB,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
-    testStore.addVersion(new Version(storeName, 1));
-    testStore.addVersion(new Version(storeName, 2));
+    testStore.addVersion(new VersionImpl(storeName, 1));
+    testStore.addVersion(new VersionImpl(storeName, 2));
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources)
@@ -931,7 +933,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store testStore = new ZKStore(storeName, "test_owner", -1, PersistenceType.ROCKS_DB,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     for (int i = 1; i <= 10; ++i) {
-      testStore.addVersion(new Version(storeName, i));
+      testStore.addVersion(new VersionImpl(storeName, i));
     }
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(testStore).when(storeRepo).getStore(storeName);
@@ -967,7 +969,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testGetIncrementalPushVersion() {
     String storeName = "testStore";
-    Version incrementalPushVersion = new Version(storeName, 1);
+    Version incrementalPushVersion = new VersionImpl(storeName, 1);
     Assert.assertEquals(parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED), incrementalPushVersion);
 
     try {
@@ -1463,7 +1465,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = new ZKStore(storeName, "test_owner", 1, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 
-    store.addVersion(new Version(storeName, 1, "test_push_id"));
+    store.addVersion(new VersionImpl(storeName, 1, "test_push_id"));
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(store, store.getVersion(1).get())).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
@@ -1629,10 +1631,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       String storeName = "test_store";
       String existingTopicName = storeName + "_v1";
       Store store = mock(Store.class);
-      Version version = new Version(storeName, 1, "test-push");
+      Version version = new VersionImpl(storeName, 1, "test-push");
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.STARTED);
       String newPushJobId = "new-test-push";
-      Version newVersion = new Version(storeName, 2, newPushJobId);
+      Version newVersion = new VersionImpl(storeName, 2, newPushJobId);
 
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
       doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -1682,8 +1684,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testAdminMessageIsolation() {
     String storeA = "test_store_A";
     String storeB = "test_store_B";
-    Version storeAVersion = new Version(storeA, 1, "");
-    Version storeBVersion = new Version(storeB, 1, "");
+    Version storeAVersion = new VersionImpl(storeA, 1, "");
+    Version storeBVersion = new VersionImpl(storeB, 1, "");
 
     doReturn(storeAVersion)
         .when(internalAdmin)
@@ -1767,7 +1769,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
-    store.setHybridStoreConfig(new HybridStoreConfig(60, 20000, 0));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(60, 20000, 0));
     Assert.assertThrows(VeniceException.class, () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
 
     // veniceWriter.put should not be called if validation fails

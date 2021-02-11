@@ -4,6 +4,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SystemStore;
@@ -122,7 +123,7 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
 
       // For the unsupported system store types, they can be fetched from the regular repo
       Store unsupportedSystemStore = repo.getStore(newRepositoryUnsupportedSystemStoreType.getSystemStoreName(regularStoreName));
-      assertTrue (unsupportedSystemStore instanceof ZKStore);
+      assertTrue (unsupportedSystemStore instanceof ReadOnlyStore && unsupportedSystemStore.cloneStore() instanceof ZKStore);
     });
   }
 

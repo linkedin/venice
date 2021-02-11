@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -27,7 +28,7 @@ public class TestStoreStatusDecider {
 
   @BeforeClass
   public void resetReplicationFactor() {
-    Store.setDefaultReplicationFactor(replicationFactor);
+    AbstractStore.setDefaultReplicationFactor(replicationFactor);
   }
 
   @BeforeMethod

@@ -16,10 +16,12 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -27,6 +29,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -251,7 +254,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber() );
 
-    Version deletedVersion = new Version(storeName, version.getNumber() - 2);
+    Version deletedVersion = new VersionImpl(storeName, version.getNumber() - 2);
     // Ensure job and topic are deleted
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getOffLinePushStatus(clusterName, deletedVersion.kafkaTopicName()).getExecutionStatus()
@@ -358,7 +361,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // test setting amplification factor
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).get().getPartitionerConfig().getAmplificationFactor(), 1);
     final int amplificationFactor = 10;
-    PartitionerConfig partitionerConfig = new PartitionerConfig();
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setAmplificationFactor(amplificationFactor);
     veniceAdmin.setStorePartitionerConfig(clusterName, storeName, partitionerConfig);
     Version newVersion = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
@@ -380,14 +383,14 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     //set incrementalPushEnabled to be false as hybrid and incremental are mutex
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
-    HybridStoreConfig hybridConfig = new HybridStoreConfig(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
+    HybridStoreConfig hybridConfig = new HybridStoreConfigImpl(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
             .setHybridRewindSeconds(hybridConfig.getRewindTimeInSeconds())
             .setHybridOffsetLagThreshold(hybridConfig.getOffsetLagThresholdToGoOnline()));
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
 
     // test reverting hybrid store back to batch-only store; negative config value will undo hybrid setting
-    HybridStoreConfig revertHybridConfig = new HybridStoreConfig(-1, -1, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
+    HybridStoreConfig revertHybridConfig = new HybridStoreConfigImpl(-1, -1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
         .setHybridRewindSeconds(revertHybridConfig.getRewindTimeInSeconds())
         .setHybridOffsetLagThreshold(revertHybridConfig.getOffsetLagThresholdToGoOnline()));
@@ -1060,7 +1063,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
       // Create ten topics and keep track of the active versions in the Store instance
       for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
-        Version version = new Version(storeName, versionNumber, TestUtils.getUniqueString(storeName));
+        Version version = new VersionImpl(storeName, versionNumber, TestUtils.getUniqueString(storeName));
         String topicName = version.kafkaTopicName();
         topicManager.createTopic(topicName, 1, 1, true);
         if (activeVersions.contains(versionNumber)) {

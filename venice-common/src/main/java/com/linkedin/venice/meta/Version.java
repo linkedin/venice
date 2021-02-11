@@ -13,21 +13,23 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
+import org.codehaus.jackson.map.annotate.JsonDeserialize;
 
 /**
- * Class defines the version of Venice store.
+ * This interface defines all the public APIs, and if you need to add accessors to
+ * some new fields, this interface needs to be changed accordingly.
  */
-@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
-@org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
-public class Version implements Comparable<Version>, DataModelBackedStructure<StoreVersion> {
-  private static final String VERSION_SEPARATOR = "_v";
-  private static final String REAL_TIME_TOPIC_SUFFIX = "_rt";
-  private static final String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
+@JsonDeserialize(as = VersionImpl.class)
+@com.fasterxml.jackson.databind.annotation.JsonDeserialize(as = VersionImpl.class)
+public interface Version extends Comparable<Version>, DataModelBackedStructure<StoreVersion> {
+  String VERSION_SEPARATOR = "_v";
+  String REAL_TIME_TOPIC_SUFFIX = "_rt";
+  String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
 
   /**
    * Producer type for writing data to Venice
    */
-  public enum PushType {
+  enum PushType {
     BATCH(0), //Batch jobs will create a new version topic and write to it in a batch manner.
     STREAM_REPROCESSING(1), // Grandfathering jobs will create a new version topic and a grandfathering topic.
     STREAM(2), // Stream jobs will write to a buffer or RT topic.
@@ -56,312 +58,92 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
     }
   }
 
-  @JsonIgnore
-  private final String kafkaTopicName;
+  int getNumber();
 
-  // The internal data model
-  private final StoreVersion storeVersion;
-
-  /**
-   * Use the constructor that specifies a pushJobId instead
-   */
-  @Deprecated
-  public Version(String storeName, int number) {
-    this(storeName , number, System.currentTimeMillis(), numberBasedDummyPushId(number), 0, new PartitionerConfig());
-  }
-
-  public Version(String storeName, int number, String pushJobId) {
-    this(storeName, number, System.currentTimeMillis(), pushJobId, 0, new PartitionerConfig());
-  }
-
-  public Version(String storeName, int number, String pushJobId, int partitionCount) {
-    this(storeName, number, System.currentTimeMillis(), pushJobId, partitionCount, new PartitionerConfig());
-  }
-
-  public Version(
-      @JsonProperty("storeName") @com.fasterxml.jackson.annotation.JsonProperty("storeName") String storeName,
-      @JsonProperty("number") @com.fasterxml.jackson.annotation.JsonProperty("number") int number,
-      @JsonProperty("createdTime")  @com.fasterxml.jackson.annotation.JsonProperty("createdTime") long createdTime,
-      @JsonProperty("pushJobId") @com.fasterxml.jackson.annotation.JsonProperty("pushJobId") String pushJobId,
-      @JsonProperty("partitionCount") @com.fasterxml.jackson.annotation.JsonProperty("partitionCount") int partitionCount,
-      @JsonProperty("partitionerConfig") @com.fasterxml.jackson.annotation.JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig) {
-    this.storeVersion = Store.prefillAvroRecordWithDefaultValue(new StoreVersion());
-    this.storeVersion.storeName = storeName;
-    this.storeVersion.number = number;
-    this.storeVersion.createdTime = createdTime;
-    this.storeVersion.pushJobId = pushJobId == null ? numberBasedDummyPushId(number) : pushJobId; // for deserializing old Versions that didn't get an pushJobId
-    this.storeVersion.partitionCount = partitionCount;
-    if (partitionerConfig != null) {
-      this.storeVersion.partitionerConfig = partitionerConfig.dataModel();
-    }
-
-    this.kafkaTopicName = composeKafkaTopic(storeName, number);
-  }
-
-  Version(StoreVersion storeVersion) {
-    this.storeVersion = storeVersion;
-    this.kafkaTopicName = composeKafkaTopic(getStoreName(), getNumber());
-  }
-
-  public int getNumber() {
-    return this.storeVersion.number;
-  }
-
-  public long getCreatedTime() {
-    return this.storeVersion.createdTime;
-  }
+  long getCreatedTime();
 
   @JsonIgnore
-  public Duration getAge() {
-    return Duration.ofMillis(System.currentTimeMillis() - getCreatedTime());
-  }
+  Duration getAge();
 
   @JsonIgnore
-  public void setAge(Duration age) {
-    this.storeVersion.createdTime = System.currentTimeMillis() - age.toMillis();
-  }
+  void setAge(Duration age);
 
-  public VersionStatus getStatus() {
-    return VersionStatus.getVersionStatusFromInt(this.storeVersion.status);
-  }
+  VersionStatus getStatus();
 
-  public void setStatus(VersionStatus status) {
-    this.storeVersion.status = status.ordinal();
-  }
+  void setStatus(VersionStatus status);
 
-  public CompressionStrategy getCompressionStrategy() {
-    return CompressionStrategy.valueOf(this.storeVersion.compressionStrategy);
-  }
+  CompressionStrategy getCompressionStrategy();
 
-  public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
-    this.storeVersion.compressionStrategy = compressionStrategy.getValue();
-  }
+  void setCompressionStrategy(CompressionStrategy compressionStrategy);
 
-  public boolean isLeaderFollowerModelEnabled() {
-    return this.storeVersion.leaderFollowerModelEnabled;
-  }
+  boolean isLeaderFollowerModelEnabled();
 
-  public boolean isNativeReplicationEnabled() {
-    return this.storeVersion.nativeReplicationEnabled;
-  }
+  boolean isNativeReplicationEnabled();
 
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    this.storeVersion.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
-  }
+  void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled);
 
-  public void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
-    this.storeVersion.nativeReplicationEnabled = nativeReplicationEnabled;
-  }
+  void setNativeReplicationEnabled(boolean nativeReplicationEnabled);
 
-  public String getPushStreamSourceAddress() {
-    return this.storeVersion.pushStreamSourceAddress.toString();
-  }
+  String getPushStreamSourceAddress();
 
-  public void setPushStreamSourceAddress(String address) {
-    this.storeVersion.pushStreamSourceAddress = address;
-  }
+  void setPushStreamSourceAddress(String address);
 
-  public boolean isBufferReplayEnabledForHybrid() {
-    return this.storeVersion.bufferReplayEnabledForHybrid;
-  }
+  boolean isBufferReplayEnabledForHybrid();
 
-  public void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid) {
-    this.storeVersion.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
-  }
+  void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid);
 
-  public boolean isChunkingEnabled() {
-    return this.storeVersion.chunkingEnabled;
-  }
+  boolean isChunkingEnabled();
 
-  public void setChunkingEnabled(boolean chunkingEnabled) {
-    this.storeVersion.chunkingEnabled = chunkingEnabled;
-  }
+  void setChunkingEnabled(boolean chunkingEnabled);
 
-  public String getStoreName() {
-    return this.storeVersion.storeName.toString();
-  }
+  String getStoreName();
 
-  public String getPushJobId() {
-    return this.storeVersion.pushJobId.toString();
-  }
+  String getPushJobId();
 
-  public PushType getPushType() {
-    return PushType.valueOf(this.storeVersion.pushType);
-  }
+  PushType getPushType();
 
-  public void setPushType(PushType pushType) {
-    this.storeVersion.pushType = pushType.getValue();
-  }
+  void setPushType(PushType pushType);
 
-  public void setPartitionCount(int partitionCount) {
-    this.storeVersion.partitionCount = partitionCount;
-  }
+  void setPartitionCount(int partitionCount);
 
-  public int getPartitionCount() {
-    return this.storeVersion.partitionCount;
-  }
+  int getPartitionCount();
 
-  public PartitionerConfig getPartitionerConfig() {
-    if (null == this.storeVersion.partitionerConfig) {
-      return null;
-    }
-    return new PartitionerConfig(this.storeVersion.partitionerConfig);
-  }
+  PartitionerConfig getPartitionerConfig();
 
-  public void setPartitionerConfig(PartitionerConfig partitionerConfig) {
-    if (partitionerConfig != null) {
-      this.storeVersion.partitionerConfig = partitionerConfig.dataModel();
-    }
-  }
+  void setPartitionerConfig(PartitionerConfig partitionerConfig);
 
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.valueOf(this.storeVersion.incrementalPushPolicy);
-  }
+  IncrementalPushPolicy getIncrementalPushPolicy();
 
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.storeVersion.incrementalPushPolicy = incrementalPushPolicy.getValue();
-  }
+  void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);
 
-  public int getReplicationFactor() {
-    return this.storeVersion.replicationFactor;
-  }
+  int getReplicationFactor();
 
-  public void setReplicationFactor(int replicationFactor) {
-    this.storeVersion.replicationFactor = replicationFactor;
-  }
+  void setReplicationFactor(int replicationFactor);
 
-  public int getMinActiveReplicas() {
-    return this.storeVersion.replicationFactor - 1;
-  }
+  int getMinActiveReplicas();
 
-  public String getNativeReplicationSourceFabric() {
-    return this.storeVersion.nativeReplicationSourceFabric.toString();
-  }
+  String getNativeReplicationSourceFabric();
 
-  public void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric) {
-    this.storeVersion.nativeReplicationSourceFabric = nativeReplicationSourceFabric;
-  }
+  void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric);
 
-  public boolean isIncrementalPushEnabled() {
-    return this.storeVersion.incrementalPushEnabled;
-  }
+  boolean isIncrementalPushEnabled();
 
-  public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
-    this.storeVersion.incrementalPushEnabled = incrementalPushEnabled;
-  }
+  void setIncrementalPushEnabled(boolean incrementalPushEnabled);
 
-  public boolean isUseVersionLevelIncrementalPushEnabled() {
-    return this.storeVersion.useVersionLevelIncrementalPushEnabled;
-  }
+  boolean isUseVersionLevelIncrementalPushEnabled();
 
-  public void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled) {
-    this.storeVersion.useVersionLevelIncrementalPushEnabled = versionLevelIncrementalPushEnabled;
-  }
+  void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);
 
-  public HybridStoreConfig getHybridStoreConfig() {
-    if (null == this.storeVersion.hybridConfig) {
-      return null;
-    }
-    return new HybridStoreConfig(this.storeVersion.hybridConfig);
-  }
+  HybridStoreConfig getHybridStoreConfig();
 
-  public void setHybridStoreConfig(HybridStoreConfig hybridConfig) {
-    if (hybridConfig != null) {
-      this.storeVersion.hybridConfig = hybridConfig.dataModel();
-    }
-  }
+  void setHybridStoreConfig(HybridStoreConfig hybridConfig);
 
-  public boolean isUseVersionLevelHybridConfig() {
-    return this.storeVersion.useVersionLevelHybridConfig;
-  }
+  boolean isUseVersionLevelHybridConfig();
 
-  public void setUseVersionLevelHybridConfig(boolean versionLevelHybridConfig) {
-    this.storeVersion.useVersionLevelHybridConfig = versionLevelHybridConfig;
-  }
-
-  @Override
-  public StoreVersion dataModel() {
-    return this.storeVersion;
-  }
+  void setUseVersionLevelHybridConfig(boolean versionLevelHybridConfig);
 
 
-  @Override
-  public String toString() {
-    return "Version{" +
-        "storeName='" + getStoreName() + '\'' +
-        ", number=" + getNumber() +
-        ", createdTime=" + getCreatedTime() +
-        ", status=" + getStatus() +
-        ", pushJobId='" + getPushJobId() + '\'' +
-        ", compressionStrategy='" + getCompressionStrategy() + '\'' +
-        ", leaderFollowerModelEnabled=" + isLeaderFollowerModelEnabled() +
-        ", bufferReplayEnabledForHybrid=" + isBufferReplayEnabledForHybrid() +
-        ", pushType=" + getPushType() +
-        ", partitionCount=" + getPartitionCount() +
-        ", partitionerConfig=" + getPartitionerConfig() +
-        ", nativeReplicationEnabled=" + isNativeReplicationEnabled() +
-        ", pushStreamSourceAddress=" + getPushStreamSourceAddress() +
-        ", replicationFactor=" + getReplicationFactor() +
-        ", nativeReplicationSourceFabric=" + getNativeReplicationSourceFabric() +
-        ", incrementalPushEnabled=" + isIncrementalPushEnabled() +
-        ", useVersionLevelIncrementalPushEnabled=" + isUseVersionLevelIncrementalPushEnabled() +
-        ", hybridConfig=" + getHybridStoreConfig() +
-        ", useVersionLevelHybridConfig=" + isUseVersionLevelHybridConfig() +
-        '}';
-  }
-
-  @Override
-  public int compareTo(Version o) {
-    if(o == null) {
-      throw new IllegalArgumentException("Input argument is null");
-    }
-
-    Integer num = this.storeVersion.number;
-    return num.compareTo(o.storeVersion.number);
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
-    }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
-    }
-    Version version = (Version) o;
-    return AvroCompatibilityUtils.compare(storeVersion, version.storeVersion);
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(storeVersion);
-  }
-
-  /**
-   * Clone a new version based on current data in this version.
-   *
-   * @return cloned version.
-   */
-  @JsonIgnore
-  public Version cloneVersion() {
-    Version clonedVersion = new Version(getStoreName(), getNumber(), getCreatedTime(), getPushJobId(), getPartitionCount(), getPartitionerConfig());
-    clonedVersion.setStatus(getStatus());
-    clonedVersion.setCompressionStrategy(getCompressionStrategy());
-    clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
-    clonedVersion.setBufferReplayEnabledForHybrid(isBufferReplayEnabledForHybrid());
-    clonedVersion.setChunkingEnabled(isChunkingEnabled());
-    clonedVersion.setPushType(getPushType());
-    clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
-    clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());
-    clonedVersion.setIncrementalPushPolicy(getIncrementalPushPolicy());
-    clonedVersion.setReplicationFactor(getReplicationFactor());
-    clonedVersion.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
-    clonedVersion.setIncrementalPushEnabled(isIncrementalPushEnabled());
-    clonedVersion.setUseVersionLevelIncrementalPushEnabled(isUseVersionLevelIncrementalPushEnabled());
-    clonedVersion.setHybridStoreConfig(getHybridStoreConfig());
-    clonedVersion.setUseVersionLevelHybridConfig(isUseVersionLevelHybridConfig());
-    return clonedVersion;
-  }
+  Version cloneVersion();
 
   /**
    * Kafka topic name is composed by store name and version.
@@ -372,11 +154,9 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
    * @return kafka topic name.
    */
   @JsonIgnore
-  public String kafkaTopicName() {
-    return kafkaTopicName;
-  }
+  String kafkaTopicName();
 
-  public static String parseStoreFromKafkaTopicName(String kafkaTopic) {
+  static String parseStoreFromKafkaTopicName(String kafkaTopic) {
     return kafkaTopic.substring(0, getLastIndexOfVersionSeparator(kafkaTopic));
   }
 
@@ -384,7 +164,7 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
    * This API works for both version topic and stream-reprocessing topics; other topic names will fail
    * with IllegalArgumentException.
    */
-  public static int parseVersionFromKafkaTopicName(String kafkaTopic) {
+  static int parseVersionFromKafkaTopicName(String kafkaTopic) {
     int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
     if (kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX)) {
       return Integer.parseInt(kafkaTopic.substring(versionStartIndex, kafkaTopic.lastIndexOf(
@@ -397,12 +177,12 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
   /**
    * This API only works for version topic; other topic names will fail with IllegalArgumentException.
    */
-  public static int parseVersionFromVersionTopicName(String kafkaTopic) {
+  static int parseVersionFromVersionTopicName(String kafkaTopic) {
     int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
     return Integer.parseInt(kafkaTopic.substring(versionStartIndex));
   }
 
-  private static int getLastIndexOfVersionSeparator(String kafkaTopic) {
+  static int getLastIndexOfVersionSeparator(String kafkaTopic) {
     int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
     if (lastIndexOfVersionSeparator == -1) {
       throw new IllegalArgumentException("The version separator '" + VERSION_SEPARATOR
@@ -418,48 +198,48 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
     return lastIndexOfVersionSeparator;
   }
 
-  public static String composeKafkaTopic(String storeName,int versionNumber){
+  static String composeKafkaTopic(String storeName,int versionNumber){
     return storeName + VERSION_SEPARATOR + versionNumber;
   }
 
-  public static String composeRealTimeTopic(String storeName){
+  static String composeRealTimeTopic(String storeName){
     return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
-  public static String composeStreamReprocessingTopic(String storeName, int versionNumber) {
+  static String composeStreamReprocessingTopic(String storeName, int versionNumber) {
     return composeKafkaTopic(storeName, versionNumber) + STREAM_REPROCESSING_TOPIC_SUFFIX;
   }
 
-  public static String composeStreamReprocessingTopicFromVersionTopic(String versionTopic) {
+  static String composeStreamReprocessingTopicFromVersionTopic(String versionTopic) {
     return versionTopic + STREAM_REPROCESSING_TOPIC_SUFFIX;
   }
 
-  public static String composeVersionTopicFromStreamReprocessingTopic(String kafkaTopic) {
+  static String composeVersionTopicFromStreamReprocessingTopic(String kafkaTopic) {
     if (!isStreamReprocessingTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a stream-reprocessing topic");
     }
     return kafkaTopic.substring(0, kafkaTopic.lastIndexOf(STREAM_REPROCESSING_TOPIC_SUFFIX));
   }
 
-  public static String parseStoreFromRealTimeTopic(String kafkaTopic) {
+  static String parseStoreFromRealTimeTopic(String kafkaTopic) {
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
     return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
   }
 
-  public static boolean isRealTimeTopic(String kafkaTopic) {
+  static boolean isRealTimeTopic(String kafkaTopic) {
     return kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX);
   }
 
-  public static boolean isStreamReprocessingTopic(String kafkaTopic) {
+  static boolean isStreamReprocessingTopic(String kafkaTopic) {
     return kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX);
   }
 
   /**
    * Return true if the input topic name is a version topic or stream-reprocessing topic.
    */
-  public static boolean isVersionTopicOrStreamReprocessingTopic(String kafkaTopic){
+  static boolean isVersionTopicOrStreamReprocessingTopic(String kafkaTopic){
     try{
       parseVersionFromKafkaTopicName(kafkaTopic);
     } catch (IllegalArgumentException e){
@@ -471,7 +251,7 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
   /**
    * Only return true if the input topic name is a version topic.
    */
-  public static boolean isVersionTopic(String kafkaTopic) {
+  static boolean isVersionTopic(String kafkaTopic) {
     try {
       parseVersionFromVersionTopicName(kafkaTopic);
     } catch (IllegalArgumentException e) {
@@ -480,7 +260,7 @@ public class Version implements Comparable<Version>, DataModelBackedStructure<St
     return true;
   }
 
-  public static String guidBasedDummyPushId(){
+  static String guidBasedDummyPushId(){
     return "guid_id_" + GuidUtils.getGUIDString();
   }
 

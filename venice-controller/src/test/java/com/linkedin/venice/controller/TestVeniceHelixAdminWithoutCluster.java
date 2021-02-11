@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -70,6 +71,6 @@ public class TestVeniceHelixAdminWithoutCluster {
     Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
     Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
-    Assert.assertEquals(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(), HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
+    Assert.assertEquals(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(), HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
   }
 }

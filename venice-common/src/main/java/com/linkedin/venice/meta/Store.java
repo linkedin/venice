@@ -26,51 +26,30 @@ import java.util.stream.Collectors;
 
 
 /**
- * This is an abstraction of metadata maintained per Store.
+ * This interface defines all the public APIs, and if you need to add accessors to
+ * some new fields, this interface needs to be changed accordingly.
  */
-public abstract class Store {
+public interface Store {
   /**
    * Special version number indicates none of version is available to read.
    */
-  public static final int NON_EXISTING_VERSION = 0;
+  int NON_EXISTING_VERSION = 0;
 
   /**
    * Default value of numVersionPreserve, by default we should use cluster level config instead of store level config.
    */
-  public static int NUM_VERSION_PRESERVE_NOT_SET = 0;
+  int NUM_VERSION_PRESERVE_NOT_SET = 0;
 
-  public static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
-  public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PREFIX + "%s";
-  public static int DEFAULT_REPLICATION_FACTOR = 3;
-  //Only for testing
-  public static void setDefaultReplicationFactor(int defaultReplicationFactor) {
-    DEFAULT_REPLICATION_FACTOR = defaultReplicationFactor;
-  }
+  String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
+  String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PREFIX + "%s";
 
-  /**
-   * Default storage quota 20GB
-   */
-  public static long DEFAULT_STORAGE_QUOTA = (long)20 * (1 << 30);
+  long UNLIMITED_STORAGE_QUOTA = -1;
 
-  public static final long UNLIMITED_STORAGE_QUOTA = -1;
-  /**
-   * Default read quota 1800 QPS per node
-   */
-  public static long DEFAULT_READ_QUOTA = 1800;
+  int IGNORE_VERSION = -1;
 
-  public static void setDefaultStorageQuota(long storageQuota) {
-    Store.DEFAULT_STORAGE_QUOTA = storageQuota;
-  }
+  int BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = 24;
 
-  public static void setDefaultReadQuota(long readQuota) {
-    Store.DEFAULT_READ_QUOTA = readQuota;
-  }
-
-  public static final int IGNORE_VERSION = -1;
-
-  public static final int BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = 24;
-
-  public static long DEFAULT_RT_RETENTION_TIME = TimeUnit.DAYS.toMillis(5);
+  long DEFAULT_RT_RETENTION_TIME = TimeUnit.DAYS.toMillis(5);
 
   /**
    * Store name rules:
@@ -78,8 +57,8 @@ public abstract class Store {
    *  2. No double dashes
    */
 
-  private static Pattern storeNamePattern = Pattern.compile("^[a-zA-Z0-9_-]+$");
-  public static boolean isValidStoreName(String name){
+  Pattern storeNamePattern = Pattern.compile("^[a-zA-Z0-9_-]+$");
+  static boolean isValidStoreName(String name){
     Matcher matcher = storeNamePattern.matcher(name);
     return matcher.matches() && !name.contains("--");
   }
@@ -154,470 +133,227 @@ public abstract class Store {
     return recordType;
   }
 
-  /**
-   * This field is to let current class talk to the inherited classes for version related operations.
-   */
-  private Supplier<List<StoreVersion>> storeVersionsSupplier;
-
-  /**
-   * This function should be invoked only once.
-   */
-  protected synchronized void setupVersionSupplier(Supplier<List<StoreVersion>> versionsSupplier) {
-    if (this.storeVersionsSupplier != null) {
-      throw new VeniceException("Field: 'storeVersionsSupplier' shouldn't be setup more than once");
-    }
-    this.storeVersionsSupplier = versionsSupplier;
+  static boolean isSystemStore(String storeName) {
+    return storeName.startsWith(SYSTEM_STORE_NAME_PREFIX);
   }
 
-  private void checkVersionSupplier() {
-    if (this.storeVersionsSupplier == null) {
-      throw new VeniceException("Field: 'storeVersionsSupplier' hasn't been setup yet");
-    }
-  }
+  String getName();
 
-  public abstract String getName();
+  String getOwner();
 
-  public abstract String getOwner();
+  void setOwner(String owner);
 
-  public abstract void setOwner(String owner);
+  long getCreatedTime();
 
-  public abstract long getCreatedTime();
+  int getCurrentVersion();
 
-  public abstract int getCurrentVersion();
+  void setCurrentVersion(int currentVersion);
 
-  public abstract void setCurrentVersion(int currentVersion);
+  void setCurrentVersionWithoutCheck(int currentVersion);
 
-  public abstract void setCurrentVersionWithoutCheck(int currentVersion);
+  PersistenceType getPersistenceType();
 
-  public abstract PersistenceType getPersistenceType();
+  void setPersistenceType(PersistenceType persistenceType);
 
-  public abstract void setPersistenceType(PersistenceType persistenceType);
+  RoutingStrategy getRoutingStrategy();
 
-  public abstract RoutingStrategy getRoutingStrategy();
+  ReadStrategy getReadStrategy();
 
-  public abstract ReadStrategy getReadStrategy();
+  OfflinePushStrategy getOffLinePushStrategy();
 
-  public abstract OfflinePushStrategy getOffLinePushStrategy();
+  int getLargestUsedVersionNumber();
 
-  public abstract int getLargestUsedVersionNumber();
+  void setLargestUsedVersionNumber(int largestUsedVersionNumber);
 
-  public abstract void setLargestUsedVersionNumber(int largestUsedVersionNumber);
+  long getStorageQuotaInByte();
 
-  public abstract long getStorageQuotaInByte();
+  void setStorageQuotaInByte(long storageQuotaInByte);
 
-  public abstract void setStorageQuotaInByte(long storageQuotaInByte);
+  int getPartitionCount();
 
-  public abstract int getPartitionCount();
+  void setPartitionCount(int partitionCount);
 
-  public abstract void setPartitionCount(int partitionCount);
+  PartitionerConfig getPartitionerConfig();
 
-  public abstract PartitionerConfig getPartitionerConfig();
+  void setPartitionerConfig(PartitionerConfig value);
 
-  public abstract void setPartitionerConfig(PartitionerConfig value);
+  boolean isEnableWrites();
 
-  public abstract boolean isEnableWrites();
+  void setEnableWrites(boolean enableWrites);
 
-  public abstract void setEnableWrites(boolean enableWrites);
+  boolean isEnableReads();
 
-  public abstract boolean isEnableReads();
+  void setEnableReads(boolean enableReads);
 
-  public abstract void setEnableReads(boolean enableReads);
+  long getReadQuotaInCU();
 
-  public abstract long getReadQuotaInCU();
+  void setReadQuotaInCU(long readQuotaInCU);
 
-  public abstract void setReadQuotaInCU(long readQuotaInCU);
+  HybridStoreConfig getHybridStoreConfig();
 
-  public abstract HybridStoreConfig getHybridStoreConfig();
+  void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig);
 
-  public abstract void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig);
+  boolean isHybrid();
 
-  public abstract boolean isHybrid();
+  CompressionStrategy getCompressionStrategy();
 
-  public abstract CompressionStrategy getCompressionStrategy();
+  void setCompressionStrategy(CompressionStrategy compressionStrategy);
 
-  public abstract void setCompressionStrategy(CompressionStrategy compressionStrategy);
+  boolean getClientDecompressionEnabled();
 
-  public abstract boolean getClientDecompressionEnabled();
+  void setClientDecompressionEnabled(boolean clientDecompressionEnabled);
 
-  public abstract void setClientDecompressionEnabled(boolean clientDecompressionEnabled);
+  boolean isChunkingEnabled();
 
-  public abstract boolean isChunkingEnabled();
+  void setChunkingEnabled(boolean chunkingEnabled);
 
-  public abstract void setChunkingEnabled(boolean chunkingEnabled);
+  int getBatchGetLimit();
 
-  public abstract int getBatchGetLimit();
+  void setBatchGetLimit(int batchGetLimit);
 
-  public abstract void setBatchGetLimit(int batchGetLimit);
+  boolean isIncrementalPushEnabled();
 
-  public abstract boolean isIncrementalPushEnabled();
+  void setIncrementalPushEnabled(boolean incrementalPushEnabled);
 
-  public abstract void setIncrementalPushEnabled(boolean incrementalPushEnabled);
+  boolean isAccessControlled();
 
-  public abstract boolean isAccessControlled();
+  void setAccessControlled(boolean accessControlled);
 
-  public abstract void setAccessControlled(boolean accessControlled);
+  boolean isMigrating();
 
-  public abstract boolean isMigrating();
+  void setMigrating(boolean migrating);
 
-  public abstract void setMigrating(boolean migrating);
+  int getNumVersionsToPreserve();
 
-  public abstract int getNumVersionsToPreserve();
+  void setNumVersionsToPreserve(int numVersionsToPreserve);
 
-  public abstract void setNumVersionsToPreserve(int numVersionsToPreserve);
+  boolean isWriteComputationEnabled();
 
-  public abstract boolean isWriteComputationEnabled();
+  void setWriteComputationEnabled(boolean writeComputationEnabled);
 
-  public abstract void setWriteComputationEnabled(boolean writeComputationEnabled);
+  boolean isReadComputationEnabled();
 
-  public abstract boolean isReadComputationEnabled();
+  void setReadComputationEnabled(boolean readComputationEnabled);
 
-  public abstract void setReadComputationEnabled(boolean readComputationEnabled);
+  int getBootstrapToOnlineTimeoutInHours();
 
-  public abstract int getBootstrapToOnlineTimeoutInHours();
+  void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours);
 
-  public abstract void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours);
+  boolean isLeaderFollowerModelEnabled();
 
-  public abstract boolean isLeaderFollowerModelEnabled();
+  void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled);
 
-  public abstract void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled);
+  String getPushStreamSourceAddress();
 
-  public abstract String getPushStreamSourceAddress();
+  void setPushStreamSourceAddress(String sourceAddress);
 
-  public abstract void setPushStreamSourceAddress(String sourceAddress);
+  boolean isNativeReplicationEnabled();
 
-  public abstract boolean isNativeReplicationEnabled();
+  void setNativeReplicationEnabled(boolean nativeReplicationEnabled);
 
-  public abstract void setNativeReplicationEnabled(boolean nativeReplicationEnabled);
+  BackupStrategy getBackupStrategy();
 
-  public abstract BackupStrategy getBackupStrategy();
+  void setBackupStrategy(BackupStrategy value);
 
-  public abstract void setBackupStrategy(BackupStrategy value);
+  boolean isSchemaAutoRegisterFromPushJobEnabled();
 
-  public abstract boolean isSchemaAutoRegisterFromPushJobEnabled();
+  void setSchemaAutoRegisterFromPushJobEnabled(boolean value);
 
-  public abstract void setSchemaAutoRegisterFromPushJobEnabled(boolean value);
+  int getLatestSuperSetValueSchemaId();
 
-  public abstract int getLatestSuperSetValueSchemaId();
+  void setLatestSuperSetValueSchemaId(int valueSchemaId);
 
-  public abstract void setLatestSuperSetValueSchemaId(int valueSchemaId);
+  boolean isHybridStoreDiskQuotaEnabled();
 
-  public abstract boolean isHybridStoreDiskQuotaEnabled();
+  void setHybridStoreDiskQuotaEnabled(boolean enabled);
 
-  public abstract void setHybridStoreDiskQuotaEnabled(boolean enabled);
+  ETLStoreConfig getEtlStoreConfig();
 
-  public abstract ETLStoreConfig getEtlStoreConfig();
+  void setEtlStoreConfig(ETLStoreConfig etlStoreConfig);
 
-  public abstract void setEtlStoreConfig(ETLStoreConfig etlStoreConfig);
+  boolean isStoreMetadataSystemStoreEnabled();
 
-  public abstract boolean isStoreMetadataSystemStoreEnabled();
+  void setStoreMetadataSystemStoreEnabled(boolean storeMetadataSystemStoreEnabled);
 
-  public abstract void setStoreMetadataSystemStoreEnabled(boolean storeMetadataSystemStoreEnabled);
+  boolean isStoreMetaSystemStoreEnabled();
 
-  public abstract boolean isStoreMetaSystemStoreEnabled();
+  void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled);
 
-  public abstract void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled);
+  IncrementalPushPolicy getIncrementalPushPolicy();
 
-  public abstract IncrementalPushPolicy getIncrementalPushPolicy();
+  void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);
 
-  public abstract void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);
+  long getLatestVersionPromoteToCurrentTimestamp();
 
-  public abstract long getLatestVersionPromoteToCurrentTimestamp();
+  void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp);
 
-  public abstract void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp);
+  long getBackupVersionRetentionMs();
 
-  public abstract long getBackupVersionRetentionMs();
+  void setBackupVersionRetentionMs(long backupVersionRetentionMs);
 
-  public abstract void setBackupVersionRetentionMs(long backupVersionRetentionMs);
+  long getRetentionTime();
 
-  public abstract long getRetentionTime();
+  int getReplicationFactor();
 
-  public abstract int getReplicationFactor();
+  void setReplicationFactor(int replicationFactor);
 
-  public abstract void setReplicationFactor(int replicationFactor);
+  boolean isMigrationDuplicateStore();
 
-  public abstract boolean isMigrationDuplicateStore();
+  void setMigrationDuplicateStore(boolean migrationDuplicateStore);
 
-  public abstract void setMigrationDuplicateStore(boolean migrationDuplicateStore);
+  String getNativeReplicationSourceFabric();
 
-  public abstract String getNativeReplicationSourceFabric();
+  void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric);
 
-  public abstract void setNativeReplicationSourceFabric(String nativeReplicationSourceFabric);
+  Map<String, SystemStoreAttributes> getSystemStores();
 
-  public abstract Map<String, SystemStoreAttributes> getSystemStores();
+  void setSystemStores(Map<String, SystemStoreAttributes> systemStores);
 
-  public abstract void setSystemStores(Map<String, SystemStoreAttributes> systemStores);
+  void putSystemStore(VeniceSystemStoreType systemStoreType, SystemStoreAttributes systemStoreAttributes);
 
-  protected abstract void putSystemStore(VeniceSystemStoreType systemStoreType, SystemStoreAttributes systemStoreAttributes);
+  boolean isDaVinciPushStatusStoreEnabled();
 
-  public abstract boolean isDaVinciPushStatusStoreEnabled();
+  void setDaVinciPushStatusStoreEnabled(boolean daVinciPushStatusStoreEnabled);
 
-  public abstract void setDaVinciPushStatusStoreEnabled(boolean daVinciPushStatusStoreEnabled);
+  Store cloneStore();
 
-  public abstract Store cloneStore();
+  List<Version> getVersions();
 
-  public List<Version> getVersions() {
-    checkVersionSupplier();
-    if (storeVersionsSupplier.get().isEmpty()) {
-      return Collections.emptyList();
-    }
-    return storeVersionsSupplier.get().stream().map(sv -> new Version(sv)).collect(Collectors.toList());
-  }
+  void setVersions(List<Version> versions);
 
-  public void setVersions(List<Version> versions) {
-    checkVersionSupplier();
-    storeVersionsSupplier.get().clear();
-    versions.forEach(v -> storeVersionsSupplier.get().add(v.dataModel()));
-  }
+  Optional<CompressionStrategy> getVersionCompressionStrategy(int versionNumber);
 
-  public Optional<CompressionStrategy> getVersionCompressionStrategy(int versionNumber) {
-    if (versionNumber == NON_EXISTING_VERSION) {
-      return Optional.empty();
-    }
+  void setBufferReplayForHybridForVersion(int versionNum, boolean enabled);
 
-    return getVersion(versionNumber).map(version -> version.getCompressionStrategy());
-  }
+  void addVersion(Version version);
 
-  public void setBufferReplayForHybridForVersion(int versionNum, boolean enabled) {
-    Optional<Version> version = getVersion(versionNum);
-    if (! version.isPresent()) {
-      throw new VeniceException("Unknown version: " + versionNum + " in store: " + getName());
-    }
-    version.get().setBufferReplayEnabledForHybrid(enabled);
-  }
+  void forceAddVersion(Version version, boolean isClonedVersion);
 
-  public void addVersion(Version version) {
-    addVersion(version, true, false);
-  }
+  void checkDisableStoreWrite(String action, int version);
 
-  protected void forceAddVersion(Version version, boolean isClonedVersion){
-    addVersion(version, false, isClonedVersion);
-  }
+  Version deleteVersion(int versionNumber);
 
-  protected void checkDisableStoreWrite(String action, int version) {
-    if (!isEnableWrites()) {
-      throw new StoreDisabledException(getName(), action, version);
-    }
-  }
+  boolean containsVersion(int versionNumber);
 
-  /**
-   * Add a version into store
-   * @param version
-   * @param checkDisableWrite if checkDisableWrite is true, and the store is disabled to write, then this will throw a StoreDisabledException.
-   *                    Setting to false will ignore the enableWrites status of the store (for example for cloning a store).
-   * @param isClonedVersion if true, the version being added is cloned from an existing version instance, so don't apply
-   *                        any store level config on it; if false, the version being added is new version, so the new version
-   *                        config should be the same as store config.
-   */
-  private void addVersion(Version version, boolean checkDisableWrite, boolean isClonedVersion) {
-    checkVersionSupplier();
-    if (checkDisableWrite) {
-      checkDisableStoreWrite("add", version.getNumber());
-    }
-    if (!getName().equals(version.getStoreName())) {
-      throw new VeniceException("Version does not belong to this store.");
-    }
-    int index = 0;
-    for (; index < storeVersionsSupplier.get().size(); index++) {
-      if (storeVersionsSupplier.get().get(index).number == version.getNumber()) {
-        throw new VeniceException("Version is repeated. Store: " + getName() + " Version: " + version.getNumber());
-      }
-      if (storeVersionsSupplier.get().get(index).number > version.getNumber()) {
-        break;
-      }
-    }
-
-    if (!isClonedVersion) {
-      // For new version, apply store level config on it.
-      //update version compression type
-      version.setCompressionStrategy(getCompressionStrategy());
-
-      //update version Helix state model
-      version.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
-
-      version.setChunkingEnabled(isChunkingEnabled());
-
-      version.setPartitionerConfig(getPartitionerConfig());
-
-      version.setNativeReplicationEnabled(isNativeReplicationEnabled());
-
-      version.setIncrementalPushPolicy(getIncrementalPushPolicy());
-
-      version.setReplicationFactor(getReplicationFactor());
-
-      version.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
-
-      version.setIncrementalPushEnabled(isIncrementalPushEnabled());
-
-      version.setUseVersionLevelIncrementalPushEnabled(true);
-
-      version.setHybridStoreConfig(getHybridStoreConfig());
-
-      version.setUseVersionLevelHybridConfig(true);
-    }
-
-    storeVersionsSupplier.get().add(index, version.dataModel());
-    if (version.getNumber() > getLargestUsedVersionNumber()) {
-      setLargestUsedVersionNumber(version.getNumber());
-    }
-  }
-
-  public Version deleteVersion(int versionNumber) {
-    checkVersionSupplier();
-    for (int i = 0; i < storeVersionsSupplier.get().size(); i++) {
-      Version version = new Version(storeVersionsSupplier.get().get(i));
-      if (version.getNumber() == versionNumber) {
-        storeVersionsSupplier.get().remove(i);
-        return version;
-      }
-    }
-    return null;
-  }
-
-  public boolean containsVersion(int versionNumber) {
-    checkVersionSupplier();
-    for (int i = 0; i < storeVersionsSupplier.get().size(); i++) {
-      Version version = new Version(storeVersionsSupplier.get().get(i));
-      if (version.getNumber() == versionNumber) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  public void updateVersionStatus(int versionNumber, VersionStatus status) {
-    checkVersionSupplier();
-    if (status.equals(VersionStatus.ONLINE)) {
-      checkDisableStoreWrite("become ONLINE", versionNumber);
-    }
-    for (int i = storeVersionsSupplier.get().size() - 1; i >= 0; i--) {
-      Version version = new Version(storeVersionsSupplier.get().get(i));
-      if (version.getNumber() == versionNumber) {
-        version.setStatus(status);
-        return;
-      }
-    }
-    throw new VeniceException("Version:" + versionNumber + " does not exist");
-  }
+  void updateVersionStatus(int versionNumber, VersionStatus status);
 
   /**
    * Use the form of this method that accepts a pushJobId
    */
   @Deprecated
-  public Version increaseVersion() {
-    return increaseVersion(Version.guidBasedDummyPushId(), true);
-  }
+  Version increaseVersion();
 
-  public Version increaseVersion(String pushJobId) {
-    return increaseVersion(pushJobId, true);
-  }
+  Version increaseVersion(String pushJobId);
 
-  public Version peekNextVersion() {
-    return increaseVersion(Version.guidBasedDummyPushId(), false);
-  }
+  Version peekNextVersion();
 
-  public Optional<Version> getVersion(int versionNumber) {
-    checkVersionSupplier();
-    for (StoreVersion storeVersion : storeVersionsSupplier.get()) {
-      Version version = new Version(storeVersion);
-      if (version.getNumber() == versionNumber) {
-        return Optional.of(version);
-      }
-    }
-    return Optional.empty();
-  }
+  Optional<Version> getVersion(int versionNumber);
 
-  public VersionStatus getVersionStatus(int versionNumber) {
-    Optional<Version> version = getVersion(versionNumber);
-    if (!version.isPresent()) {
-      return VersionStatus.ERROR.NOT_CREATED;
-    }
+  VersionStatus getVersionStatus(int versionNumber);
 
-    return version.get().getStatus();
-  }
+  List<Version> retrieveVersionsToDelete(int clusterNumVersionsToPreserve);
 
-  private Version increaseVersion(String pushJobId, boolean createNewVersion) {
-    int versionNumber = getLargestUsedVersionNumber() + 1;
-    checkDisableStoreWrite("increase", versionNumber);
-    Version version = new Version(getName(), versionNumber, pushJobId);
-    if (createNewVersion) {
-      addVersion(version);
-      return version.cloneVersion();
-    } else {
-      return version;
-    }
-  }
+  boolean isSystemStore();
 
-  public List<Version> retrieveVersionsToDelete(int clusterNumVersionsToPreserve) {
-    checkVersionSupplier();
-    int curNumVersionsToPreserve = clusterNumVersionsToPreserve;
-    if (getNumVersionsToPreserve() != NUM_VERSION_PRESERVE_NOT_SET) {
-      curNumVersionsToPreserve = getNumVersionsToPreserve();
-    }
-    // when numVersionsToPreserve is less than 1, it usually means a config issue.
-    // Setting it to zero, will cause the store to be deleted as soon as push completes.
-    if(curNumVersionsToPreserve < 1) {
-      throw new IllegalArgumentException("At least 1 version should be preserved. Parameter " + curNumVersionsToPreserve);
-    }
-
-    int versionCnt = storeVersionsSupplier.get().size();
-    if(versionCnt == 0) {
-      return new ArrayList<>();
-    }
-
-    // The code assumes that Versions are sorted in increasing order by addVersion and increaseVersion
-    int lastElementIndex = versionCnt - 1;
-    List<Version> versionsToDelete = new ArrayList<>();
-
-    /**
-     * The current version need not be the last largest version (eg we rolled back to a earlier version).
-     * The versions which can be deleted are:
-     *     a) ONLINE versions except the current version given we preserve numVersionsToPreserve versions.
-     *     b) ERROR version (ideally should not be there as AbstractPushmonitor#handleErrorPush deletes those)
-     *     c) STARTED versions if its not the last one and the store is not migrating.
-     */
-    for (int i = lastElementIndex; i >= 0; i--) {
-      Version version = new Version(storeVersionsSupplier.get().get(i));
-
-      if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
-        curNumVersionsToPreserve--;
-      } else if (VersionStatus.canDelete(version.getStatus())) {  // ERROR versions are always deleted
-        versionsToDelete.add(version);
-      } else if (VersionStatus.ONLINE.equals(version.getStatus())) {
-        if (curNumVersionsToPreserve > 0) { // keep the minimum number of version to preserve
-          curNumVersionsToPreserve--;
-        } else {
-          versionsToDelete.add(version);
-        }
-      } else if (VersionStatus.STARTED.equals(version.getStatus()) && (i != lastElementIndex) && !isMigrating()) {
-        // For the non-last started version, if it's not the current version(STARTED version should not be the current
-        // version, just prevent some edge cases here.), we should delete it only if the store is not migrating
-        // as during store migration are there are concurrent pushes with STARTED version.
-        // So if the store is not migrating, it's stuck in STARTED, it means somehow the controller did not update the version status properly.
-        versionsToDelete.add(version);
-      }
-      // TODO here we don't deal with the PUSHED version, just keep all of them, need to consider collect them too in the future.
-    }
-    return versionsToDelete;
-  }
-
-  public boolean isSystemStore() {
-    return isSystemStore(getName());
-  }
-
-  public static boolean isSystemStore(String storeName) {
-    return storeName.startsWith(SYSTEM_STORE_NAME_PREFIX);
-  }
-
-  public void fixMissingFields() {
-    checkVersionSupplier();
-    for (StoreVersion storeVersion : storeVersionsSupplier.get()) {
-      Version version = new Version(storeVersion);
-      if (version.getPartitionerConfig() == null) {
-        version.setPartitionerConfig(getPartitionerConfig());
-      }
-      if (version.getPartitionCount() == 0) {
-        version.setPartitionCount(getPartitionCount());
-      }
-    }
-  }
+  void fixMissingFields();
 }

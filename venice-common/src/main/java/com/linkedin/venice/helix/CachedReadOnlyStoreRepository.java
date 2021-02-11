@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -58,10 +59,9 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   @Override
   public Store getStore(String storeName) {
-    // TODO: refactor calls to this method to avoid unnecessary copying
     Store store = storeMap.get(getZkStoreName(storeName));
     if (store != null) {
-      return store.cloneStore();
+      return new ReadOnlyStore(store);
     }
     return null;
   }
@@ -69,7 +69,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
     Store store = storeMap.get(getZkStoreName(storeName));
     if (store != null) {
-      return store;
+      return new ReadOnlyStore(store);
     }
     throw new VeniceNoStoreException(storeName, clusterName);
   }
@@ -81,8 +81,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   @Override
   public List<Store> getAllStores() {
-    // TODO: refactor calls to this method to avoid unnecessary copying
-    return new ArrayList<>(storeMap.values());
+    return storeMap.values().stream().map(s -> new ReadOnlyStore(s)).collect(Collectors.toList());
   }
 
   @Override

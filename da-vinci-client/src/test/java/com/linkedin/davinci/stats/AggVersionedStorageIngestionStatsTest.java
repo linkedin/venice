@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestUtils;
@@ -44,7 +45,7 @@ public class AggVersionedStorageIngestionStatsTest {
     String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(regularStoreName);
     String zkSharedStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore("test-cluster");
     Store zkSharedStore = getMockStore(zkSharedStoreName);
-    zkSharedStore.addVersion(new Version(zkSharedStoreName, 1, ""));
+    zkSharedStore.addVersion(new VersionImpl(zkSharedStoreName, 1, ""));
     zkSharedStore.setCurrentVersion(1);
     doReturn(zkSharedStore).when(mockStoreRepository).getStore(zkSharedStoreName);
     doReturn(zkSharedStore).when(mockStoreRepository).getStore(metadataStoreName);
@@ -63,7 +64,7 @@ public class AggVersionedStorageIngestionStatsTest {
   public void testWithRegularStoreIngestion() {
     String storeName = TestUtils.getUniqueString("test-store");
     Store ingestionStore = getMockStore(storeName);
-    ingestionStore.addVersion(new Version(storeName, 1, ""));
+    ingestionStore.addVersion(new VersionImpl(storeName, 1, ""));
     ingestionStore.setCurrentVersion(1);
     doReturn(ingestionStore).when(mockStoreRepository).getStore(storeName);
     StoreIngestionTask mockStoreIngestionTask = mock(StoreIngestionTask.class);

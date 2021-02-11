@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -178,7 +178,7 @@ public class ErrorPartitionResetTaskTest {
 
   private Store getStoreWithCurrentVersion() {
     Store store = TestUtils.getRandomStore();
-    store.addVersion(new Version(store.getName(), 1, "", PARTITION_COUNT));
+    store.addVersion(new VersionImpl(store.getName(), 1, "", PARTITION_COUNT));
     store.setCurrentVersion(1);
     return store;
   }

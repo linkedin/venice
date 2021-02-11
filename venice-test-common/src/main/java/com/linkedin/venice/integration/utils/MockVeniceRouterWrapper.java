@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -69,7 +70,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     Version mockVersion = Mockito.mock(Version.class);
     doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(Mockito.anyInt());
 
-    PartitionerConfig partitionerConfig = new PartitionerConfig();
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     doReturn(partitionerConfig).when(mockVersion).getPartitionerConfig();
 
     HelixReadOnlySchemaRepository mockSchemaRepository = Mockito.mock(HelixReadOnlySchemaRepository.class);

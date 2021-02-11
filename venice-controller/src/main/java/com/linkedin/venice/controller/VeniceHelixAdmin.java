@@ -49,7 +49,9 @@ import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
@@ -57,6 +59,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -68,6 +71,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.participant.protocol.KillPushJob;
@@ -161,7 +165,7 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.meta.HybridStoreConfig.*;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static com.linkedin.venice.meta.VersionStatus.*;
 /**
  * Helix Admin based on 0.8.4.215 APIs.
@@ -1255,7 +1259,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (null == store) {
             throw new VeniceNoStoreException(storeName, clusterName);
         }
-        Version version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
+        Version version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
         if (versionNumber < store.getLargestUsedVersionNumber() || store.containsVersion(versionNumber)) {
             logger.info("Ignoring the add version message since version " + versionNumber
                 + " is less than the largestUsedVersionNumber of " + store.getLargestUsedVersionNumber()
@@ -1362,12 +1366,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (versionNumber == VERSION_ID_UNSET) {
                         // No version supplied, generate a new version. This could happen either in the parent
                         // controller or local Samza jobs.
-                        version = new Version(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
+                        version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
                     } else {
                         if (store.containsVersion(versionNumber)) {
                             throwVersionAlreadyExists(storeName, versionNumber);
                         }
-                        version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
+                        version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
                     }
                 } finally {
                     repository.unLock();
@@ -2730,12 +2734,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     @Override
     public synchronized void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
-        Store originalStoreToBeCloned = getStore(clusterName, storeName);
-        if (null == originalStoreToBeCloned) {
+        Store originalStore = getStore(clusterName, storeName);
+        if (null == originalStore) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
         }
-        Store originalStore = originalStoreToBeCloned.cloneStore();
-
         if (originalStore.isHybrid()) {
             // If this is a hybrid store, always try to disable compaction if RT topic exists.
             try {
@@ -2818,7 +2820,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * If either of these three fields is not present, we should use default value to construct correct PartitionerConfig.
              */
             if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
-                PartitionerConfig partitionerConfig = new PartitionerConfig();
+                PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
                 partitionerClass.ifPresent(partitionerConfig::setPartitionerClass);
                 partitionerParams.ifPresent(partitionerConfig::setPartitionerParams);
                 amplificationFactor.ifPresent(partitionerConfig::setAmplificationFactor);
@@ -2965,7 +2967,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (regularVersionETLEnabled.isPresent() || futureVersionETLEnabled.isPresent() || etledUserProxyAccount.isPresent()) {
-                ETLStoreConfig etlStoreConfig = new ETLStoreConfig(
+                ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl(
                     etledUserProxyAccount.orElse(originalStore.getEtlStoreConfig().getEtledUserProxyAccount()),
                     regularVersionETLEnabled.orElse(originalStore.getEtlStoreConfig().isRegularVersionETLEnabled()),
                     futureVersionETLEnabled.orElse(originalStore.getEtlStoreConfig().isFutureVersionETLEnabled()));
@@ -3052,7 +3054,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HybridStoreConfig hybridConfig;
         if (oldStore.isHybrid()){ // for an existing hybrid store, just replace any specified values
             HybridStoreConfig oldHybridConfig = oldStore.getHybridStoreConfig().clone();
-            hybridConfig = new HybridStoreConfig(
+            hybridConfig = new HybridStoreConfigImpl(
                 hybridRewindSeconds.isPresent()
                     ? hybridRewindSeconds.get()
                     : oldHybridConfig.getRewindTimeInSeconds(),
@@ -3073,7 +3075,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * used. -1 indicates that the feature is inactive.
              */
             final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.isPresent() ? hybridTimeLagThreshold.get() : DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-            hybridConfig = new HybridStoreConfig(
+            hybridConfig = new HybridStoreConfigImpl(
                 hybridRewindSeconds.get(),
                 hybridOffsetLagThreshold.get(),
                 finalHybridTimeLagThreshold
@@ -4456,7 +4458,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private Version setZkSharedStoreVersion(String clusterName, String zkSharedStoreName, String pushJobId, int versionNum,
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
-        Version newVersion = new Version(zkSharedStoreName, versionNum, pushJobId, numberOfPartitions);
+        Version newVersion = new VersionImpl(zkSharedStoreName, versionNum, pushJobId, numberOfPartitions);
         newVersion.setPushType(pushType);
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);

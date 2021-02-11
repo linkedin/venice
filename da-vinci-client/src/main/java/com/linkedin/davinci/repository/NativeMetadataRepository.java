@@ -10,11 +10,15 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
@@ -22,6 +26,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.CurrentStoreStates;
@@ -147,7 +152,7 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
   public Store getStore(String storeName) {
     Store store = subscribedStoreMap.get(storeName);
     if (store != null) {
-      return store.cloneStore();
+      return new ReadOnlyStore(store);
     }
     return null;
   }
@@ -156,7 +161,7 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
   public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
     Store store = subscribedStoreMap.get(storeName);
     if (store != null) {
-      return store.cloneStore();
+      return new ReadOnlyStore(store);
     }
     throw new VeniceNoStoreException(storeName);
   }
@@ -436,13 +441,13 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
   protected List<Version> getVersionsFromCurrentVersionStates(String storeName, CurrentVersionStates currentVersionStates) {
     List<Version> versionList = new ArrayList<>();
     for (StoreVersionState storeVersionState : currentVersionStates.currentVersionStates) {
-      PartitionerConfig partitionerConfig = new PartitionerConfig(
+      PartitionerConfig partitionerConfig = new PartitionerConfigImpl(
           storeVersionState.partitionerConfig.partitionerClass.toString(),
           Utils.getStringMapFromCharSequenceMap(storeVersionState.partitionerConfig.partitionerParams),
           storeVersionState.partitionerConfig.amplificationFactor
       );
 
-      Version version = new Version(storeName, storeVersionState.versionNumber, storeVersionState.creationTime, storeVersionState.pushJobId.toString(), storeVersionState.partitionCount, partitionerConfig);
+      Version version = new VersionImpl(storeName, storeVersionState.versionNumber, storeVersionState.creationTime, storeVersionState.pushJobId.toString(), storeVersionState.partitionCount, partitionerConfig);
       version.setChunkingEnabled(storeVersionState.chunkingEnabled);
       version.setCompressionStrategy(CompressionStrategy.valueOf(storeVersionState.compressionStrategy.toString()));
       version.setLeaderFollowerModelEnabled(storeVersionState.leaderFollowerModelEnabled);
@@ -462,14 +467,14 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
 
     HybridStoreConfig hybridStoreConfig = null;
     if (storeProperties.hybrid) {
-      hybridStoreConfig = new HybridStoreConfig(storeProperties.hybridStoreConfig.rewindTimeInSeconds,
+      hybridStoreConfig = new HybridStoreConfigImpl(storeProperties.hybridStoreConfig.rewindTimeInSeconds,
                                                 storeProperties.hybridStoreConfig.offsetLagThresholdToGoOnline,
                                                 storeProperties.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds);
     }
 
     PartitionerConfig partitionerConfig = null;
     if (storeProperties.partitionerConfig != null) {
-      partitionerConfig = new PartitionerConfig(
+      partitionerConfig = new PartitionerConfigImpl(
           storeProperties.partitionerConfig.partitionerClass.toString(),
           Utils.getStringMapFromCharSequenceMap(storeProperties.partitionerConfig.partitionerParams),
           storeProperties.partitionerConfig.amplificationFactor
@@ -500,7 +505,7 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
     store.setEnableWrites(storeProperties.enableWrites);
     ETLStoreConfig etlStoreConfig = null;
     if (storeProperties.etlStoreConfig != null) {
-      etlStoreConfig = new ETLStoreConfig(storeProperties.etlStoreConfig.etledUserProxyAccount.toString(),
+      etlStoreConfig = new ETLStoreConfigImpl(storeProperties.etlStoreConfig.etledUserProxyAccount.toString(),
           storeProperties.etlStoreConfig.regularVersionETLEnabled,
           storeProperties.etlStoreConfig.futureVersionETLEnabled
       );

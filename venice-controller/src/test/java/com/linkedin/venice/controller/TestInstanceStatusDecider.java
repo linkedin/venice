@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.utils.TestUtils;
@@ -228,7 +229,7 @@ public class TestInstanceStatusDecider {
 
   private void prepareStoreAndVersion(String storeName, int version, VersionStatus status) {
     Store store = TestUtils.createTestStore(storeName, "t", 0);
-    Version version1 = new Version(storeName, version);
+    Version version1 = new VersionImpl(storeName, version);
     version1.setStatus(status);
     store.addVersion(version1);
     doReturn(store).when(readWriteStoreRepository).getStore(storeName);
@@ -237,7 +238,7 @@ public class TestInstanceStatusDecider {
   private void prepareStoreAndVersion(String storeName, int version, VersionStatus status, boolean isCurrentVersion,
       int replicationFactor) {
     Store store = TestUtils.createTestStore(storeName, "t", 0);
-    Version version1 = new Version(storeName, version);
+    Version version1 = new VersionImpl(storeName, version);
     version1.setReplicationFactor(replicationFactor);
     store.addVersion(version1);
 

@@ -35,7 +35,7 @@ public class TestVersion {
   public void serializes() throws IOException {
     String storeName = TestUtils.getUniqueString("store");
     int versionNumber = 17;
-    Version version = new Version(storeName, versionNumber);
+    Version version = new VersionImpl(storeName, versionNumber);
     String serialized = codehouseMapper.writeValueAsString(version);
     Assert.assertTrue(serialized.contains(storeName));
   }

@@ -4,6 +4,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -88,7 +89,7 @@ public class TestHelixReadWriteStorageEngineRepository {
         s1.setReadQuotaInCU(100);
         repo.addStore(s1);
         Store s2 = TestUtils.createTestStore("s2", "owner", System.currentTimeMillis());
-        s2.addVersion(new Version(s2.getName(), 3));
+        s2.addVersion(new VersionImpl(s2.getName(), 3));
         s2.setReadQuotaInCU(200);
         repo.addStore(s2);
 
