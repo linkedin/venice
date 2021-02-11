@@ -118,31 +118,32 @@ public class TestPushJobWithNativeReplicationAndKMM {
         .setNativeReplicationEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
+    try (ControllerClient dc0Client = new ControllerClient(clusterName,
+        childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client = new ControllerClient(clusterName,
+            childDatacenters.get(1).getControllerConnectString());
+        ControllerClient dc2Client = new ControllerClient(clusterName,
+            childDatacenters.get(2).getControllerConnectString())) {
 
-    ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
-    ControllerClient dc2Client = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
+      /**
+       * Check the update store command in parent controller has been propagated into child controllers, before
+       * sending any commands directly into child controllers, which can help avoid race conditions.
+       */
+      verifyDCConfigNativeRepl(dc0Client, storeName, true);
+      verifyDCConfigNativeRepl(dc1Client, storeName, true);
+      verifyDCConfigNativeRepl(dc2Client, storeName, true);
 
-    /**
-     * Check the update store command in parent controller has been propagated into child controllers, before
-     * sending any commands directly into child controllers, which can help avoid race conditions.
-     */
-    verifyDCConfigNativeRepl(dc0Client, storeName, true);
-    verifyDCConfigNativeRepl(dc1Client, storeName, true);
-    verifyDCConfigNativeRepl(dc2Client, storeName, true);
+      //disable L/F+ native replication for dc-0 and dc-1.
+      UpdateStoreQueryParams updateStoreParams1 =
+          new UpdateStoreQueryParams().setLeaderFollowerModel(false).setNativeReplicationEnabled(false);
+      TestPushUtils.updateStore(clusterName, storeName, dc0Client, updateStoreParams1);
+      TestPushUtils.updateStore(clusterName, storeName, dc1Client, updateStoreParams1);
 
-    //disable L/F+ native replication for dc-0 and dc-1.
-    UpdateStoreQueryParams updateStoreParams1 = new UpdateStoreQueryParams()
-        .setLeaderFollowerModel(false)
-        .setNativeReplicationEnabled(false);
-    TestPushUtils.updateStore(clusterName, storeName, dc0Client, updateStoreParams1);
-    TestPushUtils.updateStore(clusterName, storeName, dc1Client, updateStoreParams1);
-
-
-    //verify all the datacenter is configurd correctly.
-    verifyDCConfigNativeRepl(dc0Client, storeName, false);
-    verifyDCConfigNativeRepl(dc1Client, storeName, false);
-    verifyDCConfigNativeRepl(dc2Client, storeName, true);
+      //verify all the datacenter is configurd correctly.
+      verifyDCConfigNativeRepl(dc0Client, storeName, false);
+      verifyDCConfigNativeRepl(dc1Client, storeName, false);
+      verifyDCConfigNativeRepl(dc2Client, storeName, true);
+    }
 
     try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
       job.run();
