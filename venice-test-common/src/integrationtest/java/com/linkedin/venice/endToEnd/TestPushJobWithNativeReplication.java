@@ -139,6 +139,16 @@ public class  TestPushJobWithNativeReplication {
         .setNativeReplicationEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
+    try (ControllerClient dc0Client = new ControllerClient(clusterName,
+        childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client = new ControllerClient(clusterName,
+            childDatacenters.get(1).getControllerConnectString())) {
+
+      //verify the update store command has taken effect before starting the push job.
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+    }
+
     try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
       job.run();
 
@@ -203,6 +213,16 @@ public class  TestPushJobWithNativeReplication {
         .setLeaderFollowerModel(true)
         .setNativeReplicationEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+
+    try (ControllerClient dc0Client = new ControllerClient(clusterName,
+        childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client = new ControllerClient(clusterName,
+            childDatacenters.get(1).getControllerConnectString())) {
+
+      //verify the update store command has taken effect before starting the push job.
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+    }
 
     Thread pushJobThread = new Thread(() -> {
       TestPushUtils.runPushJob("Test push job", props);
@@ -273,6 +293,15 @@ public class  TestPushJobWithNativeReplication {
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
+    try (ControllerClient dc0Client = new ControllerClient(clusterName,
+        childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client = new ControllerClient(clusterName,
+            childDatacenters.get(1).getControllerConnectString())) {
+
+      //verify the update store command has taken effect before starting the push job.
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+    }
     // Write batch data
     TestPushUtils.runPushJob("Test push job", props);
 
@@ -334,6 +363,16 @@ public class  TestPushJobWithNativeReplication {
         .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+
+    try (ControllerClient dc0Client = new ControllerClient(clusterName,
+        childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client = new ControllerClient(clusterName,
+            childDatacenters.get(1).getControllerConnectString())) {
+
+      //verify the update store command has taken effect before starting the push job.
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+    }
 
     // Write batch data
     TestPushUtils.runPushJob("Test push job", props);
