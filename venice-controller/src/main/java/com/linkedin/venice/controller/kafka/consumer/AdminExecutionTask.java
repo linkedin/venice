@@ -91,7 +91,11 @@ public class AdminExecutionTask implements Callable<Void> {
 
   @Override
   public Void call() {
-    while (!internalTopic.isEmpty() && admin.isMasterController(clusterName)) {
+    while (!internalTopic.isEmpty()) {
+      if (!admin.isMasterController(clusterName)) {
+        throw new VeniceRetriableException("This controller is no longer the master of: " + clusterName
+            + ". The consumption task should unsubscribe soon");
+      }
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
       try {
         if (adminOperationWrapper.getStartProcessingTimestamp() == null) {

@@ -954,6 +954,40 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
+
+  @Test (timeOut = 2*TIMEOUT)
+  public void testResubscribeWithFailedAdminMessages() throws ExecutionException, InterruptedException, IOException {
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
+    String mockPushJobId = "test";
+    veniceWriter.put(emptyKeyBytes, getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    long failingOffset = ((RecordMetadata) veniceWriter.put(emptyKeyBytes, getAddVersionMessage(clusterName, storeName,
+        mockPushJobId, 1, 1, 2L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get()).offset();
+    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    doThrow(new VeniceException("Mocked add version exception")).when(admin).addVersionAndStartIngestion(clusterName,
+        storeName, mockPushJobId, 1, 1, Version.PushType.BATCH, null);
+    // isMasterController() is called once every consumption cycle (1000ms) and for every message processed in AdminExecutionTask.
+    // Provide a sufficient number of true -> false -> true to mimic a transfer of mastership and resubscribed behavior
+    // while stuck on a failing message.
+    when(admin.isMasterController(clusterName)).thenReturn(
+      true,true, true, true, true, false, false, false, true
+    );
+    executor.submit(task);
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () ->
+        Assert.assertEquals(task.getFailingOffset(), failingOffset));
+    // Failing offset should be set to -1 once the consumption task unsubscribed.
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () ->
+        Assert.assertEquals(task.getFailingOffset(), -1));
+    // The consumption task will eventually resubscribe and should be stuck on the same admin message.
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () ->
+        Assert.assertEquals(task.getFailingOffset(), failingOffset));
+    task.close();
+    executor.shutdown();;
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
   @Test
   public void testMigrateFromOffsetManagerToMetadataAccessor()
       throws InterruptedException, ExecutionException, TimeoutException, IOException {

@@ -381,13 +381,19 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         List<Future<Void>> results = executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
         stats.recordAdminConsumptionCycleDurationMs(System.currentTimeMillis() - adminExecutionTasksInvokeTime);
         Map<String, Long> newLastSucceededExecutionIdMap = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
+        boolean internalQueuesEmptied = true;
         for (int i = 0; i < results.size(); i++) {
           String storeName = stores.get(i);
           Future<Void> result = results.get(i);
           try {
             result.get();
             problematicStores.remove(storeName);
+            if (internalQueuesEmptied && storeAdminOperationsMapWithOffset.containsKey(storeName) &&
+                !storeAdminOperationsMapWithOffset.get(storeName).isEmpty()) {
+              internalQueuesEmptied = false;
+            }
           } catch (ExecutionException | CancellationException e) {
+            internalQueuesEmptied = false;
             AdminErrorInfo errorInfo = new AdminErrorInfo();
             int perStorePendingMessagesCount = storeAdminOperationsMapWithOffset.get(storeName).size();
             pendingAdminMessagesCount += perStorePendingMessagesCount;
@@ -409,7 +415,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             }
           }
         }
-        if (problematicStores.isEmpty()) {
+        if (problematicStores.isEmpty() && internalQueuesEmptied) {
           // All admin operations were successfully executed or skipped.
           // 1. Clear the failing offset.
           // 3. Persist the latest execution id and offset (cluster wide) to ZK.
