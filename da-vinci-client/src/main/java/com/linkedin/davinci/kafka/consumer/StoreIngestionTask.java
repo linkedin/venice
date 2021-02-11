@@ -1586,7 +1586,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int faultyPartition = record.partition();
       String errorMessage = "Fatal data validation problem with partition " + faultyPartition + ", offset " + record.offset();
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore) during re-balancing
-      boolean needToUnsub = !(isCurrentVersion.getAsBoolean()) || partitionConsumptionState.isEndOfPushReceived();
+      boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
       if (needToUnsub) {
         errorMessage +=  ". Consumption will be halted.";
         notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
@@ -1963,6 +1963,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Assumes the timestamp on the ConsumerRecord is the broker's timestamp when it received the message.
       recordWriterStats(kafkaValue.producerMetadata.messageTimestamp, consumerRecord.timestamp(),
           System.currentTimeMillis(), partitionConsumptionState);
+      FatalDataValidationException e = null;
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
 
       /**
@@ -1986,8 +1987,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer calllback like pass through mode.
        */
       if (producedRecord == null || !Version.isRealTimeTopic(consumerRecord.topic())) {
-        offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
-        versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
+        try {
+          offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
+          versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
+        } catch (FatalDataValidationException fatalException) {
+          if (endOfPushReceived) {
+            e = fatalException;
+          } else {
+            throw fatalException;
+          }
+        }
       }
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (producedRecord == null ? (ControlMessage) kafkaValue.payloadUnion : (ControlMessage) producedRecord.getValueUnion());
@@ -2025,6 +2034,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           storeIngestionStats.recordValueSize(storeName, valueSize);
         }
         sizeOfPersistedData = keySize + valueSize;
+      }
+      if (e != null) {
+        throw e;
       }
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.get().execute(e);
@@ -2123,11 +2135,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw fatalException;
       }
 
-      String errorMessage =
-            "Fatal data validation problem with Topic: " + consumerRecord.topic() + " partition " + consumerRecord.partition()
-                + ", offset " + consumerRecord.offset();
-      logger.warn(errorMessage + " versionTopic: " + kafkaVersionTopic
-          + ", however since EOP is already received so consumption will continue." + fatalException.getMessage());
+      String errorMessage = String.format("Fatal data validation problem with topic %s partition %s offset %s, "
+          + "but consumption will continue since EOP is already received. ",
+          consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset());
+      logger.warn(errorMessage + fatalException.getMessage());
 
       if (fatalException instanceof ImproperlyStartedSegmentException) {
         return Optional.empty();

@@ -1489,16 +1489,6 @@ public class TestHybrid {
           //Do an H2V push
           runH2V(h2vProperties, 1, controllerClient);
 
-          /**
-           * The following k/v pairs will be sent to RT, with the same producer GUID:
-           * <key1, value1, Sequence number: 1>, <key1, value2, seq: 2>, <key1, value1, seq: 1 (Duplicated message)>, <key2, value1, seq: 3>
-           * First check key2=value1, which confirms all messages above have been consumed by servers; then check key1=value2 to confirm
-           * that duplicated message will not be persisted into disk
-           */
-          String key1 = "duplicated_message_test_key_1";
-          String value1 = "duplicated_message_test_value_1";
-          String value2 = "duplicated_message_test_value_2";
-          String key2 = "duplicated_message_test_key_2";
           Properties veniceWriterProperties = new Properties();
           veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
           /**

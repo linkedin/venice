@@ -340,7 +340,7 @@ public class ProducerTracker {
 
       DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, consumerRecord);
       /**
-       * WE will swallow {@link DataFaultType.MISSING} in either of the two scenarios:
+       * We will swallow {@link DataFaultType.MISSING} in either of the two scenarios:
        * 1. The segment was sent by unregistered producers after EOP
        * 2. The topic might have been compacted for the record so that tolerateMissingMsgs is true
        */
@@ -394,12 +394,20 @@ public class ProducerTracker {
       } else {
         DataValidationException dataCorruptException = DataFaultType.CORRUPT.getNewException(segment, consumerRecord);
         /**
-         * WE will swallow {@link DataFaultType.CORRUPT} in either of the two scenarios:
+         * We will swallow {@link DataFaultType.CORRUPT} in either of the two scenarios:
          * 1. The segment was sent by unregistered producers after EOP
          * 2. The topic might have been compacted for the record so that tolerateMissingMsgs is true
          */
         if ((endOfPushReceived && !segment.isRegistered()) || tolerateMissingMsgs) {
           segment.end(incomingEndOfSegment.finalSegment);
+        } else if (endOfPushReceived) {
+          /**
+           * If EOP is received, we will still end the segment and then throw exceptions.
+           * Ending the segment so that next SOS message wouldn't get misleading
+           * missing exceptions in {@link #trackSegment(ConsumerRecord, boolean)}
+           */
+          segment.end(incomingEndOfSegment.finalSegment);
+          throw dataCorruptException ;
         } else {
           throw dataCorruptException;
         }
