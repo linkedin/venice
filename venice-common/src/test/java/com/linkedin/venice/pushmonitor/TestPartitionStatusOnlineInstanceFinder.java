@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.routerapi.ReplicaState;
 import java.time.LocalDateTime;
@@ -99,7 +100,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
             OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     store.setLeaderFollowerModelEnabled(true);
-    Version version = new Version(storeName, versionNumber, "pushJobId");
+    Version version = new VersionImpl(storeName, versionNumber, "pushJobId");
     version.setLeaderFollowerModelEnabled(true);
     Store refreshedStore = store.cloneStore();
     refreshedStore.addVersion(version);
@@ -119,7 +120,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
             OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     store.setLeaderFollowerModelEnabled(true);
-    version = new Version(storeName, versionNumber, "pushJobId");
+    version = new VersionImpl(storeName, versionNumber, "pushJobId");
     version.setLeaderFollowerModelEnabled(true);
     store.addVersion(version);
     store.deleteVersion(versionNumber);

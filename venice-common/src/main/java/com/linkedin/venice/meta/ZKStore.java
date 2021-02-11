@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 
@@ -45,7 +46,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
  *
  * TODO: In the future, we could consider to use avro json serialization directly to make it simpler.
  */
-public class ZKStore extends Store implements DataModelBackedStructure<StoreProperties>  {
+public class ZKStore extends AbstractStore implements DataModelBackedStructure<StoreProperties>  {
   /**
    * Internal data model
    */
@@ -57,18 +58,18 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
       OfflinePushStrategy offlinePushStrategy) {
     this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
         NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null,
-        new PartitionerConfig()); // Every store comes with default partitioner settings.
+        new PartitionerConfigImpl()); // Every store comes with default partitioner settings.
   }
 
   public ZKStore(String name, String owner, long createdTime, PersistenceType persistenceType,
       RoutingStrategy routingStrategy, ReadStrategy readStrategy,
       OfflinePushStrategy offlinePushStrategy, int currentVersion,
       long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig, PartitionerConfig partitionerConfig) {
-    if (!isValidStoreName(name)) {
+    if (!Store.isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
 
-    this.storeProperties = prefillAvroRecordWithDefaultValue(new StoreProperties());
+    this.storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
     // for testing
     if (DEFAULT_REPLICATION_FACTOR != this.storeProperties.replicationFactor) {
       this.storeProperties.replicationFactor = DEFAULT_REPLICATION_FACTOR;
@@ -98,23 +99,44 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
     }
     // This makes sure when deserializing existing stores from ZK, we will use default partitioner setting.
     if (partitionerConfig == null) {
-      partitionerConfig = new PartitionerConfig();
+      partitionerConfig = new PartitionerConfigImpl();
     }
     this.storeProperties.partitionerConfig = partitionerConfig.dataModel();
 
     // default ETL config
-    this.storeProperties.etlConfig = new ETLStoreConfig().dataModel();
+    this.storeProperties.etlConfig = new ETLStoreConfigImpl().dataModel();
     this.storeProperties.latestVersionPromoteToCurrentTimestamp = System.currentTimeMillis();
 
-    setupVersionSupplier(() -> this.storeProperties.versions);
+    setupVersionSupplier(new StoreVersionSupplier() {
+      @Override
+      public List<StoreVersion> getForUpdate() {
+        return storeProperties.versions;
+      }
+
+      @Override
+      public List<Version> getForRead() {
+        return storeProperties.versions.stream().map(sv -> new ReadOnlyStore.ReadOnlyVersion(new VersionImpl(sv))).collect(Collectors.toList());
+      }
+    });
   }
 
   public ZKStore(StoreProperties storeProperties) {
-    if (!isValidStoreName(storeProperties.name.toString())) {
+    if (!Store.isValidStoreName(storeProperties.name.toString())) {
       throw new VeniceException("Invalid store name: " + storeProperties.name.toString());
     }
     this.storeProperties = storeProperties;
-    setupVersionSupplier(() -> this.storeProperties.versions);
+    setupVersionSupplier(new StoreVersionSupplier() {
+      @Override
+      public List<StoreVersion> getForUpdate() {
+        return storeProperties.versions;
+      }
+
+      @Override
+      public List<Version> getForRead() {
+        return storeProperties.versions.stream().map(v -> new ReadOnlyStore.ReadOnlyVersion(new VersionImpl(v))).collect(
+            Collectors.toList());
+      }
+    });
   }
 
   @Override
@@ -249,7 +271,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
     if (this.storeProperties.partitionerConfig == null) {
       return null;
     }
-    return new PartitionerConfig(this.storeProperties.partitionerConfig);
+    return new PartitionerConfigImpl(this.storeProperties.partitionerConfig);
   }
 
   @Override
@@ -300,7 +322,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
     if (this.storeProperties.hybridConfig == null) {
       return null;
     }
-    return new HybridStoreConfig(this.storeProperties.hybridConfig);
+    return new HybridStoreConfigImpl(this.storeProperties.hybridConfig);
   }
 
   @Override
@@ -511,7 +533,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
     if (this.storeProperties.etlConfig == null) {
       return null;
     }
-    return new ETLStoreConfig(this.storeProperties.etlConfig);
+    return new ETLStoreConfigImpl(this.storeProperties.etlConfig);
   }
 
   @Override
@@ -621,7 +643,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
   @Override
   public Map<String, SystemStoreAttributes> getSystemStores() {
     Map<String, SystemStoreAttributes> systemStoreMap = new HashMap<>();
-    this.storeProperties.systemStores.forEach( (k, v) -> systemStoreMap.put(k.toString(), new SystemStoreAttributes(v)));
+    this.storeProperties.systemStores.forEach( (k, v) -> systemStoreMap.put(k.toString(), new SystemStoreAttributesImpl(v)));
     return systemStoreMap;
   }
 
@@ -633,7 +655,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
   }
 
   @Override
-  protected void putSystemStore(VeniceSystemStoreType systemStoreType, SystemStoreAttributes systemStoreAttributes) {
+  public void putSystemStore(VeniceSystemStoreType systemStoreType, SystemStoreAttributes systemStoreAttributes) {
     this.storeProperties.systemStores.put(systemStoreType.getPrefix(), systemStoreAttributes.dataModel());
   }
 
@@ -653,7 +675,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
   private void setPushedVersionsOnline() {
     // TODO, if the PUSHED version is the latest vesion, after store is enabled to write, shall we put this version as the current version?
     for (StoreVersion storeVersion : this.storeProperties.versions) {
-      Version version = new Version(storeVersion);
+      Version version = new VersionImpl(storeVersion);
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
         updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
       }
@@ -732,7 +754,7 @@ public class ZKStore extends Store implements DataModelBackedStructure<StoreProp
     clonedStore.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
     clonedStore.setStoreMetaSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
     for (StoreVersion storeVersion : this.storeProperties.versions) {
-      clonedStore.forceAddVersion(new Version(storeVersion).cloneVersion(), true);
+      clonedStore.forceAddVersion(new VersionImpl(storeVersion).cloneVersion(), true);
     }
 
     /**

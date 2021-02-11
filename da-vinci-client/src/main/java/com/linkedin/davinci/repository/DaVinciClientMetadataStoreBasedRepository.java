@@ -8,14 +8,16 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
@@ -85,9 +87,9 @@ public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRep
             OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
         store.setPartitionCount(DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
         // TODO time based lag threshold might be more suitable than offset based for system store use cases.
-        store.setHybridStoreConfig(new HybridStoreConfig(DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
-            OFFSET_LAG_THRESHOLD_FOR_METADATA_DA_VINCI_STORE, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
-        Version currentVersion = new Version(storeName, Integer.parseInt(metadataSystemStoreVersion.get(veniceStoreName)),
+        store.setHybridStoreConfig(new HybridStoreConfigImpl(DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
+            OFFSET_LAG_THRESHOLD_FOR_METADATA_DA_VINCI_STORE, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+        Version currentVersion = new VersionImpl(storeName, Integer.parseInt(metadataSystemStoreVersion.get(veniceStoreName)),
             "system_store_push_job", DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
         store.addVersion(currentVersion);
         store.setCurrentVersion(currentVersion.getNumber());
@@ -109,7 +111,7 @@ public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRep
     if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
       Store store = metadataSystemStores.get(storeName);
       if (store != null) {
-        store = store.cloneStore();
+        store = new ReadOnlyStore(store);
       }
       return store;
     } else {
@@ -122,7 +124,7 @@ public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRep
     if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
       Store store = metadataSystemStores.get(storeName);
       if (store != null) {
-        return store.cloneStore();
+        return new ReadOnlyStore(store);
       }
       throw new VeniceNoStoreException(storeName);
     } else {

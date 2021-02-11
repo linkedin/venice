@@ -69,14 +69,19 @@ public class TestHelixReadOnlyStorageEngineRepository {
     s1.setReadQuotaInCU(100);
     writeRepo.addStore(s1);
     Thread.sleep(1000L);
-    Assert.assertEquals(repo.getStore(s1.getName()), s1, "Can not get store from ZK notification successfully");
+    /**
+     * The store instance returned by {@link HelixReadOnlyStoreRepository} is {@link com.linkedin.venice.meta.ReadOnlyStore},
+     * so we couldn't compare it directly with the original store, but the cloned store can since the cloned store won't
+     * be a {@link ReadOnlyStore}.
+     */
+    Assert.assertEquals(repo.getStore(s1.getName()).cloneStore(), s1, "Can not get store from ZK notification successfully");
 
     // Update and get notification
     Store s2 = writeRepo.getStore(s1.getName());
     s2.increaseVersion();
     writeRepo.updateStore(s2);
     Thread.sleep(1000L);
-    Assert.assertEquals(repo.getStore(s1.getName()), s2, "Can not get store from ZK notification successfully");
+    Assert.assertEquals(repo.getStore(s1.getName()).cloneStore(), s2, "Can not get store from ZK notification successfully");
 
     // Delete and get notification
     writeRepo.deleteStore(s1.getName());
@@ -98,12 +103,17 @@ public class TestHelixReadOnlyStorageEngineRepository {
     }
     Thread.sleep(1000L);
     for(Store store:stores){
-      Assert.assertEquals(repo.getStore(store.getName()),store, "Can not get store from ZK notification successfully");
+      /**
+       * The store instance returned by {@link HelixReadOnlyStoreRepository} is {@link com.linkedin.venice.meta.ReadOnlyStore},
+       * so we couldn't compare it directly with the original store, but the cloned store can since the cloned store won't
+       * be a {@link ReadOnlyStore}.
+       */
+      Assert.assertEquals(repo.getStore(store.getName()).cloneStore(), store, "Can not get store from ZK notification successfully");
     }
 
     repo.refresh();
     for(Store store:stores){
-      Assert.assertEquals(repo.getStore(store.getName()),store, "Can not get store from ZK after refreshing successfully");
+      Assert.assertEquals(repo.getStore(store.getName()).cloneStore(), store, "Can not get store from ZK after refreshing successfully");
     }
   }
 

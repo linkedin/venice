@@ -3,7 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
@@ -329,7 +330,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = "hybridTestStore_v1";
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfig(100, 100, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     AbstractPushMonitor testMonitor = getPushMonitor(true, mockReplicator);
@@ -379,7 +380,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = getTopic();
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfig(100, 100, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));
@@ -429,7 +430,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = getTopic();
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfig(100, 100, HybridStoreConfig.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));
@@ -542,7 +543,7 @@ public abstract class AbstractPushMonitorTest {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-    Version version = new Version(storeName, versionNumber);
+    Version version = new VersionImpl(storeName, versionNumber);
     version.setStatus(VersionStatus.STARTED);
     store.addVersion(version);
     doReturn(store).when(mockStoreRepo).getStore(storeName);

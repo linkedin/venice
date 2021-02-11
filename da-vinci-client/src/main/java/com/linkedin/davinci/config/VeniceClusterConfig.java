@@ -3,6 +3,7 @@ package com.linkedin.davinci.config;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -86,10 +87,10 @@ public class VeniceClusterConfig {
     statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000l);
 
     if (clusterProps.containsKey(DEFAULT_STORAGE_QUOTA)) {
-      Store.setDefaultStorageQuota(clusterProps.getLong(DEFAULT_STORAGE_QUOTA));
+      AbstractStore.setDefaultStorageQuota(clusterProps.getLong(DEFAULT_STORAGE_QUOTA));
     }
     if (clusterProps.containsKey(DEFAULT_READ_QUOTA)) {
-      Store.setDefaultReadQuota(clusterProps.getLong(DEFAULT_READ_QUOTA));
+      AbstractStore.setDefaultReadQuota(clusterProps.getLong(DEFAULT_READ_QUOTA));
     }
 
     kafkaSecurityProtocol = clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());

@@ -3,6 +3,8 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -18,7 +20,8 @@ import java.util.Objects;
  * Need to keep in mind that all the shared properties are not mutable here, and if we want to change the shared properties,
  * we need to modify the zk shared store (a regular Venice store) instead of here.
  */
-public class SystemStore extends Store {
+public class SystemStore extends AbstractStore {
+  private static final SystemStoreAttributes DEFAULT_READ_ONLY_SYSTEM_STORE_ATTRIBUTE = new ReadOnlyStore.ReadOnlySystemStoreAttributes(new SystemStoreAttributesImpl());
   private final Store zkSharedStore;
   private final VeniceSystemStoreType systemStoreType;
   private final Store veniceStore;
@@ -27,7 +30,17 @@ public class SystemStore extends Store {
     this.zkSharedStore = zkSharedStore;
     this.systemStoreType = systemStoreType;
     this.veniceStore = veniceStore;
-    setupVersionSupplier(() -> fetchAndBackfillSystemStoreAttributes().dataModel().versions);
+    setupVersionSupplier(new StoreVersionSupplier() {
+      @Override
+      public List<StoreVersion> getForUpdate() {
+        return fetchAndBackfillSystemStoreAttributes(false).dataModel().versions;
+      }
+
+      @Override
+      public List<Version> getForRead() {
+        return fetchAndBackfillSystemStoreAttributes(true).getVersions();
+      }
+    });
   }
 
   public Store getVeniceStore() {
@@ -49,11 +62,26 @@ public class SystemStore extends Store {
         " since the system store properties are shared across all the system stores");
   }
 
-  private synchronized SystemStoreAttributes fetchAndBackfillSystemStoreAttributes() {
+  /**
+   * If the corresponding system store doesn't exist, the behavior is different if {@param readAccess} is true or false.
+   * If {@param readAccess} is true, it will return {@link #DEFAULT_READ_ONLY_SYSTEM_STORE_ATTRIBUTE} for read purpose.
+   * Else, it will populate the system store and return it back.
+   *
+   * @param readAccess
+   * @return
+   */
+  private synchronized SystemStoreAttributes fetchAndBackfillSystemStoreAttributes(boolean readAccess) {
     SystemStoreAttributes systemStoreAttributes = veniceStore.getSystemStores().get(systemStoreType.getPrefix());
     if (null == systemStoreAttributes) {
-      veniceStore.putSystemStore(systemStoreType, new SystemStoreAttributes());
+      if (readAccess) {
+        return DEFAULT_READ_ONLY_SYSTEM_STORE_ATTRIBUTE;
+      }
+      veniceStore.putSystemStore(systemStoreType, new SystemStoreAttributesImpl());
       systemStoreAttributes = veniceStore.getSystemStores().get(systemStoreType.getPrefix());
+    }
+    if (readAccess && !(systemStoreAttributes instanceof ReadOnlyStore.ReadOnlySystemStoreAttributes)) {
+      // Make it read-only
+      return new ReadOnlyStore.ReadOnlySystemStoreAttributes(systemStoreAttributes);
     }
 
     return systemStoreAttributes;
@@ -72,7 +100,7 @@ public class SystemStore extends Store {
 
   @Override
   public int getCurrentVersion() {
-    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes();
+    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(true);
     return systemStoreAttributes.getCurrentVersion();
   }
 
@@ -83,7 +111,7 @@ public class SystemStore extends Store {
 
   @Override
   public void setCurrentVersionWithoutCheck(int currentVersion) {
-    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes();
+    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(false);
     systemStoreAttributes.setCurrentVersion(currentVersion);
   }
 
@@ -118,13 +146,13 @@ public class SystemStore extends Store {
 
   @Override
   public int getLargestUsedVersionNumber() {
-    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes();
+    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(true);
     return systemStoreAttributes.getLargestUsedVersionNumber();
   }
 
   @Override
   public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
-    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes();
+    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(false);
     systemStoreAttributes.setLargestUsedVersionNumber(largestUsedVersionNumber);
   }
 
@@ -442,13 +470,13 @@ public class SystemStore extends Store {
 
   @Override
   public long getLatestVersionPromoteToCurrentTimestamp() {
-    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes();
+    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(true);
     return systemStoreAttributes.getLatestVersionPromoteToCurrentTimestamp();
   }
 
   @Override
   public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
-    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes();
+    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(false);
     systemStoreAttributes.setLatestVersionPromoteToCurrentTimestamp(latestVersionPromoteToCurrentTimestamp);
   }
 
@@ -510,7 +538,7 @@ public class SystemStore extends Store {
   }
 
   @Override
-  protected void putSystemStore(VeniceSystemStoreType systemStoreType, SystemStoreAttributes systemStoreAttributes) {
+  public void putSystemStore(VeniceSystemStoreType systemStoreType, SystemStoreAttributes systemStoreAttributes) {
     throw new VeniceException("Method: 'putSystemStore' is not supported inside SystemStore");
   }
 

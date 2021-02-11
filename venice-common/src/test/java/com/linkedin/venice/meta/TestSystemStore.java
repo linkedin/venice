@@ -20,7 +20,7 @@ public class TestSystemStore {
         OfflinePushStrategy.WAIT_ALL_REPLICAS, -1, 10000l,
         10000l, null, null);
     zkSharedSystemStore.setLargestUsedVersionNumber(-1);
-    zkSharedSystemStore.setHybridStoreConfig(new HybridStoreConfig(100, 100, 100));
+    zkSharedSystemStore.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100));
     zkSharedSystemStore.setLeaderFollowerModelEnabled(true);
     zkSharedSystemStore.setWriteComputationEnabled(true);
     zkSharedSystemStore.setPartitionCount(1);
@@ -117,7 +117,7 @@ public class TestSystemStore {
     // SystemStores property for SystemStore is not supported.
     assertThrows(() -> systemStore.getSystemStores());
     assertThrows(() -> systemStore.setSystemStores(null));
-    assertThrows(() -> systemStore.putSystemStore(VeniceSystemStoreType.META_STORE, new SystemStoreAttributes()));
+    assertThrows(() -> systemStore.putSystemStore(VeniceSystemStoreType.META_STORE, new SystemStoreAttributesImpl()));
 
     // Test the non-sharable property update
     systemStore.setCurrentVersion(10);
@@ -128,7 +128,7 @@ public class TestSystemStore {
     assertEquals(systemStore.getLatestVersionPromoteToCurrentTimestamp(), 100);
 
     // Test version related operations
-    systemStore.addVersion(new Version(systemStore.getName(), 1, "test_push_id_1"));
+    systemStore.addVersion(new VersionImpl(systemStore.getName(), 1, "test_push_id_1"));
     assertTrue(systemStore.containsVersion(1));
     Optional<Version> version = systemStore.getVersion(1);
     assertTrue(version.isPresent(), "Version 1 must be present");

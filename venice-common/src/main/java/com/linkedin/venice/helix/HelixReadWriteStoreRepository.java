@@ -2,12 +2,17 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.HelixUtils;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
 
 /**
@@ -78,6 +83,28 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
     } finally {
       updateLock.unlock();
     }
+  }
+
+  @Override
+  public Store getStore(String storeName) {
+    Store store = storeMap.get(getZkStoreName(storeName));
+    if (store != null) {
+      return store.cloneStore();
+    }
+    return null;
+  }
+
+  public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
+    Store store = getStore(storeName);
+    if (null == store) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    return store;
+  }
+
+  @Override
+  public List<Store> getAllStores() {
+    return storeMap.values().stream().map(s -> s.cloneStore()).collect(Collectors.toList());
   }
 
   @Override

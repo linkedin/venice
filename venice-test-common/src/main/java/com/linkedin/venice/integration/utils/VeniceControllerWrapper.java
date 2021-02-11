@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
+import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -87,7 +88,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       int adminSecurePort = Utils.getFreePort();
       List<VeniceProperties> propertiesList = new ArrayList<>();
 
-      Store.setDefaultReplicationFactor(replicationFactor);
+      AbstractStore.setDefaultReplicationFactor(replicationFactor);
 
       for(String clusterName : clusterNames) {
         VeniceProperties clusterProps =

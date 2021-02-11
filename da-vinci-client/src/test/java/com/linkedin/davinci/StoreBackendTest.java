@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -81,9 +82,9 @@ public class StoreBackendTest {
 
     store = new ZKStore("test-store", null, 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
-    version1 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 5);
+    version1 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 5);
     store.addVersion(version1);
-    version2 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 3);
+    version2 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 3);
     store.addVersion(version2);
     store.setCurrentVersion(version1.getNumber());
     when(backend.getStoreRepository().getStoreOrThrow(store.getName())).thenReturn(store);
@@ -167,7 +168,7 @@ public class StoreBackendTest {
 
   @Test
   void testSubscribeBootstrapVersion() throws Exception {
-    Version version3 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 15);
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
     store.addVersion(version3);
     store.setCurrentVersion(version2.getNumber());
 
@@ -206,12 +207,12 @@ public class StoreBackendTest {
     verify(backend.getStorageService(), times(1)).removeStorageEngine(eq(version2.kafkaTopicName()));
 
     // Simulate new version push and subsequent ingestion failure.
-    Version version3 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 15);
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
     store.addVersion(version3);
     storeBackend.trySubscribeFutureVersion();
 
     // Simulate new version push while faulty future version is being ingested.
-    Version version4 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 20);
+    Version version4 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 20);
     store.addVersion(version4);
     storeBackend.trySubscribeFutureVersion();
 
@@ -228,7 +229,7 @@ public class StoreBackendTest {
     }
 
     // Simulate new version push and subsequent ingestion failure.
-    Version version5 = new Version(store.getName(), store.peekNextVersion().getNumber(), null, 30);
+    Version version5 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 30);
     store.addVersion(version5);
     storeBackend.trySubscribeFutureVersion();
     versionMap.get(version5.kafkaTopicName()).completeSubPartitionExceptionally(partition, new Exception());

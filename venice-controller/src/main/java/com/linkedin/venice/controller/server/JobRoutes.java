@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -56,7 +57,7 @@ public class JobRoutes extends AbstractRoute {
       int versionNumber, Admin admin, Optional<String> incrementalPushVersion) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
-    Version version = new Version(store, versionNumber);
+    Version version = new VersionImpl(store, versionNumber);
     String kafkaTopicName = version.kafkaTopicName();
 
     /**

@@ -4,75 +4,28 @@ import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.codehaus.jackson.map.annotate.JsonDeserialize;
 
 
-public class SystemStoreAttributes implements DataModelBackedStructure<SystemStoreProperties> {
-  private final SystemStoreProperties dataModel;
+@JsonDeserialize(as = SystemStoreAttributesImpl.class)
+@com.fasterxml.jackson.databind.annotation.JsonDeserialize(as = SystemStoreAttributesImpl.class)
+public interface SystemStoreAttributes extends DataModelBackedStructure<SystemStoreProperties> {
 
-  public SystemStoreAttributes() {
-    this(Store.prefillAvroRecordWithDefaultValue(new SystemStoreProperties()));
-  }
+  int getLargestUsedVersionNumber();
 
-  SystemStoreAttributes(SystemStoreProperties dataModel) {
-    this.dataModel = dataModel;
-  }
+  void setLargestUsedVersionNumber(int largestUsedVersionNumber);
 
-  @Override
-  public SystemStoreProperties dataModel() {
-    return this.dataModel;
-  }
+  int getCurrentVersion();
 
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
-    }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
-    }
-    SystemStoreAttributes systemStoreAttributes = (SystemStoreAttributes) o;
-    return AvroCompatibilityUtils.compare(dataModel, systemStoreAttributes.dataModel);
-  }
+  void setCurrentVersion(int currentVersion);
 
-  public int getLargestUsedVersionNumber() {
-    return this.dataModel.largestUsedVersionNumber;
-  }
+  long getLatestVersionPromoteToCurrentTimestamp();
 
-  public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
-    this.dataModel.largestUsedVersionNumber = largestUsedVersionNumber;
-  }
+  void setLatestVersionPromoteToCurrentTimestamp(long timestamp);
 
-  public int getCurrentVersion() {
-    return this.dataModel.currentVersion;
-  }
+  List<Version> getVersions();
 
-  public void setCurrentVersion(int currentVersion) {
-    this.dataModel.currentVersion = currentVersion;
-  }
+  void setVersions(List<Version> versions);
 
-  public long getLatestVersionPromoteToCurrentTimestamp() {
-    return this.dataModel.latestVersionPromoteToCurrentTimestamp;
-  }
-
-  public void setLatestVersionPromoteToCurrentTimestamp(long timestamp) {
-    this.dataModel.latestVersionPromoteToCurrentTimestamp = timestamp;
-  }
-
-  public List<Version> getVersions() {
-    return this.dataModel.versions.stream().map(v -> new Version(v)).collect(Collectors.toList());
-  }
-
-  public void setVersions(List<Version> versions) {
-    this.dataModel.versions = versions.stream().map(Version::dataModel).collect(Collectors.toList());;
-  }
-
-  public SystemStoreAttributes clone() {
-    SystemStoreAttributes clone = new SystemStoreAttributes();
-    clone.setLargestUsedVersionNumber(getLargestUsedVersionNumber());
-    clone.setCurrentVersion(getCurrentVersion());
-    clone.setLatestVersionPromoteToCurrentTimestamp(getLatestVersionPromoteToCurrentTimestamp());
-    clone.setVersions(getVersions().stream().map(v -> v.cloneVersion()).collect(Collectors.toList()));
-
-    return clone;
-  }
+   SystemStoreAttributes clone();
 }
