@@ -54,7 +54,7 @@ import static org.mockito.Mockito.*;
 public class TestVeniceDispatcher {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testErrorRetry(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false);
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -67,7 +67,7 @@ public class TestVeniceDispatcher {
       triggerResponse(dispatcher, HttpResponseStatus.INTERNAL_SERVER_ERROR, mockRetryFuture, mockResponseFuture, () -> {
         Assert.assertEquals(successRetries.size(), 1);
         Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-      });
+      }, false);
     } finally {
       dispatcher.stop();
     }
@@ -75,7 +75,7 @@ public class TestVeniceDispatcher {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testErrorRetryOnPendingCheckFail(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, true);
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, true, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -88,7 +88,29 @@ public class TestVeniceDispatcher {
       triggerResponse(dispatcher, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
         Assert.assertEquals(successRetries.size(), 2);
         Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-      });
+      }, false);
+    } finally {
+      dispatcher.stop();
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testErrorRetryOnPendingCheckLeak(boolean useNettyClient) {
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, true);
+    try {
+      AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
+      AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
+      List<HttpResponseStatus> successRetries = new ArrayList<>();
+      doAnswer((invocation -> {
+        successRetries.add(invocation.getArgument(0));
+        return null;
+      })).when(mockRetryFuture).setSuccess(any());
+
+      triggerResponse(dispatcher, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
+        Assert.assertEquals(successRetries.size(), 0);
+        verify(dispatcher.getRouterStats(), times(1)).recordFinishedRequest(any());
+        verify(dispatcher.getRouterStats(), times(1)).getPendingRequestCount(any());
+      }, true);
     } finally {
       dispatcher.stop();
     }
@@ -96,7 +118,7 @@ public class TestVeniceDispatcher {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void passesThroughHttp429(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false);
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -109,13 +131,13 @@ public class TestVeniceDispatcher {
       triggerResponse(dispatcher, HttpResponseStatus.TOO_MANY_REQUESTS, mockRetryFuture, mockResponseFuture, () -> {
         Assert.assertEquals(responses.size(), 1);
         Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.TOO_MANY_REQUESTS);
-      });
+      }, false);
     } finally {
       dispatcher.stop();
     }
   }
 
-  private VeniceDispatcher getMockDispatcher(boolean useNettyClient, boolean forcePendingCheck){
+  private VeniceDispatcher getMockDispatcher(boolean useNettyClient, boolean forcePendingCheck, boolean forceLeakPending){
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(2).when(routerConfig).getHttpClientPoolSize();
     doReturn(10).when(routerConfig).getMaxOutgoingConn();
@@ -135,6 +157,12 @@ public class TestVeniceDispatcher {
     if (forcePendingCheck) {
       doReturn(true).when(routerConfig).isStatefulRouterHealthCheckEnabled();
       doReturn(5).when(routerConfig).getRouterUnhealthyPendingConnThresholdPerRoute();
+      doReturn(10l).when(routeHttpRequestStats).getPendingRequestCount(anyString());
+    }
+    if (forceLeakPending) {
+      doReturn(1l).doReturn(0l).when(routerConfig).getMaxPendingRequest();
+      doReturn(true).when(routerConfig).isStatefulRouterHealthCheckEnabled();
+      doReturn(15).when(routerConfig).getRouterUnhealthyPendingConnThresholdPerRoute();
       doReturn(10l).when(routeHttpRequestStats).getPendingRequestCount(anyString());
     }
     LiveInstanceMonitor mockLiveInstanceMonitor = mock(LiveInstanceMonitor.class);
@@ -163,13 +191,19 @@ public class TestVeniceDispatcher {
   }
 
   private void triggerResponse(VeniceDispatcher dispatcher, HttpResponseStatus responseStatus,
-      AsyncPromise mockRetryFuture, AsyncPromise mockResponseFuture, Runnable assertions) {
+      AsyncPromise mockRetryFuture, AsyncPromise mockResponseFuture, Runnable assertions, boolean forceLeakPending) {
 
     Scatter mockScatter = mock(Scatter.class);
     ScatterGatherRequest mockScatterGatherRequest = mock(ScatterGatherRequest.class);
     Set<String> partitionNames = new HashSet<>();
     partitionNames.add("test_store_v1_1");
     doReturn(partitionNames).when(mockScatterGatherRequest).getPartitionsNames();
+    RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
+    AggRouterHttpRequestStats stats = mock(AggRouterHttpRequestStats.class);
+
+    doReturn(stats).when(routerStats).getStatsByType(any());
+
+    RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
     VenicePath mockPath = mock(VenicePath.class);
     doReturn("test_store").when(mockPath).getStoreName();
@@ -201,7 +235,9 @@ public class TestVeniceDispatcher {
         dispatcher.dispatch(mockScatter, mockScatterGatherRequest, mockPath, mockRequest, mockHostSelected,
             mockResponseFuture, mockRetryFuture, mockTimeoutFuture, contextExecutor);
       } catch (RouterException e) {
-        throw new VeniceException(e);
+        if (!forceLeakPending)  {
+          throw new VeniceException(e);
+        }
       }
 
       TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> assertions.run());
