@@ -3,9 +3,13 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
@@ -189,8 +193,16 @@ public class TopicCleanupService extends AbstractVeniceService {
        *     Since Kafka nurse script will automatically kick in if MM crashes (which should still happen very infrequently),
        *     for the time being, we choose to delete the real-time topic.
        */
-
       try {
+        try {
+          /**
+           * Best effort to clean up staled replica statuses from meta system store.
+           */
+          cleanupReplicaStatusesFromMetaSystemStore(topic);
+        } catch (Exception e) {
+          LOGGER.error("Received exception while trying to clean up replica statuses from meta system store for topic: "
+              + topic + ", but topic deletion will continue");
+        }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
       } catch (ExecutionException e) {
         LOGGER.warn("ExecutionException caught when trying to delete topic: " + topic, e);
@@ -258,5 +270,61 @@ public class TopicCleanupService extends AbstractVeniceService {
          */
         .filter(t -> !admin.isResourceStillAlive(t))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Clean up staled replica status from meta system store if necessary.
+   * @param topic
+   * @return whether the staled replica status cleanup happens or not.
+   */
+  protected boolean cleanupReplicaStatusesFromMetaSystemStore(String topic) {
+    if (admin.isParent()) {
+      // No op in Parent Controller
+      return false;
+    }
+    if (!Version.isVersionTopic(topic)) {
+      // Only applicable to version topic
+      return false;
+    }
+
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int version = Version.parseVersionFromKafkaTopicName(topic);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = admin.getStoreConfigRepo();
+    Optional<StoreConfig> storeConfig = storeConfigRepository.getStoreConfig(storeName);
+    // Get cluster name for current store
+    if (!storeConfig.isPresent()) {
+      throw new VeniceException("Failed to get store config for store: " + storeName);
+    }
+    /**
+     * This logic won't take care of store migration scenarios properly since it will just look at the current cluster
+     * when topic deletion happens.
+     * But it is fine at this stage since a minor leaking of store replica statuses in meta system store is acceptable.
+     * If the size of meta system store becomes unacceptable because of unknown issue, we could always do an empty push
+     * to clean it up.
+     */
+    String clusterName = storeConfig.get().getCluster();
+    /**
+     * Check whether RT topic for the meta system store exists or not to decide whether we should clean replica statuses from meta System Store or not.
+     * Since {@link TopicCleanupService} will be running in the master Controller of Controller Cluster, so
+     * we won't have access to store repository for every Venice cluster, and the existence of RT topic for
+     * meta System store is the way to check whether meta System store is enabled or not.
+     */
+    String rtTopicForMetaSystemStore = Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    TopicManager topicManager = getTopicManager();
+    if (topicManager.containsTopic(rtTopicForMetaSystemStore)) {
+      /**
+       * Find out the total number of partition of version topic, and we will use this info to clean up replica statuses for each partition.
+       */
+      int partitionCount = topicManager.getPartitions(topic).size();
+
+      MetaStoreWriter metaStoreWriter = admin.getMetaStoreWriter();
+      for (int i = 0; i < partitionCount; ++i) {
+        metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, i);
+      }
+      logger.info("Successfully removed store replica status from meta system store for store: " + storeName + ", version: "
+          + version + " with partition count: " + partitionCount + " in cluster: " + clusterName);
+      return true;
+    }
+    return false;
   }
 }

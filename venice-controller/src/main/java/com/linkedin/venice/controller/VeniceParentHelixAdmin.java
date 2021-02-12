@@ -53,6 +53,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -78,6 +81,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
@@ -2573,6 +2577,26 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, String> getChildDataCenterControllerUrlMap(String clusterName) {
     return veniceHelixAdmin.getChildDataCenterControllerUrlMap(clusterName);
+  }
+
+  @Override
+  public HelixReadOnlyStoreConfigRepository getStoreConfigRepo() {
+    return veniceHelixAdmin.getStoreConfigRepo();
+  }
+
+  @Override
+  public HelixReadOnlyZKSharedSystemStoreRepository getReadOnlyZKSharedSystemStoreRepository() {
+    return veniceHelixAdmin.getReadOnlyZKSharedSystemStoreRepository();
+  }
+
+  @Override
+  public HelixReadOnlyZKSharedSchemaRepository getReadOnlyZKSharedSchemaRepository() {
+    return veniceHelixAdmin.getReadOnlyZKSharedSchemaRepository();
+  }
+
+  @Override
+  public MetaStoreWriter getMetaStoreWriter() {
+    return veniceHelixAdmin.getMetaStoreWriter();
   }
 
   // Function that can be overridden in tests

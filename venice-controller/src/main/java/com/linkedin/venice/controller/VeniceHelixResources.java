@@ -6,8 +6,6 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.AggStoreStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepositoryAdapter;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
@@ -102,28 +100,22 @@ public class VeniceHelixResources implements VeniceResource {
                               HelixAdminClient helixAdminClient) {
     this.config = config;
     this.controller = helixManager;
-    HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(
-        zkClient, adapterSerializer, config.getSystemSchemaClusterName());
-    HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(
-        zkSharedSystemStoreRepository, zkClient, adapterSerializer, config.getSystemSchemaClusterName(),
-        config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
-
     /**
      * So far, Meta system store doesn't support write from parent cluster.
      */
     if (!config.isParent()) {
-      metaStoreWriter = Optional.of(new MetaStoreWriter(admin.getTopicManager(), admin.getVeniceWriterFactory(), zkSharedSchemaRepository));
+      metaStoreWriter = Optional.of(admin.getMetaStoreWriter());
     } else {
       metaStoreWriter = Optional.empty();
     }
     HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
         config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs(), metaStoreWriter);
     this.metadataRepository = new HelixReadWriteStoreRepositoryAdapter(
-        zkSharedSystemStoreRepository,
+        admin.getReadOnlyZKSharedSystemStoreRepository(),
         readWriteStoreRepository
     );
     this.schemaRepository = new HelixReadWriteSchemaRepositoryAdapter(
-        zkSharedSchemaRepository,
+        admin.getReadOnlyZKSharedSchemaRepository(),
         new HelixReadWriteSchemaRepository(readWriteStoreRepository, zkClient, adapterSerializer, clusterName, metaStoreWriter)
     );
 

@@ -216,6 +216,24 @@ public class MetaStoreWriter implements Closeable {
         });
   }
 
+  /**
+   * Clean up deprecated replica statuses.
+   * Currently, it is being used when cleaning up a deprecated version topic, where it guarantees all the
+   * partition replicas have been removed from Venice Cluster in {@literal TopicCleanupService}.
+   */
+  public void deleteStoreReplicaStatus(String clusterName, String storeName, int version, int partitionId) {
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    VeniceWriter writer = prepareToWrite(metaStoreName);
+    StoreMetaKey key = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {{
+      put(KEY_STRING_STORE_NAME, storeName);
+      put(KEY_STRING_CLUSTER_NAME, clusterName);
+      put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
+      put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
+    }});
+    writer.delete(key, null);
+    writer.flush();
+  }
+
   private void write(String storeName, MetaStoreDataType dataType,
       Supplier<Map<String, String>> keyStringSupplier, Supplier<StoreMetaValue> valueSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
