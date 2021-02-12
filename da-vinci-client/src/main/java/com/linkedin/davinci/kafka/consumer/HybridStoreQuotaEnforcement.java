@@ -90,6 +90,12 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     int storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     Optional<Version> version = store.getVersion(storeVersion);
     checkVersionIsOnline(version);
+    if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
+      logger.info("Store: " + this.storeName + " changed, updated quota from " + this.storeQuotaInBytes
+          + " to " + store.getStorageQuotaInByte() + " and store quota is " + (store.isHybridStoreDiskQuotaEnabled() ? "": "not ")
+          + "enabled, so we reset the store quota and resume all partitions.");
+      resumeAllPartitions();
+    }
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
     this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
   }
@@ -208,6 +214,14 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   private void resumePartition(int partition, String consumingTopic) {
     this.storeIngestionTask.getConsumer().forEach(consumer -> consumer.resume(consumingTopic, partition));
     this.pausedPartitions.remove(partition);
+  }
+
+  private void resumeAllPartitions() {
+    for (int partition : partitionConsumptionStateMap.keySet()) {
+      PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
+      String consumingTopic = getConsumingTopic(pcs);
+      resumePartition(partition, consumingTopic);
+    }
   }
 
   private void checkVersionIsOnline(Optional<Version> version) {

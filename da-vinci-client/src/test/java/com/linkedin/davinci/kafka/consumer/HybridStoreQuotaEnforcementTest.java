@@ -5,6 +5,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,6 +51,12 @@ public class HybridStoreQuotaEnforcementTest {
     storeIngestionTask = mock(StoreIngestionTask.class);
     notificationDispatcher = mock(IngestionNotificationDispatcher.class);
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
+
+    for (int i = 1; i <= storePartitionCount; i++) {
+      PartitionConsumptionState pcs = new PartitionConsumptionState(i, mock(OffsetRecord.class),true, true);
+      partitionConsumptionStateMap.put(i, pcs);
+    }
+
     when(store.getName()).thenReturn(storeName);
     when(store.getStorageQuotaInByte()).thenReturn(storeQuotaInBytes);
     when(store.getPartitionCount()).thenReturn(storePartitionCount);
@@ -67,7 +74,7 @@ public class HybridStoreQuotaEnforcementTest {
   }
 
   @Test
-  public void testDataUpdatedWithStoreChangeListener() {
+  public void testDataUpdatedWithStoreChangeListener() throws Exception{
     when(store.getStorageQuotaInByte()).thenReturn(newStoreQuotaInBytes);
     when(version.getStatus()).thenReturn(VersionStatus.ONLINE);
 
@@ -76,6 +83,21 @@ public class HybridStoreQuotaEnforcementTest {
     Assert.assertTrue(quotaEnforcer.isVersionOnline());
     Assert.assertEquals(quotaEnforcer.getStoreQuotaInBytes(), newStoreQuotaInBytes);
     Assert.assertEquals(quotaEnforcer.getPartitionQuotaInBytes(), newStoreQuotaInBytes/storePartitionCount);
+
+    // Trigger quota violation to pause these partitions.
+    buildDummyPartitionToSizeMap(20);
+    runTest(() -> {
+      for (int i = 1; i <= storePartitionCount; i++) {
+        Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
+        verify(storeIngestionTask, times(1)).reportQuotaViolated(i);
+      }
+    });
+
+    // handleStoreChanged should get these paused partitions back.
+    quotaEnforcer.handleStoreChanged(store);
+    for (int i = 1; i <= storePartitionCount; i++) {
+      Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
+    }
   }
 
   @Test
