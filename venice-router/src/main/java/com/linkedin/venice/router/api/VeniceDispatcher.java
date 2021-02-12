@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.api;
 
+import com.google.common.collect.ImmutableSet;
 import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
 import com.linkedin.ddsstorage.base.concurrency.AsyncPromise;
 import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
@@ -13,7 +14,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.httpclient.PortableHttpResponse;
@@ -25,12 +25,8 @@ import com.linkedin.venice.router.stats.RouteHttpStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.throttle.PendingRequestThrottler;
-import com.linkedin.venice.router.throttle.RouterThrottler;
-import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
-import com.google.common.collect.ImmutableSet;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -185,10 +181,24 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     TimedCompletableFuture<PortableHttpResponse>
         responseFuture = new TimedCompletableFuture<>(System.currentTimeMillis(), storageNode.getNodeId());
 
+    /**
+     * TODO: Consider removing the per router level pendingRequestThrottler once {@link RouterThrottleHandler} is
+     *       enabled; {@link RouterThrottleHandler} is also a per router level pending request throttler but works
+     *       in the earlier stack before scattering any request, which can save more resource.
+     */
+    if (!pendingRequestThrottler.put()) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.of(storeName),
+          Optional.of(requestType),
+          SERVICE_UNAVAILABLE,
+          "Maximum number of pending request threshold reached! Current pending request count: "
+              + pendingRequestThrottler.getCurrentPendingRequestCount() + ". Please contact Venice team.");
+    }
+
     ReentrantLock lock = storageNodeLockMap.computeIfAbsent(hostName, id ->  new ReentrantLock());
     lock.lock();
     try {
-      long pendingRequestCount = routerStats.getPendingRequestCount(storageNode.getNodeId());;
+      long pendingRequestCount = routerStats.getPendingRequestCount(storageNode.getNodeId());
 
       if (isStateFullHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
         // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which increases the unhealthy request metric.
@@ -205,20 +215,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       routerStats.recordPendingRequest(storageNode.getNodeId());
     } finally {
       lock.unlock();
-    }
-
-    /**
-     * TODO: Consider removing the per router level pendingRequestThrottler once {@link RouterThrottleHandler} is
-     *       enabled; {@link RouterThrottleHandler} is also a per router level pending request throttler but works
-     *       in the earlier stack before scattering any request, which can save more resource.
-     */
-    if (!pendingRequestThrottler.put()) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(storeName),
-          Optional.of(requestType),
-          SERVICE_UNAVAILABLE,
-          "Maximum number of pending request threshold reached! Current pending request count: "
-              + pendingRequestThrottler.getCurrentPendingRequestCount() + ". Please contact Venice team.");
     }
 
     long requestId = uniqueRequestId.getAndIncrement();
@@ -289,6 +285,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   protected FullHttpResponse buildPlainTextResponse(HttpResponseStatus status, byte[] content) {
     return buildPlainTextResponse(status, Unpooled.wrappedBuffer(content));
+  }
+
+  /**
+   * For TEST ONLY
+   */
+  public RouteHttpRequestStats getRouterStats() {
+    return routerStats;
   }
 
   protected FullHttpResponse buildPlainTextResponse(HttpResponseStatus status, ByteBuf content) {
