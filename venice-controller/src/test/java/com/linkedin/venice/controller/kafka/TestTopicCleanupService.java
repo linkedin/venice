@@ -3,21 +3,28 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 
 public class TestTopicCleanupService {
@@ -263,5 +270,72 @@ public class TestTopicCleanupService {
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
+  }
+
+  @Test
+  public void testCleanupReplicaStatusesFromMetaSystemStoreInParent() {
+    doReturn(true).when(admin).isParent();
+    String versionTopic = Version.composeKafkaTopic("test", 1);
+    assertFalse(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(versionTopic));
+  }
+
+  @Test
+  public void testCleanupReplicaStatusesFromMetaSystemStoreWithRTTopic() {
+    doReturn(false).when(admin).isParent();
+    String rtTopic = Version.composeRealTimeTopic("test");
+    assertFalse(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(rtTopic));
+  }
+
+  @Test
+  public void testCleanupReplicaStatusesFromMetaSystemStoreWhenMetaSystemStoreRTTopicNotExist() {
+    doReturn(false).when(admin).isParent();
+    String storeName = TestUtils.getUniqueString("test_store");
+    int version = 1;
+    String versionTopic = Version.composeKafkaTopic(storeName, version);
+    HelixReadOnlyStoreConfigRepository repository = mock(HelixReadOnlyStoreConfigRepository.class);
+    StoreConfig storeConfig = new StoreConfig(storeName);
+    String cluster = "test_cluster";
+    storeConfig.setCluster(cluster);
+    doReturn(Optional.of(storeConfig)).when(repository).getStoreConfig(storeName);
+    doReturn(repository).when(admin).getStoreConfigRepo();
+    String rtTopicForMetaSystemStore = Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(false).when(topicManager).containsTopic(rtTopicForMetaSystemStore);
+    doReturn(topicManager).when(admin).getTopicManager();
+    assertFalse(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(versionTopic));
+  }
+
+  @Test
+  public void testCleanupReplicaStatusesFromMetaSystemStoreWhenMetaSystemStoreRTTopicExist() {
+    doReturn(false).when(admin).isParent();
+    String storeName = TestUtils.getUniqueString("test_store");
+    int version = 1;
+    String versionTopic = Version.composeKafkaTopic(storeName, version);
+    HelixReadOnlyStoreConfigRepository repository = mock(HelixReadOnlyStoreConfigRepository.class);
+    StoreConfig storeConfig = new StoreConfig(storeName);
+    String cluster = "test_cluster";
+    storeConfig.setCluster(cluster);
+    doReturn(Optional.of(storeConfig)).when(repository).getStoreConfig(storeName);
+    doReturn(repository).when(admin).getStoreConfigRepo();
+    String rtTopicForMetaSystemStore = Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(true).when(topicManager).containsTopic(rtTopicForMetaSystemStore);
+    doReturn(topicManager).when(admin).getTopicManager();
+
+    // Topic is with partition count: 3
+    int partitionCnt = 3;
+    List<PartitionInfo> partitionInfoList = new ArrayList<>();
+    for (int i = 0; i < partitionCnt; ++i) {
+      partitionInfoList.add(new PartitionInfo(versionTopic, i, null, null, null));
+    }
+    doReturn(partitionInfoList).when(topicManager).getPartitions(versionTopic);
+
+    MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
+    doReturn(metaStoreWriter).when(admin).getMetaStoreWriter();
+
+    assertTrue(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(versionTopic));
+    for (int i = 0; i < partitionCnt; ++i) {
+      verify(metaStoreWriter).deleteStoreReplicaStatus(cluster, storeName, version, i);
+    }
   }
 }

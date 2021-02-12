@@ -3,6 +3,9 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -13,6 +16,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
@@ -543,4 +547,24 @@ public interface Admin extends AutoCloseable, Closeable {
      * @return A map of child datacenter -> child controller url
      */
     Map<String, String> getChildDataCenterControllerUrlMap(String clusterName);
+
+    /**
+     * Return a shared store config repository.
+     */
+    HelixReadOnlyStoreConfigRepository getStoreConfigRepo();
+
+    /**
+     * Return a shared read only store repository for zk shared stores.
+     */
+    HelixReadOnlyZKSharedSystemStoreRepository getReadOnlyZKSharedSystemStoreRepository();
+
+    /**
+     * Return a shared read only schema repository for zk shared stores.
+     */
+    HelixReadOnlyZKSharedSchemaRepository getReadOnlyZKSharedSchemaRepository();
+
+    /**
+     * Return a {@link MetaStoreWriter}, which can be shared across different Venice clusters.
+     */
+    MetaStoreWriter getMetaStoreWriter();
 }

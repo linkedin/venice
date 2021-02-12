@@ -194,12 +194,10 @@ public class MetaSystemStoreTest {
       }
 
       /**
-       * Since we don't have logic to remove the entries for the deprecated versions right now,
-       * the corresponding replica status should contain an emtpy map.
+       * The replica statuses for the deprecated versions should be removed from meta system store.
        */
       StoreMetaValue currentReplicaStatusForV1P0 = storeClient.get(replicaStatusKeyForV1P0).get();
-      assertNotNull(currentReplicaStatusForV1P0);
-      assertEquals(currentReplicaStatusForV1P0.storeReplicaStatuses.size(), 0);
+      assertNull(currentReplicaStatusForV1P0);
     });
 
     // Meta system store should be deleted when the regular Venice store gets deleted.

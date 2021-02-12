@@ -34,6 +34,8 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
@@ -248,7 +250,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final MetadataStoreWriter metadataStoreWriter;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
     private final Optional<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
-
+    private final HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
+    private final HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
+    private final MetaStoreWriter metaStoreWriter;
     /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
@@ -375,6 +379,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushStatusStoreReader = Optional.empty();
             pushStatusStoreDeleter = Optional.empty();
         }
+
+        zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(
+            zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName());
+        zkSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(
+            zkSharedSystemStoreRepository, zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName(),
+            commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
+        metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository);
+
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
             AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, multiClusterConfigs, this));
@@ -4430,7 +4442,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return controllerName;
     }
 
-    HelixReadOnlyStoreConfigRepository getStoreConfigRepo() { return storeConfigRepo; }
+    @Override
+    public HelixReadOnlyStoreConfigRepository getStoreConfigRepo() { return storeConfigRepo; }
 
     public interface StoreMetadataOperation {
         /**
@@ -4772,6 +4785,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return multiClusterConfigs.getConfigForCluster(clusterName).getChildDataCenterControllerUrlMap();
     }
 
+    @Override
+    public HelixReadOnlyZKSharedSystemStoreRepository getReadOnlyZKSharedSystemStoreRepository() {
+        return zkSharedSystemStoreRepository;
+    }
+
+    @Override
+    public HelixReadOnlyZKSharedSchemaRepository getReadOnlyZKSharedSchemaRepository() {
+        return zkSharedSchemaRepository;
+    }
+
+    @Override
+    public MetaStoreWriter getMetaStoreWriter() {
+        return metaStoreWriter;
+    }
 
     /**
      * Return the topic creation time if it has not been persisted to Zk yet.

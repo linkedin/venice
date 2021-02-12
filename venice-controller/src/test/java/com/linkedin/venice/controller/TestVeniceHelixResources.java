@@ -1,11 +1,14 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -35,8 +38,12 @@ public class TestVeniceHelixResources {
     ZKHelixManager controller = new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zk.getAddress());
     ZKHelixAdmin admin = new ZKHelixAdmin(zk.getAddress());
     admin.addCluster(cluster);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(mock(MetaStoreWriter.class)).when(veniceHelixAdmin).getMetaStoreWriter();
+    doReturn(mock(HelixReadOnlyZKSharedSystemStoreRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSystemStoreRepository();
+    doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin).getReadOnlyZKSharedSchemaRepository();
     return new VeniceHelixResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
-        mock(VeniceControllerConfig.class), mock(VeniceHelixAdmin.class), metricsRepository, lock, Optional.empty(),
+        mock(VeniceControllerConfig.class), veniceHelixAdmin, metricsRepository, lock, Optional.empty(),
         Optional.empty(), Optional.empty(), mock(MetadataStoreWriter.class), mock(HelixAdminClient.class));
   }
 
