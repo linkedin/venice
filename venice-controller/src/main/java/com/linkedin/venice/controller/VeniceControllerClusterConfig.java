@@ -95,6 +95,11 @@ public class VeniceControllerClusterConfig {
   private boolean leaderFollowerEnabledForAllStores;
 
   /**
+   * When this option is enabled, new schema registration will validate the schema against all existing store value schemas.
+   */
+  private boolean controllerSchemaValidationEnabled;
+
+  /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
    */
   private long delayToRebalanceMS;
@@ -198,6 +203,8 @@ public class VeniceControllerClusterConfig {
     leaderFollowerEnabledForIncrementalPushStores =
         props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, false);
     leaderFollowerEnabledForAllStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, false);
+    controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
+
     if (!leaderFollowerEnabledForAllStores
         && (nativeReplicationEnabledForBatchOnly || nativeReplicationEnabledForIncremental || nativeReplicationEnabledForHybrid)) {
       logger.error("Cannot enable native replication when leader follower is not enabled for all stores. Will revert "
@@ -420,5 +427,9 @@ public class VeniceControllerClusterConfig {
 
   public boolean isLeaderFollowerEnabledForAllStores() {
     return leaderFollowerEnabledForAllStores;
+  }
+
+  public boolean isControllerSchemaValidationEnabled() {
+    return controllerSchemaValidationEnabled;
   }
 }

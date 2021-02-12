@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.schemaregistry.AvroIncompatibleSchemaException;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.VeniceStateModel;
@@ -91,6 +92,9 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -103,6 +107,7 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RandomAvroObjectGenerator;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -125,6 +130,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -188,6 +194,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ExecutionStatus.ARCHIVED);
 
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
+    private static final int RECORD_COUNT = 10;
 
     private final VeniceControllerMultiClusterConfig multiClusterConfigs;
     private final String controllerClusterName;
@@ -3204,11 +3211,67 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return schemaRepo.getValueSchema(storeName, id);
     }
 
+    private void validateSchema(String schemaStr, String clusterName, String storeName) {
+        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+        if (!config.isControllerSchemaValidationEnabled()) {
+            return;
+        }
+
+        ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+        Collection<SchemaEntry> schemaEntries = schemaRepository.getValueSchemas(storeName);
+        AvroSerializer serializer;
+        Schema existingSchema = null;
+
+        Schema newSchema = Schema.parse(schemaStr);
+        RandomAvroObjectGenerator generator = new RandomAvroObjectGenerator(newSchema, new Random());
+        for (int i = 0; i < RECORD_COUNT; i++) {
+            // check if new records written with new schema can be read using existing older schema
+            Object record = generator.generate();
+            serializer = new AvroSerializer(newSchema);
+            byte[] bytes = serializer.serialize(record);
+            for (SchemaEntry schemaEntry : schemaEntries) {
+                try {
+                    existingSchema = schemaEntry.getSchema();
+                    RecordDeserializer<Object> deserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(newSchema, existingSchema);
+                    deserializer.deserialize(bytes);
+                } catch (Exception e) {
+                    if (e instanceof AvroIncompatibleSchemaException) {
+                        logger.warn("Found incompatible avro schema with bad union branch for store " + storeName, e);
+                        continue;
+                    }
+                    throw new VeniceException("Error while trying to add new schema: " + schemaStr + "  for store " + storeName + " as it is incompatible with existing schema: " + existingSchema, e);
+                }
+            }
+        }
+
+        // check if records written with older schema can be read using the new schema
+        for (int i = 0; i < RECORD_COUNT; i++) {
+            for (SchemaEntry schemaEntry : schemaEntries) {
+                try {
+                    generator = new RandomAvroObjectGenerator(schemaEntry.getSchema(), new Random());
+                    Object record = generator.generate();
+                    serializer = new AvroSerializer(schemaEntry.getSchema());
+                    byte[] bytes = serializer.serialize(record);
+                    existingSchema = schemaEntry.getSchema();
+                    RecordDeserializer<Object> deserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(existingSchema, newSchema);
+                    deserializer.deserialize(bytes);
+                } catch (Exception e) {
+                    if (e instanceof AvroIncompatibleSchemaException) {
+                        logger.warn("Found incompatible avro schema with bad union branch for store " + storeName, e);
+                        continue;
+                    }
+                    throw new VeniceException("Error while trying to add new schema: " + schemaStr + "  for store " + storeName + " as it is incompatible with existing schema: " + existingSchema, e);
+                }
+            }
+        }
+    }
+
     @Override
     public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr,
         DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+
         SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
         // Write store schemas to metadata store.
         Store store = getStore(clusterName, storeName);
@@ -3309,6 +3372,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName,
         String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         AvroSchemaUtils.validateAvroSchemaStr(valueSchemaStr);
+        validateSchema(valueSchemaStr, clusterName, storeName);
         checkControllerMastership(clusterName);
         return getVeniceHelixResource(clusterName).getSchemaRepository()
             .preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, expectedCompatibilityType);
