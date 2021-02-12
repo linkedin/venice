@@ -203,6 +203,9 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
     String salaryFieldWithDefault = "               {\"name\": \"salary\", \"type\": \"long\", \"default\": 123 }\n";
 
+    String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"experience\",\"type\":[\"int\", \"float\", \"null\"], \"default\" : null},{\"name\":\"company\",\"type\":\"string\"}]}";
+
+
     String schema1 = formatSchema(schemaPrefix + salaryFieldWithoutDefault + schemaSuffix);
     String schema2 = formatSchema(schemaPrefix + salaryFieldWithDefault + schemaSuffix);
     String invalidSchema = "abc";
@@ -274,6 +277,9 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     allSchemas[1] = schema2;
     String prefixForLotsOfSchemas = schemaPrefix + salaryFieldWithDefault;
 
+    // add incorrect schema
+    sr1 = controllerClient.addValueSchema(storeToCreate, schemaStr);
+    Assert.assertTrue(sr1.isError());
     for (int i = 3; i < allSchemas.length; i++) {
       prefixForLotsOfSchemas += "," +
           "               {\"name\": \"newField" + i + "\", \"type\": \"long\", \"default\": 123 }\n";

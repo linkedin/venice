@@ -135,6 +135,12 @@ public class ConfigKeys {
       "enable.leader.follower.as.default.for.all.stores";
 
   /**
+   * Sets the default for whether or not do schema validation for all stores
+   */
+  public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED =
+      "controller.schema.validation.enabled";
+
+  /**
    * Fallback to remain compatible with the old config spelling.
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.

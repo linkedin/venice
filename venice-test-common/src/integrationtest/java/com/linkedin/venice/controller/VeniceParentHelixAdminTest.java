@@ -162,7 +162,7 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = DEFAULT_TEST_TIMEOUT*10)
   public void testStoreMetaDataUpdateFromParentToChildController(boolean isControllerSslEnabled) {
     String clusterName = TestUtils.getUniqueString("testStoreMetadataUpdate");
     try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
@@ -182,12 +182,10 @@ public class VeniceParentHelixAdminTest {
           ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
 
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
-
         testSuperSetSchemaGen(parentControllerClient, childControllerClient);
-
         testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient, childControllerClient);
-
         testAddValueSchemaDocUpdate(parentControllerClient, childControllerClient);
+        testAddBadValueSchema(parentControllerClient);
       }
     }
   }
@@ -304,6 +302,21 @@ public class VeniceParentHelixAdminTest {
     parentControllerClient.addValueSchema(storeName, valueSchema.toString());
     MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
     Assert.assertEquals(schemaResponse.getSchemas().length,2);
+  }
+
+  private void testAddBadValueSchema(ControllerClient parentControllerClient) {
+    // Adding store
+    String storeName = TestUtils.getUniqueString("test_store");;
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String schemaStr = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"TWO\"]}}]}";
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"FOUR\",\"THREE\"]}}]}";
+    Schema valueSchema = Schema.parse(schemaStr);
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    valueSchema = Schema.parse(schemaStr1);
+    parentControllerClient.addValueSchema(storeName, valueSchema.toString());
+    SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchema.toString());
+    Assert.assertTrue(schemaResponse.isError());
   }
 
   private Schema generateSchema(boolean addFieldWithDefaultValue) {
