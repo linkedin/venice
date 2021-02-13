@@ -1475,8 +1475,8 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.replicateAllConfigs = replicateAllConfigs;
       if (!replicateAllConfigs) {
         if (updatedConfigsList.size() == 0) {
-          String errMsg = "UpdateStore command failed for store " + storeName + ". " + REPLICATE_ALL_CONFIGS
-              + " flag is false, but the update command is not changing any specific store config.";
+          String errMsg = "UpdateStore command failed for store " + storeName + ". The command didn't change any specific"
+              + " store config and didn't specify \"--replicate-all-configs\" flag.";
           logger.error(errMsg);
           throw new VeniceException(errMsg);
         }
