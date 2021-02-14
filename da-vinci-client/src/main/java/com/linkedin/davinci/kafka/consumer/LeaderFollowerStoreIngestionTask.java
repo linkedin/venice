@@ -15,6 +15,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
+import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -1082,6 +1083,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             offsetRecord.addOffsetRecordTransformer(kafkaValue.producerMetadata.producerGUID,
                 offsetRecordTransformer.get());
           }
+        } catch (FatalDataValidationException e) {
+          // Since the log message has been printed in #validateMessage, we will just catch the errors here.
         } catch (DuplicateDataException e) {
           /**
            * Skip duplicated messages; leader must not produce duplicated messages from RT to VT, because leader will

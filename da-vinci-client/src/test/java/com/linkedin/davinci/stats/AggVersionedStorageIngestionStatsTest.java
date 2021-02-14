@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
@@ -55,6 +56,24 @@ public class AggVersionedStorageIngestionStatsTest {
     versionedIngestionStats.setIngestionTask(Version.composeKafkaTopic(metadataStoreName, 1), mockMetadataStoreIngestionTask);
     // Expected to see v1's records consumed on future reporter
     Assert.assertEquals(reporter.query("." + metadataStoreName + "_current--rt_topic_offset_lag.IngestionStatsGauge").value(),
+        100d);
+  }
+
+  @Test
+  public void testWithRegularStoreIngestion() {
+    String storeName = TestUtils.getUniqueString("test-store");
+    Store ingestionStore = getMockStore(storeName);
+    ingestionStore.addVersion(new Version(storeName, 1, ""));
+    ingestionStore.setCurrentVersion(1);
+    doReturn(ingestionStore).when(mockStoreRepository).getStore(storeName);
+    StoreIngestionTask mockStoreIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(ingestionStore).when(mockStoreIngestionTask).getIngestionStore();
+    doReturn(true).when(mockStoreIngestionTask).isHybridMode();
+    doReturn(100L).when(mockStoreIngestionTask).getRealTimeBufferOffsetLag();
+    doReturn(0L).when(mockStoreIngestionTask).getOffsetLagThreshold();
+    versionedIngestionStats.setIngestionTask(Version.composeKafkaTopic(storeName, 1), mockStoreIngestionTask);
+    // Expected to see v1's records consumed on future reporter
+    Assert.assertEquals(reporter.query("." + storeName + "_current--rt_topic_offset_lag.IngestionStatsGauge").value(),
         100d);
   }
 

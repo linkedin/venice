@@ -1626,7 +1626,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       storeIngestionStats.recordTotalRecordsConsumed(storeName, processedRecordNum);
 
       /**
-       * Also update this stats seperately for Leader and Follower.
+       * Also update this stats separately for Leader and Follower.
        */
       recordProcessedRecordStats(partitionConsumptionState, processedRecordSize, processedRecordNum);
       partitionConsumptionState.resetProcessedRecordNum();
@@ -1963,7 +1963,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Assumes the timestamp on the ConsumerRecord is the broker's timestamp when it received the message.
       recordWriterStats(kafkaValue.producerMetadata.messageTimestamp, consumerRecord.timestamp(),
           System.currentTimeMillis(), partitionConsumptionState);
-      FatalDataValidationException e = null;
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
 
       /**
@@ -1991,10 +1990,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
           versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
         } catch (FatalDataValidationException fatalException) {
-          if (endOfPushReceived) {
-            e = fatalException;
-          } else {
+          if (!endOfPushReceived) {
             throw fatalException;
+          } else {
+            String errorMessage = String.format("Encountered errors during updating metadata for 2nd round DIV validation "
+                    + "after EOP. topic %s partition %s offset %s, ", consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset());
+            logger.warn(errorMessage + fatalException.getMessage());
           }
         }
       }
@@ -2034,9 +2035,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           storeIngestionStats.recordValueSize(storeName, valueSize);
         }
         sizeOfPersistedData = keySize + valueSize;
-      }
-      if (e != null) {
-        throw e;
       }
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.get().execute(e);
@@ -2082,7 +2080,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * to find more details.
          */
         offsetRecord.addOffsetRecordTransformer(kafkaValue.producerMetadata.producerGUID, offsetRecordTransformer.get());
-      } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link DuplicateDataException} */
+      } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link com.linkedin.venice.exceptions.validation.DataValidationException} */
 
       // Potentially update the offset metadata in the OffsetRecord
       updateOffset(partitionConsumptionState, offsetRecord, consumerRecord, producedRecord);
@@ -2138,7 +2136,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String errorMessage = String.format("Fatal data validation problem with topic %s partition %s offset %s, "
           + "but consumption will continue since EOP is already received. ",
           consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset());
-      logger.warn(errorMessage + fatalException.getMessage());
+      logger.warn(errorMessage + fatalException.getStackTrace());
 
       if (fatalException instanceof ImproperlyStartedSegmentException) {
         return Optional.empty();
