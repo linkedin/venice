@@ -196,11 +196,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
 
     ReentrantLock lock = storageNodeLockMap.computeIfAbsent(hostName, id ->  new ReentrantLock());
+    boolean isRequestThrottled = false;
     lock.lock();
     try {
       long pendingRequestCount = routerStats.getPendingRequestCount(storageNode.getNodeId());
-
       if (isStateFullHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
+        isRequestThrottled = true;
         // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which increases the unhealthy request metric.
         if (!retryFuture.isCancelled()) {
           retryFuture.setSuccess(INTERNAL_SERVER_ERROR);
@@ -215,6 +216,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       routerStats.recordPendingRequest(storageNode.getNodeId());
     } finally {
       lock.unlock();
+      if (isRequestThrottled) {
+        pendingRequestThrottler.take();
+      }
     }
 
     long requestId = uniqueRequestId.getAndIncrement();
@@ -292,6 +296,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    */
   public RouteHttpRequestStats getRouterStats() {
     return routerStats;
+  }
+
+  /**
+   * For TEST ONLY
+   */
+  public PendingRequestThrottler getPendingRequestThrottler() {
+    return pendingRequestThrottler;
   }
 
   protected FullHttpResponse buildPlainTextResponse(HttpResponseStatus status, ByteBuf content) {

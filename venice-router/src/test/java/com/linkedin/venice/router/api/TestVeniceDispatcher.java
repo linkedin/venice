@@ -88,6 +88,7 @@ public class TestVeniceDispatcher {
       triggerResponse(dispatcher, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
         Assert.assertEquals(successRetries.size(), 2);
         Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        Assert.assertEquals(dispatcher.getPendingRequestThrottler().getCurrentPendingRequestCount(), 0);
       }, false);
     } finally {
       dispatcher.stop();
