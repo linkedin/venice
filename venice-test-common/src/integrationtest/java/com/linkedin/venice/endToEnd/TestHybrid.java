@@ -1444,84 +1444,76 @@ public class TestHybrid {
       extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
     }
 
-    SystemProducer veniceProducer = null;
-
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,
         2, 1000000, false, false, extraProperties)) {
-      try {
-        // Added a server with shared consumer enabled.
-        Properties serverPropertiesWithSharedConsumer = new Properties();
-        serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
-        extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
-        extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
-        venice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+      // Added a server with shared consumer enabled.
+      Properties serverPropertiesWithSharedConsumer = new Properties();
+      serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
+      extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
+      extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+      venice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+      logger.info("Finished creating VeniceClusterWrapper");
+      long streamingRewindSeconds = 10L;
+      long streamingMessageLag = 2L;
+      String storeName = TestUtils.getUniqueString("hybrid-store");
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
+      try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+          TopicManager topicManager = new TopicManager(
+              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+              100,
+              MIN_COMPACTION_LAG,
+              TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+        // Have 1 partition only, so that all keys are produced to the same partition
+        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setHybridRewindSeconds(streamingRewindSeconds)
+            .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+            .setPartitionCount(1)
+        );
+        Assert.assertFalse(response.isError());
+        //Do an H2V push
+        runH2V(h2vProperties, 1, controllerClient);
+        Properties veniceWriterProperties = new Properties();
+        veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+        /**
+         * Set max segment elapsed time to 0 to enforce creating small segments aggressively
+         */
+        veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
+        AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
 
-        logger.info("Finished creating VeniceClusterWrapper");
-
-        long streamingRewindSeconds = 10L;
-        long streamingMessageLag = 2L;
-
-        String storeName = TestUtils.getUniqueString("hybrid-store");
-        File inputDir = getTempDataDirectory();
-        String inputDirPath = "file://" + inputDir.getAbsolutePath();
-        Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
-        Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
-
-        try (ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
-            AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-                ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-            TopicManager topicManager = new TopicManager(
-                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-                100,
-                MIN_COMPACTION_LAG,
-                TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
-
-          // Have 1 partition only, so that all keys are produced to the same partition
-          ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-              .setHybridRewindSeconds(streamingRewindSeconds)
-              .setHybridOffsetLagThreshold(streamingMessageLag)
-              .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
-              .setPartitionCount(1)
-          );
-
-          Assert.assertFalse(response.isError());
-
-          //Do an H2V push
-          runH2V(h2vProperties, 1, controllerClient);
-
-          Properties veniceWriterProperties = new Properties();
-          veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
-          /**
-           * Set max segment elapsed time to 0 to enforce creating small segments aggressively
-           */
-          veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
-          AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
-          AvroGenericDeserializer<String> stringDeserializer = new AvroGenericDeserializer<>(Schema.parse(STRING_SCHEMA), Schema.parse(STRING_SCHEMA));
-          try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils.getVeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(Version.composeRealTimeTopic(storeName))) {
-            for (int i = 1; i <= 100; i++) {
-              realTimeTopicWriter.put(stringSerializer.serialize(String.valueOf(i)), stringSerializer.serialize("hybrid_DIV_enhancement_" + i), 1);
-            }
+        //chunk the data into 2 parts and send each part by different producers. Also, close the producers
+        //as soon as it finishes writing. This makes sure that closing or switching producers won't
+        //impact the ingestion
+        for (int i = 0; i < 2; i ++) {
+          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils.getVeniceWriterFactory(
+              veniceWriterProperties).createBasicVeniceWriter(Version.composeRealTimeTopic(storeName));
+          for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
+            realTimeTopicWriter.put(stringSerializer.serialize(String.valueOf(j)),
+                stringSerializer.serialize("hybrid_DIV_enhancement_" + j), 1);
           }
 
-          // Check both leader and follower hosts
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-            try {
-              for (int i = 1; i <= 100; i++) {
-                String key = Integer.toString(i);
-                Object value = client.get(key).get();
-                assertNotNull(value, "Key " + i + " should not be missing!");
-                assertEquals(value.toString(), "hybrid_DIV_enhancement_" + key);
-              }
-            } catch (Exception e) {
-              throw new VeniceException(e);
+          realTimeTopicWriter.close();
+        }
+
+        // Check both leader and follower hosts
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            for (int i = 1; i <= 100; i++) {
+              String key = Integer.toString(i);
+              Object value = client.get(key).get();
+              assertNotNull(value, "Key " + i + " should not be missing!");
+              assertEquals(value.toString(), "hybrid_DIV_enhancement_" + key);
             }
-          });
-        }
-      } finally {
-        if (null != veniceProducer) {
-          veniceProducer.stop();
-        }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
       }
     }
   }

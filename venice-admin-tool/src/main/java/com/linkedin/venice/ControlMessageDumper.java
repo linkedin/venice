@@ -1,12 +1,14 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.EndOfSegment;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -91,12 +93,17 @@ public class ControlMessageDumper {
           ControlMessageType msgType = ControlMessageType.valueOf(msg);
           System.out.println();
           System.out.println("offset: " + record.offset());
+          System.out.println("segment: " + metadata.segmentNumber);
           System.out.println("sequence number: " + metadata.messageSequenceNumber);
           System.out.println("timestamp1: " + metadata.messageTimestamp);
           System.out.println("timestamp2: " + record.timestamp());
           System.out.println(msgType);
-//          System.out.println(msg);
-//          System.out.println(envelope);
+
+          if (msgType == ControlMessageType.END_OF_SEGMENT) {
+            EndOfSegment end = (EndOfSegment) msg.controlMessageUnion;
+            System.out.println("is final segment: " + end.finalSegment);
+            System.out.println("check sum: " + Arrays.toString(end.checksumValue.array()));
+          }
         }
       }
     }
