@@ -24,7 +24,7 @@ import org.bouncycastle.crypto.digests.MD5Digest;
  */
 public class MD5CheckSum extends CheckSum {
 
-  private MD5Digest checksum = null;
+  private final MD5Digest checksum;
 
   public MD5CheckSum() {
     checksum = new MD5Digest();
@@ -35,19 +35,20 @@ public class MD5CheckSum extends CheckSum {
   }
 
   @Override
-  public byte[] getCheckSum() {
-    byte[] finalChecksum = new byte[checksum.getDigestSize()];
-    checksum.doFinal(finalChecksum, 0);
-    return finalChecksum;
+  public byte[] getFinalCheckSum() {
+    byte[] checksumValue = new byte[checksum.getDigestSize()];
+    checksum.doFinal(checksumValue, 0);
+
+    return checksumValue;
   }
 
   @Override
-  public void update(byte[] input, int startIndex, int length) {
+  public void updateChecksum(byte[] input, int startIndex, int length) {
     checksum.update(input, startIndex, length);
   }
 
   @Override
-  public void reset() {
+  public void resetInternal() {
     checksum.reset();
   }
 

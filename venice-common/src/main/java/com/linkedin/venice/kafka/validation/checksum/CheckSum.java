@@ -26,32 +26,65 @@ import java.util.Optional;
 /**
  * Parent class for various running checksum implementations.
  *
- * N.B.: Class taken from Voldemort.
+ * CheckSum has 2 modes -- write mode and read mode. Updating check sum
+ * is only available in the write mode. When {@link #getCheckSum()} is
+ * called, the object will flip to the read mode and Checksum value will be
+ * finalized.
+ *
+ * {@link #reset()} can flip the object back to the write mode and checksum
+ * value will be re-initialized.
  */
 public abstract class CheckSum {
 
   private static final Logger LOGGER = Logger.getLogger(CheckSum.class);
 
+  private boolean writeEnabled = true;
+
+  private byte[] finalCheckSum;
+
   /**
    * Update the checksum buffer to include input with startIndex and length.
    * Following calls to multiple 'update's you need to call 'getCheckSum'
-   * which will reset the buffer as well
-   *
-   * @param input
-   * @param startIndex
-   * @param length
+   * which will reset the buffer as well.
    */
-  public abstract void update(byte[] input, int startIndex, int length);
+  public void update(byte[] input, int startIndex, int length) {
+    if (!writeEnabled) {
+      throw new VeniceException("check sum is finalized. reset() needs to be called before reusing it.");
+    }
+
+    updateChecksum(input, startIndex, length);
+  }
+
+  protected abstract void updateChecksum(byte[] input, int startIndex, int length);
+
 
   /**
-   * Get the checkSum of the buffer till now, after which buffer is reset
+   * Get the checkSum of the buffer till now. When it called, the object will flip
+   * from write mode to read mode
    */
-  public abstract byte[] getCheckSum();
+  public byte[] getCheckSum() {
+    writeEnabled = false;
+
+    if (finalCheckSum == null) {
+      finalCheckSum = getFinalCheckSum();
+    }
+
+    return finalCheckSum;
+  }
+
+  protected abstract byte[] getFinalCheckSum();
 
   /**
    * Reset the checksum generator
    */
-  public abstract void reset();
+  public void reset() {
+    finalCheckSum = null;
+    writeEnabled = true;
+
+    resetInternal();
+  }
+
+  public abstract void resetInternal();
 
   public abstract CheckSumType getType();
 

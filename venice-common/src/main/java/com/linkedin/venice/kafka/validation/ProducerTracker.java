@@ -388,6 +388,7 @@ public class ProducerTracker {
       /** We have consumed an {@link ControlMessageType#END_OF_SEGMENT}. Time to verify the checksum. */
       ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
       EndOfSegment incomingEndOfSegment = (EndOfSegment) controlMessage.controlMessageUnion;
+
       if (ByteBuffer.wrap(segment.getFinalCheckSum()).equals(incomingEndOfSegment.checksumValue)) {
         // We're good, the expected checksum matches the one we computed on the receiving end (:
         segment.end(incomingEndOfSegment.finalSegment);

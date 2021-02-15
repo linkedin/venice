@@ -34,21 +34,20 @@ public class Adler32CheckSum extends CheckSum {
   }
 
   @Override
-  public byte[] getCheckSum() {
+  public byte[] getFinalCheckSum() {
     byte[] returnedCheckSum = new byte[ByteUtils.SIZE_OF_LONG];
     ByteUtils.writeLong(returnedCheckSum, checkSumGenerator.getValue(), 0);
-    checkSumGenerator.reset();
     return returnedCheckSum;
   }
 
   @Override
-  public void update(byte[] input, int startIndex, int length) {
+  public void updateChecksum(byte[] input, int startIndex, int length) {
     checkSumGenerator.update(input, startIndex, length);
 
   }
 
   @Override
-  public void reset() {
+  public void resetInternal() {
     checkSumGenerator.reset();
   }
 

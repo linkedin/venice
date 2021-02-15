@@ -575,13 +575,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload,
       int partition, Callback callback, long upstreamOffset) {
-    return sendMessage(keyProvider, messageType, payload, partition, callback, true, upstreamOffset);
+    return sendMessage(keyProvider, messageType, payload, false, partition, callback, true, upstreamOffset);
   }
 
   private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload,
-      int partition, Callback callback, boolean updateDIV, long upstreamOffset) {
+      boolean isEndOfSegment, int partition, Callback callback, boolean updateDIV, long upstreamOffset) {
     KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
-      KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(messageType, partition, updateDIV, upstreamOffset);
+      KafkaMessageEnvelope kafkaValue =
+          getKafkaMessageEnvelope(messageType, isEndOfSegment, partition, updateDIV, upstreamOffset);
       kafkaValue.payloadUnion = payload;
       return kafkaValue;
     };
@@ -914,7 +915,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     boolean updateCheckSum = true;
     while (true) {
       try {
-        sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, partition, callback, updateCheckSum, upstreamOffset).get();
+        boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
+        sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment,
+            partition, callback, updateCheckSum, upstreamOffset).get();
         return;
       } catch (InterruptedException|ExecutionException e) {
         if (e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
@@ -950,7 +953,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public synchronized Future<RecordMetadata> asyncSendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo, Callback callback, long upstreamOffset) {
     controlMessage.debugInfo = getDebugInfo(debugInfo);
     boolean updateCheckSum = true;
-    return sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, partition, callback, updateCheckSum, upstreamOffset);
+    boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
+    return sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment,
+        partition, callback, updateCheckSum, upstreamOffset);
   }
 
   /**
@@ -989,14 +994,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param messageType an instance of the {@link MessageType} enum.
    * @return A {@link KafkaMessageEnvelope} for producing into Kafka
    */
-  protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition, boolean incrementSequenceNumber, long upstreamOffset) {
+  protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, boolean isEndOfSegment, int partition,
+      boolean incrementSequenceNumber, long upstreamOffset) {
     // If single-threaded, the kafkaValue could be re-used (and clobbered). TODO: explore GC tuning later.
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     kafkaValue.messageType = messageType.getValue();
 
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.producerGUID = producerGUID;
-    Segment currentSegment = getSegment(partition);
+
+    Segment currentSegment = getSegment(partition, isEndOfSegment);
     producerMetadata.segmentNumber = currentSegment.getSegmentNumber();
     if (incrementSequenceNumber) {
       producerMetadata.messageSequenceNumber = currentSegment.getAndIncrementSequenceNumber();
@@ -1027,20 +1034,29 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * @param partition for which we want to get the current {@link Segment}
+   * @param partition for which we want to get the current {@link Segment}. Segment will be
+   *                  ended automatically if its creation time is prior to
+   *                  {@link #maxElapsedTimeForSegmentInMs}. The intention of having "shorter"
+   *                  segment allows us to narrow down the "bad segment" easily when it happens.
+   *
    * @return the existing {@link Segment} associated with the requested partition, or
    *         a new one if none existed previously.
    */
-  private Segment getSegment(int partition) {
+  private Segment getSegment(int partition, boolean sendEndOfSegment) {
     Segment currentSegment = segmentsMap.get(partition);
     if (null == currentSegment || currentSegment.isEnded()) {
       currentSegment = startSegment(partition);
     } else {
-      long currentSegmentCreationTime = segmentsCreationTimeMap.get(partition);
-      if (currentSegmentCreationTime != -1 && LatencyUtils.getElapsedTimeInMs(currentSegmentCreationTime) > maxElapsedTimeForSegmentInMs) {
-        segmentsCreationTimeMap.put(partition, -1L);
-        endSegment(partition, true);
-        currentSegment = startSegment(partition);
+      //Close the current segment and create a new one if the current segment is
+      //timed out. The segment won't be closed if the ongoing message itself is
+      //a "end_of_segment" message.
+      if (!sendEndOfSegment) {
+        long currentSegmentCreationTime = segmentsCreationTimeMap.get(partition);
+        if (currentSegmentCreationTime != -1 && LatencyUtils.getElapsedTimeInMs(currentSegmentCreationTime) > maxElapsedTimeForSegmentInMs) {
+          segmentsCreationTimeMap.put(partition, -1L);
+          endSegment(partition, true);
+          currentSegment = startSegment(partition);
+        }
       }
     }
     return currentSegment;
