@@ -1,0 +1,3 @@
+owners: [ ssen, lcli ]
+paths: [ '.*' ]
+whitelist: [ ]
