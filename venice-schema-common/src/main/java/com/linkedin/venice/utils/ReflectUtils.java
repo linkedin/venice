@@ -3,18 +3,9 @@ package com.linkedin.venice.utils;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
 
-import com.google.common.reflect.ClassPath;
-import com.linkedin.venice.exceptions.VeniceException;
 import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
 
@@ -105,32 +96,5 @@ public class ReflectUtils {
     Class klass = loadClass(className);
     LOGGER.info("Class '" + klass.getSimpleName() + "' is loaded from: " +
         klass.getProtectionDomain().getCodeSource().getLocation().toString());
-  }
-
-  /**
-   * Get all subclasses of given class. Subclasses are assumed to be in the same package as base class.
-   */
-  public static List<String> getSubclassNames(Class<?> klass) {
-    ClassLoader cl = ClassLoader.getSystemClassLoader();
-    final ClassPath classPath;
-    try {
-      classPath = ClassPath.from(cl);
-    } catch (IOException e) {
-      throw new VeniceException("Failed to instantiate ClassPath");
-    }
-    List<String> classNames = classPath
-        .getTopLevelClasses(klass.getPackage().getName())
-        .stream()
-        .filter(classInfo -> {
-          // skip base class itself
-          if (classInfo.getName().equals(klass.getName())) {
-            return false;
-          }
-          Class<?> subclass = loadClass(classInfo.getName());
-          return klass.isAssignableFrom(subclass);
-        })
-        .map(ClassPath.ClassInfo::getName)
-        .collect(Collectors.toList());
-    return classNames;
   }
 }
