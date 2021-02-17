@@ -465,6 +465,13 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT = "server.ingestion.isolation.application.port";
 
   /**
+   * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
+   * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
+   * for example: JVM GC/Memory stats. All the classes defined here will be extending {@link com.linkedin.venice.stats.AbstractVeniceStats},
+   * and will take {@link io.tehuti.metrics.MetricsRepository} as the only parameter in their constructor.
+   */
+  public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST = "server.ingestion.isolation.stats.class.list";
+  /**
    * Whether to enable storage engine to restore existing data partitions during creation.
    */
   public static final String SERVER_RESTORE_DATA_PARTITIONS_ENABLED = "server.restore.data.partitions.enabled";

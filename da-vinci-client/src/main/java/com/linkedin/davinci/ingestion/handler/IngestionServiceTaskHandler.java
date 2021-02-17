@@ -48,9 +48,11 @@ import com.linkedin.venice.security.DefaultSSLFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -256,6 +258,20 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
 
+    /**
+     * Using reflection to create all the stats classes related to ingestion isolation. All these classes extends
+     * {@link AbstractVeniceStats} class and takes {@link MetricsRepository} as the only parameter in its constructor.
+     */
+    for (String ingestionIsolationStatsClassName : veniceProperties.getString(SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST, "").split(",")) {
+      Class<? extends AbstractVeniceStats> ingestionIsolationStatsClass = ReflectUtils.loadClass(ingestionIsolationStatsClassName);
+      if (!ingestionIsolationStatsClass.isAssignableFrom(AbstractVeniceStats.class)) {
+        throw new VeniceException("Class: " + ingestionIsolationStatsClassName + " does not extends AbstractVeniceStats");
+      }
+      AbstractVeniceStats ingestionIsolationStats =
+          ReflectUtils.callConstructor(ingestionIsolationStatsClass, new Class<?>[]{MetricsRepository.class}, new Object[]{metricsRepository});
+      logger.info("Created Ingestion Isolation stats: " + ingestionIsolationStats.getName());
+    }
+
     // Create StorageService
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
     StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);
@@ -374,7 +390,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           } catch (Exception e) {
             String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
             if (!redundantExceptionFilter.isRedundantException(exceptionLogMessage)) {
-              logger.error(exceptionLogMessage);
+              logger.error(exceptionLogMessage, e);
             }
           }
         }
