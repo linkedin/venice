@@ -464,7 +464,7 @@ public class TestHybrid {
     extraProperties.setProperty(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, "false");
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
-    SystemProducer veniceBatchProducer = null, veniceStreamProducer = null;
+    SystemProducer veniceBatchProducer = null;
     try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,3,
         1,2, 1000000, false, false, extraProperties)) {
       try {
@@ -477,13 +477,15 @@ public class TestHybrid {
         // Create empty store
         admin.addStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
         admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-                                                      .setPartitionCount(2)
+                                                      .setPartitionCount(1)
                                                       .setHybridRewindSeconds(streamingRewindSeconds)
                                                       .setHybridOffsetLagThreshold(streamingMessageLag)
                                                       .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
         );
-        Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(1));
-        Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(1));
+          Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+        });
 
         // Batch load from Samza
         VeniceSystemFactory factory = new VeniceSystemFactory();
@@ -501,8 +503,10 @@ public class TestHybrid {
           sendStreamingRecord(veniceBatchProducer, storeName, i);
         }
 
-        Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
-        Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
+          Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+        });
 
         //while running in L/F model, we try to stop the original SN; let Helix elect a new leader and push some extra
         //data here. This is for testing "pass-through" mode is working properly
@@ -513,15 +517,19 @@ public class TestHybrid {
           Utils.sleep(waitTime);
 
           String resourceName = Version.composeKafkaTopic(storeName, 1);
-          HelixBaseRoutingRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
-          Instance leaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
-          Assert.assertNotNull(leaderNode);
+          HelixBaseRoutingRepository routingDataRepo =
+              veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+              Instance leaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
+              Assert.assertNotNull(leaderNode);
+          });
+          Instance oldLeaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
 
-          veniceClusterWrapper.stopVeniceServer(leaderNode.getPort());
-          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          veniceClusterWrapper.stopVeniceServer(oldLeaderNode.getPort());
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
             Instance newLeaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
             Assert.assertNotNull(newLeaderNode);
-            Assert.assertNotEquals(leaderNode.getPort(), newLeaderNode.getPort());
+            Assert.assertNotEquals(oldLeaderNode.getPort(), newLeaderNode.getPort());
             Assert.assertTrue(routingDataRepo
                                   .getPartitionAssignments(resourceName).getPartition(0).getWorkingInstances().size() == 2);
           });
@@ -536,13 +544,12 @@ public class TestHybrid {
           }
         }
 
-        // Write END_OF_PUSH message
-        // TODO: in the future we would like to automatically send END_OF_PUSH message after batch load from Samza
-        // TODO: the SystemProducer interface is currently restricting us from sending end of push deterministically.
-        Utils.sleep(500);
-        veniceClusterWrapper.useControllerClient(c -> c.writeEndOfPush(storeName, 1));
+        /**
+         * Use the same VeniceWriter to write END_OF_PUSH message, which will guarantee the message order in topic
+         */
+        ((VeniceSystemProducer)veniceBatchProducer).getInternalProducer().broadcastEndOfPush(new HashMap<>());
 
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
           if (isLeaderFollowerModelEnabled) {
@@ -551,57 +558,59 @@ public class TestHybrid {
           }
         });
 
+        SystemProducer veniceStreamProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
         try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
-          // Verify data, note only 1-10 have been pushed so far
-          for (int i = 1; i <= 10; i++) {
-            String key = Integer.toString(i);
-            Object value = client.get(key).get();
-            Assert.assertNotNull(value);
-            Assert.assertEquals(value.toString(), "stream_" + key);
-          }
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+            // Verify data, note only 1-10 have been pushed so far
+            for (int i = 1; i <= 10; i++) {
+              String key = Integer.toString(i);
+              Object value = client.get(key).get();
+              Assert.assertNotNull(value);
+              Assert.assertEquals(value.toString(), "stream_" + key);
+            }
 
-          Assert.assertNull(client.get(Integer.toString(11)).get(), "This record should not be found");
+            Assert.assertNull(client.get(Integer.toString(11)).get(), "This record should not be found");
 
-          if (isLeaderFollowerModelEnabled) {
-            for (int i = 31; i <= 40; i++) {
+            if (isLeaderFollowerModelEnabled) {
+              for (int i = 31; i <= 40; i++) {
+                String key = Integer.toString(i);
+                Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
+              }
+            }
+
+            // Switch to stream mode and push more data
+            veniceStreamProducer.start();
+            for (int i = 11; i <= 20; i++) {
+              sendStreamingRecord(veniceStreamProducer, storeName, i);
+            }
+            Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
+            Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(2));
+            Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
+
+            // Verify both batch and stream data
+            /**
+             * Leader would wait for 5 seconds before switching to real-time topic.
+             */
+            long extraWaitTime = isLeaderFollowerModelEnabled ? TimeUnit.SECONDS.toMillis(Long.valueOf(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)))
+                : 0L;
+            long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
+            logger.info("normalTimeForConsuming:" + normalTimeForConsuming + "; extraWaitTime:" + extraWaitTime);
+            Utils.sleep(normalTimeForConsuming + extraWaitTime);
+            for (int i = 1; i < 20; i++) {
               String key = Integer.toString(i);
               Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
             }
+            Assert.assertNull(client.get(Integer.toString(21)).get(), "This record should not be found");
+          });
+        } finally {
+          if (null != veniceStreamProducer) {
+            veniceStreamProducer.stop();
           }
-
-          // Switch to stream mode and push more data
-          veniceStreamProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
-          veniceStreamProducer.start();
-          for (int i = 11; i <= 20; i++) {
-            sendStreamingRecord(veniceStreamProducer, storeName, i);
-          }
-          Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
-          Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(2));
-          Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
-
-          // Verify both batch and stream data
-          /**
-           * Leader would wait for 5 seconds before switching to real-time topic.
-           */
-          long extraWaitTime = isLeaderFollowerModelEnabled
-                                   ? TimeUnit.SECONDS.toMillis(Long.valueOf(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)))
-                                   : 0L;
-          long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
-          logger.info("normalTimeForConsuming:" + normalTimeForConsuming + "; extraWaitTime:" + extraWaitTime);
-          Utils.sleep(normalTimeForConsuming + extraWaitTime);
-          for (int i = 1; i < 20; i++) {
-            String key = Integer.toString(i);
-            Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
-          }
-          Assert.assertNull(client.get(Integer.toString(21)).get(), "This record should not be found");
         }
       } finally {
         if (null != veniceBatchProducer) {
           veniceBatchProducer.stop();
-        }
-        if (null != veniceStreamProducer) {
-          veniceStreamProducer.stop();
         }
       }
     }
