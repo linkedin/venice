@@ -1,7 +1,10 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.LocalDateTime;
@@ -13,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.annotate.JsonIgnore;
@@ -169,13 +173,19 @@ public class OfflinePushStatus {
   /**
    * Check the status of the given incremental push version
    */
-  public ExecutionStatus checkIncrementalPushStatus(String incrementalPushVersion) {
+  public ExecutionStatus checkIncrementalPushStatus(String incrementalPushVersion, PartitionAssignment partitionAssignment) {
     //find all executeStatus that are related to certain incrementalPushVersion
     List<List<StatusSnapshot>> replicaHistoryList = getPartitionStatuses().stream()
-        //get a list of replica status
-        .flatMap(partitionStatus -> partitionStatus.getReplicaStatuses().stream())
+        //get a list of replica status of working instances
+        .flatMap(partitionStatus -> {
+          Partition partition = partitionAssignment.getPartition(partitionStatus.getPartitionId());
+          Set<String> workingInstances = partition.getWorkingInstances().stream()
+              .map(Instance::getNodeId).collect(Collectors.toSet());
+          return partitionStatus.getReplicaStatuses().stream()
+              .filter(replicaStatus -> workingInstances.contains(replicaStatus.getInstanceId()));
+        })
         //get a list of replica's status history
-        .map(replicaStatus -> replicaStatus.getStatusHistory())
+        .map(ReplicaStatus::getStatusHistory)
         //filter the history list so that it only contains records that are related to certain IP version
         .map(replicaHistory -> replicaHistory.stream()
             .filter(statusSnapshot -> statusSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion))

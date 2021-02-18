@@ -275,18 +275,30 @@ public abstract class AbstractPushMonitorTest {
 
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
-        ExecutionStatus.NOT_CREATED);
 
     //prepare new partition status
     List<ReplicaStatus> replicaStatuses = new ArrayList<>();
     for (int i = 0; i < replicationFactor; i++) {
       ReplicaStatus replicaStatus = new ReplicaStatus("test" + i);
+      replicaStatus.updateStatus(ExecutionStatus.STARTED);
+      replicaStatus.updateStatus(ExecutionStatus.COMPLETED);
       replicaStatuses.add(replicaStatus);
     }
 
+    Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
+    List<Instance> onlineInstance = new ArrayList<>(replicationFactor);
+    for (int i = 0; i < replicationFactor; i++) {
+      onlineInstance.add(new Instance("test" + i, "test", i));
+    }
+    onlineInstanceMap.put(HelixState.ONLINE_STATE, onlineInstance);
+    PartitionAssignment partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
+    partitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+    doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
+
+    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
+        ExecutionStatus.NOT_CREATED);
+
     //update one of the replica status START -> COMPLETE -> START_OF_INCREMENTAL_PUSH_RECEIVED (SOIP_RECEIVED)
-    replicaStatuses.get(0).updateStatus(ExecutionStatus.COMPLETED);
     replicaStatuses.get(0).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
     prepareMockStore(topic);
 
@@ -299,11 +311,9 @@ public abstract class AbstractPushMonitorTest {
     //and update the third one to EOIP_RECEIVED with wrong version
     replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
 
-    replicaStatuses.get(1).updateStatus(ExecutionStatus.COMPLETED);
     replicaStatuses.get(1).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
     replicaStatuses.get(1).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
 
-    replicaStatuses.get(2).updateStatus(ExecutionStatus.COMPLETED);
     replicaStatuses.get(2).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
     replicaStatuses.get(2).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, "incorrect_version");
 
