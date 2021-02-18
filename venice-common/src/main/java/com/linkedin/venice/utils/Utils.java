@@ -53,6 +53,7 @@ public class Utils {
   private static Logger LOGGER = Logger.getLogger(Utils.class);
 
   public static final String WILDCARD_MATCH_ANY = "*";
+  public static final String NEW_LINE_CHAR = System.lineSeparator();
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
 
   /**

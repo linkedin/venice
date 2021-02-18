@@ -84,7 +84,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private long minimumLoggingIntervalInMS;
   private long telemetryMessageInterval;
   private List<String> kafkaMetricsToReportAsMrCounters;
-  private Map<Integer, String> partitionLeaderMap = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, String> partitionLeaderMap = new VeniceConcurrentHashMap<>();
 
   /**
    * Having dup key checking does not make sense in Mapper only mode
@@ -104,7 +104,6 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private long messageSent = 0;
   private final AtomicLong messageCompleted = new AtomicLong();
   private final AtomicLong messageErrored = new AtomicLong();
-  private long timeOfLastReduceFunctionStartInNS = 0;
   private long timeOfLastReduceFunctionEndInNS = 0;
   private long aggregateTimeOfReduceExecutionInNS = 0;
   private long aggregateTimeOfInBetweenReduceInvocationsInNS = 0;
@@ -119,7 +118,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   @Override
   public void reduce(BytesWritable key, Iterator<BytesWritable> values, OutputCollector<NullWritable, NullWritable> output, Reporter reporter)throws IOException {
-    timeOfLastReduceFunctionStartInNS = System.nanoTime();
+    final long timeOfLastReduceFunctionStartInNS = System.nanoTime();
     if (timeOfLastReduceFunctionEndInNS > 0) {
       // Will only be true starting from the 2nd invocation.
       aggregateTimeOfInBetweenReduceInvocationsInNS += (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
@@ -254,7 +253,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     prepushStorageQuotaCheck(job, props.getLong(STORAGE_QUOTA_PROP), props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO));
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
     this.derivedValueSchemaId = (props.containsKey(DERIVED_SCHEMA_ID_PROP)) ? props.getInt(DERIVED_SCHEMA_ID_PROP) : -1;
-    this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) ? props.getBoolean(ENABLE_WRITE_COMPUTE) : false;
+    this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) && props.getBoolean(ENABLE_WRITE_COMPUTE);
     this.minimumLoggingIntervalInMS = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
 
     if (checkDupKey) {
@@ -338,9 +337,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   }
 
   private void logMessageProgress() {
-    LOGGER.info("Message sent: " + messageSent);
-    LOGGER.info("Message completed: " + messageCompleted.get());
-    LOGGER.info("Message errored: " + messageErrored.get());
+    LOGGER.info(String.format("Message sent: %d, message completed: %d, message errored: %d",
+        messageSent, messageCompleted.get(), messageErrored.get()));
   }
 
   // For test purpose
@@ -453,14 +451,14 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
    * Venice supports other format in the future
    */
   static class DuplicateKeyPrinter {
-    private static int MAX_NUM_OF_LOG = 10;
+    private static final int MAX_NUM_OF_LOG = 10;
 
-    private boolean isDupKeyAllowed;
+    private final boolean isDupKeyAllowed;
 
-    private String topic;
-    private Schema  keySchema;
-    private VeniceKafkaSerializer keySerializer;
-    private GenericDatumWriter writer;
+    private final String topic;
+    private final Schema  keySchema;
+    private final VeniceKafkaSerializer keySerializer;
+    private final GenericDatumWriter writer;
 
     private int numOfDupKey = 0;
 
