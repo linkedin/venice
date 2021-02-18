@@ -59,10 +59,12 @@ public class WriteComputeAdapter {
    *                          on top of original value.
    * @return The updated value
    */
-  private Object update(Schema originalSchema, Schema writeComputeSchema, Object originalValue, Object writeComputeValue) {
+  private Object update(Schema originalSchema, Schema writeComputeSchema, Object originalValue,
+      Object writeComputeValue) {
     switch (originalSchema.getType()) {
       case RECORD:
-        return updateRecord(originalSchema, writeComputeSchema, (GenericRecord) originalValue, (GenericRecord) writeComputeValue);
+        return updateRecord(originalSchema, writeComputeSchema, (GenericRecord) originalValue,
+            (GenericRecord) writeComputeValue, true);
       case ARRAY:
         return updateArray(originalSchema, (List) originalValue, writeComputeValue);
       case MAP:
@@ -75,11 +77,15 @@ public class WriteComputeAdapter {
   }
 
   public GenericRecord updateRecord(GenericRecord originalRecord, GenericRecord writeComputeRecord) {
-    return updateRecord(originalSchema, writeComputeSchema, originalRecord, writeComputeRecord);
+    return updateRecord(originalSchema, writeComputeSchema, originalRecord, writeComputeRecord, false);
   }
 
   GenericRecord updateRecord(Schema originalSchema, Schema writeComputeSchema, GenericRecord originalRecord,
-      GenericRecord writeComputeRecord) {
+      GenericRecord writeComputeRecord, boolean nestedField) {
+    if (nestedField) {
+      return writeComputeRecord;
+    }
+
     if (originalRecord == null) {
       originalRecord = constructNewRecord(originalSchema);
     }
@@ -89,7 +95,7 @@ public class WriteComputeAdapter {
       if (writeComputeRecord.getSchema().getName().equals(DEL_OP.name)) {
         return null;
       } else {
-        return updateRecord(originalSchema, writeComputeSchema.getTypes().get(0), originalRecord, writeComputeRecord);
+        return updateRecord(originalSchema, writeComputeSchema.getTypes().get(0), originalRecord, writeComputeRecord, false);
       }
     }
 

@@ -1,6 +1,5 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.venice.utils.TestPushUtils;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -73,6 +72,25 @@ public class testWriteComputeAdapter {
       "  }, {\n" + "    \"name\" : \"intField\",\n" +
       "    \"type\" : \"int\",\n" +
       "    \"default\" : 0\n" +
+      "  } ]\n" +
+      "}";
+
+  private String nestedRecordStr = "{\n" +
+      "  \"type\" : \"record\",\n" +
+      "  \"name\" : \"testRecord\",\n" +
+      "  \"fields\" : [ {\n" +
+      "    \"name\" : \"nestedRecord\",\n" +
+      "    \"type\" : {\n" +
+      "      \"type\" : \"record\",\n" +
+      "      \"name\" : \"nestedRecord\",\n" +
+      "      \"fields\" : [ {\n" +
+      "        \"name\" : \"intField\",\n" +
+      "        \"type\" : \"int\"\n" +
+      "      } ]\n" +
+      "    },\n" +
+      "    \"default\" : {\n" +
+      "      \"intField\" : 1\n" +
+      "    }\n" +
       "  } ]\n" +
       "}";
 
@@ -263,4 +281,24 @@ public class testWriteComputeAdapter {
     Assert.assertEquals(result, null);
   }
 
+  @Test
+  public void testCanHandleNestedRecord() {
+    Schema recordSchema = Schema.parse(nestedRecordStr);
+    Schema recordWriteComputeUnionSchema = WriteComputeSchemaAdapter.parse(recordSchema);
+
+    WriteComputeAdapter recordAdapter =
+        WriteComputeAdapter.getWriteComputeAdapter(recordSchema, recordWriteComputeUnionSchema);
+
+    Schema nestedRecordSchema =  recordSchema.getField("nestedRecord").schema();
+    GenericData.Record nestedRecord = new GenericData.Record(nestedRecordSchema);
+    nestedRecord.put("intField", 1);
+
+    Schema writeComputeRecordSchema = recordWriteComputeUnionSchema.getTypes().get(0);
+    GenericData.Record writeComputeRecord = new GenericData.Record(writeComputeRecordSchema);
+    writeComputeRecord.put("nestedRecord", nestedRecord);
+
+    GenericData.Record result = (GenericData.Record) recordAdapter.updateRecord(null, writeComputeRecord);
+    Assert.assertNotNull(result);
+    Assert.assertEquals(result.get("nestedRecord"), nestedRecord);
+  }
 }
