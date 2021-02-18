@@ -24,7 +24,6 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatus.PushStatusStoreRecordDeleter;
-import com.linkedin.venice.pushstatus.PushStatusStoreVeniceWriterCache;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.security.SSLFactory;
@@ -242,7 +241,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
 
-  private static Logger logger = Logger.getLogger(KafkaPushJob.class);
+  private static final Logger LOGGER = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
 
@@ -290,9 +289,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
-  private long pushStartTime;
-  private long jobStartTime;
-  private String pushId;
+  private long jobStartTimeMs;
 
   private Properties veniceWriterProperties;
   private Properties sslProperties;
@@ -301,7 +298,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   // Thread pool for Hadoop File System operations.
   private ExecutorService hdfsExecutorService;
 
-  protected class SchemaInfo {
+  protected static class SchemaInfo {
     boolean isAvro = true;
     int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
     int derivedSchemaId = -1;
@@ -315,7 +312,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
   private SchemaInfo schemaInfo;
 
-  protected class PushJobSetting {
+  protected static class PushJobSetting {
     boolean enablePush;
     boolean enableSsl;
     String sslFactoryClassName;
@@ -347,7 +344,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
   protected PushJobSetting pushJobSetting;
 
-  protected class VersionTopicInfo {
+  protected static class VersionTopicInfo {
     // Kafka topic for new data push
     String topic;
     /** Version part of the store-version / topic name */
@@ -367,10 +364,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private VersionTopicInfo versionTopicInfo;
 
   private PushJobDetails pushJobDetails;
-  private InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
-  protected class StoreSetting {
+  protected static class StoreSetting {
     boolean isChunkingEnabled;
     long storeStorageQuota;
     double storageEngineOverheadRatio;
@@ -383,7 +380,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   protected StoreSetting storeSetting;
 
-  protected class ZstdConfig {
+  protected static class ZstdConfig {
     ZstdDictTrainer zstdDictTrainer;
     int maxBytesPerFile;
     int dictSize;
@@ -403,7 +400,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     WRITE_ACL_FAILED(-2),
     DUP_KEY_WITH_DIFF_VALUE(-3);
 
-    private int value;
+    private final int value;
 
     PushJobCheckpoints(int value) {
       this.value = value;
@@ -420,10 +417,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    * http://azkaban.github.io/azkaban/docs/latest/#hadoopjava-type
    * @param jobId  id of the job
    * @param vanillaProps  Property bag for the job
-   * @throws Exception
    */
   public KafkaPushJob(String jobId, Properties vanillaProps) {
-    super(jobId, logger);
+    super(jobId, LOGGER);
     this.id = jobId;
 
     if (vanillaProps.containsKey(LEGACY_AVRO_KEY_FIELD_PROP)) {
@@ -449,7 +445,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
 
     this.props = new VeniceProperties(vanillaProps);
-    logger.info("Constructing " + KafkaPushJob.class.getSimpleName() + ": " + props.toString(true));
+    LOGGER.info("Constructing " + KafkaPushJob.class.getSimpleName() + ": " + props.toString(true));
 
     // Optional configs:
     pushJobSetting = new PushJobSetting();
@@ -525,13 +521,13 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public void run() {
     try {
       initPushJobDetails();
-      jobStartTime = System.currentTimeMillis();
+      jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
       int hdfsOperationThreadNum = props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20);
       hdfsExecutorService = Executors.newFixedThreadPool(hdfsOperationThreadNum);
       Optional<SSLFactory> sslFactory = Optional.empty();
       if (pushJobSetting.enableSsl) {
-        logger.info("Controller ACL is enabled.");
+        LOGGER.info("Controller ACL is enabled.");
         Properties sslProps = getSslProperties();
         sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, pushJobSetting.sslFactoryClassName));
       }
@@ -539,7 +535,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       this.clusterName = discoverCluster(pushJobSetting, sslFactory);
       pushJobDetails.clusterName = clusterName;
       this.controllerClient = new ControllerClient(clusterName, pushJobSetting.veniceControllerUrl, sslFactory);
-      sendPushJobDetails();
+      sendPushJobDetailsToController();
       this.inputDirectory = getInputURI(this.props);
 
       this.storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
@@ -570,13 +566,13 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         ByteBuffer dict = null;
 
         if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-          logger.info("Training Zstd dictionary");
+          LOGGER.info("Training Zstd dictionary");
           dict = ByteBuffer.wrap(this.zstdConfig.zstdDictTrainer.trainSamples());
-          logger.info("Zstd dictionary size = " + dict.limit() + " bytes");
+          LOGGER.info("Zstd dictionary size = " + dict.limit() + " bytes");
         }
 
-        this.pushStartTime = System.currentTimeMillis();
-        this.pushId = pushStartTime + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
+        long pushStartTimeMs = System.currentTimeMillis();
+        String pushId = pushStartTimeMs + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
         // Create new store version, topic and fetch Kafka url from backend
         createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props, dict);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
@@ -586,7 +582,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         pushJobDetails.valueCompressionStrategy = versionTopicInfo.compressionStrategy.getValue();
         pushJobDetails.chunkingEnabled = storeSetting.isChunkingEnabled;
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.TOPIC_CREATED.getValue()));
-        sendPushJobDetails();
+        sendPushJobDetailsToController();
         // Log Venice data push job related info
         logPushJobProperties(versionTopicInfo, pushJobSetting, schemaInfo, this.clusterName, this.inputDirectory, this.inputFileDataSize);
 
@@ -634,15 +630,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         // Update and send push job details with new info
         updatePushJobDetailsWithMRCounters();
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.WRITE_COMPLETED.getValue()));
-        sendPushJobDetails();
+        sendPushJobDetailsToController();
         // Waiting for Venice Backend to complete consumption
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_JOB_STATUS_POLLING);
         pollStatusUntilComplete(pushJobSetting.incrementalPushVersion, controllerClient, pushJobSetting, versionTopicInfo);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
-        pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
+        pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
         updatePushJobDetailsWithConfigs();
-        sendPushJobDetails();
+        sendPushJobDetailsToController();
 
         // delete outdated incremental push status
         // TODO(xnma): if KafkaPushJob might hang forever, incremental push status wont get purged.
@@ -658,36 +654,36 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
           }
         }
       } else {
-        logger.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
+        LOGGER.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
       }
 
       if (pushJobSetting.enablePBNJ) {
-        logger.info("Post-Bulkload Analysis Job is about to run.");
+        LOGGER.info("Post-Bulkload Analysis Job is about to run.");
         setupPBNJConf(pbnjJobConf, versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
         jc = new JobClient(pbnjJobConf);
         runningJob = jc.runJob(pbnjJobConf);
       }
     } catch (Throwable e) {
-      logger.error("Failed to run job.", e);
+      LOGGER.error("Failed to run job.", e);
       // Make sure all the logic before killing the failed push jobs is captured in the following block
       try {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
-        pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
+        pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
         updatePushJobDetailsWithConfigs();
         if (pushJobDetails.pushJobLatestCheckpoint == PushJobCheckpoints.START_MAP_REDUCE_JOB.getValue()) {
           updatePushJobDetailsWithMRDetails();
         }
-        sendPushJobDetails();
+        sendPushJobDetailsToController();
         closeVeniceWriter();
       } catch (Exception ex) {
-        logger.error("Error before killing the failed push job; still issue the kill job command to clean up states in backend", ex);
+        LOGGER.error("Error before killing the failed push job; still issue the kill job command to clean up states in backend", ex);
       } finally {
         try {
           stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
-          logger.info("Successfully killed the failed push job.");
+          LOGGER.info("Successfully killed the failed push job.");
         } catch (Exception ex) {
-          logger.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
+          LOGGER.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
         }
       }
       if (! (e instanceof VeniceException)) {
@@ -699,7 +695,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         hdfsExecutorService.shutdownNow();
         try {
           if (!hdfsExecutorService.awaitTermination(30, TimeUnit.SECONDS)) {
-            logger.warn("Unable to shutdown the executor service used for HDFS operations. "
+            LOGGER.warn("Unable to shutdown the executor service used for HDFS operations. "
                 + "The job may hang with leaked resources.");
           }
         } catch (InterruptedException e) {
@@ -746,7 +742,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
 
     if (this.storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      logger.info("Zstd compression enabled for " + pushJobSetting.storeName);
+      LOGGER.info("Zstd compression enabled for " + pushJobSetting.storeName);
       initZstdConfig(fileStatuses.length);
     }
 
@@ -766,7 +762,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     final AtomicLong inputFileDataSize = new AtomicLong(0);
     if (schemaInfo.isAvro) {
-      logger.info("Detected Avro input format.");
+      LOGGER.info("Detected Avro input format.");
       schemaInfo.keyField = props.getString(KEY_FIELD_PROP);
       schemaInfo.valueField = props.getString(VALUE_FIELD_PROP);
 
@@ -779,7 +775,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       schemaInfo.keySchemaString = extractAvroSubSchema(storeSchema, schemaInfo.keyField).toString();
       schemaInfo.valueSchemaString = extractAvroSubSchema(storeSchema, schemaInfo.valueField).toString();
     } else {
-      logger.info("Detected Vson input format, will convert to Avro automatically.");
+      LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
       //key / value fields are optional for Vson input
       schemaInfo.keyField = props.getString(KEY_FIELD_PROP, "");
       schemaInfo.valueField = props.getString(VALUE_FIELD_PROP, "");
@@ -835,7 +831,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
             runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_VALUE_SIZE);
       }
     } catch (Exception e) {
-      logger.warn("Exception caught while updating push job details with map reduce counters. "
+      LOGGER.warn("Exception caught while updating push job details with map reduce counters. "
           + NON_CRITICAL_EXCEPTION, e);
     }
   }
@@ -859,7 +855,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         pushJobDetails.producerConfigs = new HashMap<>();
       }
     } catch (Exception e) {
-      logger.warn("Exception caught while updating push job details with configs. " + NON_CRITICAL_EXCEPTION, e);
+      LOGGER.warn("Exception caught while updating push job details with configs. " + NON_CRITICAL_EXCEPTION, e);
     }
   }
 
@@ -887,7 +883,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE);
       }
     } catch (Exception e) {
-      logger.info("Exception caught while trying to get more details on MR failure, reporting without it. "
+      LOGGER.info("Exception caught while trying to get more details on MR failure, reporting without it. "
           + NON_CRITICAL_EXCEPTION, e);
     }
   }
@@ -916,7 +912,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
 
     } catch (Exception e) {
-      logger.warn("Exception caught while updating push job details with colo status. " + NON_CRITICAL_EXCEPTION, e);
+      LOGGER.warn("Exception caught while updating push job details with colo status. " + NON_CRITICAL_EXCEPTION, e);
     }
   }
 
@@ -927,11 +923,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     return tuple;
   }
 
-  private void sendPushJobDetails() {
+  private void sendPushJobDetailsToController() {
     if (!pushJobSetting.enablePushJobStatusUpload || pushJobDetails == null) {
       String detailMessage = pushJobSetting.enablePushJobStatusUpload ?
           "The payload was not populated properly" : "Feature is disabled";
-      logger.info("Unable to send push job details for monitoring purpose. " + detailMessage);
+      LOGGER.warn("Unable to send push job details for monitoring purpose. " + detailMessage);
       return;
     }
     try {
@@ -941,39 +937,39 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
           controllerClient.sendPushJobDetails(pushJobSetting.storeName, version,
               pushJobDetailsSerializer.serialize(null, pushJobDetails));
       if (response.isError()) {
-        logger.warn("Failed to send push job details. " + NON_CRITICAL_EXCEPTION + " Details: " + response.getError());
+        LOGGER.warn("Failed to send push job details. " + NON_CRITICAL_EXCEPTION + " Details: " + response.getError());
       }
     } catch (Exception e) {
-      logger.warn("Exception caught while sending push job details. " + NON_CRITICAL_EXCEPTION, e);
+      LOGGER.error("Exception caught while sending push job details. " + NON_CRITICAL_EXCEPTION, e);
     }
   }
 
   private void logGreeting() {
-    logger.info("Running Hadoop to Venice Bridge: " + id + "\n" +
-        "  _    _           _                   \n" +
-        " | |  | |         | |                  \n" +
-        " | |__| | __ _  __| | ___   ___  _ __  \n" +
-        " |  __  |/ _` |/ _` |/ _ \\ / _ \\| '_ \\ \n" +
-        " | |  | | (_| | (_| | (_) | (_) | |_) |\n" +
-        " |_|  |_|\\__,_|\\__,_|\\___/ \\___/| .__/ \n" +
-        "                _______         | |    \n" +
-        "               |__   __|        |_|    \n" +
-        "                  | | ___                 \n" +
-        "                  | |/ _ \\                \n" +
-        "     __      __   | | (_) |               \n" +
-        "     \\ \\    / /   |_|\\___/              \n" +
-        "      \\ \\  / /__ _ __  _  ___ ___      \n" +
-        "       \\ \\/ / _ | '_ \\| |/ __/ _ \\     \n" +
-        "        \\  |  __| | | | | (_|  __/     \n" +
-        "         \\/ \\___|_| |_|_|\\___\\___|\n" +
-        "      ___        _     _\n" +
-        "     |  _ \\     (_)   | |              \n" +
-        "     | |_) |_ __ _  __| | __ _  ___    \n" +
-        "     |  _ <| '__| |/ _` |/ _` |/ _ \\   \n" +
-        "     | |_) | |  | | (_| | (_| |  __/   \n" +
-        "     |____/|_|  |_|\\__,_|\\__, |\\___|   \n" +
-        "                          __/ |        \n" +
-        "                         |___/         \n");
+    LOGGER.info("Running Hadoop to Venice Bridge: " + id + Utils.NEW_LINE_CHAR +
+        "  _    _           _                   "        + Utils.NEW_LINE_CHAR +
+        " | |  | |         | |                  "        + Utils.NEW_LINE_CHAR +
+        " | |__| | __ _  __| | ___   ___  _ __  "        + Utils.NEW_LINE_CHAR +
+        " |  __  |/ _` |/ _` |/ _ \\ / _ \\| '_ \\ "     + Utils.NEW_LINE_CHAR +
+        " | |  | | (_| | (_| | (_) | (_) | |_) |   "     + Utils.NEW_LINE_CHAR +
+        " |_|  |_|\\__,_|\\__,_|\\___/ \\___/| .__/"     + Utils.NEW_LINE_CHAR+
+        "                _______         | |     "       + Utils.NEW_LINE_CHAR +
+        "               |__   __|        |_|     "       + Utils.NEW_LINE_CHAR +
+        "                  | | ___               "       + Utils.NEW_LINE_CHAR +
+        "                  | |/ _ \\             "       + Utils.NEW_LINE_CHAR +
+        "     __      __   | | (_) |             "       + Utils.NEW_LINE_CHAR +
+        "     \\ \\    / /   |_|\\___/           "       + Utils.NEW_LINE_CHAR +
+        "      \\ \\  / /__ _ __  _  ___ ___     "       + Utils.NEW_LINE_CHAR +
+        "       \\ \\/ / _ | '_ \\| |/ __/ _ \\  "       + Utils.NEW_LINE_CHAR +
+        "        \\  |  __| | | | | (_|  __/     "       + Utils.NEW_LINE_CHAR +
+        "         \\/ \\___|_| |_|_|\\___\\___|  "       + Utils.NEW_LINE_CHAR +
+        "      ___        _     _                "       + Utils.NEW_LINE_CHAR +
+        "     |  _ \\     (_)   | |              "       + Utils.NEW_LINE_CHAR +
+        "     | |_) |_ __ _  __| | __ _  ___     "       + Utils.NEW_LINE_CHAR +
+        "     |  _ <| '__| |/ _` |/ _` |/ _ \\   "       + Utils.NEW_LINE_CHAR +
+        "     | |_) | |  | | (_| | (_| |  __/    "       + Utils.NEW_LINE_CHAR +
+        "     |____/|_|  |_|\\__,_|\\__, |\\___| "       + Utils.NEW_LINE_CHAR +
+        "                          __/ |         "       + Utils.NEW_LINE_CHAR +
+        "                         |___/          "       + Utils.NEW_LINE_CHAR);
   }
 
   /**
@@ -994,7 +990,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
       String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
-      logger.error(briefErrorMessage +
+      LOGGER.error(briefErrorMessage +
           "\n\t\tController URLs: " + controllerClient.getControllerDiscoveryUrls() +
           "\n\t\tschema defined in HDFS: \t" + schemaInfo.keySchemaString +
           "\n\t\tschema defined in Venice: \t" + keySchemaResponse.getSchemaStr());
@@ -1007,7 +1003,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   private void validateValueSchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo,
       boolean schemaAutoRegisteFromPushJobEnabled) {
-    logger.info("Validating value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
+    LOGGER.info("Validating value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
 
     SchemaResponse valueSchemaResponse;
 
@@ -1027,7 +1023,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     if (schemaAutoRegisteFromPushJobEnabled) {
       if (valueSchemaResponse.isError()) {
-        logger.info("Auto registering value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
+        LOGGER.info("Auto registering value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
         valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
             c.addValueSchema(setting.storeName, schemaInfo.valueSchemaString));
         if (valueSchemaResponse.isError()) {
@@ -1044,7 +1040,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       schemaInfo.derivedSchemaId = valueSchemaResponse.getDerivedSchemaId();
     }
 
-    logger.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
+    LOGGER.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
   }
 
   private StoreSetting getSettingsFromController(ControllerClient controllerClient, PushJobSetting setting) {
@@ -1145,7 +1141,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
       throw new VeniceException("Got version 0 from: " + versionCreationResponse.toString());
     } else {
-      logger.info(versionCreationResponse.toString());
+      LOGGER.info(versionCreationResponse.toString());
     }
     versionTopicInfo.topic = versionCreationResponse.getKafkaTopic();
     versionTopicInfo.version = versionCreationResponse.getVersion();
@@ -1172,7 +1168,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
               new VeniceProperties(partitionerProperties));
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter =
           veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic, venicePartitioner);
-      logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
+      LOGGER.info("Created VeniceWriter: " + newVeniceWriter.toString());
       this.veniceWriter = newVeniceWriter;
     }
     return this.veniceWriter;
@@ -1306,7 +1302,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         }
 
         // Every known datacenter have successfully reported a completed status at least once.
-        logger.info("Successfully pushed " + versionTopicInfo.topic);
+        LOGGER.info("Successfully pushed " + versionTopicInfo.topic);
         return;
       }
 
@@ -1320,14 +1316,14 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
           unknownStateStartTimeMs = System.currentTimeMillis();
         } else {
           double elapsedMinutes = (double) unknownStateStartTimeMs / Time.MS_PER_SECOND;
-          logger.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
+          LOGGER.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
         }
       } else {
         unknownStateStartTimeMs = 0;
       }
 
       // Only send the push job details after all error checks have passed and job is not completed yet.
-      sendPushJobDetails();
+      sendPushJobDetailsToController();
     }
   }
 
@@ -1339,11 +1335,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (null != datacenterSpecificInfo && !datacenterSpecificInfo.isEmpty()) {
       logMessage += datacenterSpecificInfo;
     }
-    logger.info(logMessage);
+    LOGGER.info(logMessage);
 
     Optional<String> details = response.getOptionalStatusDetails();
     if (details.isPresent() && detailsAreDifferent(previousOverallDetails, details.get())) {
-      logger.info("\t\tNew overall details: " + details.get());
+      LOGGER.info("\t\tNew overall details: " + details.get());
       newOverallDetails = details.get();
     }
 
@@ -1356,7 +1352,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         String current = entry.getValue();
 
         if (detailsAreDifferent(previous, current)) {
-          logger.info("\t\tNew specific details for " + cluster + ": " + current);
+          LOGGER.info("\t\tNew specific details for " + cluster + ": " + current);
           previousExtraDetails.put(cluster, current);
         }
       }
@@ -1491,7 +1487,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
     jobConf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
-    logger.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + jobConf.get(MAPREDUCE_JOB_CLASSLOADER));
+    LOGGER.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + jobConf.get(MAPREDUCE_JOB_CLASSLOADER));
 
     // TODO:The job is using path-filter to check the consistency of avro file schema ,
     // but doesn't specify the path filter for the input directory of map-reduce job.
@@ -1538,23 +1534,23 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   private void logPushJobProperties(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, String clusterName, String inputDirectory, long inputFileDataSize) {
-    logger.info("Kafka URL: " + versionTopicInfo.kafkaUrl);
-    logger.info("Kafka Topic: " + versionTopicInfo.topic);
-    logger.info("Kafka topic partition count: " + versionTopicInfo.partitionCount);
-    logger.info("Kafka Queue Bytes: " + pushJobSetting.batchNumBytes);
-    logger.info("Input Directory: " + inputDirectory);
-    logger.info("Venice Store Name: " + pushJobSetting.storeName);
-    logger.info("Venice Cluster Name: " + clusterName);
-    logger.info("Venice URL: " + pushJobSetting.veniceControllerUrl);
-    logger.info("File Schema: " + schemaInfo.fileSchemaString);
-    logger.info("Avro key schema: " + schemaInfo.keySchemaString);
-    logger.info("Avro value schema: " + schemaInfo.valueSchemaString);
-    logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024)
+    LOGGER.info("Kafka URL: " + versionTopicInfo.kafkaUrl);
+    LOGGER.info("Kafka Topic: " + versionTopicInfo.topic);
+    LOGGER.info("Kafka topic partition count: " + versionTopicInfo.partitionCount);
+    LOGGER.info("Kafka Queue Bytes: " + pushJobSetting.batchNumBytes);
+    LOGGER.info("Input Directory: " + inputDirectory);
+    LOGGER.info("Venice Store Name: " + pushJobSetting.storeName);
+    LOGGER.info("Venice Cluster Name: " + clusterName);
+    LOGGER.info("Venice URL: " + pushJobSetting.veniceControllerUrl);
+    LOGGER.info("File Schema: " + schemaInfo.fileSchemaString);
+    LOGGER.info("Avro key schema: " + schemaInfo.keySchemaString);
+    LOGGER.info("Avro value schema: " + schemaInfo.valueSchemaString);
+    LOGGER.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024)
         + " MB, estimated with a factor of " + INPUT_DATA_SIZE_FACTOR);
-    logger.info("Is incremental push: " + pushJobSetting.isIncrementalPush);
-    logger.info("Is duplicated key allowed: " + pushJobSetting.isDuplicateKeyAllowed);
-    logger.info("Is source ETL data: " + pushJobSetting.isSourceETL);
-    logger.info("ETL value schema transformation : " + pushJobSetting.etlValueSchemaTransformation);
+    LOGGER.info("Is incremental push: " + pushJobSetting.isIncrementalPush);
+    LOGGER.info("Is duplicated key allowed: " + pushJobSetting.isDuplicateKeyAllowed);
+    LOGGER.info("Is source ETL data: " + pushJobSetting.isSourceETL);
+    LOGGER.info("ETL value schema transformation : " + pushJobSetting.etlValueSchemaTransformation);
   }
   /**
    * Do not change this method argument type.
@@ -1574,9 +1570,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     } else {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
     }
-    pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
+    pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
     updatePushJobDetailsWithConfigs();
-    sendPushJobDetails();
+    sendPushJobDetailsToController();
   }
 
   private void stopAndCleanup(PushJobSetting pushJobSetting, ControllerClient controllerClient, VersionTopicInfo versionTopicInfo) {
@@ -1587,7 +1583,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
     } catch (Exception ex) {
       // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
-      logger.info("Received exception while killing map-reduce job", ex);
+      LOGGER.info("Received exception while killing map-reduce job", ex);
     }
     if (!pushJobSetting.isIncrementalPush && versionTopicInfo != null) {
       int current = 0, retryLimit = 10;
@@ -1599,10 +1595,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         current++;
       }
       if (Utils.isNullOrEmpty(versionTopicInfo.topic)) {
-        logger.error("Could not find a store version to delete for store: " + pushJobSetting.storeName);
+        LOGGER.error("Could not find a store version to delete for store: " + pushJobSetting.storeName);
       } else {
         controllerClient.retryableRequest(pushJobSetting.controllerRetries, c -> c.killOfflinePushJob(versionTopicInfo.topic));
-        logger.info("Offline push job has been killed, topic: " + versionTopicInfo.topic);
+        LOGGER.info("Offline push job has been killed, topic: " + versionTopicInfo.topic);
       }
     }
     close();
@@ -1619,7 +1615,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   private Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean buildDictionary) {
-    logger.debug("path:" + path.toUri().getPath());
+    LOGGER.debug("path:" + path.toUri().getPath());
 
     String keyField = props.getString(KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP);
@@ -1709,7 +1705,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   private Map<String, String> getMetadataFromSequenceFile(FileSystem fs, Path path, boolean buildDictionary) {
-    logger.debug("path:" + path.toUri().getPath());
+    LOGGER.debug("path:" + path.toUri().getPath());
 
     String keyField = props.getString(KEY_FIELD_PROP, "");
     String valueField = props.getString(VALUE_FIELD_PROP, "");
@@ -1743,20 +1739,20 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
 
       if (fileSampleSize + data.length > this.zstdConfig.maxBytesPerFile) {
-        logger.info("Read " + fileSampleSize + " bytes to build dictionary. Reached limit per file.");
+        LOGGER.info("Read " + fileSampleSize + " bytes to build dictionary. Reached limit per file.");
         return;
       }
 
       // addSample returns false when the data read no longer fits in the 'sample' buffer limit
       if (!this.zstdConfig.zstdDictTrainer.addSample(data)) {
-        logger.info("Read " + fileSampleSize + " bytes to build dictionary. Reached maximum sample limit.");
+        LOGGER.info("Read " + fileSampleSize + " bytes to build dictionary. Reached maximum sample limit.");
         return;
       }
 
       fileSampleSize += data.length;
     }
 
-    logger.info("Read " + fileSampleSize + " bytes to build dictionary. Reached EOF.");
+    LOGGER.info("Read " + fileSampleSize + " bytes to build dictionary. Reached EOF.");
   }
 
   /**
@@ -1781,14 +1777,14 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   private String discoverCluster(PushJobSetting setting, Optional<SSLFactory> sslFactory) {
-    logger.info("Discover cluster for store:" + setting.storeName);
+    LOGGER.info("Discover cluster for store:" + setting.storeName);
     // TODO: Evaluate what's the proper way to add retries here...
     ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(setting.veniceControllerUrl, setting.storeName, sslFactory);
     if (clusterDiscoveryResponse.isError()) {
       throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
     } else {
       String clusterName = clusterDiscoveryResponse.getCluster();
-      logger.info("Found cluster: " + clusterName + " for store: " + setting.storeName);
+      LOGGER.info("Found cluster: " + clusterName + " for store: " + setting.storeName);
       return clusterName;
     }
   }
