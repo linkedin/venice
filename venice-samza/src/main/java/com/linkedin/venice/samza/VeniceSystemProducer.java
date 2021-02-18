@@ -527,4 +527,11 @@ public class VeniceSystemProducer implements SystemProducer {
   public String getKafkaBootstrapServers() {
     return this.kafkaBootstrapServers;
   }
+
+  /**
+   * For testing only.
+   */
+  public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
+    return this.veniceWriter;
+  }
 }
