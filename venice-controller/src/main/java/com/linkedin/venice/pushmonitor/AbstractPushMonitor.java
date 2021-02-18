@@ -272,7 +272,8 @@ public abstract class AbstractPushMonitor
       return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
     }
     if (incrementalPushVersion.isPresent()) {
-      return new Pair<>(pushStatus.checkIncrementalPushStatus(incrementalPushVersion.get()), Optional.empty());
+      return new Pair<>(pushStatus.checkIncrementalPushStatus(incrementalPushVersion.get(),
+          getRoutingDataRepository().getPartitionAssignments(topic)), Optional.empty());
     }
     return new Pair<>(pushStatus.getCurrentStatus(), pushStatus.getOptionalStatusDetails());
   }

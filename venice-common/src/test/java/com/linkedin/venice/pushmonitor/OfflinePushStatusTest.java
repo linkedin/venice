@@ -1,10 +1,16 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -148,6 +154,49 @@ public class OfflinePushStatusTest {
     partitionStatus.updateReplicaStatus("i1", COMPLETED);
     offlinePushStatus.setPartitionStatus(partitionStatus);
     Assert.assertNotEquals(clonedPush, offlinePushStatus);
+  }
+
+  @Test
+  public void testCheckIncrementalPushStatus() {
+    int numberOfPartition = 2;
+    int replicationFactor = 3;
+    String incrementalPushVersion = "1612393202889";
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+    offlinePushStatus.updateStatus(COMPLETED);
+    List<PartitionStatus> partitionStatuses = new ArrayList<>(numberOfPartition);
+    for (int i = 0; i < numberOfPartition; i++) {
+      PartitionStatus partitionStatus = new PartitionStatus(i);
+      List<ReplicaStatus> replicaStatuses = new ArrayList<>(replicationFactor);
+      for (int j = 0; j < replicationFactor + 1; j++) {
+        replicaStatuses.add(new ReplicaStatus(Integer.toString(j)));
+      }
+      partitionStatus.setReplicaStatuses(replicaStatuses);
+      // 4 replicas received EOIP
+      for (int j = 0; j < replicationFactor + 1; j++) {
+        partitionStatus.updateReplicaStatus(Integer.toString(j), START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+        partitionStatus.updateReplicaStatus(Integer.toString(j), END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+      }
+      partitionStatuses.add(partitionStatus);
+    }
+    offlinePushStatus.setPartitionStatuses(partitionStatuses);
+
+    PartitionAssignment partitionAssignment = new PartitionAssignment(kafkaTopic, numberOfPartition);
+    for (int i = 0; i < numberOfPartition; i++) {
+      Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
+      List<Instance> instancesList = new ArrayList<>(replicationFactor);
+      // Only 3 replicas are online in external view
+      for (int j = 0; j < replicationFactor; j++) {
+        instancesList.add(new Instance(String.valueOf(j), "localhost", j));
+      }
+      stateToInstancesMap.put(HelixState.ONLINE_STATE, instancesList);
+      partitionAssignment.addPartition(new Partition(i, stateToInstancesMap));
+    }
+
+    // Incremental push status should be EOIP_RECEIVED even though more than numberOfPartition * replicationFactor
+    // replicas received EOIP
+    Assert.assertEquals(offlinePushStatus.checkIncrementalPushStatus(incrementalPushVersion, partitionAssignment),
+        END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
   private void testValidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
