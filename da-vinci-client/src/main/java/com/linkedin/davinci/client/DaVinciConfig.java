@@ -45,6 +45,17 @@ public class DaVinciConfig {
                .setMemoryLimit(getMemoryLimit());
   }
 
+  @Override
+  public String toString() {
+    return "DaVinciConfig{" +
+               "managed=" + managed +
+               ", isolated=" + isolated +
+               ", storageClass=" + storageClass +
+               ", nonLocalAccessPolicy=" + nonLocalAccessPolicy +
+               ", memoryLimit=" + memoryLimit +
+               "}";
+  }
+
   public boolean isManaged() {
     return managed;
   }
