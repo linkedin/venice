@@ -73,6 +73,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients) {
+    logger.info("Creating client, storeName=" + clientConfig.getStoreName() + ", daVinciConfig=" + daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.backendConfig = backendConfig;
@@ -334,7 +335,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     if (isReady()) {
       throw new VeniceClientException("Da Vinci client is already started, storeName=" + getStoreName());
     }
-    logger.info("Starting Da Vinci client, storeName=" + getStoreName());
+    logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
     initBackend(clientConfig, configLoader, managedClients);
 
@@ -353,7 +354,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       }
 
       ready.set(true);
-      logger.info("Da Vinci client started successfully, storeName=" + getStoreName());
+      logger.info("Client is started successfully, storeName=" + getStoreName());
     } catch (Throwable e) {
       daVinciBackend.release();
       throw new VeniceClientException("Unable to start Da Vinci client, storeName=" + getStoreName(), e);
@@ -364,13 +365,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   public synchronized void close() {
     throwIfNotReady();
     try {
-      logger.info("Closing Da Vinci client, storeName=" + getStoreName());
+      logger.info("Closing client, storeName=" + getStoreName());
       ready.set(false);
       if (veniceClient != null) {
         veniceClient.close();
       }
       daVinciBackend.release();
-      logger.info("Closed Da Vinci client, storeName=" + getStoreName());
+      logger.info("Client is closed successfully, storeName=" + getStoreName());
     } catch (Throwable e) {
       throw new VeniceClientException("Unable to close Da Vinci client, storeName=" + getStoreName(), e);
     }

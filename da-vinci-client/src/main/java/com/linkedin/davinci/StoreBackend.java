@@ -158,15 +158,23 @@ public class StoreBackend {
     }
 
     VersionBackend savedVersion = currentVersion;
-    return currentVersion.subscribe(partitions).exceptionally(failure -> {
+    return currentVersion.subscribe(partitions).exceptionally(e -> {
       synchronized (this) {
-        addFaultyVersion(savedVersion, failure);
+        addFaultyVersion(savedVersion, e);
         // Don't propagate failure to subscribe() caller, if future version has become current and is ready to serve.
         if (currentVersion != null && currentVersion.isReadyToServe(subscription)) {
           return null;
         }
       }
-      throw (failure instanceof CompletionException) ? (CompletionException) failure : new CompletionException(failure);
+      throw (e instanceof CompletionException) ? (CompletionException) e : new CompletionException(e);
+    }).whenComplete((v, e) -> {
+      synchronized (this) {
+        if (e == null) {
+          logger.info("Ready to serve partitions " + subscription + " of " + currentVersion);
+        } else {
+          logger.warn("Failed to subscribe to partitions " + subscription + " of " + savedVersion, e);
+        }
+      }
     });
   }
 
@@ -214,7 +222,7 @@ public class StoreBackend {
   }
 
   private synchronized void addFaultyVersion(VersionBackend version, Throwable failure) {
-    logger.warn("Failed to ingest version " + version +
+    logger.warn("Failed to subscribe to version " + version +
                     ", currentVersion=" + currentVersion +
                     ", faultyVersions=" + faultyVersions, failure);
     faultyVersions.add(version.getVersion().getNumber());

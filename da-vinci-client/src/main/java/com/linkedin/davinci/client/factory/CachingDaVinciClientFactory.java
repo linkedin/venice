@@ -41,6 +41,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
   }
 
   public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository, VeniceProperties backendConfig, Optional<Set<String>> managedClients) {
+    logger.info("Creating client factory, managedClients=" + managedClients);
     this.d2Client = d2Client;
     this.metricsRepository = metricsRepository;
     this.backendConfig = backendConfig;
@@ -50,14 +51,14 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
   @Override
   public synchronized void close() {
     if (closed) {
-      logger.warn("Ignoring second attempt to close Da Vinci client factory");
+      logger.warn("Ignoring duplicate attempt to close client factory");
       return;
     }
     closed = true;
 
     List<DaVinciClient> clients = new ArrayList<>(cachedClients.values());
     clients.addAll(isolatedClients);
-    logger.info("Closing Da Vinci client factory, clientCount=" + clients.size());
+    logger.info("Closing client factory, clientCount=" + clients.size());
     for (DaVinciClient client : clients) {
       try {
         client.close();
@@ -69,7 +70,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
     cachedClients.clear();
     isolatedClients.clear();
     configs.clear();
-    logger.info("Da Vinci client factory is closed successfully, clientCount=" + clients.size());
+    logger.info("Client factory is closed successfully, clientCount=" + clients.size());
   }
 
   @Override
@@ -104,7 +105,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
       Class clientClass,
       boolean startClient) {
     if (closed) {
-      throw new VeniceException("Cannot obtain a client from a closed factory, storeName=" + storeName);
+      throw new VeniceException("Unable to get a client from a closed factory, storeName=" + storeName);
     }
 
     DaVinciConfig originalConfig = configs.computeIfAbsent(storeName, k -> config);

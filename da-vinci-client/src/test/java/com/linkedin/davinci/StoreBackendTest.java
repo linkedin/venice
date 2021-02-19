@@ -21,6 +21,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.storage.StorageService;
 
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 
 import org.apache.commons.io.FileUtils;
@@ -90,6 +91,13 @@ public class StoreBackendTest {
     when(backend.getStoreRepository().getStoreOrThrow(store.getName())).thenReturn(store);
 
     storeBackend = new StoreBackend(backend, store.getName());
+    when(backend.getStoreOrThrow(store.getName())).thenReturn(storeBackend);
+  }
+
+  private double getMetric(String metricName) {
+    Metric metric = metricsRepository.getMetric("." + store.getName() + "--" + metricName);
+    assertNotNull(metric, "Expected metric " + metricName + " not found.");
+    return metric.value();
   }
 
   @Test
@@ -102,12 +110,15 @@ public class StoreBackendTest {
   @Test
   void testSubscribeCurrentVersion() throws Exception {
     int partition = 0;
+    long v1SubscribeDurationMs = 100;
+    long v2SubscribeDurationMs = 200;
     version1.setAge(Duration.ofHours(1));
     version2.setAge(Duration.ofMinutes(5));
-    assertEquals(metricsRepository.getMetric("." + store.getName() + "--data_age_ms.Gauge").value(), Double.NaN);
+    assertEquals(getMetric("data_age_ms.Gauge"), Double.NaN);
 
     // Expecting to subscribe to version1 and that version2 is a future version.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    TimeUnit.MILLISECONDS.sleep(v1SubscribeDurationMs);
     versionMap.get(version1.kafkaTopicName()).completeSubPartition(partition);
     subscribeResult.get(0, TimeUnit.SECONDS);
     // Verify that subscribe selected the current version by default.
@@ -115,21 +126,23 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
 
-    assertEquals(metricsRepository.getMetric("." + store.getName() + "--current_version.Gauge").value(), (double) version1.getNumber());
-    assertEquals(metricsRepository.getMetric("." + store.getName() + "--future_version.Gauge").value(), (double) version2.getNumber());
-    assertTrue(Math.abs(metricsRepository.getMetric("." + store.getName() + "--data_age_ms.Gauge").value() - version1.getAge().toMillis()) <
-                  TimeUnit.SECONDS.toMillis(1));
+    assertEquals(getMetric("current_version.Gauge"), (double) version1.getNumber());
+    assertEquals(getMetric("future_version.Gauge"), (double) version2.getNumber());
+    assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version1.getAge().toMillis()) < 1000);
+    assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - v1SubscribeDurationMs) < 50);
 
     // Simulate future version ingestion is complete.
+    TimeUnit.MILLISECONDS.sleep(v2SubscribeDurationMs - v1SubscribeDurationMs);
     versionMap.get(version2.kafkaTopicName()).completeSubPartition(partition);
     // Verify that future version became current once ingestion is complete.
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
     }
 
-    assertEquals(metricsRepository.getMetric("." + store.getName() + "--current_version.Gauge").value(), (double) version2.getNumber());
-    assertTrue(Math.abs(metricsRepository.getMetric("." + store.getName() + "--data_age_ms.Gauge").value() - version2.getAge().toMillis()) <
-                   TimeUnit.SECONDS.toMillis(1));
+    assertEquals(getMetric("current_version.Gauge"), (double) version2.getNumber());
+    assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
+    assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);
+    assertTrue(Math.abs(getMetric("subscribe_duration_ms.Max") - v2SubscribeDurationMs) < 50);
   }
 
   @Test

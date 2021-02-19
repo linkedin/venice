@@ -17,6 +17,8 @@ import org.apache.avro.io.BinaryDecoder;
 import org.apache.log4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -178,6 +180,7 @@ public class VersionBackend {
   }
 
   synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
+    Instant startTime = Instant.now();
     List<Integer> subPartitions = getSubPartitions(partitions);
     logger.info("Subscribing to sub-partitions " + subPartitions + " of " + this);
 
@@ -185,7 +188,12 @@ public class VersionBackend {
     for (Integer id : subPartitions) {
       futures.add(subscribeSubPartition(id));
     }
-    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+
+    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+        .whenComplete((v, e) -> {
+          StoreBackend storeBackend = backend.getStoreOrThrow(version.getStoreName());
+          storeBackend.getStats().recordSubscribeDuration(Duration.between(startTime, Instant.now()));
+        });
   }
 
   synchronized void unsubscribe(ComplementSet<Integer> partitions) {
@@ -280,12 +288,14 @@ public class VersionBackend {
   }
 
   synchronized void completeSubPartition(int subPartition) {
+    logger.info("Sub-partition " + subPartition + " of " + this + " is ready to serve.");
     subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).complete(null);
     tryStopHeartbeat();
   }
 
-  synchronized void completeSubPartitionExceptionally(int subPartition, Throwable exception) {
-    subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).completeExceptionally(exception);
+  synchronized void completeSubPartitionExceptionally(int subPartition, Throwable failure) {
+    logger.warn("Failed to subscribe to sub-partition " + subPartition + " of " + this, failure);
+    subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).completeExceptionally(failure);
     tryStopHeartbeat();
   }
 }
