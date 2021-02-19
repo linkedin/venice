@@ -393,44 +393,32 @@ public class TestHybrid {
               .forEach(s -> logger.info("Replicas for " + s + ": "
                                             + Arrays.toString(controllerClient.listStorageNodeReplicas(s).getReplicas())));
 
-          /**
-           * Disable the restart server test for L/F model for now until the fix in rb1753313 is merged;
-           * "controllerClient.listStoresStatuses()" would eventually calling
-           * {@link com.linkedin.venice.controller.kafka.StoreStatusDecider#getStoreStatues(List, ResourceAssignment, VeniceControllerClusterConfig)}
-           * which uses {@link Partition#getReadyToServeInstances()} to find the online replicas for the store; however, for
-           * L/F model, the "stateToInstancesMap" inside Partition only contains state like "STANDBY" and "LEADER"; we should
-           * use PushMonitor inside StoreStatusDecider to get the ready to serve instances.
-           *
-           * TODO: Once rb1753313 is merged, let's tweak the code below so that we re-query the data after the first server is killed
-           */
-          if (!isLeaderFollowerModelEnabled) {
-            // TODO will move this test case to a single fail-over integration test.
-            //Stop one server
-            int port = venice.getVeniceServers().get(0).getPort();
-            venice.stopVeniceServer(port);
-            TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
-              // Make sure Helix knows the instance is shutdown
-              Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
-              Assert.assertTrue(storeStatus.get(storeName).equals(StoreStatus.UNDER_REPLICATED.toString()),
-                  "Should be UNDER_REPLICATED");
+          // TODO will move this test case to a single fail-over integration test.
+          //Stop one server
+          int port = venice.getVeniceServers().get(0).getPort();
+          venice.stopVeniceServer(port);
+          TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+            // Make sure Helix knows the instance is shutdown
+            Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
+            Assert.assertTrue(storeStatus.get(storeName).equals(StoreStatus.UNDER_REPLICATED.toString()),
+                "Should be UNDER_REPLICATED");
 
-              Map<String, String> instanceStatus = controllerClient.listInstancesStatuses().getInstancesStatusMap();
-              Assert.assertTrue(instanceStatus.entrySet().stream()
-                                    .filter(entry -> entry.getKey().contains(Integer.toString(port)))
-                                    .map(entry -> entry.getValue())
-                                    .allMatch(s -> s.equals(InstanceStatus.DISCONNECTED.toString())),
-                  "Storage Node on port " + port + " should be DISCONNECTED");
-            });
+            Map<String, String> instanceStatus = controllerClient.listInstancesStatuses().getInstancesStatusMap();
+            Assert.assertTrue(instanceStatus.entrySet().stream()
+                                  .filter(entry -> entry.getKey().contains(Integer.toString(port)))
+                                  .map(entry -> entry.getValue())
+                                  .allMatch(s -> s.equals(InstanceStatus.DISCONNECTED.toString())),
+                "Storage Node on port " + port + " should be DISCONNECTED");
+          });
 
-            //Restart one server
-            venice.restartVeniceServer(port);
-            TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
-              // Make sure Helix knows the instance has recovered
-              Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
-              Assert.assertTrue(storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString()),
-                  "Should be FULLLY_REPLICATED");
-            });
-          }
+          //Restart one server
+          venice.restartVeniceServer(port);
+          TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+            // Make sure Helix knows the instance has recovered
+            Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
+            Assert.assertTrue(storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString()),
+                "Should be FULLLY_REPLICATED");
+          });
         }
       } finally {
         if (null != veniceProducer) {
