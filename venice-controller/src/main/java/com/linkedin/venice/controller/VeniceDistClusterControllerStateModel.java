@@ -207,14 +207,16 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     clearResources();
   }
 
-  private void closeController() {
+  /** synchronized because concurrent calls could cause a NPE */
+  private synchronized void closeController() {
     if (controller != null) {
       controller.disconnect();
       controller = null;
     }
   }
 
-  private void clearResources() {
+  /** synchronized because concurrent calls could cause a NPE */
+  private synchronized void clearResources() {
     if (resources != null) {
       resources.clear();
       resources.stopErrorPartitionResetTask();

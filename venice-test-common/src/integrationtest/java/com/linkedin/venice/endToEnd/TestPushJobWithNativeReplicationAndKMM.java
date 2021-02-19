@@ -23,6 +23,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -92,7 +93,7 @@ public class TestPushJobWithNativeReplicationAndKMM {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    IOUtils.closeQuietly(multiColoMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
