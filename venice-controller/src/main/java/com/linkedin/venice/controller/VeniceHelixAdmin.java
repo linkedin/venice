@@ -1551,12 +1551,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             sorted,
                             finalVersion.isChunkingEnabled(),
                             finalVersion.getCompressionStrategy(),
-                            compressionDictionaryBuffer,
-                            new HashMap<>());
+                            Optional.ofNullable(compressionDictionaryBuffer),
+                            Collections.emptyMap()
+                        );
                         if (pushType.isStreamReprocessing()) {
                             // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
                             veniceWriter.broadcastTopicSwitch(
-                                Arrays.asList(getKafkaBootstrapServers(isSslToKafka())),
+                                Collections.singletonList(getKafkaBootstrapServers(isSslToKafka())),
                                 Version.composeStreamReprocessingTopic(finalVersion.getStoreName(), finalVersion.getNumber()),
                                 -1L,  // -1 indicates rewinding from the beginning of the source topic
                                 new HashMap<>());

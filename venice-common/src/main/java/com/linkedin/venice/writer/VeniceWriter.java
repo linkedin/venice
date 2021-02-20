@@ -464,7 +464,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public void broadcastStartOfPush(boolean sorted, boolean chunked,
       CompressionStrategy compressionStrategy, Map<String, String> debugInfo) {
-    broadcastStartOfPush(sorted, chunked, compressionStrategy, null, debugInfo);
+    broadcastStartOfPush(sorted, chunked, compressionStrategy, Optional.empty(), debugInfo);
   }
 
   /**
@@ -475,17 +475,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                chunks or {@link ChunkedValueManifest} records, in addition to regular (small)
    *                values.
    * @param compressionStrategy the store-version's {@link CompressionStrategy}
-   * @param compressionDictionary The raw bytes of dictionary used to compress/decompress records.
+   * @param optionalCompressionDictionary The raw bytes of dictionary used to compress/decompress records.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
   public void broadcastStartOfPush(boolean sorted, boolean chunked,
-      CompressionStrategy compressionStrategy, ByteBuffer compressionDictionary, Map<String, String> debugInfo) {
+      CompressionStrategy compressionStrategy, Optional<ByteBuffer> optionalCompressionDictionary, Map<String, String> debugInfo) {
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.sorted = sorted;
     startOfPush.chunked = chunked;
     startOfPush.compressionStrategy = compressionStrategy.getValue();
-    startOfPush.compressionDictionary = compressionDictionary;
+    startOfPush.compressionDictionary = optionalCompressionDictionary.orElse(null);
     controlMessage.controlMessageUnion = startOfPush;
     broadcastControlMessage(controlMessage, debugInfo);
     // Flush start of push message to avoid data message arrives before it.

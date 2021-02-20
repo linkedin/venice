@@ -12,11 +12,15 @@ public class MapReduceConstants {
   public static final String AUTHORIZATION_FAILURES = "authorization failures";
 
   public static final String COUNTER_GROUP_KAFKA_BROKER = "Kafka metrics aggregated per broker";
-  public static final String KAFKA_PRODUCER_METRIC_FOR_BROKER = "%s for %s";
+  private static final String KAFKA_PRODUCER_METRIC_FOR_BROKER = "%s for %s";
 
   public static final String COUNTER_GROUP_DATA_QUALITY = "Data quality";
   public static final String DUPLICATE_KEY_WITH_IDENTICAL_VALUE = "duplicate key with identical value";
   public static final String DUPLICATE_KEY_WITH_DISTINCT_VALUE = "duplicate key with distinct value";
+
+  public static String getKafkaProducerMetricForBrokerCounterName(String metric, String broker) {
+    return String.format(KAFKA_PRODUCER_METRIC_FOR_BROKER, metric, broker);
+  }
 
   private MapReduceConstants() {}
 }

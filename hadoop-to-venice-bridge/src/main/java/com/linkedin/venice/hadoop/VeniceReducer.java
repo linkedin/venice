@@ -17,7 +17,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
-
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.PrintWriter;
@@ -43,7 +42,6 @@ import org.apache.hadoop.util.Progressable;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
-
 import javax.xml.bind.DatatypeConverter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -117,7 +115,12 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   }
 
   @Override
-  public void reduce(BytesWritable key, Iterator<BytesWritable> values, OutputCollector<NullWritable, NullWritable> output, Reporter reporter)throws IOException {
+  public void reduce(
+      BytesWritable key,
+      Iterator<BytesWritable> values,
+      OutputCollector<NullWritable, NullWritable> output,
+      Reporter reporter
+  ) {
     final long timeOfLastReduceFunctionStartInNS = System.nanoTime();
     if (timeOfLastReduceFunctionEndInNS > 0) {
       // Will only be true starting from the 2nd invocation.
@@ -135,8 +138,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     sendMessageToKafka(keyBytes, valueBytes, reporter);
 
-    if(checkDupKey) {
-      duplicateKeyPrinter.handleDuplicateKeys(keyBytes, valueBytes, values, reporter);
+    if (checkDupKey) {
+      duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
     }
     timeOfLastReduceFunctionEndInNS = System.nanoTime();
     aggregateTimeOfReduceExecutionInNS += (timeOfLastReduceFunctionEndInNS - timeOfLastReduceFunctionStartInNS);
@@ -145,23 +148,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, Reporter reporter) {
     maybePropagateCallbackException();
     if (null == veniceWriter) {
-      Properties writerProps = props.toProperties();
-      writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION,
-          GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
-      // The JobId (e.g. "job_200707121733_0003") consists of two parts. The job tracker identifier (job_200707121733)
-      // and the id (0003) for the job in that specific job tracker. The job tracker identifier is converted into a long
-      // by removing all the non-digit characters.
-      String jobTrackerId = mapReduceJobId.getJtIdentifier().replaceAll("\\D+", "");
-      try {
-        writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JT_ID, Long.parseLong(jobTrackerId));
-      } catch (NumberFormatException e) {
-        LOGGER.warn("Unable to parse job tracker id, using default value for guid generation", e);
-      }
-      writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, mapReduceJobId.getId());
-      VeniceWriterFactory factory = new VeniceWriterFactory(writerProps);
-      boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING);
-      VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
-      veniceWriter = factory.createBasicVeniceWriter(props.getString(TOPIC_PROP), chunkingEnabled, partitioner);
+      veniceWriter = createBasicVeniceWriter();
     }
     if (null == previousReporter || !previousReporter.equals(reporter)) {
       callback = new KafkaMessageCallback(reporter);
@@ -180,12 +167,29 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       }
       throw e;
     }
-
-    ++messageSent;
-
+    messageSent++;
     telemetry();
-
     reporter.incrCounter(COUNTER_GROUP_KAFKA, COUNTER_OUTPUT_RECORDS, 1);
+  }
+
+  private VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
+    Properties writerProps = props.toProperties();
+    writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION,
+        GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
+    // The JobId (e.g. "job_200707121733_0003") consists of two parts. The job tracker identifier (job_200707121733)
+    // and the id (0003) for the job in that specific job tracker. The job tracker identifier is converted into a long
+    // by removing all the non-digit characters.
+    String jobTrackerId = mapReduceJobId.getJtIdentifier().replaceAll("\\D+", "");
+    try {
+      writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JT_ID, Long.parseLong(jobTrackerId));
+    } catch (NumberFormatException e) {
+      LOGGER.warn("Unable to parse job tracker id, using default value for guid generation", e);
+    }
+    writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, mapReduceJobId.getId());
+    VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
+    boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING);
+    VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
+    return veniceWriterFactoryFactory.createBasicVeniceWriter(props.getString(TOPIC_PROP), chunkingEnabled, partitioner);
   }
 
   private void telemetry() {
@@ -410,10 +414,10 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     if (!oldLeader.equals(newLeader)) {
       partitionLeaderMap.put(partition, newLeader);
       if (oldLeader.equals(NON_INITIALIZED_LEADER)) {
-        kafkaBrokerCounter(reporter, "initial partition ownership", newLeader, 1);
+        incrementKafkaBrokerCounter(reporter, "initial partition ownership", newLeader, 1);
       } else {
-        kafkaBrokerCounter(reporter, "observed partition leadership loss", oldLeader, 1);
-        kafkaBrokerCounter(reporter, "observed partition leadership gain", newLeader, 1);
+        incrementKafkaBrokerCounter(reporter, "observed partition leadership loss", oldLeader, 1);
+        incrementKafkaBrokerCounter(reporter, "observed partition leadership gain", newLeader, 1);
       }
     }
 
@@ -423,8 +427,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
         try {
           Double value = producerMetrics.get(metricName);
           long longValue = Math.round(value);
-          kafkaBrokerCounter(reporter, metricName, newLeader, longValue);
-          kafkaBrokerCounter(reporter, metricName, "all brokers", longValue);
+          incrementKafkaBrokerCounter(reporter, metricName, newLeader, longValue);
+          incrementKafkaBrokerCounter(reporter, metricName, "all brokers", longValue);
         } catch (Exception e) {
           LOGGER.warn("Failed to report kafka metric: " + metricName + " as MR counters because of exception: "
               + e.getMessage());
@@ -436,9 +440,12 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     printKafkaProducerMetrics(producerMetrics);
   }
 
-  private void kafkaBrokerCounter(Reporter reporter, String metric, String broker, long value) {
-    String counterName = String.format(KAFKA_PRODUCER_METRIC_FOR_BROKER, metric, broker);
-    reporter.incrCounter(COUNTER_GROUP_KAFKA_BROKER, counterName, value);
+  private void incrementKafkaBrokerCounter(Reporter reporter, String metric, String broker, long incrementAmount) {
+    reporter.incrCounter(
+        COUNTER_GROUP_KAFKA_BROKER,
+        getKafkaProducerMetricForBrokerCounterName(metric, broker),
+        incrementAmount
+    );
   }
 
   /**
@@ -457,16 +464,15 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     private final String topic;
     private final Schema  keySchema;
-    private final VeniceKafkaSerializer keySerializer;
-    private final GenericDatumWriter writer;
-
+    private final VeniceKafkaSerializer<?> keySerializer;
+    private final GenericDatumWriter<Object> avroDatumWriter;
     private int numOfDupKey = 0;
 
     DuplicateKeyPrinter(JobConf jobConf) {
       this.topic = jobConf.get(TOPIC_PROP);
       this.isDupKeyAllowed = jobConf.getBoolean(ALLOW_DUPLICATE_KEY, false);
 
-      AbstractVeniceMapper mapper = jobConf.getBoolean(VSON_PUSH, false) ?
+      AbstractVeniceMapper<?, ?> mapper = jobConf.getBoolean(VSON_PUSH, false) ?
           new VeniceVsonMapper() : new VeniceAvroMapper();
       mapper.configure(jobConf);
 
@@ -477,29 +483,32 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       }
 
       this.keySerializer = mapper.getRecordReader().getKeySerializer();
-      this.writer = new GenericDatumWriter(keySchema);
+      this.avroDatumWriter = new GenericDatumWriter<>(keySchema);
     }
 
-    void handleDuplicateKeys(byte[] keyBytes, byte[] valueBytes, Iterator<BytesWritable> values, Reporter reporter) {
-      if (values.hasNext() && numOfDupKey <= MAX_NUM_OF_LOG) {
-        boolean shouldPrint = true; //in case there are lots of duplicate keys with the same value, only print once
-
-        while (values.hasNext()) {
-          if (Arrays.equals(values.next().copyBytes(), valueBytes)) {
-            reporter.incrCounter(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_IDENTICAL_VALUE, 1);
-
+    private void detectAndHandleDuplicateKeys(byte[] keyBytes, byte[] valueBytes, Iterator<BytesWritable> values, Reporter reporter) {
+      if (numOfDupKey > MAX_NUM_OF_LOG) {
+        return;
+      }
+      boolean shouldPrint = true; // In case there are lots of duplicate keys with the same value, only print once.
+      while (values.hasNext()) {
+        if (Arrays.equals(values.next().copyBytes(), valueBytes)) {
+          // Identical values map to the same key. E.g. key:[ value_1, value_1]
+          reporter.incrCounter(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_IDENTICAL_VALUE, 1);
+          if (shouldPrint) {
+            shouldPrint = false;
+            LOGGER.warn(printDuplicateKey(keyBytes));
+          }
+        } else {
+          // Distinct values map to the same key. E.g. key:[ value_1, value_2 ]
+          reporter.incrCounter(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_DISTINCT_VALUE, 1);
+          if (isDupKeyAllowed) {
             if (shouldPrint) {
               shouldPrint = false;
               LOGGER.warn(printDuplicateKey(keyBytes));
             }
           } else {
-            reporter.incrCounter(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_DISTINCT_VALUE, 1);
-
-            if (!isDupKeyAllowed) {
-              throw new VeniceException(printDuplicateKey(keyBytes));
-            } else {
-              LOGGER.warn(printDuplicateKey(keyBytes));
-            }
+            throw new VeniceException(printDuplicateKey(keyBytes));
           }
         }
       }
@@ -511,11 +520,11 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
       try {
         Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(keySchema, output, false);
-        writer.write(keyRecord, jsonEncoder);
+        avroDatumWriter.write(keyRecord, jsonEncoder);
         jsonEncoder.flush();
         output.flush();
 
-        numOfDupKey ++;
+        numOfDupKey++;
         return String.format("There are multiple records for key:\n%s", new String(output.toByteArray()));
       } catch (IOException exception) {
         throw new VeniceException(exception);

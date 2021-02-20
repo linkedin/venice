@@ -14,6 +14,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -77,7 +78,7 @@ public class TestDictionaryUtils {
     Properties props = getKafkaProperties();
 
     try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic)) {
-      veniceWriter.broadcastStartOfPush(true, false, CompressionStrategy.ZSTD_WITH_DICT, ByteBuffer.wrap(dictionaryToSend), null);
+      veniceWriter.broadcastStartOfPush(true, false, CompressionStrategy.ZSTD_WITH_DICT, Optional.of(ByteBuffer.wrap(dictionaryToSend)), null);
       veniceWriter.broadcastEndOfPush(null);
     }
 

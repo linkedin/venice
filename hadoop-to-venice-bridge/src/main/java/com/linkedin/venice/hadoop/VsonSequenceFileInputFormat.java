@@ -8,18 +8,10 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
-import org.apache.hadoop.io.SequenceFile;
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapred.FileSplit;
-import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.RecordReader;
-import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.SequenceFileInputFormat;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.log4j.Logger;
-
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 
 
 /**
@@ -34,9 +26,9 @@ public class VsonSequenceFileInputFormat extends SequenceFileInputFormat<BytesWr
     String dirs = job.get("mapred.input.dir", "");
     String[] list = StringUtils.split(dirs);
 
-    List<FileStatus> status = new ArrayList<FileStatus>();
-    for(int i = 0; i < list.length; i++) {
-      status.addAll(getAllSubFileStatus(job, new Path(list[i])));
+    List<FileStatus> status = new ArrayList<>();
+    for (String s : list) {
+      status.addAll(getAllSubFileStatus(job, new Path(s)));
     }
 
     return status.toArray(new FileStatus[0]);
@@ -44,7 +36,7 @@ public class VsonSequenceFileInputFormat extends SequenceFileInputFormat<BytesWr
 
   private List<FileStatus> getAllSubFileStatus(JobConf inputConf, Path filterMemberPath)
       throws IOException {
-    List<FileStatus> list = new ArrayList<FileStatus>();
+    List<FileStatus> list = new ArrayList<>();
 
     FileSystem fs = filterMemberPath.getFileSystem(inputConf);
     FileStatus[] subFiles = fs.listStatus(filterMemberPath);
