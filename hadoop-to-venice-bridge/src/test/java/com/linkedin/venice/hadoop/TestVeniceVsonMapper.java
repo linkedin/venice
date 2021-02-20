@@ -36,7 +36,6 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
     mapper = new VeniceVsonMapper();
     keyDeserializer = VsonAvroSerializer.fromSchemaStr(fileKeySchemaStr);
     valueDeserializer = VsonAvroSerializer.fromSchemaStr(fileValueSchemaStr);
-
     keySerializer =
         new VeniceAvroKafkaSerializer(VsonAvroSchemaAdapter.parse(fileKeySchemaStr).toString());
   }

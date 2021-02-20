@@ -2,6 +2,7 @@ package com.linkedin.venice.writer;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.*;
@@ -638,7 +639,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
     } catch (Exception e) {
       if (ExceptionUtils.recursiveClassEquals(e, TopicAuthorizationException.class)) {
-        throw new VeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
+        throw new TopicAuthorizationVeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
       } else {
         throw e;
       }
@@ -935,7 +936,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             throw new VeniceException(errorMessage + ", will bubble up.");
           }
         } else if (e.getCause() != null && e.getCause().getClass().equals(TopicAuthorizationException.class)) {
-          throw new VeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
+          throw new TopicAuthorizationVeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
         } else {
           throw new VeniceException("Got an exception while trying to send a control message (" +
               ControlMessageType.valueOf(controlMessage).name() + ")", e);

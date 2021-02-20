@@ -4,6 +4,7 @@ import com.github.luben.zstd.Zstd;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
@@ -21,7 +22,6 @@ import org.apache.hadoop.mapred.Reporter;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
-import static com.linkedin.venice.hadoop.MapReduceConstants.*;
 
 
 /**
@@ -43,6 +43,16 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
   protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> veniceRecordReader;
 
+  // Visible for testing
+  protected void setVeniceReducer(VeniceReducer reducer) {
+    this.reducer = reducer;
+  }
+
+  // Visible for testing
+  protected void setIsMapperOnly(boolean isMapperOnly) {
+    this.isMapperOnly = isMapperOnly;
+  }
+
   @Override
   public void map(INPUT_KEY inputKey, INPUT_VALUE inputValue, OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter)
       throws IOException {
@@ -52,18 +62,12 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     if (recordKey == null) {
       throw new VeniceException("Mapper received a empty key record");
     }
-
     if (recordValue == null) {
       LOGGER.warn("Received null record, skip.");
-      if (reporter != null) {
-        reporter.incrCounter(COUNTER_GROUP_KAFKA, EMPTY_RECORD, 1);
-      }
+      MRJobCounterHelper.incrEmptyRecordCount(reporter, 1);
       return;
     }
-
-    if (reporter != null) {
-      reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE, recordValue.length);
-    }
+    MRJobCounterHelper.incrTotalUncompressedValueSize(reporter, recordValue.length);
 
     try {
       recordValue = compressor.compress(recordValue);
@@ -71,13 +75,23 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       throw new VeniceException("Caught an IO exception while trying to to use compression strategy: " +
           compressor.getCompressionStrategy().name(), e);
     }
+    MRJobCounterHelper.incrTotalKeySize(reporter, recordKey.length);
+    MRJobCounterHelper.incrTotalValueSize(reporter, recordValue.length);
 
-    if (reporter != null) {
-      reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE, recordKey.length);
-      reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_VALUE_SIZE, recordValue.length);
-    }
     if (isMapperOnly) {
-      reducer.sendMessageToKafka(recordKey, recordValue, reporter);
+      if (reporter != null && reducer.hasReportedFailure(reporter)) {
+        return;
+      }
+      try {
+        reducer.sendMessageToKafka(recordKey, recordValue, reporter);
+      } catch (VeniceException e) {
+        if (e instanceof TopicAuthorizationVeniceException && reporter != null) {
+          MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
+          LOGGER.error(e);
+          return;
+        }
+        throw e;
+      }
       return;
     }
     output.collect(new BytesWritable(recordKey), new BytesWritable(recordValue));
