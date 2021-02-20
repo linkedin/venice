@@ -9,6 +9,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 
 import com.google.common.base.Splitter;
 
+import java.util.HashSet;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -747,5 +748,12 @@ public class Utils {
     Map<String, String> res = new HashMap<>();
     charSequenceMap.forEach((k, v) -> res.put(k.toString(), v.toString()));
     return res;
+  }
+
+  // TODO (lcli): Remove this method after Java version is bumped to 9 or 9+ since there will be identical method provided
+  // in the standard library
+  @SafeVarargs
+  public static <T> Set<T> setOf(T... objs) {
+    return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(objs)));
   }
 }

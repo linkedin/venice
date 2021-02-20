@@ -3,6 +3,7 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.QuotaExceededException;
+import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
@@ -49,7 +50,6 @@ import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
-import static com.linkedin.venice.hadoop.MapReduceConstants.*;
 
 
 /**
@@ -94,7 +94,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   private Exception sendException = null;
 
-  private KafkaMessageCallback callback = null;
+  // Visible for testing purpose
+  protected KafkaMessageCallback callback = null;
   private Reporter previousReporter = null;
   /**
    * This doesn't need to be atomic since {@link #reduce(BytesWritable, Iterator, OutputCollector, Reporter)} will be called sequentially.
@@ -105,6 +106,10 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private long timeOfLastReduceFunctionEndInNS = 0;
   private long aggregateTimeOfReduceExecutionInNS = 0;
   private long aggregateTimeOfInBetweenReduceInvocationsInNS = 0;
+  private InputStorageQuotaTracker inputStorageQuotaTracker;
+  private boolean exceedQuota;
+  private boolean hasWriteAclFailure;
+  private boolean hasDuplicateKeyWithDistinctValue;
 
   public VeniceReducer() {
     this(true);
@@ -112,6 +117,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   VeniceReducer(boolean checkDupKey) {
     this.checkDupKey = checkDupKey;
+    this.exceedQuota = false;
+    this.hasWriteAclFailure = false;
+    this.hasDuplicateKeyWithDistinctValue = false;
   }
 
   @Override
@@ -126,6 +134,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       // Will only be true starting from the 2nd invocation.
       aggregateTimeOfInBetweenReduceInvocationsInNS += (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
     }
+    if (updatePreviousReporter(reporter)) {
+      callback = new KafkaMessageCallback(reporter);
+    }
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
      */
@@ -136,11 +147,70 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     }
     byte[] valueBytes = values.next().copyBytes();
 
-    sendMessageToKafka(keyBytes, valueBytes, reporter);
-
+    if (hasReportedFailure(reporter)) {
+      updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
+      return;
+    }
+    try {
+      sendMessageToKafka(keyBytes, valueBytes, reporter);
+    } catch (VeniceException e) {
+      if (e instanceof TopicAuthorizationVeniceException) {
+        MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
+        LOGGER.error(e);
+        return;
+      }
+      throw e;
+    }
     if (checkDupKey) {
       duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
     }
+    updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
+  }
+
+  protected boolean hasReportedFailure(Reporter reporter) {
+    return hasWriteAclFailure(reporter) || hasDuplicateKeyWithDistinctValue(reporter) || exceedQuota(reporter);
+  }
+
+  private boolean hasWriteAclFailure(Reporter reporter) {
+    if (this.hasWriteAclFailure) {
+      return true;
+    }
+    final boolean hasWriteAclFailure = MRJobCounterHelper.getWriteAclAuthorizationFailureCount(reporter) > 0;
+    if (hasWriteAclFailure) {
+      this.hasWriteAclFailure = true;
+    }
+    return hasWriteAclFailure;
+  }
+
+  private boolean hasDuplicateKeyWithDistinctValue(Reporter reporter) {
+    if (this.hasDuplicateKeyWithDistinctValue) {
+      return true;
+    }
+    final boolean hasDuplicateKeyWithDistinctValue =
+        MRJobCounterHelper.getDuplicateKeyWithDistinctCount(reporter) > 0;
+    if (hasDuplicateKeyWithDistinctValue) {
+      this.hasDuplicateKeyWithDistinctValue = true;
+    }
+    return hasDuplicateKeyWithDistinctValue;
+  }
+
+  private boolean exceedQuota(Reporter reporter) {
+    if (exceedQuota) {
+      return true;
+    }
+    if (inputStorageQuotaTracker == null) {
+      return false;
+    }
+    final long totalInputStorageSizeInBytes =
+        MRJobCounterHelper.getTotalKeySize(reporter) + MRJobCounterHelper.getTotalValueSize(reporter);
+    final boolean exceedQuota = inputStorageQuotaTracker.exceedQuota(totalInputStorageSizeInBytes);
+    if (exceedQuota) {
+      this.exceedQuota = exceedQuota;
+    }
+    return exceedQuota;
+  }
+
+  private void updateExecutionTimeStatus(long timeOfLastReduceFunctionStartInNS) {
     timeOfLastReduceFunctionEndInNS = System.nanoTime();
     aggregateTimeOfReduceExecutionInNS += (timeOfLastReduceFunctionEndInNS - timeOfLastReduceFunctionStartInNS);
   }
@@ -150,26 +220,25 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     if (null == veniceWriter) {
       veniceWriter = createBasicVeniceWriter();
     }
-    if (null == previousReporter || !previousReporter.equals(reporter)) {
+    if (updatePreviousReporter(reporter)) {
       callback = new KafkaMessageCallback(reporter);
-      previousReporter = reporter;
     }
-
-    try {
-      if (enableWriteCompute && derivedValueSchemaId > 0) {
-        veniceWriter.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
-      } else {
-        veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
-      }
-    } catch (VeniceException e) {
-      if (e.getMessage().contains("do not have permission to write")) {
-        reporter.incrCounter(COUNTER_GROUP_KAFKA, AUTHORIZATION_FAILURES, 1);
-      }
-      throw e;
+    if (enableWriteCompute && derivedValueSchemaId > 0) {
+      veniceWriter.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
+    } else {
+      veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
     }
     messageSent++;
     telemetry();
-    reporter.incrCounter(COUNTER_GROUP_KAFKA, COUNTER_OUTPUT_RECORDS, 1);
+    MRJobCounterHelper.incrOutputRecordCount(reporter, 1);
+  }
+
+  private boolean updatePreviousReporter(Reporter reporter) {
+    if (previousReporter == null || !previousReporter.equals(reporter)) {
+      previousReporter = reporter;
+      return true;
+    }
+    return false;
   }
 
   private VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
@@ -223,6 +292,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   @Override
   public void close() throws IOException {
+    MRJobCounterHelper.incrReducerClosedCount(previousReporter, 1);
     LOGGER.info("Kafka message progress before flushing and closing producer:");
     logMessageProgress();
     if (null != veniceWriter) {
@@ -266,6 +336,11 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
+
+    Long storeStorageQuota = props.containsKey(STORAGE_QUOTA_PROP) ? props.getLong(STORAGE_QUOTA_PROP) : null;
+    Double storageEngineOverheadRatio = props.containsKey(STORAGE_ENGINE_OVERHEAD_RATIO) ?
+        props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO) : null;
+    inputStorageQuotaTracker = new InputStorageQuotaTracker(storeStorageQuota, storageEngineOverheadRatio);
   }
 
   private void prepushStorageQuotaCheck(JobConf job, long maxStorageQuota, double storageEngineOverheadRatio) {
@@ -280,9 +355,10 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       hadoopJobClient = new JobClient(job);
       Counters quotaCounters =
           hadoopJobClient.getJob(JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP))).getCounters();
-      long incomingDataSize =
-          estimatedVeniceDiskUsage(quotaCounters.findCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE).getValue() +
-              quotaCounters.findCounter(COUNTER_GROUP_QUOTA,COUNTER_TOTAL_VALUE_SIZE).getValue(), storageEngineOverheadRatio);
+      long incomingDataSize = estimatedVeniceDiskUsage(
+          MRJobCounterHelper.getTotalKeySize(quotaCounters) + MRJobCounterHelper.getTotalValueSize(quotaCounters),
+          storageEngineOverheadRatio
+      );
 
       if (incomingDataSize > maxStorageQuota) {
         throw new QuotaExceededException("Venice reducer data push",
@@ -345,11 +421,10 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
         messageSent, messageCompleted.get(), messageErrored.get()));
   }
 
-  // For test purpose
+  // Visible for testing
   protected void setVeniceWriter(AbstractVeniceWriter veniceWriter) {
     this.veniceWriter = veniceWriter;
   }
-
 
   protected class KafkaMessageCallback implements Callback {
     private final Reporter reporter;
@@ -442,8 +517,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   private void incrementKafkaBrokerCounter(Reporter reporter, String metric, String broker, long incrementAmount) {
     reporter.incrCounter(
-        COUNTER_GROUP_KAFKA_BROKER,
-        getKafkaProducerMetricForBrokerCounterName(metric, broker),
+        MRJobCounterHelper.COUNTER_GROUP_KAFKA_BROKER,
+        MRJobCounterHelper.getKafkaProducerMetricForBrokerCounterName(metric, broker),
         incrementAmount
     );
   }
@@ -491,27 +566,31 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
         return;
       }
       boolean shouldPrint = true; // In case there are lots of duplicate keys with the same value, only print once.
+      int distinctValuesToKeyCount = 0;
+      int identicalValuesToKeyCount = 0;
+
       while (values.hasNext()) {
         if (Arrays.equals(values.next().copyBytes(), valueBytes)) {
           // Identical values map to the same key. E.g. key:[ value_1, value_1]
-          reporter.incrCounter(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_IDENTICAL_VALUE, 1);
+          identicalValuesToKeyCount++;
           if (shouldPrint) {
             shouldPrint = false;
             LOGGER.warn(printDuplicateKey(keyBytes));
           }
         } else {
           // Distinct values map to the same key. E.g. key:[ value_1, value_2 ]
-          reporter.incrCounter(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_DISTINCT_VALUE, 1);
+          distinctValuesToKeyCount++;
+
           if (isDupKeyAllowed) {
             if (shouldPrint) {
               shouldPrint = false;
               LOGGER.warn(printDuplicateKey(keyBytes));
             }
-          } else {
-            throw new VeniceException(printDuplicateKey(keyBytes));
           }
         }
       }
+      MRJobCounterHelper.incrDuplicateKeyWithIdenticalValue(reporter, identicalValuesToKeyCount);
+      MRJobCounterHelper.incrDuplicateKeyWithDistinctValue(reporter, distinctValuesToKeyCount);
     }
 
     private String printDuplicateKey(byte[] keyBytes) {
