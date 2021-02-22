@@ -263,13 +263,17 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
      * {@link AbstractVeniceStats} class and takes {@link MetricsRepository} as the only parameter in its constructor.
      */
     for (String ingestionIsolationStatsClassName : veniceProperties.getString(SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST, "").split(",")) {
-      Class<? extends AbstractVeniceStats> ingestionIsolationStatsClass = ReflectUtils.loadClass(ingestionIsolationStatsClassName);
-      if (!ingestionIsolationStatsClass.isAssignableFrom(AbstractVeniceStats.class)) {
-        throw new VeniceException("Class: " + ingestionIsolationStatsClassName + " does not extends AbstractVeniceStats");
+      if (ingestionIsolationStatsClassName.length() != 0) {
+        Class<? extends AbstractVeniceStats> ingestionIsolationStatsClass = ReflectUtils.loadClass(ingestionIsolationStatsClassName);
+        if (!ingestionIsolationStatsClass.isAssignableFrom(AbstractVeniceStats.class)) {
+          throw new VeniceException("Class: " + ingestionIsolationStatsClassName + " does not extends AbstractVeniceStats");
+        }
+        AbstractVeniceStats ingestionIsolationStats =
+            ReflectUtils.callConstructor(ingestionIsolationStatsClass, new Class<?>[]{MetricsRepository.class}, new Object[]{metricsRepository});
+        logger.info("Created Ingestion Isolation stats: " + ingestionIsolationStats.getName());
+      } else {
+        logger.info("Ingestion isolation stats class name is empty, will skip it.");
       }
-      AbstractVeniceStats ingestionIsolationStats =
-          ReflectUtils.callConstructor(ingestionIsolationStatsClass, new Class<?>[]{MetricsRepository.class}, new Object[]{metricsRepository});
-      logger.info("Created Ingestion Isolation stats: " + ingestionIsolationStats.getName());
     }
 
     // Create StorageService

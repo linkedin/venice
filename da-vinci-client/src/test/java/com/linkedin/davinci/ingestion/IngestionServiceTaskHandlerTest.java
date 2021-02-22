@@ -38,7 +38,7 @@ public class IngestionServiceTaskHandlerTest {
       initializationConfigs.aggregatedConfigs.put(KAFKA_BOOTSTRAP_SERVERS, TestUtils.getUniqueString());
       initializationConfigs.aggregatedConfigs.put(KAFKA_ZK_ADDRESS, TestUtils.getUniqueString());
       initializationConfigs.aggregatedConfigs.put(D2_CLIENT_ZK_HOSTS_ADDRESS, zk.getAddress());
-      byte[] content = IngestionUtils.initializationConfigSerializer.serialize(null, initializationConfigs);
+      byte[] content = IngestionUtils.serializeIngestionActionRequest(IngestionAction.INIT, initializationConfigs);
       ChannelHandlerContext mockContext = mock(ChannelHandlerContext.class);
       FullHttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, path, Unpooled.wrappedBuffer(content));
       ArgumentCaptor<FullHttpResponse> argumentCaptor = ArgumentCaptor.forClass(FullHttpResponse.class);
