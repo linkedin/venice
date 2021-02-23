@@ -122,6 +122,8 @@ public class PushStatusStoreTest {
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
+        .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
         .build();
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
