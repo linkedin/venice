@@ -12,8 +12,8 @@ import com.linkedin.davinci.stats.StatsErrorCode;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -214,7 +214,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /** this is used to handle hybrid write quota */
   protected Optional<HybridStoreQuotaEnforcement> hybridQuotaEnforcer;
-  protected Optional<Map<Integer, Integer>> subscribedPartitionToSize;
+  protected volatile Optional<Map<Integer, Integer>> subscribedPartitionToSize;
 
   protected IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -439,6 +439,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           topicManagerRepository.getTopicManager().getPartitions(kafkaVersionTopic).size(),
           partitionConsumptionStateMap));
       this.storeRepository.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
+      // subscribedPartitionToSize can be accessed by multiple threads, when shared consumer is enabled.
       this.subscribedPartitionToSize = Optional.of(new HashMap<>());
     }
   }
@@ -2570,16 +2571,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param records
    */
   private void refillPartitionToSizeMap(List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records) {
-    subscribedPartitionToSize.get().clear();
+    // Prepare the temporary subscribedPartitionToSize map.
+    Map<Integer, Integer> tmpSubscribedPartitionToSize = new HashMap<>();
     for (int partition : partitionConsumptionStateMap.keySet()) {
-      subscribedPartitionToSize.get().put(partition, 0);
+      tmpSubscribedPartitionToSize.put(partition, 0);
     }
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
       int partition = record.partition();
       int recordSize = record.serializedKeySize() + record.serializedValueSize();
-      subscribedPartitionToSize.get().put(partition,
-          subscribedPartitionToSize.get().getOrDefault(partition, 0) + recordSize);
+      tmpSubscribedPartitionToSize.put(partition, tmpSubscribedPartitionToSize.getOrDefault(partition, 0) + recordSize);
     }
+    // Prepared subscribedPartitionToSize map is ready, get it referenced by original one.
+    subscribedPartitionToSize = Optional.of(tmpSubscribedPartitionToSize);
   }
 
   /**
