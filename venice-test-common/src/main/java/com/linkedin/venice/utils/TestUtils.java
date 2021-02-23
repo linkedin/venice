@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -21,6 +22,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -178,6 +180,22 @@ public class TestUtils {
         }
       }
     }
+  }
+
+  /**
+   * Some system store creation such as the meta system store is automatic but asynchronous during cluster startup. This
+   * may cause unexpected errors and problems in tests with only child controllers when we eagerly materialize system
+   * stores before the zk shared store object is configured properly. This is not a problem in production because the
+   * parent controller's admin topic is resilient to these transient failures.
+   */
+  public static void waitForSystemStoreCreation(long timeout, TimeUnit timeUnit,
+      VeniceSystemStoreType veniceSystemStoreType, ControllerClient controllerClient) {
+    String systemStoreName = veniceSystemStoreType.getZkSharedStoreNameInCluster(controllerClient.getClusterName());
+    TestUtils.waitForNonDeterministicAssertion(timeout, timeUnit, () -> {
+      StoreInfo store = controllerClient.getStore(systemStoreName).getStore();
+      assertNotNull(store);
+      assertNotNull(store.getHybridStoreConfig());
+    });
   }
 
   public static VersionCreationResponse createVersionWithBatchData(ControllerClient controllerClient, String storeName,

@@ -80,6 +80,10 @@ public enum VeniceSystemStoreType {
     return zkSharedStoreName;
   }
 
+  public String getZkSharedStoreNameInCluster(String clusterName) {
+    return isNewMedataRepositoryAdopted() ? zkSharedStoreName : zkSharedStoreName + VeniceSystemStoreUtils.SEPARATOR + clusterName;
+  }
+
   public boolean isNewMedataRepositoryAdopted() {
     return newMedataRepositoryAdopted;
   }
