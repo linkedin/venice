@@ -91,6 +91,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * Used to decide if an instance is stale.
    */
   private final long pushStatusStoreHeartbeatExpirationTimeInSeconds;
+  private final long systemStoreAclSynchronizationDelayMs;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -195,6 +196,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED, false);
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+    this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
   }
 
   public int getAdminPort() {
@@ -399,6 +401,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isDaVinciPushStatusStoreEnabled() {
     return isDaVinciPushStatusStoreEnabled;
+  }
+
+  public long getSystemStoreAclSynchronizationDelayMs() {
+    return systemStoreAclSynchronizationDelayMs;
   }
 
   /**

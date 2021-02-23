@@ -1462,4 +1462,10 @@ public class ConfigKeys {
    * lease expiry.
    */
   public static final String ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS = "router.read.quota.throttling.lease.timeout.ms";
+
+  /**
+   * The delay in ms between each synchronization attempt between the Venice store acls and its corresponding system
+   * store acls if any synchronization is needed.
+   */
+  public static final String CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS = "controller.system.store.acl.synchronization.delay.ms";
 }
