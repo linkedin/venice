@@ -50,7 +50,7 @@ public interface AuthorizerService {
    * Return a list of existing AceEntries present for the given resource.
    * Implementations should return an empty AclBinding object when no acl's are pesent for the resource.
    * @param resource
-   * @return {@link AclBinding} object containg the list of existing aceEntries. It may be null if there is no existing ACL's provisioned.
+   * @return {@link AclBinding} object containg the list of existing aceEntries. The AceEntry list may be empty if there is no existing ACL's provisioned.
    */
   public AclBinding describeAcls(Resource resource);
 

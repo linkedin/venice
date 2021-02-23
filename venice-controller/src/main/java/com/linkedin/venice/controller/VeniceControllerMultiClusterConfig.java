@@ -213,4 +213,8 @@ public class VeniceControllerMultiClusterConfig {
   public boolean isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() {
     return getCommonConfig().isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled();
   }
+
+  public long getSystemStoreAclSynchronizationDelayMs() {
+    return getCommonConfig().getSystemStoreAclSynchronizationDelayMs();
+  }
 }

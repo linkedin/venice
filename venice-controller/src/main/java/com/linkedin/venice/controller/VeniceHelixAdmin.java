@@ -131,7 +131,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -4282,29 +4281,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public List<String> getClusterOfStoreInMasterController(String storeName) {
-        List<String> matchingClusters = new LinkedList<>();
-
-        for (VeniceDistClusterControllerStateModel model : controllerStateModelFactory.getAllModels()) {
-            Optional<VeniceHelixResources> resources = model.getResources();
-            if (resources.isPresent()) {
-                if (resources.get().getMetadataRepository().hasStore(storeName)) {
-                    matchingClusters.add(model.getClusterName());
-                }
-            }
-        }
-
-        // Most of the time there should be only one matching cluster
-        // During store migration there might be two matching clusters
-        if (matchingClusters.size() > 2) {
-            logger.warn("More than 2 matching clusters found for store " + storeName + "! Check these clusters: "
-                + matchingClusters);
-        }
-
-        return matchingClusters;
-    }
-
-    @Override
     public Pair<String, String> discoverCluster(String storeName) {
         StoreConfig config = storeConfigRepo.getStoreConfigOrThrow(storeName);
         if (config == null || Utils.isNullOrEmpty(config.getCluster())) {
@@ -4811,6 +4787,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter() {
         return pushStatusStoreDeleter;
+    }
+
+    public List<String> getClustersLeaderOf() {
+        List<String> clusters = new ArrayList<>();
+        for (VeniceDistClusterControllerStateModel model : controllerStateModelFactory.getAllModels()) {
+            if (model.getCurrentState().equals(LeaderStandbySMD.States.LEADER.toString())) {
+                clusters.add(model.getClusterName());
+            }
+        }
+        return clusters;
     }
 
     /**

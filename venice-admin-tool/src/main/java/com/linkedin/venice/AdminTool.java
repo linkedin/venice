@@ -1548,14 +1548,22 @@ public class AdminTool {
     return properties;
   }
 
-  private static void verifyStoreExistence(String storename, boolean desiredExistence){
+  private static void verifyStoreExistence(String storename, boolean desiredExistence) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storename);
+    String zkStoreName = storename;
+    if (systemStoreType != null && systemStoreType.isStoreZkShared()) {
+      if (!desiredExistence) {
+        throw new UnsupportedOperationException("This method should not be used to verify if a zk shared system store doesn't exist");
+      }
+      zkStoreName = systemStoreType.getZkSharedStoreNameInCluster(controllerClient.getClusterName());
+    }
     MultiStoreResponse storeResponse = controllerClient.queryStoreList(true);
     if (storeResponse.isError()){
       throw new VeniceException("Error verifying store exists: " + storeResponse.getError());
     }
     boolean storeExists = false;
     for (String s : storeResponse.getStores()) {
-      if (s.equals(storename)){
+      if (s.equals(zkStoreName)){
         storeExists = true;
         break;
       }

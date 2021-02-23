@@ -11,6 +11,7 @@ import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.authorization.SystemStoreAclSynchronizationTask;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -32,7 +33,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigReco
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
-import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
@@ -167,6 +167,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final ExecutorService asyncSetupExecutor = Executors.newCachedThreadPool();
   private final ExecutorService topicCheckerExecutor = Executors.newSingleThreadExecutor();
   private final TerminalStateTopicCheckerForParentController terminalStateTopicChecker;
+  private final SystemStoreAclSynchronizationTask systemStoreAclSynchronizationTask;
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
 
@@ -191,6 +192,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final Optional<AuthorizerService> authorizerService;
 
+  private final ExecutorService systemStoreAclSynchronizationExecutor;
+
+
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty());
   }
@@ -206,6 +210,8 @@ public class VeniceParentHelixAdmin implements Admin {
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     this.authorizerService = authorizerService;
+    this.systemStoreAclSynchronizationExecutor =
+        authorizerService.map(service -> Executors.newSingleThreadExecutor()).orElse(null);
     if (sslEnabled) {
       try {
         String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
@@ -231,6 +237,12 @@ public class VeniceParentHelixAdmin implements Admin {
     terminalStateTopicChecker = new TerminalStateTopicCheckerForParentController(this,
         veniceHelixAdmin.getStoreConfigRepo(), multiClusterConfigs.getTerminalStateTopicCheckerDelayMs());
     topicCheckerExecutor.submit(terminalStateTopicChecker);
+    systemStoreAclSynchronizationTask = authorizerService.map(
+        service -> new SystemStoreAclSynchronizationTask(service, this,
+            multiClusterConfigs.getSystemStoreAclSynchronizationDelayMs())).orElse(null);
+    if (systemStoreAclSynchronizationTask != null) {
+      systemStoreAclSynchronizationExecutor.submit(systemStoreAclSynchronizationTask);
+    }
   }
 
   // For testing purpose
@@ -469,7 +481,11 @@ public class VeniceParentHelixAdmin implements Admin {
     logger.info("The message has been consumed, execution id: " + executionId);
   }
 
-  private void acquireLock(String clusterName, String storeName) {
+  /**
+   * Acquire the cluster level lock used to ensure admin messages in the admin topic (per cluster) have the correct order.
+   * This lock is needed only when generating and writing admin messages.
+   */
+  private void acquireAdminMessageLock(String clusterName, String storeName) {
     try {
       // First check whether an exception already exist in the admin channel for the given store
       Exception lastException = veniceHelixAdmin.getLastExceptionForStore(clusterName, storeName);
@@ -487,20 +503,20 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private void releaseLock(String clusterName) {
+  private void releaseAdminMessageLock(String clusterName) {
     perClusterAdminLocks.get(clusterName).unlock();
   }
 
   @Override
   public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
       boolean isSystemStore, Optional<String> accessPermissions) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
       //Provisioning ACL needs to be the first step in store creation process.
-      provisionAclsForStore(storeName, accessPermissions);
+      provisionAclsForStore(storeName, accessPermissions, Collections.emptyList());
 
       // Write store creation message to Kafka
       StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
@@ -528,13 +544,13 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
   @Override
   public void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       logger.info("Deleting store: " + storeName + " from cluster: " + clusterName);
       Store store = veniceHelixAdmin.checkPreConditionForDeletion(clusterName, storeName);
@@ -551,12 +567,13 @@ public class VeniceParentHelixAdmin implements Admin {
 
       //Deleting ACL needs to be the last step in store deletion process.
       if (!store.isMigrating()) {
-        cleanUpAclsForStore(storeName);
+        cleanUpAclsForStore(storeName, VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
+
       } else {
         logger.info("Store " + storeName + " is migrating! Skipping acl deletion!");
       }
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -565,11 +582,11 @@ public class VeniceParentHelixAdmin implements Admin {
       int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
     Version version = veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
         remoteKafkaBootstrapServers);
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -840,12 +857,17 @@ public class VeniceParentHelixAdmin implements Admin {
         : veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
             sendStartOfPush, sorted, pushType, compressionDictionary, null, batchStartingFabric);
     if (!pushType.isIncremental()) {
-      acquireLock(clusterName, storeName);
+      acquireAdminMessageLock(clusterName, storeName);
       try {
         sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, numberOfPartitions,
             pushType);
       } finally {
-        releaseLock(clusterName);
+        releaseAdminMessageLock(clusterName);
+      }
+      if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE
+          && authorizerService.isPresent()) {
+        // Ensure the wild card acl regex is created for META_STORE
+        authorizerService.get().setupResource(new Resource(storeName));
       }
     }
     cleanupHistoricalVersions(clusterName, storeName);
@@ -984,7 +1006,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForDeletion(clusterName, storeName);
 
@@ -998,13 +1020,13 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
       return Collections.emptyList();
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
   @Override
   public void deleteOldVersionInStore(String clusterName, String storeName, int versionNum) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForSingleVersionDeletion(clusterName, storeName, versionNum);
 
@@ -1018,7 +1040,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -1063,7 +1085,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void setStoreOwner(String clusterName, String storeName, String owner) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
@@ -1077,13 +1099,13 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
   @Override
   public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
@@ -1107,13 +1129,13 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
   @Override
   public void setStoreReadability(String clusterName, String storeName, boolean desiredReadability) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
@@ -1135,13 +1157,13 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
   @Override
   public void setStoreWriteability(String clusterName, String storeName, boolean desiredWriteability) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
@@ -1163,7 +1185,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -1181,7 +1203,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
 
     try {
       Optional<String> owner = params.getOwner();
@@ -1491,7 +1513,7 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = setStore;
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -1532,7 +1554,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       int newValueSchemaId = veniceHelixAdmin.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
@@ -1569,7 +1591,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       return addValueSchemaEntry(clusterName, storeName, valueSchemaStr, newValueSchemaId);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -1646,7 +1668,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr) {
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       int newDerivedSchemaId = veniceHelixAdmin
           .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
@@ -1686,7 +1708,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       return new DerivedSchemaEntry(valueSchemaId, newDerivedSchemaId, derivedSchemaStr);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -1970,7 +1992,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (getStore(clusterName, storeName) == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
       logger.info("Killing offline push job for topic: " + kafkaTopic + " in cluster: " + clusterName);
@@ -2001,7 +2023,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -2080,11 +2102,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public List<String> getClusterOfStoreInMasterController(String storeName) {
-    return veniceHelixAdmin.getClusterOfStoreInMasterController(storeName);
-  }
-
-  @Override
   public Pair<String, String> discoverCluster(String storeName) {
     return veniceHelixAdmin.discoverCluster(storeName);
   }
@@ -2124,11 +2141,20 @@ public class VeniceParentHelixAdmin implements Admin {
     veniceWriterMap.keySet().forEach(this::stop);
     veniceHelixAdmin.close();
     terminalStateTopicChecker.close();
+    if (systemStoreAclSynchronizationTask != null) {
+      systemStoreAclSynchronizationTask.close();
+    }
     topicCheckerExecutor.shutdownNow();
     asyncSetupExecutor.shutdownNow();
+    if (systemStoreAclSynchronizationExecutor != null) {
+      systemStoreAclSynchronizationExecutor.shutdownNow();
+    }
     try {
       topicCheckerExecutor.awaitTermination(30, TimeUnit.SECONDS);
       asyncSetupExecutor.awaitTermination(30, TimeUnit.SECONDS);
+      if (systemStoreAclSynchronizationExecutor != null) {
+        systemStoreAclSynchronizationExecutor.awaitTermination(30, TimeUnit.SECONDS);
+      }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
@@ -2238,11 +2264,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Version newZkSharedStoreVersion(String clusterName, String zkSharedStoreName) {
     Version newVersion = veniceHelixAdmin.newZkSharedStoreVersion(clusterName, zkSharedStoreName);
-    acquireLock(clusterName, zkSharedStoreName);
+    acquireAdminMessageLock(clusterName, zkSharedStoreName);
     try {
       sendAddVersionAdminMessage(clusterName, zkSharedStoreName, newVersion.getPushJobId(), newVersion, newVersion.getPartitionCount(), newVersion.getPushType());
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
     return newVersion;
   }
@@ -2272,12 +2298,15 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.ADD_VERSION.getValue();
     message.payloadUnion = getAddVersionMessage(clusterName, metadataStoreName, version.getPushJobId(), version,
         version.getPartitionCount(), version.getPushType());
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
+    // Ensure the wild card acl regex is created for METADATA_STORE
+    authorizerService.ifPresent(service -> service.setupResource(
+        new Resource(VeniceSystemStoreType.METADATA_STORE.getSystemStoreName(storeName))));
   }
 
   @Override
@@ -2301,12 +2330,15 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.ADD_VERSION.getValue();
     message.payloadUnion = getAddVersionMessage(clusterName, pushStatusStoreName, version.getPushJobId(), version,
         version.getPartitionCount(), version.getPushType());
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
+    // Ensure the wild card acl regex is created for DAVINCI_PUSH_STATUS_STORE
+    authorizerService.ifPresent(service -> service.setupResource(
+        new Resource(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName))));
   }
 
   @Override
@@ -2320,11 +2352,11 @@ public class VeniceParentHelixAdmin implements Admin {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.DELETE_OLD_VERSION.getValue();
     message.payloadUnion = deleteOldVersion;
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -2342,11 +2374,11 @@ public class VeniceParentHelixAdmin implements Admin {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.DELETE_ALL_VERSIONS.getValue();
     message.payloadUnion = deleteAllVersions;
-    acquireLock(clusterName, storeName);
+    acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } finally {
-      releaseLock(clusterName);
+      releaseAdminMessageLock(clusterName);
     }
   }
 
@@ -2397,8 +2429,10 @@ public class VeniceParentHelixAdmin implements Admin {
    *
    * @param storeName store being provisioned.
    * @param accessPermissions json string respresenting the accesspermissions.
+   * @param enabledVeniceSystemStores list of enabled Venice system stores for the given store.
    */
-  private void provisionAclsForStore(String storeName, Optional<String> accessPermissions) {
+  private void provisionAclsForStore(String storeName, Optional<String> accessPermissions,
+      List<VeniceSystemStoreType> enabledVeniceSystemStores) {
     //provision the ACL's needed to read/write venice store and kafka topic
     if (authorizerService.isPresent() && accessPermissions.isPresent()) {
       Resource resource = new Resource(storeName);
@@ -2438,6 +2472,11 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
         authorizerService.get().setAcls(aclBinding);
+        // Provision the ACL's needed to read/write corresponding venice system stores if any are specified.
+        for (VeniceSystemStoreType veniceSystemStoreType : enabledVeniceSystemStores) {
+          AclBinding systemStoreAclBinding = veniceSystemStoreType.generateSystemStoreAclBinding(aclBinding);
+          authorizerService.get().setAcls(systemStoreAclBinding);
+        }
       } catch (Exception e) {
         logger.error("ACLProvisioning: failure in setting ACL's for store:" + storeName, e);
         throw new VeniceException(e);
@@ -2502,11 +2541,16 @@ public class VeniceParentHelixAdmin implements Admin {
    * This deletes all existing ACL's for a store using the authorizerService interface.
    * @param storeName store being provisioned.
    */
-  private void cleanUpAclsForStore(String storeName) {
+  private void cleanUpAclsForStore(String storeName, List<VeniceSystemStoreType> enabledVeniceSystemStores) {
     if (authorizerService.isPresent()) {
       Resource resource = new Resource(storeName);
       try {
         authorizerService.get().clearAcls(resource);
+        for (VeniceSystemStoreType veniceSystemStoreType : enabledVeniceSystemStores) {
+          Resource systemStoreResource = new Resource(veniceSystemStoreType.getSystemStoreName(storeName));
+          authorizerService.get().clearAcls(systemStoreResource);
+          authorizerService.get().clearResource(systemStoreResource);
+        }
       } catch (Exception e) {
         logger.error("ACLProvisioning: failure in deleting ACL's for store ", e);
         throw new VeniceException(e);
@@ -2516,22 +2560,39 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void updateAclForStore(String clusterName, String storeName, String accessPermissions) {
-    acquireLock(clusterName, storeName);
+    // TODO replace the cluster level store repository lock in ACL APIs with the store level lock once it's implemented.
+    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
+    repository.lock();
     try {
       logger.info("ACLProvisioning: UpdateAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("updateAclForStore is not supported yet!");
       }
-      veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
-      provisionAclsForStore(storeName, Optional.of(accessPermissions));
+      Store store = veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
+      provisionAclsForStore(storeName, Optional.of(accessPermissions), VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
     } finally {
-      releaseLock(clusterName);
+      repository.unLock();
+    }
+  }
+
+  public void updateSystemStoreAclForStore(String clusterName, String regularStoreName, AclBinding systemStoreAclBinding) {
+    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
+    repository.lock();
+    try {
+      if (!authorizerService.isPresent()) {
+        throw new VeniceUnsupportedOperationException("updateAclForStore is not supported yet!");
+      }
+      veniceHelixAdmin.checkPreConditionForAclOp(clusterName, regularStoreName);
+      authorizerService.get().setAcls(systemStoreAclBinding);
+    } finally {
+      repository.unLock();
     }
   }
 
   @Override
   public String getAclForStore(String clusterName, String storeName) {
-    acquireLock(clusterName, storeName);
+    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
+    repository.lock();
     try {
       logger.info("ACLProvisioning: GetAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {
@@ -2541,13 +2602,14 @@ public class VeniceParentHelixAdmin implements Admin {
       String accessPerms = fetchAclsForStore(storeName);
       return accessPerms;
     } finally {
-      releaseLock(clusterName);
+      repository.unLock();
     }
   }
 
   @Override
   public void deleteAclForStore(String clusterName, String storeName) {
-    acquireLock(clusterName, storeName);
+    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
+    repository.lock();
     try {
       logger.info("ACLProvisioning: DeleteAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {
@@ -2555,12 +2617,12 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       Store store = veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
       if (!store.isMigrating()) {
-        cleanUpAclsForStore(storeName);
+        cleanUpAclsForStore(storeName, VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
       } else {
         logger.info("Store " + storeName + " is migrating! Skipping acl deletion!");
       }
     } finally {
-      releaseLock(clusterName);
+      repository.unLock();
     }
   }
 
@@ -2602,6 +2664,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter() {
     return veniceHelixAdmin.getPushStatusStoreRecordDeleter();
+  }
+
+  public List<String> getClustersLeaderOf() {
+    return veniceHelixAdmin.getClustersLeaderOf();
   }
 
   // Function that can be overridden in tests

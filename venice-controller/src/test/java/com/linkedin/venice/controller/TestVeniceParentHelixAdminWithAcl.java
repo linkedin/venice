@@ -31,7 +31,8 @@ import static org.mockito.Mockito.*;
  * Creating a new class as we need to pass MockAuthorizer during cluster setup.
  */
 public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentHelixAdmin {
-  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   MockVeniceAuthorizer authorizerService;
 
@@ -98,7 +99,6 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
         () -> parentAdmin.addStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false,
             Optional.of(accessPerm)));
     Assert.assertEquals(0, authorizerService.setAclsCounter);
-
   }
 
   @Test
@@ -109,11 +109,10 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
     doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
 
-    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
-        .when(veniceWriter).put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))).when(
+        veniceWriter).put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null)
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.start(clusterName);
@@ -137,7 +136,8 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     Assert.assertEquals(expectedPerm, curPerm);
 
     //add a DENY ace, this will verify getAclForStore always returns ALLOW acls.
-    authorizerService.addAce(new Resource(storeName), new AceEntry(new Principal("urn:li:corpuser:denyuser1"), Method.Read, Permission.DENY));
+    authorizerService.addAce(new Resource(storeName),
+        new AceEntry(new Principal("urn:li:corpuser:denyuser1"), Method.Read, Permission.DENY));
     curPerm = parentAdmin.getAclForStore(clusterName, storeName);
     Assert.assertEquals(expectedPerm, curPerm);
 
@@ -198,7 +198,6 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
 
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.deleteAclForStore(clusterName, storeName));
     Assert.assertEquals(0, authorizerService.clearAclCounter);
-
   }
 
   private boolean isAclBindingSame(AclBinding ab1, AclBinding ab2) {

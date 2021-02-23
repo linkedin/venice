@@ -1,5 +1,10 @@
 package com.linkedin.venice.common;
 
+import com.linkedin.venice.authorization.AceEntry;
+import com.linkedin.venice.authorization.AclBinding;
+import com.linkedin.venice.authorization.Method;
+import com.linkedin.venice.authorization.Permission;
+import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
@@ -8,6 +13,9 @@ import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 
 /**
@@ -18,13 +26,14 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 public enum VeniceSystemStoreType {
 
   METADATA_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "metadata_store"), true,
-      StoreMetadataKey.SCHEMA$.toString(), StoreMetadataValue.SCHEMA$.toString(), "", false),
+      StoreMetadataKey.SCHEMA$.toString(), StoreMetadataValue.SCHEMA$.toString(), "", false, Method.READ_SYSTEM_STORE),
   DAVINCI_PUSH_STATUS_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true,
-      PushStatusKey.SCHEMA$.toString(), PushStatusValue.SCHEMA$.toString(), "", false),
+      PushStatusKey.SCHEMA$.toString(), PushStatusValue.SCHEMA$.toString(), "", false, Method.WRITE_SYSTEM_STORE),
 
   // New Metadata system store
   META_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "meta_store"), true, StoreMetaKey.SCHEMA$.toString(),
-      StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true);
+      StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(),
+      true, Method.READ_SYSTEM_STORE);
 
   private final String prefix;
   private final boolean isStoreZkShared;
@@ -44,10 +53,14 @@ public enum VeniceSystemStoreType {
    *    regular venice store structure (such as version related metadata).
    */
   private final boolean newMedataRepositoryAdopted;
+  /**
+   * The access {@link Method} type required by client (DaVinci or fast-client) for the system store.
+   */
+  private final Method clientAccessMethod;
 
 
   VeniceSystemStoreType(String prefix, boolean isStoreZkShared, String keySchema, String valueSchema, String zkSharedStoreName,
-      boolean newMedataRepositoryAdopted) {
+      boolean newMedataRepositoryAdopted, Method clientAccessMethod) {
     this.prefix = prefix;
     this.isStoreZkShared = isStoreZkShared;
     this.keySchema = keySchema;
@@ -58,6 +71,7 @@ public enum VeniceSystemStoreType {
       this.zkSharedStoreName = zkSharedStoreName;
     }
     this.newMedataRepositoryAdopted = newMedataRepositoryAdopted;
+    this.clientAccessMethod = clientAccessMethod;
   }
 
   public String getPrefix() {
@@ -78,6 +92,10 @@ public enum VeniceSystemStoreType {
 
   public String getZkSharedStoreName() {
     return zkSharedStoreName;
+  }
+
+  public String getZkSharedStoreNameInCluster(String clusterName) {
+    return isNewMedataRepositoryAdopted() ? zkSharedStoreName : zkSharedStoreName + VeniceSystemStoreUtils.SEPARATOR + clusterName;
   }
 
   public boolean isNewMedataRepositoryAdopted() {
@@ -114,12 +132,92 @@ public enum VeniceSystemStoreType {
     throw new IllegalArgumentException("Invalid system store name: " + systemStoreName + " for system store type: " + name());
   }
 
+  public Method getClientAccessMethod() {
+    return clientAccessMethod;
+  }
+
+  /**
+   * Generate the corresponding AclBinding for a given Venice system store type based on the corresponding Venice store's
+   * Read acl. i.e. all principals that are allowed to read a Venice store is allowed to read or write to its corresponding
+   * Venice system store topics.
+   * @param regularStoreAclBinding of the associated Venice store.
+   * @return AclBinding to get read or write access for the corresponding Venice system store.
+   */
+  public AclBinding generateSystemStoreAclBinding(AclBinding regularStoreAclBinding) {
+    String regularStoreName = regularStoreAclBinding.getResource().getName();
+    if (!Store.isValidStoreName(regularStoreName)) {
+      throw new UnsupportedOperationException("Cannot generate system store AclBinding for a non-store resource: "
+          + regularStoreName);
+    }
+    if (VeniceSystemStoreType.getSystemStoreType(regularStoreName) != null) {
+      throw new UnsupportedOperationException("Cannot generate system store AclBinding for a Venice system store: "
+          + regularStoreName);
+    }
+    Resource systemStoreResource = new Resource(getSystemStoreName(regularStoreName));
+    AclBinding systemStoreAclBinding = new AclBinding(systemStoreResource);
+    for (AceEntry aceEntry : regularStoreAclBinding.getAceEntries()) {
+      if (aceEntry.getMethod() == Method.Read && aceEntry.getPermission() == Permission.ALLOW) {
+        AceEntry systemStoreAceEntry = new AceEntry(aceEntry.getPrincipal(), getClientAccessMethod(),
+            aceEntry.getPermission());
+        systemStoreAclBinding.addAceEntry(systemStoreAceEntry);
+      }
+    }
+    return systemStoreAclBinding;
+  }
+
+  /**
+   * AclBinding of system store resource retrieved from authorizer service will not have the system store specific
+   * Method types and instead will either be READ or WRITE. This method transform a kafka topic AclBinding to a system
+   * store AclBinding.
+   * @param systemStoreTopicAclBinding AclBinding for the system store's kafka topic.
+   * @return
+   */
+  public static AclBinding getSystemStoreAclFromTopicAcl(AclBinding systemStoreTopicAclBinding) {
+    AclBinding systemStoreAclBinding = new AclBinding(systemStoreTopicAclBinding.getResource());
+    for (AceEntry aceEntry : systemStoreTopicAclBinding.getAceEntries()) {
+      Method method = aceEntry.getMethod();
+      if (method == Method.Read) {
+        method = Method.READ_SYSTEM_STORE;
+      } else if (method == Method.Write) {
+        method = Method.WRITE_SYSTEM_STORE;
+      }
+      systemStoreAclBinding.addAceEntry(new AceEntry(aceEntry.getPrincipal(), method, aceEntry.getPermission()));
+    }
+    return systemStoreAclBinding;
+  }
+
   public static VeniceSystemStoreType getSystemStoreType(String storeName) {
+    if (storeName == null) {
+      return null;
+    }
     for (VeniceSystemStoreType systemStoreType : values()) {
       if (storeName.startsWith(systemStoreType.getPrefix() + VeniceSystemStoreUtils.SEPARATOR)) {
         return systemStoreType;
       }
     }
     return null;
+  }
+
+  /**
+   * Get a list of enabled Venice system store types based on the given regular Venice Store object.
+   * @param regularStore object to generate a list of enabled system store types with.
+   * @return a list of enabled VeniceSystemStoreType
+   */
+  public static List<VeniceSystemStoreType> getEnabledSystemStoreTypes(Store regularStore) {
+    if (VeniceSystemStoreType.getSystemStoreType(regularStore.getName()) != null) {
+      // No system stores should be enabled for a system store.
+      return Collections.emptyList();
+    }
+    List<VeniceSystemStoreType> enabledSystemStoreTypes = new ArrayList<>();
+    if (regularStore.isStoreMetadataSystemStoreEnabled()) {
+      enabledSystemStoreTypes.add(VeniceSystemStoreType.METADATA_STORE);
+    }
+    if (regularStore.isDaVinciPushStatusStoreEnabled()) {
+      enabledSystemStoreTypes.add(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
+    }
+    if (regularStore.isStoreMetaSystemStoreEnabled()) {
+      enabledSystemStoreTypes.add(VeniceSystemStoreType.META_STORE);
+    }
+    return enabledSystemStoreTypes;
   }
 }

@@ -424,13 +424,6 @@ public interface Admin extends AutoCloseable, Closeable {
     void setStorePushStrategyForMigration(String voldemortStoreName, String strategy);
 
     /**
-     * Return the clusters which the given store belongs to. And it will only work in the master controller of that
-     * cluster. For example, storeA belongs to Cluster1, but the current controller is not the master controller of
-     * cluster1, it will not return cluster name for that store.
-     */
-    List<String> getClusterOfStoreInMasterController(String storeName);
-
-    /**
      * Find the cluster which the given store belongs to. Return the pair of the cluster name and the d2 service
      * associated with that cluster.
      *
@@ -578,4 +571,9 @@ public interface Admin extends AutoCloseable, Closeable {
      * Return {@link PushStatusStoreRecordDeleter}.
      */
     Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter();
+
+    /** Get a list of clusters this controller is a leader of.
+     * @return a list of clusters this controller is a leader of.
+     */
+    List<String> getClustersLeaderOf();
 }
