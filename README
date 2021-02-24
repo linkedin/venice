@@ -31,6 +31,24 @@ If the above does not work, you may resort to building each component seperately
 To build and install Venice server:
 > ./gradlew :venice-server:clean :venice-server:installApp
 
+-----------------------
+Inspect test coverage
+-----------------------
+
+First, ensure that each project has been built. If not, please run: (from the project root directory)
+> ./gradlew clean; ./gradlew build
+
+In the same directory, generate the test coverage report
+> ./gradlew jacocoTestReport
+
+Generated test coverage reports are located in each sub module of the project
+> ls <sub module name>/build/reports/jacoco/test/html/index.html
+E.g.
+> ls venice-server/build/reports/jacoco/test/html/index.html
+
+To view the generated test coverage report, copy the absolute directory path to the browser and open it
+E.g. Copy the result of running "ls $(pwd)/venice-server/build/reports/jacoco/test/html/index.html" to a browser and hit enter
+
 ----------------------
 Quickstart
 ----------------------
