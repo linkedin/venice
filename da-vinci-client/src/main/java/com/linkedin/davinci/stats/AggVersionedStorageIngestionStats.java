@@ -61,12 +61,15 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
     int version = Version.parseVersionFromKafkaTopicName(storeVersionTopic);
     try {
+      /**
+       * Set up the ingestion task reference before registering any metrics that depend on the task reference.
+       */
+      getStats(storeName, version).setIngestionTask(ingestionTask);
+
       // Make sure the hybrid store stats are registered
       if (ingestionTask.isHybridMode()) {
         registerConditionalStats(storeName);
       }
-
-      getStats(storeName, version).setIngestionTask(ingestionTask);
     } catch (Exception e) {
       LOGGER.warn("Failed to set up versioned storage ingestion stats of store: " + storeName
           + ", version: " + version);
@@ -128,7 +131,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
 
     private StoreIngestionTask ingestionTask;
-    private long rtTopicOffsetLagOverThreshold = INACTIVE_STORE_INGESTION_TASK.code;
+    private long rtTopicOffsetLagOverThreshold = 0;
     private int ingestionTaskErroredGauge = 0;
 
     private final Rate recordsConsumedRate;
@@ -188,7 +191,12 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
     public long getRtTopicOffsetLag() {
       if (ingestionTask == null) {
-        return INACTIVE_STORE_INGESTION_TASK.code;
+        /**
+         * Once a versioned stat is created on a host, it cannot be unregistered because a specific version doesn't
+         * exist on the host; however, we can't guarantee every single store version will have a replica on the host.
+         * In this case, ingestion task will not be created, which is not an error.
+         */
+        return 0;
       }
       else if (!ingestionTask.isHybridMode()) {
         rtTopicOffsetLagOverThreshold = METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
@@ -320,44 +328,53 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
           () -> (double) getStats().getIngestionTaskErroredGauge()));
 
       registerSensor("follower_offset_lag", new IngestionStatsGauge(this, () ->
-          (double) getStats().getFollowerOffsetLag()));
+          (double) getStats().getFollowerOffsetLag(), 0));
       registerSensor("write_compute_operation_failure", new IngestionStatsGauge(this,
           () -> (double) getStats().getWriteComputeErrorCode()));
 
       registerSensor(RECORDS_CONSUMED_METRIC_NAME,
-          new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed()));
+          new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed(), 0));
       registerSensor(BYTES_CONSUMED_METRIC_NAME,
-          new IngestionStatsGauge(this, () -> getStats().getBytesConsumed()));
+          new IngestionStatsGauge(this, () -> getStats().getBytesConsumed(), 0));
       registerSensor(LEADER_RECORDS_CONSUMED_METRIC_NAME,
-          new IngestionStatsGauge(this, () -> getStats().getLeaderRecordsConsumed()));
+          new IngestionStatsGauge(this, () -> getStats().getLeaderRecordsConsumed(), 0));
       registerSensor(LEADER_BYTES_CONSUMED_METRIC_NAME,
-          new IngestionStatsGauge(this, () -> getStats().getLeaderBytesConsumed()));
+          new IngestionStatsGauge(this, () -> getStats().getLeaderBytesConsumed(), 0));
       registerSensor(FOLLOWER_RECORDS_CONSUMED_METRIC_NAME,
-          new IngestionStatsGauge(this, () -> getStats().getFollowerRecordsConsumed()));
+          new IngestionStatsGauge(this, () -> getStats().getFollowerRecordsConsumed(), 0));
       registerSensor(FOLLOWER_BYTES_CONSUMED_METRIC_NAME,
-          new IngestionStatsGauge(this, () -> getStats().getFollowerBytesConsumed()));
+          new IngestionStatsGauge(this, () -> getStats().getFollowerBytesConsumed(), 0));
       registerSensor(LEADER_RECORDS_PRODUCED_METRIC_NAME,
-          new IngestionStatsGauge(this, () -> getStats().getLeaderRecordsProduced()));
+          new IngestionStatsGauge(this, () -> getStats().getLeaderRecordsProduced(), 0));
       registerSensor(LEADER_BYTES_PRODUCED_METRIC_NAME,
-          new IngestionStatsGauge(this, () -> getStats().getLeaderBytesProduced()));
+          new IngestionStatsGauge(this, () -> getStats().getLeaderBytesProduced(), 0));
     }
 
     // Only register these stats if the store is hybrid.
     @Override
     protected void registerConditionalStats() {
       registerSensor("rt_topic_offset_lag", new IngestionStatsGauge(this, () ->
-          (double) getStats().getRtTopicOffsetLag()));
+          (double) getStats().getRtTopicOffsetLag(), 0));
 
       registerSensor("rt_topic_offset_lag_over_threshold", new IngestionStatsGauge(this, () ->
-          (double) getStats().getRtTopicOffsetLagOverThreshold()));
+          (double) getStats().getRtTopicOffsetLagOverThreshold(), 0));
 
       registerSensor("number_of_partitions_not_receive_SOBR", new IngestionStatsGauge(this, () ->
-          (double) getStats().getNumberOfPartitionsNotReceiveSOBR()));
+          (double) getStats().getNumberOfPartitionsNotReceiveSOBR(), 0));
     }
 
     private static class IngestionStatsGauge extends Gauge {
       IngestionStatsGauge(AbstractVeniceStatsReporter reporter, Supplier<Double> supplier) {
-        super(() -> reporter.getStats() == null ? NULL_INGESTION_STATS.code : supplier.get());
+        this(reporter, supplier, NULL_INGESTION_STATS.code);
+      }
+
+      IngestionStatsGauge(AbstractVeniceStatsReporter reporter, Supplier<Double> supplier, int defaultValue) {
+        /**
+         * If a version doesn't exist, the corresponding reporter stat doesn't exist after the host restarts,
+         * which is not an error. The users of the stats should decide whether it's reasonable to emit an error
+         * code simply because the version is not created yet.
+         */
+        super(() -> reporter.getStats() == null ? defaultValue : supplier.get());
       }
     }
   }
