@@ -1392,11 +1392,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   public long getFollowerOffsetLag() {
     Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (!svs.isPresent()) {
-      return StatsErrorCode.STORE_VERSION_STATE_UNAVAILABLE.code;
+      /**
+       * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
+       * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
+       * window where there is no version metadata, which is not an error.
+       */
+      return 0;
     }
 
     if (partitionConsumptionStateMap.isEmpty()) {
-      return StatsErrorCode.NO_SUBSCRIBED_PARTITION.code;
+      /**
+       * Partition subscription happens after the ingestion task and stat are created, it's not an error.
+       */
+      return 0;
     }
 
     long offsetLag = partitionConsumptionStateMap.values().stream()

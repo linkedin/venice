@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.List;
@@ -36,7 +37,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     this.statsInitiator = statsInitiator;
     this.reporterSupplier = reporterSupplier;
 
-    this.aggStats = new HashMap<>();
+    this.aggStats = new VeniceConcurrentHashMap<>();
     metadataRepository.registerStoreDataChangedListener(this);
     loadAllStats();
   }
@@ -61,16 +62,19 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   private VeniceVersionedStats<STATS, STATS_REPORTER> getVersionedStats(String storeName) {
-    if (!aggStats.containsKey(storeName)) {
-      addStore(storeName);
-      Store store = metadataRepository.getStore(storeName);
+    return aggStats.computeIfAbsent(storeName, name -> {
+      /**
+       * Add stats for the store into aggStats map
+       */
+      addStore(name);
+      Store store = metadataRepository.getStore(name);
       if (null == store) {
-        throw new VeniceException("Unknown store: " + storeName);
+        throw new VeniceException("Unknown store: " + name);
       }
       updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
-    }
 
-    return aggStats.get(storeName);
+      return aggStats.get(name);
+    });
   }
 
   private synchronized void addStore(String storeName) {
