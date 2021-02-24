@@ -17,6 +17,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 
 apply plugin: 'java'
 apply plugin: 'idea'
+apply plugin: 'jacoco' // Java Code Coverage plugin
 
 // Internal LinkedIn Kafka release
 def internalKafkaGroup = 'com.linkedin.kafka'
@@ -119,6 +120,7 @@ ext.libraries = [ // Groovy map literal
 subprojects {
   apply plugin: 'java-library'
   apply plugin: 'idea'
+  apply plugin: 'jacoco'
 
   sourceCompatibility = 1.8
   if (!project.hasProperty('overrideBuildEnvironment') || !project.overrideBuildEnvironment) {
