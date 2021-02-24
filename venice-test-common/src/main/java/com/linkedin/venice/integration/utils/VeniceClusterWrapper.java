@@ -130,6 +130,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(
+      String coloName,
       boolean standalone,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -148,7 +149,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       boolean sslToStorageNodes,
       boolean sslToKafka,
       boolean isKafkaOpenSSLEnabled,
-      Properties extraProperties) {
+      Properties extraProperties,
+      boolean forkServer) {
 
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
@@ -185,8 +187,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         }
         featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(isKafkaOpenSSLEnabled));
 
+        String serverName = "";
+        if (!coloName.isEmpty() && !clusterName.isEmpty()) {
+          serverName = coloName + ":" + clusterName + ":sn-" + i;
+        }
         VeniceServerWrapper veniceServerWrapper =
-            ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, extraProperties);
+            ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, extraProperties, forkServer, serverName);
         veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
       }
 
@@ -249,6 +255,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * so we can assume they're reliable enough.
        */
       return generateService(
+          "",
           true,
           zkServerWrapper,
           kafkaBrokerWrapper,
@@ -267,7 +274,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           sslToStorageNodes,
           sslToKafka,
           isKafkaOpenSSLEnabled,
-          extraProperties);
+          extraProperties, false);
 
     } catch (Exception e) {
       IOUtils.closeQuietly(brooklinWrapper);

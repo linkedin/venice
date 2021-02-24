@@ -1,9 +1,12 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.tehuti.MetricsAware;
+import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -16,6 +19,14 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
 import org.apache.commons.io.FileUtils;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
@@ -24,6 +35,7 @@ import java.io.IOException;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -34,6 +46,7 @@ import static com.linkedin.venice.meta.PersistenceType.*;
  * A wrapper for the {@link com.linkedin.venice.server.VeniceServer}.
  */
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
+  private static final Logger logger = Logger.getLogger(VeniceServerWrapper.class);
   public static final String SERVICE_NAME = "VeniceServer";
 
   /**
@@ -52,6 +65,24 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final File dataDirectory;
 
+  /**
+   * Following member fields are only needed when server runs in forked mode. We need to save these information and
+   * pass as command line args when forking the server, so that the TestVeniceServer could be instantiated with
+   * proper configurations.
+   */
+  private boolean forkServer = false;
+  private String clusterName;
+  private int listenPort;
+  private String serverConfigPath;
+  private boolean ssl;
+  private boolean enableServerWhitelist;
+  private boolean isAutoJoin;
+  private boolean consumerClientConfigPresent;
+  private String veniceUrl;
+  private String d2ServiceName;
+  private String serverName;
+  private Process serverProcess;
+
   VeniceServerWrapper(String serviceName, File dataDirectory, TestVeniceServer veniceServer,
       VeniceProperties serverProps, VeniceConfigLoader config, Optional<ClientConfig> consumerClientConfig,
       Optional<SSLEngineComponentFactory> sslFactory) {
@@ -64,10 +95,39 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     this.sslFactory = sslFactory;
   }
 
+  VeniceServerWrapper(String serviceName, File dataDirectory, TestVeniceServer veniceServer,
+      VeniceProperties serverProps, VeniceConfigLoader config, Optional<ClientConfig> consumerClientConfig,
+      Optional<SSLEngineComponentFactory> sslFactory, boolean forkServer, String clusterName, int listenPort,
+      String serverConfigPath, boolean ssl, boolean enableServerWhitelist, boolean isAutoJoin, String serverName) {
+    this(serviceName, dataDirectory, veniceServer, serverProps, config, consumerClientConfig, sslFactory);
+    this.forkServer = forkServer;
+    this.clusterName = clusterName;
+    this.listenPort = listenPort;
+    this.serverConfigPath = serverConfigPath;
+    this.ssl = ssl;
+    this.enableServerWhitelist = enableServerWhitelist;
+    this.isAutoJoin = isAutoJoin;
+    this.consumerClientConfigPresent = consumerClientConfig.isPresent();
+    if (this.consumerClientConfigPresent) {
+      this.veniceUrl = consumerClientConfig.get().getVeniceURL();
+      this.d2ServiceName = consumerClientConfig.get().getD2ServiceName();
+    }
+    this.serverName = serverName;
+  }
+
   static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       Properties featureProperties,
       Properties configProperties) {
+    return generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties, false, "");
+  }
+
+  static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      Properties featureProperties,
+      Properties configProperties,
+      boolean forkServer,
+      String serverName) {
     return (serviceName, dataDirectory) -> {
       boolean enableServerWhitelist = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_WHITE_LIST, "false"));
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
@@ -119,23 +179,29 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
       serverProps.storeFlattened(serverConfigFile);
 
-      VeniceConfigLoader veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(
-              configDirectory.getAbsolutePath());
+      if (!forkServer) {
+        VeniceConfigLoader veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(configDirectory.getAbsolutePath());
 
-      if (enableServerWhitelist && isAutoJoin) {
-        joinClusterWhitelist(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(), clusterName,
-            listenPort);
+        if (enableServerWhitelist && isAutoJoin) {
+          joinClusterWhitelist(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(), clusterName,
+              listenPort);
+        }
+
+        Optional<SSLEngineComponentFactory> sslFactory = Optional.empty();
+        if (ssl) {
+          sslFactory = Optional.of(SslUtils.getLocalSslFactory());
+        }
+
+        TestVeniceServer server = new TestVeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory, Optional.empty(),
+            consumerClientConfig);
+        return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader,
+            consumerClientConfig, sslFactory);
+      } else {
+        VeniceServerWrapper veniceServerWrapper = new VeniceServerWrapper(serviceName, dataDirectory, null, serverProps, null,
+            consumerClientConfig, null, true, clusterName, listenPort, configDirectory.getAbsolutePath(), ssl, enableServerWhitelist,
+            isAutoJoin, serverName);
+        return veniceServerWrapper;
       }
-
-      Optional<SSLEngineComponentFactory> sslFactory = Optional.empty();
-      if (ssl){
-        sslFactory = Optional.of(SslUtils.getLocalSslFactory());
-      }
-
-      TestVeniceServer server = new TestVeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory,
-          Optional.empty(), consumerClientConfig);
-      return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader,
-          consumerClientConfig, sslFactory);
     };
   }
 
@@ -172,31 +238,151 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   @Override
   protected void internalStart() throws Exception {
-    veniceServer.start();
+    if (!forkServer) {
+      veniceServer.start();
 
-    TestUtils.waitForNonDeterministicCompletion(
-        IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
-        TimeUnit.MILLISECONDS,
-        () -> veniceServer.isStarted());
+      TestUtils.waitForNonDeterministicCompletion(IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS, TimeUnit.MILLISECONDS,
+          () -> veniceServer.isStarted());
+    } else {
+      List<String> cmdList = new ArrayList<>();
+      cmdList.addAll(Arrays.asList(
+          "--clusterName", clusterName,
+          "--listenPort", String.valueOf(listenPort),
+          "--serverConfigPath", serverConfigPath));
+      if (ssl) {
+        cmdList.add("--ssl");
+      }
+      if (enableServerWhitelist) {
+        cmdList.add("--enableServerWhitelist");
+      }
+      if (isAutoJoin) {
+        cmdList.add("--isAutoJoin");
+      }
+      if (consumerClientConfigPresent) {
+        cmdList.add("--veniceUrl");
+        cmdList.add(veniceUrl);
+        cmdList.add("--d2ServiceName");
+        cmdList.add(d2ServiceName);
+      }
+      serverProcess = ForkedJavaProcess.exec(
+          VeniceServerWrapper.class,
+          cmdList,
+          Arrays.asList("-Xms64m", "-Xmx128m"), Optional.of(serverName));
+      logger.info("VeniceServer " + serverName + " is started!");
+
+    }
   }
 
   @Override
   protected void internalStop() throws Exception {
-    veniceServer.shutdown();
+    if (!forkServer) {
+      veniceServer.shutdown();
+    } else {
+      serverProcess.destroy();
+    }
   }
 
   @Override
   protected void newProcess() throws Exception {
-    this.veniceServer = new TestVeniceServer(config, new MetricsRepository(), sslFactory, Optional.empty(),
-        consumerClientConfig);
+    if (!forkServer) {
+      this.veniceServer =
+          new TestVeniceServer(config, new MetricsRepository(), sslFactory, Optional.empty(), consumerClientConfig);
+    } else {
+      //nothing to be done in forked mode.
+    }
   }
 
   public TestVeniceServer getVeniceServer() {
-    return veniceServer;
+    if (!forkServer) {
+      return veniceServer;
+    } else {
+      throw new VeniceException("getVeniceServer is not supported in forked Mode");
+    }
   }
 
   @Override
   public MetricsRepository getMetricsRepository() {
-    return veniceServer.getMetricsRepository();
+    if (!forkServer) {
+      return veniceServer.getMetricsRepository();
+    } else {
+      throw new VeniceException("getMetricsRepository is not supported in forked Mode");
+    }
+  }
+
+  public static void main(String args[]) throws Exception {
+    //parse the inputs
+    logger.info("VeniceServer args: " + Arrays.toString(args));
+    Options options = new Options();
+    options.addOption(new Option("cn", "clusterName", true, "cluster name"));
+    options.addOption(new Option("lp", "listenPort", true, "listening port for server"));
+    options.addOption(new Option("scp", "serverConfigPath", true, "path to server config file"));
+    options.addOption(new Option("ss", "ssl", false, "is secured"));
+    options.addOption(new Option("esw", "enableServerWhitelist", false, "white listing enabled for the server"));
+    options.addOption(new Option("iaj", "isAutoJoin", false, "automatically join the venice cluster"));
+    options.addOption(new Option("vu", "veniceUrl", true, "ZK url for venice d2 service"));
+    options.addOption(new Option("dsn", "d2ServiceName", true, "d2 service name"));
+    CommandLineParser parser = new DefaultParser();
+    CommandLine cmd = parser.parse(options, args);
+
+    String clusterName = cmd.getOptionValue("cn");
+    int listenPort = Integer.valueOf(cmd.getOptionValue("lp"));
+    boolean ssl = false;
+    String serverConfigPath = cmd.getOptionValue("scp");
+    if (cmd.hasOption("ss")) {
+      ssl = true;
+    }
+    boolean enableServerWhitelist = false;
+    if (cmd.hasOption("esw")) {
+      enableServerWhitelist = true;
+    }
+    boolean isAutoJoin = false;
+    if (cmd.hasOption("iaj")) {
+      isAutoJoin = true;
+    }
+    Optional<ClientConfig> consumerClientConfig = Optional.empty();
+    if (cmd.hasOption("vu") && cmd.hasOption("dsn"))  {
+      String veniceUrl = cmd.getOptionValue("vu");
+      String d2ServiceName = cmd.getOptionValue("dsn");
+      consumerClientConfig = Optional.of(new ClientConfig().setVeniceURL(veniceUrl)
+          .setD2ServiceName(D2TestUtils.getD2ServiceName(d2ServiceName, clusterName))
+          .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+    }
+
+    VeniceConfigLoader veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(serverConfigPath);
+    if (enableServerWhitelist && isAutoJoin) {
+      joinClusterWhitelist(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(), clusterName,
+          listenPort);
+    }
+
+    Optional<SSLEngineComponentFactory> sslFactory = Optional.empty();
+    if (ssl){
+      sslFactory = Optional.of(SslUtils.getLocalSslFactory());
+    }
+
+    TestVeniceServer server = new TestVeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory,
+        Optional.empty(), consumerClientConfig);
+
+    if (!server.isStarted()) {
+      server.start();
+    }
+    TestUtils.waitForNonDeterministicCompletion(
+        IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
+        TimeUnit.MILLISECONDS,
+        () -> server.isStarted());
+
+    addShutdownHook(server);
+  }
+
+  private static void addShutdownHook(VeniceServer server) {
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        logger.info("shutting down server");
+        server.shutdown();
+    }));
+
+    try {
+      Thread.currentThread().join();
+    } catch (InterruptedException e) {
+      logger.error("Unable to join thread in shutdown hook. ", e);
+    }
   }
 }

@@ -112,7 +112,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
             1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)),
             Optional.of(controllerProps), Optional.of(new VeniceProperties(serverProperties)), false,
-            MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+            MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST, false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 

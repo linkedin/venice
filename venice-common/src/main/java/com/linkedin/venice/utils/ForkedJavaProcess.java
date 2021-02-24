@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
+import java.util.Optional;
 import nonapi.io.github.classgraph.utils.JarUtils;
 
 import org.apache.commons.io.IOUtils;
@@ -65,11 +66,12 @@ public final class ForkedJavaProcess extends Process {
   private final AtomicBoolean isDestroyed = new AtomicBoolean();
 
   public static ForkedJavaProcess exec(Class appClass, String... args) throws IOException {
-    return exec(appClass, Arrays.asList(args), Collections.emptyList());
+    return exec(appClass, Arrays.asList(args), Collections.emptyList(), Optional.empty());
   }
 
-  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs) throws IOException {
-    LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs);
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName) throws IOException {
+    LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs +
+        " extraLoggerName: " + (extraLoggerName.isPresent() ? extraLoggerName.get() : ""));
 
     List<String> command = new ArrayList<>();
     command.add(JAVA_PATH);
@@ -89,7 +91,7 @@ public final class ForkedJavaProcess extends Process {
     command.addAll(args);
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    Logger logger = Logger.getLogger(appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + (DEBUG ? ", debugPort=" + debugPort : ""));
+    Logger logger = Logger.getLogger((extraLoggerName.isPresent() ? extraLoggerName.get() + ", " : "") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + (DEBUG ? ", debugPort=" + debugPort : ""));
     return new ForkedJavaProcess(process, logger);
   }
 
