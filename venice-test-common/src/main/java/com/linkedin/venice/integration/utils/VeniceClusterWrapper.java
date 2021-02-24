@@ -13,9 +13,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -26,6 +28,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
+import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -95,6 +98,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   // Controller discovery URLs are controllers that's created outside of this cluster wrapper but are overseeing the
   // cluster. e.g. controllers in a multi cluster wrapper.
   private String externalControllerDiscoveryURL = "";
+
+  private static final List<AvroProtocolDefinition> CLUSTER_LEADER_INITIALIZATION_ROUTINES = Arrays.asList(
+      AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+      AvroProtocolDefinition.PARTITION_STATE,
+      AvroProtocolDefinition.STORE_VERSION_STATE,
+      AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE
+  );
 
   VeniceClusterWrapper(
       String clusterName,
@@ -201,21 +211,38 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * complexity of O(N^2) on the amount of retries. The calls have their own retries,
        * so we can assume they're reliable enough.
        */
-      return (serviceName) -> new VeniceClusterWrapper(
-          clusterName,
-          standalone,
-          zkServerWrapper,
-          kafkaBrokerWrapper,
-          brooklinWrapper,
-          veniceControllerWrappers,
-          veniceServerWrappers,
-          veniceRouterWrappers,
-          replicationFactor,
-          partitionSize,
-          rebalanceDelayMs,
-          minActiveReplica,
-          sslToStorageNodes,
-          sslToKafka);
+      return (serviceName) -> {
+        VeniceClusterWrapper veniceClusterWrapper = new VeniceClusterWrapper(clusterName, standalone, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
+            veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicationFactor, partitionSize,
+            rebalanceDelayMs, minActiveReplica, sslToStorageNodes, sslToKafka);
+        // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
+        // VeniceClusterWrapper to tests.
+        if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
+          for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
+            TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+              Store store;
+              if (avroProtocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
+                // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the default
+                // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
+                // HelixReadOnlyStoreRepositoryAdapter.
+                store = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin()
+                    .getReadOnlyZKSharedSystemStoreRepository().getStore(avroProtocolDefinition.getSystemStoreName());
+              } else {
+                store = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin().getStore(clusterName,
+                    avroProtocolDefinition.getSystemStoreName());
+              }
+              if (store == null) {
+                return false;
+              }
+              if (avroProtocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
+                return store.isHybrid();
+              }
+              return true;
+            });
+          }
+        }
+        return veniceClusterWrapper;
+      };
 
     } catch (Exception e) {
       veniceRouterWrappers.values().forEach(IOUtils::closeQuietly);

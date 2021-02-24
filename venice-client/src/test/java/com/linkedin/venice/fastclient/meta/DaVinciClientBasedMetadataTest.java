@@ -62,7 +62,6 @@ public class DaVinciClientBasedMetadataTest {
     storeName = veniceCluster.createStore(KEY_COUNT);
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils.waitForSystemStoreCreation(10, TimeUnit.SECONDS, VeniceSystemStoreType.META_STORE, controllerClient);
       VersionCreationResponse metaSystemStoreVersionCreationResponse = controllerClient.emptyPush(metaSystemStoreName,
           "test_bootstrap_meta_system_store", 10000);
       assertFalse(metaSystemStoreVersionCreationResponse.isError(),
