@@ -8,6 +8,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.mirrormaker.IdentityNewConsumerRebalanceListener;
 import com.linkedin.mirrormaker.IdentityPartitioningMessageHandler;
 
+import java.util.Optional;
 import kafka.tools.MirrorMaker;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -123,7 +124,8 @@ public class MirrorMakerWrapper extends ProcessWrapper {
             "--consumer.rebalance.listener", IdentityNewConsumerRebalanceListener.class.getName(),
             "--rebalance.listener.args", IdentityNewConsumerRebalanceListener.getConfigString(consumerConfigPath, producerConfigPath)
         ),
-        Arrays.asList("-Xms64m", "-Xmx128m")
+        Arrays.asList("-Xms64m", "-Xmx128m"),
+        Optional.empty()
     );
 
     // It's tricky to find a good timeout here... if it's too small it'll never detect any start up failure,

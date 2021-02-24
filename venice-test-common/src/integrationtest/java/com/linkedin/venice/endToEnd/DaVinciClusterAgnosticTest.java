@@ -71,9 +71,9 @@ public class DaVinciClusterAgnosticTest {
     testProperties.put(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
         .setD2Client(d2Client));
-    multiClusterVenice = ServiceFactory.getVeniceMultiClusterWrapper(
+    multiClusterVenice = ServiceFactory.getVeniceMultiClusterWrapper("",
         2, 1, 3, 1, 3, true, false, true, Optional.of(testProperties),
-        Optional.of(new VeniceProperties(testProperties)));
+        Optional.of(new VeniceProperties(testProperties)), false);
     clusterNames = multiClusterVenice.getClusterNames();
     Collection<VeniceControllerWrapper> childControllers = multiClusterVenice.getControllers().values();
     // The parent controller is required for participant store setup and writing StoreAttributes and TargetVersionStates

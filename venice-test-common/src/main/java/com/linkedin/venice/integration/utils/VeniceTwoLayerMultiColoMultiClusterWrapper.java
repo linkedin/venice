@@ -41,13 +41,14 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
       Optional<VeniceProperties> serverProperties) {
     return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers, numberOfServers,
-        numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(), serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+        numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(), serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST, false);
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
       int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProperties, boolean multiD2, String whitelistConfigForKMM) {
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProperties, boolean multiD2, String whitelistConfigForKMM,
+      boolean forkServer) {
 
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
@@ -74,9 +75,10 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
       // Create multiclusters
       for (int i = 0; i < numberOfColos; i++) {
+        String coloName = "dc-" + i;
         VeniceMultiClusterWrapper multiClusterWrapper =
-            ServiceFactory.getVeniceMultiClusterWrapper(numberOfClustersInEachColo, numberOfControllers, numberOfServers,
-                numberOfRouters, replicationFactor, false, true, multiD2, childControllerProperties, serverProperties);
+            ServiceFactory.getVeniceMultiClusterWrapper(coloName, numberOfClustersInEachColo, numberOfControllers, numberOfServers,
+                numberOfRouters, replicationFactor, false, true, multiD2, childControllerProperties, serverProperties, forkServer);
         multiClusters.add(multiClusterWrapper);
       }
 

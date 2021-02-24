@@ -42,10 +42,12 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   }
 
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(
+      String coloName,
       int numberOfClusters, int numberOfControllers, int numberOfServers, int numberOfRouters, int replicationFactor,
       int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist, long rebalanceDelayMs,
       int minActiveReplica, boolean sslToStorageNodes, boolean randomizeClusterName, boolean multiColoSetup,
-      Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean multiD2) {
+      Optional<Properties> childControllerProperties, Optional<VeniceProperties> veniceProperties, boolean multiD2,
+      boolean forkServer) {
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
     BrooklinWrapper brooklinWrapper = null;
@@ -96,9 +98,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       for (int i = 0; i < numberOfClusters; i++) {
         // Create a wrapper for cluster without controller.
         VeniceClusterWrapper clusterWrapper =
-            ServiceFactory.getVeniceClusterWrapperForMultiCluster(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
+            ServiceFactory.getVeniceClusterWrapperForMultiCluster(coloName, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
                 clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableWhitelist,
-                enableAutoJoinWhitelist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties);
+                enableAutoJoinWhitelist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties, forkServer);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
         clusterWrapper.setExternalControllerDiscoveryURL(controllerMap.values().stream()
             .map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(",")));
