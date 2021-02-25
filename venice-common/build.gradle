@@ -2,16 +2,26 @@ apply plugin: 'java-library'
 
 buildscript {
   repositories {
+    ivy {  //TODO: remove this before opensourcing
+      url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
+      patternLayout {
+        ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
+        artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
+        m2compatible = true
+      }
+    }
+    mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
     maven {
-      url "https://plugins.gradle.org/m2/"
+      url 'https://dl.bintray.com/linkedin/maven/'
     }
   }
+
   dependencies {
-    classpath "com.github.jengelman.gradle.plugins:shadow:5.0.0"
+    classpath 'com.github.jengelman.gradle.plugins:shadow:5.2.0'
   }
 }
 
-apply plugin: "com.github.johnrengelman.shadow"
+apply plugin: 'com.github.johnrengelman.shadow'
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
@@ -23,7 +33,7 @@ task buildJar(type: Jar) {
   }
   baseName = project.name
   from { configurations.compile
-          .filter {!it.absolutePath.endsWith(".xml")}
+          .filter {!it.absolutePath.endsWith('.xml')}
           .collect { it.isDirectory() ? it : zipTree(it) }
   }
   exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA' // Necessary, otherwise Bouncy Castle introduces DSA files that mess with our build
@@ -96,31 +106,30 @@ shadowJar {
   zip64 true
   classifier = null
   dependencies {
-    exclude("**/org/**")
-    exclude("**/avro/**")
-    exclude("**/clojure/**")
-    exclude("**/io/**")
-    exclude("**/it/unimi/dsi/**")
-    exclude("**/jersey/**")
-    exclude("**/javax/**")
-    exclude("**/mx4j/**")
-    exclude("**/oracle/**")
-    exclude("**/com/linkedin/avro/**")
-    exclude("**/com/linkedin/container/**")
-    exclude("**/com/linkedin/d2/**")
-    exclude("**/com/linkedin/r2/**")
-    exclude("**/com/linkedin/mario/**")
-    exclude("**/com/linkedin/events/**")
-    exclude("**/com/linkedin/data/**")
-    exclude("**/com/linkedin/messages/**")
-    exclude("**/com/linkedin/parseq/**")
-    exclude("**/com/fasterxml/jackson/**")
-    exclude("**/com/google/**")
-    exclude("**/com/linkedin/security/**")
-    exclude("**/com/linkedin/common/**")
-    exclude("**/com/linkedin/restli/**")
-    exclude("**/com/linkedin/util/**")
+    exclude('**/org/**')
+    exclude('**/avro/**')
+    exclude('**/clojure/**')
+    exclude('**/io/**')
+    exclude('**/it/unimi/dsi/**')
+    exclude('**/jersey/**')
+    exclude('**/javax/**')
+    exclude('**/mx4j/**')
+    exclude('**/oracle/**')
+    exclude('**/com/linkedin/avro/**')
+    exclude('**/com/linkedin/container/**')
+    exclude('**/com/linkedin/d2/**')
+    exclude('**/com/linkedin/r2/**')
+    exclude('**/com/linkedin/mario/**')
+    exclude('**/com/linkedin/events/**')
+    exclude('**/com/linkedin/data/**')
+    exclude('**/com/linkedin/messages/**')
+    exclude('**/com/linkedin/parseq/**')
+    exclude('**/com/fasterxml/jackson/**')
+    exclude('**/com/google/**')
+    exclude('**/com/linkedin/security/**')
+    exclude('**/com/linkedin/common/**')
+    exclude('**/com/linkedin/restli/**')
+    exclude('**/com/linkedin/util/**')
   }
   relocate('com.linkedin.kafka.clients', 'shaded.com.linkedin.kafka.clients')
 }
-
