@@ -1,16 +1,15 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.datastream.kafka.factory.KafkaConsumerFactoryImpl;
+import com.linkedin.datastream.server.DatastreamServerConfigurationConstants;
 import com.linkedin.venice.utils.Utils;
 
 import com.linkedin.datastream.DatastreamRestClient;
-import com.linkedin.datastream.common.DatastreamException;
 import com.linkedin.datastream.connectors.kafka.KafkaConnectorFactory;
-import com.linkedin.datastream.connectors.kafka.KafkaConsumerFactoryImpl;
 import com.linkedin.datastream.kafka.KafkaCluster;
 import com.linkedin.datastream.kafka.KafkaTransportProviderAdmin;
 import com.linkedin.datastream.kafka.KafkaTransportProviderAdminFactory;
 import com.linkedin.datastream.server.CoordinatorConfig;
-import com.linkedin.datastream.server.DatastreamServer;
 import com.linkedin.datastream.server.EmbeddedDatastreamCluster;
 import com.linkedin.datastream.server.assignment.BroadcastStrategyFactory;
 
@@ -93,8 +92,6 @@ public class BrooklinWrapper extends ProcessWrapper {
       brooklin = EmbeddedDatastreamCluster.newTestDatastreamCluster(brooklinKafkaCluster, connectorProperties, overrides);
     } catch (IOException e) {
       throw new RuntimeException("IO Exception when creating embedded brooklin", e);
-    } catch (DatastreamException e) {
-      throw new RuntimeException("DatastreamException when creating embedded brooklin", e);
     }
   }
 
@@ -154,14 +151,14 @@ public class BrooklinWrapper extends ProcessWrapper {
     Properties overrideProperties = new Properties();
 
     overrideProperties.put(CoordinatorConfig.CONFIG_DEFAULT_TRANSPORT_PROVIDER, TRANSPORT_PROVIDER_NAME);
-    overrideProperties.put(DatastreamServer.CONFIG_TRANSPORT_PROVIDER_NAMES, TRANSPORT_PROVIDER_NAME);
-    String tpPrefix = DatastreamServer.CONFIG_TRANSPORT_PROVIDER_PREFIX + TRANSPORT_PROVIDER_NAME + ".";
-    overrideProperties.put(tpPrefix + DatastreamServer.CONFIG_FACTORY_CLASS_NAME,
+    overrideProperties.put(DatastreamServerConfigurationConstants.CONFIG_TRANSPORT_PROVIDER_NAMES, TRANSPORT_PROVIDER_NAME);
+    String tpPrefix = DatastreamServerConfigurationConstants.CONFIG_TRANSPORT_PROVIDER_PREFIX + TRANSPORT_PROVIDER_NAME + ".";
+    overrideProperties.put(tpPrefix + DatastreamServerConfigurationConstants.CONFIG_FACTORY_CLASS_NAME,
         KafkaTransportProviderAdminFactory.class.getName());
 
     overrideProperties.put(tpPrefix + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brooklinKafkaCluster.getBrokers());
     overrideProperties.put(tpPrefix + ProducerConfig.CLIENT_ID_CONFIG, "testProducerClientId");
-    overrideProperties.put(tpPrefix + KafkaTransportProviderAdmin.CONFIG_ZK_CONNECT,
+    overrideProperties.put(tpPrefix + KafkaTransportProviderAdmin.ZK_CONNECT_STRING_CONFIG,
         brooklinKafkaCluster.getZkConnection());
 
     return overrideProperties;

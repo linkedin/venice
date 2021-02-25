@@ -134,7 +134,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
 
       this.client = DatastreamRestClientFactory.getClient(canonicalUri);
     } else {
-      this.client = DatastreamRestClientFactory.getClient(brooklinConnectionString, (Map<String, String>) (Object) httpConfig);
+      this.client = DatastreamRestClientFactory.getClient(brooklinConnectionString, httpConfig);
     }
   }
 
