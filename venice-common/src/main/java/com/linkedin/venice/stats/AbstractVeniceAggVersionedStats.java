@@ -62,19 +62,15 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   private VeniceVersionedStats<STATS, STATS_REPORTER> getVersionedStats(String storeName) {
-    return aggStats.computeIfAbsent(storeName, name -> {
-      /**
-       * Add stats for the store into aggStats map
-       */
-      addStore(name);
-      Store store = metadataRepository.getStore(name);
+    if (!aggStats.containsKey(storeName)) {
+      addStore(storeName);
+      Store store = metadataRepository.getStore(storeName);
       if (null == store) {
-        throw new VeniceException("Unknown store: " + name);
+        throw new VeniceException("Unknown store: " + storeName);
       }
       updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
-
-      return aggStats.get(name);
-    });
+    }
+    return aggStats.get(storeName);
   }
 
   private synchronized void addStore(String storeName) {
