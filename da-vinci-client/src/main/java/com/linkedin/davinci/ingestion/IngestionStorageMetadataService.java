@@ -197,6 +197,7 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
           }
           Thread.sleep(checkUpdateQueueInterval);
         } catch (InterruptedException ie) {
+          Thread.currentThread().interrupt();
           break;
         } catch (Throwable e) {
           logger.error("Unexpected throwable while running " + getClass().getSimpleName(), e);

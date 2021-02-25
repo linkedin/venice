@@ -127,7 +127,19 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
     try {
       ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
     } catch (Exception e) {
-      throw new VeniceException("Encounter exception during closeTopicStorage of topic: " + topicName, e);
+      throw new VeniceException("Encounter exception during removeStorageEngine of topic: " + topicName, e);
+    }
+  }
+
+  public void openStorageEngine(String topicName) {
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.OPEN_STORAGE_ENGINE.getValue();
+    ingestionTaskCommand.topicName = topicName;
+    logger.info("Sending OPEN_STORAGE_ENGINE request to child process: "  + ingestionTaskCommand);
+    try {
+      ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+    } catch (Exception e) {
+      throw new VeniceException("Encounter exception during openStorageEngine of topic: " + topicName, e);
     }
   }
 
@@ -140,15 +152,15 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
     try {
       ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
     } catch (Exception e) {
-      throw new VeniceException("Encounter exception during closeTopicStorage of topic: " + topicName, e);
+      throw new VeniceException("Encounter exception during unsubscribeTopicPartition of topic: " + topicName, e);
     }
   }
 
   public boolean updateMetadata(IngestionStorageMetadata ingestionStorageMetadata) {
     try {
       logger.info("Sending UPDATE_METADATA request to child process: "  + ingestionStorageMetadata);
-      ingestionRequestTransport.sendRequest(IngestionAction.UPDATE_METADATA, ingestionStorageMetadata);
-      return true;
+      IngestionTaskReport report = ingestionRequestTransport.sendRequest(IngestionAction.UPDATE_METADATA, ingestionStorageMetadata);
+      return report.isPositive;
     } catch (Exception e) {
       /**
        * We only log the exception when failing to persist metadata updates into child process.

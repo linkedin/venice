@@ -27,7 +27,8 @@ import static java.lang.Thread.*;
 
 
 /**
- * IngestionReportListener is the listener server that handles IngestionTaskReport sent from child process.
+ * IngestionReportListener is the listener server that handles {@link com.linkedin.venice.ingestion.protocol.IngestionTaskReport}
+ * and {@link com.linkedin.venice.ingestion.protocol.IngestionMetricsReport} sent from child process.
  */
 public class IngestionReportListener extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(IngestionReportListener.class);
@@ -40,8 +41,7 @@ public class IngestionReportListener extends AbstractVeniceService {
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
   private final IngestionRequestClient metricsClient;
   private final IngestionRequestClient heartbeatClient;
-  private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
-
+  private final Map<String, Set<Integer>> ingestionTopicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository;
@@ -146,18 +146,23 @@ public class IngestionReportListener extends AbstractVeniceService {
   }
 
   public void removeVersionPartitionFromIngestionMap(String topicName, int partitionId) {
-    topicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
+    ingestionTopicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
       val.remove(partitionId);
       return val;
     });
   }
 
   public void addVersionPartitionToIngestionMap(String topicName, int partitionId) {
-    topicNameToPartitionSetMap.putIfAbsent(topicName, new HashSet<>());
-    topicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
+    ingestionTopicNameToPartitionSetMap.putIfAbsent(topicName, new HashSet<>());
+    ingestionTopicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
       val.add(partitionId);
       return val;
     });
+  }
+
+  // Remove the topic entry in the subscription topic partition map.
+  public void removedSubscribedTopicName(String topicName) {
+    ingestionTopicNameToPartitionSetMap.remove(topicName);
   }
 
   private void setupMetricsCollection() {
@@ -176,7 +181,9 @@ public class IngestionReportListener extends AbstractVeniceService {
       client.startForkedIngestionProcess(configLoader);
       // Reset heartbeat time.
       heartbeatTime = -1;
-      topicNameToPartitionSetMap.forEach((topicName, partitionSet) -> {
+      // All previously subscribed topics are stored in the keySet of this topic partition map.
+      ingestionTopicNameToPartitionSetMap.keySet().forEach(client::openStorageEngine);
+      ingestionTopicNameToPartitionSetMap.forEach((topicName, partitionSet) -> {
         partitionSet.forEach(partitionId -> {
           client.startConsumption(topicName, partitionId);
         });

@@ -164,7 +164,7 @@ public class StorageService extends AbstractVeniceService {
    * @param storeConfig   The store specific properties
    * @return StorageEngine that was created for the given store definition.
    */
-  private synchronized AbstractStorageEngine openStore(VeniceStoreConfig storeConfig) {
+  public synchronized AbstractStorageEngine openStore(VeniceStoreConfig storeConfig) {
     String storeName = storeConfig.getStoreName();
     AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(storeName);
     if (engine != null) {
