@@ -471,6 +471,11 @@ public class ConfigKeys {
    * and will take {@link io.tehuti.metrics.MetricsRepository} as the only parameter in their constructor.
    */
   public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST = "server.ingestion.isolation.stats.class.list";
+
+  /**
+   * A list of JVM arguments for forked child process, separated by comma.
+   */
+  public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
   /**
    * Whether to enable storage engine to restore existing data partitions during creation.
    */
