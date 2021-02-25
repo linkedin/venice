@@ -549,7 +549,11 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       //Deleting ACL needs to be the last step in store deletion process.
-      cleanUpAclsForStore(storeName);
+      if (!store.isMigrating()) {
+        cleanUpAclsForStore(storeName);
+      } else {
+        logger.info("Store " + storeName + " is migrating! Skipping acl deletion!");
+      }
     } finally {
       releaseLock(clusterName);
     }
@@ -2562,8 +2566,12 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported yet!");
       }
-      veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
-      cleanUpAclsForStore(storeName);
+      Store store = veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
+      if (!store.isMigrating()) {
+        cleanUpAclsForStore(storeName);
+      } else {
+        logger.info("Store " + storeName + " is migrating! Skipping acl deletion!");
+      }
     } finally {
       releaseLock(clusterName);
     }
