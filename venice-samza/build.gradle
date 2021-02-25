@@ -1,29 +1,7 @@
-apply plugin: 'java-library'
-
-buildscript {
-  repositories {
-    ivy {  //TODO: remove this before opensourcing
-      url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
-      patternLayout {
-        ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
-        artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
-        m2compatible = true
-      }
-    }
-    mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
-    maven {
-      url 'https://dl.bintray.com/linkedin/maven/'
-    }
-  }
-
-  dependencies {
-    classpath 'com.github.jengelman.gradle.plugins:shadow:5.2.0'
-  }
+plugins {
+  id 'java-library'
+  id 'com.github.johnrengelman.shadow' version '5.2.0'
 }
-
-apply plugin: 'com.github.johnrengelman.shadow'
-
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 task buildJar(type: Jar) {
   manifest {
