@@ -10,6 +10,7 @@ import com.linkedin.davinci.client.NonLocalAccessException;
 import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.ingestion.IngestionRequestClient;
 import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -20,12 +21,16 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
@@ -41,6 +46,7 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -69,7 +75,6 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
 import static org.testng.Assert.*;
-
 
 public class DaVinciClientTest {
   private static final int KEY_COUNT = 10;
@@ -224,6 +229,7 @@ public class DaVinciClientTest {
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
+        .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(10))
         .build();
 
     try (
@@ -249,6 +255,18 @@ public class DaVinciClientTest {
         int result = client.get(i).get();
         assertEquals(result, pushVersion);
       }
+
+      // Kill the ingestion process again.
+      IngestionUtils.releaseTargetPortBinding(servicePort);
+      IngestionStorageMetadata dummyOffsetMetadata = new IngestionStorageMetadata();
+      dummyOffsetMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_OFFSET_RECORD.getValue();
+      dummyOffsetMetadata.topicName = Version.composeKafkaTopic(storeName, 1);
+      dummyOffsetMetadata.partitionId = 0;
+      dummyOffsetMetadata.payload = ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
+      IngestionRequestClient requestClient = new IngestionRequestClient(servicePort);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        assertTrue(requestClient.updateMetadata(dummyOffsetMetadata));
+      });
       client.unsubscribeAll();
     }
   }

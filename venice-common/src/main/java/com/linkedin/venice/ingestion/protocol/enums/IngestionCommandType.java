@@ -15,7 +15,8 @@ public enum IngestionCommandType {
   RESET_CONSUMPTION(3),
   IS_PARTITION_CONSUMING(4),
   REMOVE_STORAGE_ENGINE(5),
-  REMOVE_PARTITION(6);
+  REMOVE_PARTITION(6),
+  OPEN_STORAGE_ENGINE(7);
 
   private final int value;
   private static final Map<Integer, IngestionCommandType> INGESTION_COMMAND_TYPE_MAP = getIngestionCommandTypeMap();

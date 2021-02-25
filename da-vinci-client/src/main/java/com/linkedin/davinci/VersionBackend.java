@@ -102,6 +102,7 @@ public class VersionBackend {
 
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       logger.info("Sending REMOVE_STORAGE_ENGINE request to child process to drop metadata for "  + this);
+      backend.getIngestionReportListener().removedSubscribedTopicName(version.kafkaTopicName());
       backend.getIngestionRequestClient().removeStorageEngine(version.kafkaTopicName());
     }
     backend.getStorageService().removeStorageEngine(version.kafkaTopicName());

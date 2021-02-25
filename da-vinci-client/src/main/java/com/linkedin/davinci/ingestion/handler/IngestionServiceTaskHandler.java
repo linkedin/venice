@@ -319,6 +319,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
   private IngestionTaskReport handleIngestionTaskCommand(IngestionTaskCommand ingestionTaskCommand) {
     String topicName = ingestionTaskCommand.topicName.toString();
     int partitionId = ingestionTaskCommand.partitionId;
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
 
     IngestionTaskReport report = new IngestionTaskReport();
     report.isPositive = true;
@@ -339,9 +340,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           if (!ingestionMode.equals(IngestionMode.ISOLATED)) {
             throw new VeniceException("Ingestion isolation is not enabled.");
           }
-          // Subscribe to the store in store repository.
-          String storeName = Version.parseStoreFromKafkaTopicName(topicName);
-          // Ingestion Service needs store repository to subscribe to the store.
           ingestionService.getStoreRepository().subscribe(storeName);
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
 
@@ -360,6 +358,13 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         case IS_PARTITION_CONSUMING:
           report.isPositive = storeIngestionService.isPartitionConsuming(storeConfig, partitionId);
           break;
+        case OPEN_STORAGE_ENGINE:
+          // Open metadata partition of the store engine.
+          storeConfig.setRestoreDataPartitions(false);
+          storeConfig.setRestoreMetadataPartition(true);
+          ingestionService.getStorageService().openStore(storeConfig);
+          logger.info("Metadata partition of topic: " + ingestionTaskCommand.topicName.toString() + " restored.");
+          break;
         case REMOVE_STORAGE_ENGINE:
           ingestionService.getStorageService().removeStorageEngine(ingestionTaskCommand.topicName.toString());
           logger.info("Remaining storage engines after dropping: " + ingestionService.getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().toString());
@@ -371,6 +376,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           }
           ingestionService.getStorageService().dropStorePartition(storeConfig, partitionId);
           logger.info("Partition: " + partitionId + " of topic: " + topicName + " has been removed.");
+          break;
         default:
           break;
       }
@@ -414,7 +420,13 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     report.partitionId = partitionId;
     try {
       if (!ingestionService.isInitiated()) {
-        throw new VeniceException("IngestionService has not been initiated.");
+        // Short circuit here when ingestion service is not initiated.
+        String errorMessage = "IngestionService has not been initiated.";
+        logger.error(errorMessage);
+        report.isPositive = false;
+        report.isError = true;
+        report.message = errorMessage;
+        return report;
       }
       switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
         case PUT_OFFSET_RECORD:
