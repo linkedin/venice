@@ -6,7 +6,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
-import com.sun.tools.javac.util.List;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -14,6 +13,7 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -161,7 +161,7 @@ public class TestVeniceResponseDecompressor {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(List.from(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
+    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(Arrays.asList(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
 
     Assert.assertEquals(routerResponse.status(), OK);
     Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.GZIP.getValue()));
@@ -196,7 +196,8 @@ public class TestVeniceResponseDecompressor {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(List.from(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
+    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(
+        Arrays.asList(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
 
     Assert.assertEquals(routerResponse.status(), NOT_FOUND);
     Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.GZIP.getValue()));
@@ -234,7 +235,7 @@ public class TestVeniceResponseDecompressor {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(List.from(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
+    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(Arrays.asList(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
 
     Assert.assertEquals(routerResponse.status(), OK);
     Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
@@ -272,7 +273,7 @@ public class TestVeniceResponseDecompressor {
     storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
     storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(List.from(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
+    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(Arrays.asList(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
 
     Assert.assertEquals(routerResponse.status(), NOT_FOUND);
     Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
