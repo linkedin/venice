@@ -1,5 +1,20 @@
 apply plugin: 'java-library'
 
+buildscript {
+  repositories {
+    maven {
+      url "https://plugins.gradle.org/m2/"
+    }
+  }
+  dependencies {
+    classpath "com.github.jengelman.gradle.plugins:shadow:5.0.0"
+  }
+}
+
+apply plugin: "com.github.johnrengelman.shadow"
+
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 dependencies {
   implementation (project(':venice-common')) {
     exclude module: 'kafka_2.10'
@@ -19,3 +34,36 @@ dependencies {
   testImplementation project(':venice-test-common')
   testImplementation libraries.kafkaClientsTest
 }
+
+shadowJar {
+  zip64 true
+  classifier = null
+  dependencies {
+    exclude("**/org/**")
+    exclude("**/avro/**")
+    exclude("**/clojure/**")
+    exclude("**/io/**")
+    exclude("**/it/unimi/dsi/**")
+    exclude("**/jersey/**")
+    exclude("**/javax/**")
+    exclude("**/mx4j/**")
+    exclude("**/oracle/**")
+    exclude("**/com/linkedin/avro/**")
+    exclude("**/com/linkedin/container/**")
+    exclude("**/com/linkedin/d2/**")
+    exclude("**/com/linkedin/r2/**")
+    exclude("**/com/linkedin/mario/**")
+    exclude("**/com/linkedin/events/**")
+    exclude("**/com/linkedin/data/**")
+    exclude("**/com/linkedin/messages/**")
+    exclude("**/com/linkedin/parseq/**")
+    exclude("**/com/fasterxml/jackson/**")
+    exclude("**/com/google/**")
+    exclude("**/com/linkedin/security/**")
+    exclude("**/com/linkedin/common/**")
+    exclude("**/com/linkedin/restli/**")
+    exclude("**/com/linkedin/util/**")
+  }
+  relocate('com.linkedin.kafka.clients', 'shaded.com.linkedin.kafka.clients')
+}
+
