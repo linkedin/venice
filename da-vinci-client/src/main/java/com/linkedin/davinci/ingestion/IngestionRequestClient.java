@@ -15,7 +15,11 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.IngestionUtils.*;
@@ -38,8 +42,19 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
     try {
       // Add blocking call to release target port binding.
       IngestionUtils.releaseTargetPortBinding(ingestionServicePort);
+      List<String> jvmArgs = new ArrayList<>();
+      for (String jvmArg : configLoader.getCombinedProperties().getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "").split(",")) {
+        if (jvmArg.length() != 0) {
+          jvmArgs.add(jvmArg);
+        }
+      }
       // Start forking child ingestion process.
-      Process isolatedIngestionService = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(ingestionServicePort));
+      Process isolatedIngestionService = ForkedJavaProcess.exec(
+          IngestionService.class,
+          Collections.singletonList(String.valueOf(ingestionServicePort)),
+          jvmArgs,
+          Optional.empty()
+      );
       // Wait for server in forked child process to bind the listening port.
       IngestionUtils.waitPortBinding(ingestionServicePort, 100);
       // Wait for server in forked child process to pass health check.

@@ -45,9 +45,12 @@ public final class ForkedJavaProcess extends Process {
   private static final boolean DEBUG = false;
   private static final String JAVA_PATH = Paths.get(System.getProperty("java.home"), "bin", "java").toString();
   private static final List<String> DEFAULT_JAVA_ARGS = new ArrayList() {{
+    // Inherit Java tmp folder setting from parent process.
     add("-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
     /*
-      Add log4j2 configuration file. This config will inherit the log4j2 config file from parent process and set up correct logging level.
+      Add log4j2 configuration file and JVM arguments.
+      This config will inherit the log4j2 config file from parent process and set up correct logging level and it will
+      inherit all JVM arguments from parent process. Users can provide JVM arguments to override these settings.
      */
     for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
       if (arg.startsWith("-Dlog4j2")) {
@@ -55,6 +58,9 @@ public final class ForkedJavaProcess extends Process {
       }
       if (arg.startsWith("-Dlog4j2.configuration=")) {
         add("-Dlog4j2.configurationFile=" + arg.split("=")[1]);
+      }
+      if (arg.startsWith("-X")) {
+        add(arg);
       }
     }
   }};
@@ -85,6 +91,7 @@ public final class ForkedJavaProcess extends Process {
     }
 
     command.addAll(DEFAULT_JAVA_ARGS);
+    // Add user provided customized JVM arguments for child process.
     command.addAll(jvmArgs);
 
     command.add(appClass.getCanonicalName());
