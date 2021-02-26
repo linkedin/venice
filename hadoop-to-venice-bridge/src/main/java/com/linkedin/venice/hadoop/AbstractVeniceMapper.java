@@ -72,16 +72,14 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
           compressor.getCompressionStrategy().name(), e);
     }
 
-    if (isMapperOnly) {
-      reducer.sendMessageToKafka(recordKey, recordValue, reporter);
-      return;
-    }
-
     if (reporter != null) {
       reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE, recordKey.length);
       reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_VALUE_SIZE, recordValue.length);
     }
-
+    if (isMapperOnly) {
+      reducer.sendMessageToKafka(recordKey, recordValue, reporter);
+      return;
+    }
     output.collect(new BytesWritable(recordKey), new BytesWritable(recordValue));
   }
 
