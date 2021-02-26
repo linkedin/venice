@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Optional;
@@ -118,6 +119,22 @@ public class TestHelixReadOnlyZKSharedSystemStoreRepository {
       assertThrows(() -> repo.isReadComputationEnabled(regularStoreName));
       assertFalse(repo.isReadComputationEnabled(systemStoreType.getZkSharedStoreName()));
       assertThrows(() -> repo.isReadComputationEnabled(unsupportedZKSharedStoreName));
+    });
+  }
+
+  @Test
+  public void testCanReadRepoSyncUpWithWriteRepo() {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertNotNull(repo.getStore(systemStoreType.getZkSharedStoreName()));
+      // The store should not be hybrid yet
+      assertFalse(repo.getStore(systemStoreType.getZkSharedStoreName()).isHybrid());
+    });
+    // Update the zkSharedStore in write repo and check to make sure read repo gets the updates.
+    Store zkSharedStore = writeRepo.getStore(systemStoreType.getZkSharedStoreName());
+    zkSharedStore.setHybridStoreConfig(new HybridStoreConfigImpl(3600, 1, 60));
+    writeRepo.updateStore(zkSharedStore);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertTrue(repo.getStore(systemStoreType.getZkSharedStoreName()).isHybrid());
     });
   }
 }

@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -51,6 +52,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
@@ -219,25 +221,23 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         // VeniceClusterWrapper to tests.
         if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
           for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
-            TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-              Store store;
+            TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+              Store store = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin().getStore(clusterName,
+                    avroProtocolDefinition.getSystemStoreName());
+              Assert.assertNotNull(store, "Store: " + avroProtocolDefinition.getSystemStoreName()
+                  + "should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
               if (avroProtocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
-                // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the default
+                // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the
                 // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
                 // HelixReadOnlyStoreRepositoryAdapter.
-                store = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin()
+                Store readOnlyStore = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin()
                     .getReadOnlyZKSharedSystemStoreRepository().getStore(avroProtocolDefinition.getSystemStoreName());
-              } else {
-                store = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin().getStore(clusterName,
-                    avroProtocolDefinition.getSystemStoreName());
+                Assert.assertNotNull(readOnlyStore, "Store: " + avroProtocolDefinition.getSystemStoreName()
+                    + "should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
+                Assert.assertTrue(readOnlyStore.isHybrid(), "Store: " + avroProtocolDefinition.getSystemStoreName()
+                    + " should be configured to hybrid by " + ClusterLeaderInitializationRoutine.class.getSimpleName()
+                    +  ". Store is hybrid in write repo: " + store.isHybrid());
               }
-              if (store == null) {
-                return false;
-              }
-              if (avroProtocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
-                return store.isHybrid();
-              }
-              return true;
             });
           }
         }
