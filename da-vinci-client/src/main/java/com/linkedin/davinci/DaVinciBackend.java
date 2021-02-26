@@ -8,6 +8,7 @@ import com.linkedin.davinci.ingestion.IngestionRequestClient;
 import com.linkedin.davinci.ingestion.IngestionStorageMetadataService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.notifier.RelayNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.NativeMetadataRepository;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -194,18 +195,13 @@ public class DaVinciBackend implements Closeable {
       isolatedIngestionService = ingestionRequestClient.startForkedIngestionProcess(configLoader);
 
       // Isolated ingestion listener handles status report from isolated ingestion service.
-      isolatedIngestionListener = new VeniceNotifier() {
+      isolatedIngestionListener = new RelayNotifier(ingestionListener) {
         @Override
         public void completed(String kafkaTopic, int partitionId, long offset, String message) {
           VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
           if (versionBackend != null) {
             versionBackend.completeSubPartitionSubscription(partitionId);
           }
-        }
-
-        @Override
-        public void error(String kafkaTopic, int partitionId, String message, Exception e) {
-          ingestionListener.error(kafkaTopic, partitionId, message, e);
         }
       };
 
