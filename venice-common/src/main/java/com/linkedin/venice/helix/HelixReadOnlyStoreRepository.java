@@ -60,6 +60,12 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
       Store oldStore = super.putStore(newStore);
       if (oldStore == null) {
         zkDataAccessor.subscribeDataChanges(getStoreZkPath(newStore.getName()), zkStoreListener);
+        // Refresh the store after subscription to prevent missed updates. Here is the exact scenario:
+        // 1. Put store in read repo.
+        // 2. Store updated in read write repo.
+        // 3. Subscribe to data change in read repo.
+        // Updates in step 2 will not be reflected until the next update.
+        refreshOneStore(newStore.getName());
       }
       return oldStore;
     } finally {
