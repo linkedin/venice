@@ -2,9 +2,6 @@ package com.linkedin.venice.benchmark;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.utils.Utils;
 
 import com.linkedin.davinci.client.DaVinciClient;
@@ -15,9 +12,9 @@ import org.apache.avro.generic.GenericRecord;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
-import org.openjdk.jmh.annotations.OperationsPerInvocation;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
@@ -34,22 +31,21 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.integration.utils.ServiceFactory.*;
 
 
-@Fork(value = 2, jvmArgs = {"-Xms4G", "-Xmx4G"})
-@Warmup(iterations = 10)
+@Fork(value = 1, warmups = 1, jvmArgs = {"-Xms4G", "-Xmx4G"})
+@Warmup(iterations = 5)
 @Measurement(iterations = 10)
-@State(Scope.Benchmark)
-@BenchmarkMode(Mode.AverageTime)
+@BenchmarkMode(Mode.SampleTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
+@State(Scope.Benchmark)
 public class DaVinciClientBenchmark {
-  protected static final int RECORD_COUNT = 100_000;
-  protected static final int KEY_COUNT = 1000_000;
-  protected static final String VALUE_FIELD_NAME = "value";
+  protected static final int KEY_COUNT = 100_000;
+  protected static final String VALUE_FIELD = "value";
 
   @Param({"DENSE_VECTOR"})
   protected String valueType;
@@ -59,14 +55,13 @@ public class DaVinciClientBenchmark {
 
   protected VeniceClusterWrapper cluster;
   protected DaVinciClient<Integer, GenericRecord> client;
-  protected int[] keys = new int[KEY_COUNT];
 
   public static void main(String[] args) throws Exception {
-    Options opt = new OptionsBuilder()
+    Options options = new OptionsBuilder()
                       .include(DaVinciClientBenchmark.class.getSimpleName())
                       .addProfiler(GCProfiler.class)
                       .build();
-    new Runner(opt).run();
+    new Runner(options).run();
   }
 
   @Setup
@@ -84,17 +79,12 @@ public class DaVinciClientBenchmark {
     }
 
     client = getGenericAvroDaVinciClient(storeName, cluster);
-    client.subscribeAll().get(60, TimeUnit.SECONDS);
+    client.subscribeAll().get(5, TimeUnit.MINUTES);
 
     // Close as much as possible of the stuff we don't need, to minimize interference.
-    cluster.getVeniceServers().forEach(VeniceServerWrapper::close);
-    cluster.getVeniceRouters().forEach(VeniceRouterWrapper::close);
-    cluster.getVeniceControllers().forEach(VeniceControllerWrapper::close);
-
-    Random random = new Random(11);
-    for (int i = 0; i < KEY_COUNT; ++i) {
-      keys[i] = random.nextInt(RECORD_COUNT);
-    }
+    cluster.getVeniceRouters().forEach(service -> cluster.removeVeniceRouter(service.getPort()));
+    cluster.getVeniceServers().forEach(service -> cluster.removeVeniceServer(service.getPort()));
+    cluster.getVeniceControllers().forEach(service -> cluster.removeVeniceController(service.getPort()));
   }
 
   @TearDown
@@ -103,26 +93,32 @@ public class DaVinciClientBenchmark {
     cluster.close();
   }
 
+  @State(Scope.Thread)
+  public static class ThreadContext {
+    public int key;
+    public GenericRecord record;
+
+    @Setup(Level.Invocation)
+    public void setup() {
+      key = ThreadLocalRandom.current().nextInt(KEY_COUNT);
+    }
+  }
+
   @Benchmark
   @Threads(1)
-  @OperationsPerInvocation(KEY_COUNT)
-  public void testSingleGetHitT1(Blackhole blackhole) throws Exception {
-    runSingleGetHitWorkload(blackhole);
+  public void singleGetHitT1(ThreadContext context, Blackhole blackhole) throws Exception {
+    singleGetHit(context, blackhole);
   }
 
   @Benchmark
   @Threads(8)
-  @OperationsPerInvocation(KEY_COUNT)
-  public void testSingleGetHitT8(Blackhole blackhole) throws Exception {
-    runSingleGetHitWorkload(blackhole);
+  public void singleGetHitT8(ThreadContext context, Blackhole blackhole) throws Exception {
+    singleGetHit(context, blackhole);
   }
 
-  protected void runSingleGetHitWorkload(Blackhole blackhole) throws Exception {
-    GenericRecord record = null;
-    for (int i = 0; i < KEY_COUNT; ++i) {
-      record = client.get(keys[i], record).get();
-      blackhole.consume(record);
-    }
+  protected void singleGetHit(ThreadContext context, Blackhole blackhole) throws Exception {
+    context.record = client.get(context.key, context.record).get();
+    blackhole.consume(context.record);
   }
 
   protected String buildDenseVectorStore(VeniceClusterWrapper cluster) throws Exception {
@@ -138,12 +134,11 @@ public class DaVinciClientBenchmark {
     GenericRecord record = new GenericData.Record(schema);
     List<Float> values = new ArrayList<>();
     for (int i = 0; i < valueLength; i++) {
-      values.add(1.0f * i);
+      values.add((float) i);
     }
-    record.put(VALUE_FIELD_NAME, values);
-    return cluster.createStore(RECORD_COUNT, record);
+    record.put(VALUE_FIELD, values);
+    return cluster.createStore(KEY_COUNT, record);
   }
-
 
   protected String buildSparseVectorStore(VeniceClusterWrapper cluster) throws Exception {
     Schema schema = Schema.parse(
@@ -161,10 +156,10 @@ public class DaVinciClientBenchmark {
     List<Float> values = new ArrayList<>();
     for (int i = 0; i < valueLength; i++) {
       indices.add(i);
-      values.add(1.0f * i);
+      values.add((float) i);
     }
     record.put("index", indices);
-    record.put(VALUE_FIELD_NAME, values);
-    return cluster.createStore(RECORD_COUNT, record);
+    record.put(VALUE_FIELD, values);
+    return cluster.createStore(KEY_COUNT, record);
   }
 }

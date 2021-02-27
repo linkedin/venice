@@ -1,7 +1,7 @@
 import io.netifi.flatbuffers.plugin.tasks.FlatBuffers
 
 plugins {
-  id "io.netifi.flatbuffers" version "1.0.6"
+  id 'io.netifi.flatbuffers' version '1.0.6'
 }
 
 task createFlatBuffers(type: FlatBuffers) {
@@ -48,6 +48,7 @@ sourceSets {
     compileClasspath += main.output
     runtimeClasspath += main.output
   }
+
   jmh {
     java.srcDirs = ['src/jmh/java']
     compileClasspath += main.output
@@ -58,8 +59,7 @@ sourceSets {
 configurations {
   integrationTestCompile.extendsFrom testImplementation
   integrationTestRuntime.extendsFrom testRuntime
-  jmhCompile.extendsFrom testImplementation
-  jmhRuntime.extendsFrom testRuntime
+  jmhImplementation.extendsFrom testImplementation
 }
 
 def applyConcurrencyConfig(task) {
@@ -107,13 +107,16 @@ dependencies {
     exclude group: 'com.linkedin.linkedin-kafka-clients' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
   }
 
-  implementation project(':venice-schema-common')
+  implementation project(':da-vinci-client')
+  implementation project(':hadoop-to-venice-bridge')
+  implementation project(':venice-brooklin')
   implementation project(':venice-common')
-  implementation project(':venice-server')
   implementation project(':venice-controller')
   implementation project(':venice-router')
+  implementation project(':venice-samza')
+  implementation project(':venice-schema-common')
+  implementation project(':venice-server')
   implementation project(':venice-thin-client')
-  implementation project(':hadoop-to-venice-bridge')
 
   implementation libraries.azkaban
   implementation libraries.brooklinKafka
@@ -127,9 +130,7 @@ dependencies {
   implementation libraries.helix
   implementation libraries.javax
   implementation libraries.mockito
-  implementation project(':venice-brooklin')
-  implementation project(':venice-samza')
-  implementation project(':da-vinci-client')
+
   implementation libraries.kafka
   implementation libraries.kafkaClients
   implementation libraries.conscrypt
@@ -154,12 +155,14 @@ dependencies {
   }
   testImplementation project(':venice-admin-tool')
 
-  jmhCompile 'org.openjdk.jmh:jmh-core:1.19'
-  jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.19'
+  jmhImplementation 'org.openjdk.jmh:jmh-core:1.27'
+  jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.27'
+}
 
-  task jmh(type: JavaExec, dependsOn: jmhClasses) {
-    main = 'org.openjdk.jmh.Main'
-    classpath = sourceSets.jmh.compileClasspath + sourceSets.jmh.runtimeClasspath
-    classpath += sourceSets.integrationTest.compileClasspath + sourceSets.integrationTest.runtimeClasspath
-  }
+classes.finalizedBy(jmhClasses)
+
+task jmh(type: JavaExec, dependsOn: jmhClasses) {
+  main = 'org.openjdk.jmh.Main'
+  classpath = sourceSets.jmh.compileClasspath + sourceSets.jmh.runtimeClasspath
+  classpath += sourceSets.integrationTest.compileClasspath + sourceSets.integrationTest.runtimeClasspath
 }
