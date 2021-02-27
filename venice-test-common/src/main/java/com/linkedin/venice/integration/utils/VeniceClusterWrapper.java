@@ -29,7 +29,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
-import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -42,6 +41,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -546,6 +546,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public synchronized void restartVeniceController(int port) {
     restartVeniceComponent(veniceControllerWrappers, port);
+  }
+
+  public synchronized void removeVeniceController(int port) {
+    stopVeniceController(port);
+    IOUtils.closeQuietly(veniceControllerWrappers.remove(port));
   }
 
   public synchronized void stopVeniceRouter(int port) {
