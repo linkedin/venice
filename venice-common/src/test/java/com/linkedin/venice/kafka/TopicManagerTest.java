@@ -20,6 +20,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -180,7 +181,7 @@ public class TopicManagerTest {
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName);
 
     // Test starting conditions
-    assertOffsetsByTime(topicName, 0, LOWEST_OFFSET);
+    assertOffsetsByTime(topicName, 0, LOWEST_OFFSET + 1);
 
     // Populate messages
     mockTime.addMilliseconds(TIME_SKIP);
@@ -196,7 +197,6 @@ public class TopicManagerTest {
 
     assertOffsetsByTime(topicName, 0, 0);
     Map<Integer, Long> latestOffsets = manager.getLatestOffsets(topicName);
-    LOGGER.info("latest offsets: " + latestOffsets);
     latestOffsets.forEach((partition, offset) -> Assert.assertTrue(offset >= NUMBER_OF_MESSAGES,
         "When asking the latest offsets, partition " + partition + " has an unexpected offset."));
 
@@ -209,6 +209,21 @@ public class TopicManagerTest {
 
     long futureTime = 1000*1000*1000;
     assertOffsetsByTime(topicName, futureTime, NUMBER_OF_MESSAGES + 1);
+
+    // A message get produced after future time
+    mockTime.setTime(futureTime);
+    veniceWriter.put(("key" + futureTime).getBytes(), ("value" + futureTime).getBytes(), 0, null).get();
+
+    /**
+     * Check whether {@link TopicManager#getOffsetByTimeIfOutOfRange} could return the right offset or not.
+     */
+    long offset = manager.getOffsetByTimeIfOutOfRange(new TopicPartition(topicName, 0), futureTime);
+    Assert.assertEquals(offset, NUMBER_OF_MESSAGES + 1);
+
+    /**
+     * Check the offset with the rewind timestamp, which is older than the first message
+     */
+    assertOffsetsByTime(topicName, 0, 0);
   }
 
   private void assertOffsetsByTime(String topicName, long time, long expectedOffset) {

@@ -476,10 +476,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             if (upstreamStartOffset < 0) {
               if (topicSwitch.rewindStartTimestamp > 0) {
                 upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
-                if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
-                  // subscribe will seek to the next offset
-                  upstreamStartOffset -= 1;
-                }
+                /**
+                 * {@link com.linkedin.venice.kafka.TopicManager#getOffsetsByTime} will always return the next offset
+                 * to consume, but {@link com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer#subscribe} is always
+                 * seeking the next offset, so we will deduct 1 from the returned offset here.
+                 */
+                upstreamStartOffset -= 1;
               } else {
                 upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
               }

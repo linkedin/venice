@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -75,6 +76,43 @@ public class TestBrooklin {
     }
   }
 
+  private List<ConsumerRecord<byte[], byte[]>> consume(KafkaBrokerWrapper kafka, String topicName, int maxExpectedMessage) {
+    try (KafkaConsumer<byte[],byte[]> consumer = getKafkaConsumer(kafka)) {
+      List<TopicPartition> allPartitions = new ArrayList<>();
+      for (int p = 0; p < consumer.partitionsFor(topicName).size(); p++) {
+        allPartitions.add(new TopicPartition(topicName, p));
+      }
+      consumer.assign(allPartitions);
+      consumer.seekToBeginning(allPartitions);
+      List<ConsumerRecord<byte[], byte[]>> buffer = new ArrayList<>();
+      long startTime = System.currentTimeMillis();
+      while (true) {
+        ConsumerRecords<byte[], byte[]> records = consumer.poll(100);
+        if (records.isEmpty() && buffer.size() > maxExpectedMessage) {
+          // first 3 records are control messages.
+          break;
+        }
+        if (System.currentTimeMillis() - startTime > TimeUnit.MILLISECONDS.convert(30, TimeUnit.SECONDS)) {
+          Assert.fail(
+              "Test timed out waiting for messages to appear in destination topic: " + topicName + " after 30 seconds");
+        }
+        for (ConsumerRecord<byte[], byte[]> record : records) {
+          buffer.add(record);
+        }
+      }
+      return buffer;
+    }
+  }
+
+  /**
+   * This test covers 3 scenarios:
+   * 1. Mirroring from an empty source topic.
+   * 2. Mirroring from the beginning of a non-empty source topic.
+   * 3. Mirroring from the end of a non-empty source topic (skip all the current messages).
+   *
+   * @throws InterruptedException
+   * @throws IOException
+   */
   @Test
   public void canReplicateKafkaWithBrooklinTopicReplicator() throws InterruptedException, IOException {
     try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
@@ -92,62 +130,81 @@ public class TestBrooklin {
         //Create topics
         int partitionCount = 1;
         String sourceTopic = TestUtils.getUniqueString("source");
-        String destinationTopic = TestUtils.getUniqueString("destination");
+        String destinationTopicForEmptySourceTopic = TestUtils.getUniqueString("destination");
         topicManager.createTopic(sourceTopic, partitionCount, 1, true);
-        topicManager.createTopic(destinationTopic, partitionCount, 1, true);
+        topicManager.createTopic(destinationTopicForEmptySourceTopic, partitionCount, 1, true);
 
-        byte[] key = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
-        byte[] value = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
+        //create replication stream with empty source topic
+        try {
+          replicator.beginReplication(sourceTopic, destinationTopicForEmptySourceTopic, System.currentTimeMillis(), null);
+        } catch (TopicException e) {
+          throw new VeniceException(e);
+        }
 
-        //Produce in source topic
+        // Produce a message after setting up the data stream
+        byte[] key1 = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
+        byte[] value1 = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
         try (Producer<byte[], byte[]> producer = getKafkaProducer(kafka)) {
-          producer.send(new ProducerRecord<>(sourceTopic, key, value));
+          producer.send(new ProducerRecord<>(sourceTopic, key1, value1));
+          producer.flush();
+        }
+        List<ConsumerRecord<byte[], byte[]>> records = consume(kafka, destinationTopicForEmptySourceTopic, 3);
+        assertEquals(records.size(), 4);
+        assertEquals(records.get(3).key(), key1);
+        assertEquals(records.get(3).value(), value1);
+
+
+        String destinationTopicWithValidSourceOffset = TestUtils.getUniqueString("destination");
+        topicManager.createTopic(destinationTopicWithValidSourceOffset, partitionCount, 1, true);
+
+        byte[] key2 = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
+        byte[] value2 = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
+
+        //Produce another message to the source topic
+        try (Producer<byte[], byte[]> producer = getKafkaProducer(kafka)) {
+          producer.send(new ProducerRecord<>(sourceTopic, key2, value2));
           producer.flush();
         }
 
-        //create replication stream
+        //create replication stream with the valid offset from source topic
         try {
-          replicator.beginReplication(sourceTopic, destinationTopic, 0, null);
+          replicator.beginReplication(sourceTopic, destinationTopicWithValidSourceOffset, 0, null);
         } catch (TopicException e) {
           throw new VeniceException(e);
         }
 
         //check destination topic for records
-        String consumeTopic = destinationTopic;
-        try (KafkaConsumer<byte[],byte[]> consumer = getKafkaConsumer(kafka)) {
-          List<TopicPartition> allPartitions = new ArrayList<>();
-          for (int p=0;p<consumer.partitionsFor(consumeTopic).size();p++){
-            allPartitions.add(new TopicPartition(consumeTopic, p));
-          }
-          consumer.assign(allPartitions);
-          consumer.seekToBeginning(allPartitions);
-          List<ConsumerRecord<byte[], byte[]>> buffer = new ArrayList<>();
-          long startTime = System.currentTimeMillis();
-          while (true) {
-            ConsumerRecords<byte[], byte[]> records = consumer.poll(100);
-            if (records.isEmpty() && buffer.size() > 3){
-              // first 3 records are control messages.
-              break;
-            }
-            if (System.currentTimeMillis() - startTime > TimeUnit.MILLISECONDS.convert(30, TimeUnit.SECONDS)){
-              throw new RuntimeException("Test timed out waiting for messages to appear in destination topic after 30 seconds");
-            }
-            for (ConsumerRecord<byte[], byte[]> record : records) {
-              buffer.add(record);
-            }
-            try {
-              Thread.sleep(500);
-            } catch (InterruptedException e){
-              break;
-            }
-          }
+        records = consume(kafka, destinationTopicWithValidSourceOffset, 3);
+        assertEquals(records.size(), 5);
+        assertEquals(records.get(3).key(), key1);
+        assertEquals(records.get(3).value(), value1);
+        assertEquals(records.get(4).key(), key2);
+        assertEquals(records.get(4).value(), value2);
 
-          assertEquals(buffer.get(3).key(), key);
-          assertEquals(buffer.get(3).value(), value);
+        // Mirroring the source topic with the latest offset
+        String destinationTopicWithLatestOffset = TestUtils.getUniqueString("destination");
+        topicManager.createTopic(destinationTopicWithLatestOffset, partitionCount, 1, true);
+        // Add some delay
+        Utils.sleep(TimeUnit.SECONDS.toMillis(1));
+        // Create a new replication stream
+        replicator.beginReplication(sourceTopic, destinationTopicWithLatestOffset, System.currentTimeMillis(), null);
+        // Produce a new message
+        byte[] key3 = TestUtils.getUniqueString("key").getBytes(StandardCharsets.UTF_8);
+        byte[] value3 = TestUtils.getUniqueString("value").getBytes(StandardCharsets.UTF_8);
+        try (Producer<byte[], byte[]> producer = getKafkaProducer(kafka)) {
+          producer.send(new ProducerRecord<>(sourceTopic, key3, value3));
+          producer.flush();
         }
+        // Check whether the another destination topic receives the new message or not
+        records = consume(kafka, destinationTopicWithLatestOffset, 3);
+        assertEquals(records.size(), 4);
+        assertEquals(records.get(3).key(), key3);
+        assertEquals(records.get(3).value(), value3);
 
         try {
-          replicator.terminateReplication(sourceTopic, destinationTopic);
+          replicator.terminateReplication(sourceTopic, destinationTopicForEmptySourceTopic);
+          replicator.terminateReplication(sourceTopic, destinationTopicWithValidSourceOffset);
+          replicator.terminateReplication(sourceTopic, destinationTopicWithLatestOffset);
         } catch (TopicException e) {
           throw new VeniceException(e);
         }
