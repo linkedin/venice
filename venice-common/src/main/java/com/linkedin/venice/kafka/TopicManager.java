@@ -32,6 +32,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
@@ -786,6 +787,9 @@ public class TopicManager implements Closeable {
 
   /**
    * Get offsets for all the partitions with a specific timestamp.
+   * This function will always return the next offset to consume, which could be:
+   * 1. Any existing offset in the current topic partition.
+   * 2. A future offset returned by {@link #getLatestOffset}: the last record offset + 1.
    */
   public synchronized Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
     int remainingAttempts = 5;
@@ -902,11 +906,12 @@ public class TopicManager implements Closeable {
    * the last record.  This method queries the time of the last message and compares it to the requested
    * timestamp in order to return either offset 0 or the last offset.
    */
-  private synchronized long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp){
+  protected synchronized long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp){
     long latestOffset = getLatestOffset(topicPartition.topic(), topicPartition.partition());
     if (latestOffset <= 0) {
-      logger.info("End offset for topic " + topicPartition + " is " + latestOffset + "; return offset " + LOWEST_OFFSET);
-      return LOWEST_OFFSET;
+      long nextOffset = LOWEST_OFFSET + 1;
+      logger.info("End offset for topic " + topicPartition + " is " + latestOffset + "; return offset " + nextOffset);
+      return nextOffset;
     }
 
     long earliestOffset = getEarliestOffset(topicPartition.topic(), topicPartition.partition());
@@ -948,12 +953,35 @@ public class TopicManager implements Closeable {
       // Get the latest record from the poll result
       ConsumerRecord record = (ConsumerRecord) records.iterator().next();
 
+      if (timestamp <= record.timestamp()) {
+        /**
+         * There could be a race condition in this function:
+         * 1. In function: {@link #getOffsetsByTime}, {@link KafkaConsumer#offsetsForTimes} is invoked.
+         * 2. The asked timestamp is out of range.
+         * 3. Some messages get produced to the topic.
+         * 4. {@link #getOffsetByTimeIfOutOfRange} gets invoked, and it realizes that the latest message's timestamp
+         * is higher than the seeking timestamp.
+         *
+         * In this case, we should call {@link #getOffsetByTime} again, since the seeking timestamp will be in the range
+         * instead of returning the earliest offset.
+         */
+        Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
+        timestampsToSearch.put(topicPartition,  timestamp);
+        Map<TopicPartition, OffsetAndTimestamp> result = consumer.offsetsForTimes(timestampsToSearch);
+        if (result.containsKey(topicPartition) && result.get(topicPartition) != null) {
+          OffsetAndTimestamp offsetAndTimestamp = result.get(topicPartition);
+          long resultOffset = offsetAndTimestamp.offset();
+          logger.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString()
+              + " for timestamp: " + timestamp);
+          return resultOffset;
+        }
+      }
+
       /**
-       * 1. If the required timestamp is bigger than the timestamp of last record, return the offset of last record
-       * 2. Otherwise, return (earliestOffset - 1) to consume from the beginning; decrease 1 because when subscribing,
-       *    we seek to the next offset; besides, safeguard the edge case that we earliest offset is already -1.
+       * 1. If the required timestamp is bigger than the timestamp of last record, return the offset after the last record.
+       * 2. Otherwise, return earlier offset to consume from the beginning.
        */
-      long resultOffset = (timestamp > record.timestamp()) ? latestOffset : Math.max(earliestOffset - 1, LOWEST_OFFSET);
+      long resultOffset = (timestamp > record.timestamp()) ? latestOffset : earliestOffset;
       logger.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString()
           + " for timestamp: " + timestamp);
       return resultOffset;

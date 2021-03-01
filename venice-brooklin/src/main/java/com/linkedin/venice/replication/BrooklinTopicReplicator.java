@@ -21,7 +21,6 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
@@ -161,6 +160,8 @@ public class BrooklinTopicReplicator extends TopicReplicator {
       long rewindStartTimestamp, String nativeReplicationSourceKafkaCluster) {
 
     Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(sourceTopic, rewindStartTimestamp);
+    logger.info("Get rewinding offset for topic: "+ sourceTopic + ", and rewind start timestamp: " + rewindStartTimestamp + ": " + startingOffsetsMap);
+
     List<Long> startingOffsets = startingOffsetsMap.entrySet().stream()
         .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))
         .map(entry -> entry.getValue())
