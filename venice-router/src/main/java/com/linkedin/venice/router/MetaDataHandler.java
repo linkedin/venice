@@ -48,6 +48,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -103,7 +104,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
-    VenicePathParserHelper helper = new VenicePathParserHelper(req.uri());
+    VenicePathParserHelper helper = parseRequest(req);
+
     String resourceType = helper.getResourceType(); //may be null
     if (TYPE_MASTER_CONTROLLER.equals(resourceType)){
       // URI: /master_controller

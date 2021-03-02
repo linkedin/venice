@@ -14,6 +14,7 @@ import java.net.InetSocketAddress;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -37,7 +38,8 @@ public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest>
     if (msg.method().equals(HttpMethod.OPTIONS)) {
       isHealthCheck = true;
     } else if (msg.method().equals(HttpMethod.GET)) {
-      VenicePathParserHelper helper = new VenicePathParserHelper(msg.uri());
+      VenicePathParserHelper helper = parseRequest(msg);
+
       if (TYPE_HEALTH_CHECK.equals(helper.getResourceType()) && Utils.isNullOrEmpty(helper.getResourceName())) {
         isHealthCheck = true;
       }

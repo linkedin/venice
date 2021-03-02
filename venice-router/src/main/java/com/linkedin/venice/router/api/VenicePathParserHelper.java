@@ -1,6 +1,9 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.router.utils.VeniceRouterUtils;
+import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
 import java.net.URISyntaxException;
 import org.apache.log4j.Logger;
@@ -18,7 +21,24 @@ public class VenicePathParserHelper {
   private String resourceName = null;
   private String key = null;
 
-  public VenicePathParserHelper(String uri){
+  public static VenicePathParserHelper parseRequest(HttpRequest request) {
+    if (request instanceof BasicFullHttpRequest) {
+      BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest) request;
+      if (basicFullHttpRequest.hasAttr(VeniceRouterUtils.PATHPARSER_ATTRIBUTE_KEY)) {
+         return basicFullHttpRequest.attr(VeniceRouterUtils.PATHPARSER_ATTRIBUTE_KEY).get();
+      }
+    }
+
+    VenicePathParserHelper helper = new VenicePathParserHelper(request.uri());
+
+    if (request instanceof  BasicFullHttpRequest) {
+      BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest) request;
+      basicFullHttpRequest.attr(VeniceRouterUtils.PATHPARSER_ATTRIBUTE_KEY).set(helper);
+    }
+    return helper;
+  }
+
+  private VenicePathParserHelper(String uri){
     try {
       URI uriObject = new URI(uri);
       String[] path = uriObject.getPath().split("/");  //getPath does not include the querystring '?f=b64'

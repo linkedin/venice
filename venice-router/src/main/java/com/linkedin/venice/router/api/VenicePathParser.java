@@ -31,6 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.linkedin.venice.read.RequestType.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
 
 
@@ -99,7 +100,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     }
     BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest)request;
 
-    VenicePathParserHelper pathHelper = new VenicePathParserHelper(uri);
+    VenicePathParserHelper pathHelper = parseRequest(request);
     String resourceType = pathHelper.getResourceType();
     if (!resourceType.equals(TYPE_STORAGE) && !resourceType.equals(TYPE_COMPUTE)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
