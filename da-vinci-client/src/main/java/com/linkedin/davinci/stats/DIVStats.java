@@ -31,6 +31,7 @@ public class DIVStats {
   private final Sensor producerLocalBrokerLatencySensor;
   private final Sensor localBrokerFollowerConsumerLatencySensor;
   private final Sensor producerFollowerConsumerLatencySensor;
+  private final Sensor dataValidationLatencySensor;
 
   private Avg producerBrokerLatencyAvgMs = new Avg();
   private Min producerBrokerLatencyMinMs = new Min();
@@ -59,6 +60,8 @@ public class DIVStats {
   private Avg producerFollowerConsumerLatencyAvgMs = new Avg();
   private Min producerFollowerConsumerLatencyMinMs = new Min();
   private Max producerFollowerConsumerLatencyMaxMs = new Max();
+  private Avg dataValidationLatencyAvgMs = new Avg();
+  private Max dataValidationLatencyMaxMs = new Max();
 
   private long benignLeaderOffsetRewindCount = 0;
   private long potentiallyLossyLeaderOffsetRewindCount = 0;
@@ -145,6 +148,11 @@ public class DIVStats {
         producerFollowerConsumerLatencyMaxMs);
     producerFollowerConsumerLatencySensor.add(sensorName + producerFollowerConsumerLatencyMinMs.getClass().getSimpleName(),
         producerFollowerConsumerLatencyMinMs);
+
+    sensorName = "data_validation_latency";
+    dataValidationLatencySensor = localRepository.sensor(sensorName);
+    dataValidationLatencySensor.add(sensorName + dataValidationLatencyAvgMs.getClass().getSimpleName(), dataValidationLatencyAvgMs);
+    dataValidationLatencySensor.add(sensorName + dataValidationLatencyMaxMs.getClass().getSimpleName(), dataValidationLatencyMaxMs);
   }
 
   public long getDuplicateMsg() {
@@ -341,6 +349,18 @@ public class DIVStats {
 
   public void recordProducerFollowerConsumerLatencyMs(double value) {
     producerFollowerConsumerLatencySensor.record(value);
+  }
+
+  public double getDataValidationLatencyAvgMs() {
+    return dataValidationLatencyAvgMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getDataValidationLatencyMaxMs() {
+    return dataValidationLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public void recordDataValidationLatencyMs(double value) {
+    dataValidationLatencySensor.record(value);
   }
 
   public void recordBenignLeaderOffsetRewind() {

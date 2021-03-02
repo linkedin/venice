@@ -103,6 +103,11 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordProducerFollowerConsumerLatencyMs(value));
   }
 
+  public void recordDataValidationLatencyMs(String storeName, int version, double value) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordDataValidationLatencyMs(value));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordDataValidationLatencyMs(value));
+  }
+
   public void recordBenignLeaderOffsetRewind(String storeName, int version) {
     Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordBenignLeaderOffsetRewind());
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordBenignLeaderOffsetRewind());
