@@ -1775,4 +1775,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     // veniceWriter.put should not be called if validation fails
     verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
   }
+
+  @Test
+  public void testSetVersionShouldFailOnParentController() {
+    try {
+      parentAdmin.setStoreCurrentVersion(clusterName, "any_store", 1);
+      Assert.fail("Set version should not be allowed on parent controllers.");
+    } catch (VeniceUnsupportedOperationException e) {
+      // Expected
+    } catch (Throwable e) {
+      Assert.fail("SetVersion command on parent controller should fail with VeniceUnsupportedOperationException");
+    }
+  }
 }

@@ -1050,22 +1050,8 @@ public class VeniceParentHelixAdmin implements Admin {
   public void setStoreCurrentVersion(String clusterName,
                                 String storeName,
                                 int versionNumber) {
-    acquireLock(clusterName, storeName);
-    try {
-      veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
-
-      SetStoreCurrentVersion setStoreCurrentVersion = (SetStoreCurrentVersion) AdminMessageType.SET_STORE_CURRENT_VERSION.getNewInstance();
-      setStoreCurrentVersion.clusterName = clusterName;
-      setStoreCurrentVersion.storeName = storeName;
-      setStoreCurrentVersion.currentVersion = versionNumber;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.SET_STORE_CURRENT_VERSION.getValue();
-      message.payloadUnion = setStoreCurrentVersion;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    } finally {
-      releaseLock(clusterName);
-    }
+    throw new VeniceUnsupportedOperationException("setStoreCurrentVersion", "Please use set-version only on child controllers, "
+        + "setting version on parent is not supported, since the version list could be different fabric by fabric");
   }
 
   @Override
