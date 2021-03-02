@@ -25,6 +25,7 @@ import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -56,8 +57,7 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
       ctx.fireChannelRead(msg);
       return;
     }
-
-    VenicePathParserHelper helper = new VenicePathParserHelper(msg.uri());
+    VenicePathParserHelper helper = parseRequest(msg);
 
     if (helper.getResourceType().equals(TYPE_STORAGE) || helper.getResourceType().equals(TYPE_COMPUTE)) {
       try {

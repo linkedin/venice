@@ -6,7 +6,6 @@ import com.linkedin.venice.acl.AccessController;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.AdminOperationsStats;
-import com.linkedin.venice.utils.NettyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
@@ -29,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -74,7 +74,8 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
     HttpMethod method = req.method();
 
-    VenicePathParserHelper pathHelper = new VenicePathParserHelper(req.uri());
+    VenicePathParserHelper pathHelper = parseRequest(req);
+
     final String resourceType = pathHelper.getResourceType();
     final String adminTask = pathHelper.getResourceName();
 
