@@ -2121,6 +2121,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         topicManager.isTopicCompactionEnabled(topic) &&
         LatencyUtils.getElapsedTimeInMs(consumerRecord.timestamp()) >= topicManager.getTopicMinLogCompactionLagMs(topic);
 
+    long startTimeForMessageValidationInNS = System.nanoTime();
     try {
         return Optional.of(
             kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, endOfPushReceived, tolerateMissingMsgs));
@@ -2147,6 +2148,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return Optional.of(
             kafkaDataIntegrityValidator.validateMessageAndGetOffsetRecordTransformer(consumerRecord, true, true));
       }
+    } finally {
+      versionedDIVStats.recordDataValidationLatencyMs(storeName, versionNumber, LatencyUtils.getLatencyInMS(startTimeForMessageValidationInNS));
     }
   }
 

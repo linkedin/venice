@@ -80,6 +80,10 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
         new DIVStatsCounter(this, () -> getStats().getProducerFollowerConsumerLatencyMinMs()));
     registerSensor("producer_to_follower_consumer_latency_max_ms",
         new DIVStatsCounter(this, () -> getStats().getProducerFollowerConsumerLatencyMaxMs()));
+    registerSensor("data_validation_avg_ms",
+        new DIVStatsCounter(this, () -> getStats().getDataValidationLatencyAvgMs()));
+    registerSensor("data_validation_max_ms",
+        new DIVStatsCounter(this, () -> getStats().getDataValidationLatencyMaxMs()));
     registerSensor("benign_leader_offset_rewind_count",
         new DIVStatsCounter(this, () -> (double) getStats().getBenignLeaderOffsetRewindCount()));
     registerSensor("potentially_lossy_leader_offset_rewind_count",
