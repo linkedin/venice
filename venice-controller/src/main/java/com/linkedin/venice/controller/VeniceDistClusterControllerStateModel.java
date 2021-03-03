@@ -7,8 +7,9 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.replication.TopicReplicator;
+
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Optional;
+
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.NotificationContext;
@@ -21,6 +22,8 @@ import org.apache.helix.participant.statemachine.Transition;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
+import java.util.Optional;
+
 
 /**
  * State model used to handle the change of leader-standby relationship for controllers.
@@ -31,8 +34,8 @@ import org.apache.log4j.Logger;
  */
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.LEADER_STATE, HelixState.STANDBY_STATE})
 public class VeniceDistClusterControllerStateModel extends StateModel {
-  public static final String PARTITION_SUBFIX = "_0";
-  private static Logger logger = Logger.getLogger(VeniceDistClusterControllerStateModel.class);
+  public static final String PARTITION_SUFFIX = "_0";
+  private static final Logger logger = Logger.getLogger(VeniceDistClusterControllerStateModel.class);
 
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
@@ -59,7 +62,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
       MetadataStoreWriter metadataStoreWriter, HelixAdminClient helixAdminClient) {
     StateModelParser parser = new StateModelParser();
-    _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
+    this._currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.clusterName = clusterName;
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
@@ -74,16 +77,25 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     this.helixAdminClient = helixAdminClient;
   }
 
+  public boolean isLeader() {
+    synchronized (_currentState) {
+      return getCurrentState().equals(HelixState.LEADER_STATE);
+    }
+  }
+
   /**
    * This runs after the state transition occurred.
    */
   @Override
   public boolean updateState(String newState) {
-    boolean returnValue = super.updateState(newState);
+    boolean result;
+    synchronized (_currentState) {
+      result = super.updateState(newState);
+    }
     if (newState.equals(HelixState.LEADER_STATE)) {
       controllerInitialization.execute(clusterName);
     }
-    return returnValue;
+    return result;
   }
 
   private void executeStateTransition(Message message, StateTransition stateTransition) throws VeniceException {
@@ -226,14 +238,14 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
 
   protected static String getVeniceClusterNameFromPartitionName(String partitionName) {
     //Exclude the partition id.
-    if (!partitionName.endsWith(PARTITION_SUBFIX)) {
-      throw new VeniceException("Invalid partition name:" + partitionName + " should end with " + PARTITION_SUBFIX);
+    if (!partitionName.endsWith(PARTITION_SUFFIX)) {
+      throw new VeniceException("Invalid partition name:" + partitionName + " should end with " + PARTITION_SUFFIX);
     }
     return partitionName.substring(0, partitionName.lastIndexOf('_'));
   }
 
   protected static String getPartitionNameFromVeniceClusterName(String veniceClusterName) {
-    return veniceClusterName + PARTITION_SUBFIX;
+    return veniceClusterName + PARTITION_SUFFIX;
   }
 
   public Optional<VeniceHelixResources> getResources() {
