@@ -121,6 +121,11 @@ public class StoreBufferServiceTest {
     bufferService.start();
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null);
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null);
+    bufferService.getMaxMemoryUsagePerDrainer();
+    for (int i = 0; i < 1; ++i) {
+      // Verify map the cleared out
+      Assert.assertTrue(bufferService.getTopicToTimeSpentMap(i).size() == 0);
+    }
     verify(mockTask).setLastDrainerException(e);
     verify(mockTask).recordChecksumVerificationFailure();
     bufferService.stop();

@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -309,10 +310,12 @@ public class StoreBufferService extends AbstractVeniceService {
         slowDrainerExists = true;
       }
     }
-    if (slowDrainerExists) {
-      for (int index = 0; index < blockingQueueArr.size(); index++) {
+
+    for (int index = 0; index < blockingQueueArr.size(); index++) {
+      StoreBufferDrainer drainer = drainerList.get(index);
+      // print drainer info when there is a slow drainer.
+      if (slowDrainerExists) {
         MemoryBoundBlockingQueue<QueueNode> queue = blockingQueueArr.get(index);
-        StoreBufferDrainer drainer = drainerList.get(index);
         int count = queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer ? 5 : 1;
         List<Map.Entry<TopicPartition, Long>> slowestEntries = drainer.topicToTimeSpent.entrySet()
             .stream()
@@ -324,11 +327,16 @@ public class StoreBufferService extends AbstractVeniceService {
         slowestEntries.forEach(entry -> LOGGER.info(
             "In drainer number " + finalIndex + ", time spent on topic " + entry.getKey().topic() + ", partition " + entry.getKey().partition() + " : " + entry.getValue() + " ms"));
         LOGGER.info("Drainer number " + index + " hosting " + drainer.topicToTimeSpent.size() + " partitions, has memory usage of " + queue.getMemoryUsage());
-        drainer.topicToTimeSpent.clear();
       }
+      drainer.topicToTimeSpent.clear();
     }
 
     return maxUsage;
+  }
+
+  @VisibleForTesting
+  Map<TopicPartition, Long> getTopicToTimeSpentMap(int i) {
+    return drainerList.get(i).topicToTimeSpent;
   }
 
   public long getMinMemoryUsagePerDrainer() {
