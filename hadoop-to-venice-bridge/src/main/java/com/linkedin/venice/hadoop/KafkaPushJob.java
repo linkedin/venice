@@ -72,8 +72,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
@@ -101,7 +99,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   //and should be specified only when key / value schema is the partial of the files.
   public final static String FILE_KEY_SCHEMA = "key.schema";
   public final static String FILE_VALUE_SCHEMA = "value.schema";
-
   public final static String INCREMENTAL_PUSH = "incremental.push";
 
   //veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
@@ -206,11 +203,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public static final String KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS = "kafka.metrics.to.report.as.mr.counters";
 
   /**
-   * Config to control the thread pool size for HDFS operations.
-   */
-  public static final String HDFS_OPERATIONS_PARALLEL_THREAD_NUM = "hdfs.operations.parallel.thread.num";
-
-  /**
    * Config to control the Compression Level for ZSTD Dictionary Compression.
    */
   public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
@@ -246,7 +238,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private ControllerClient controllerClient;
   private String clusterName;
   private RunningJob runningJob;
-
   // Job config for regular push job
   protected JobConf jobConf = new JobConf();
   // Job config for pbnj
@@ -258,9 +249,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private Properties veniceWriterProperties;
   private Properties sslProperties;
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter; // Lazily initialized
-
-  // Thread pool for Hadoop File System operations.
-  private ExecutorService hdfsExecutorService;
   private JobClientWrapper jobClientWrapper;
   // A controller client that is used to discover cluster
   private ControllerClient clusterDiscoveryControllerClient;
@@ -485,7 +473,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   // Visible for testing
-  protected void setJobClientWrapper(JobClientWrapper jobClientWrapper) {
+  public void setJobClientWrapper(JobClientWrapper jobClientWrapper) {
     this.jobClientWrapper = jobClientWrapper;
   }
 
@@ -526,7 +514,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       initPushJobDetails();
       jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
-      hdfsExecutorService = Executors.newFixedThreadPool(props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20));
       Optional<SSLFactory> sslFactory = createSSlFactory();
       // Discover the cluster based on the store name and re-initialized controller client.
       clusterName = discoverCluster(pushJobSetting, sslFactory);
@@ -659,24 +646,36 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
       throwVeniceException(e);
     } finally {
-      shutdownHdfsExecutorService();
+      try {
+        inputDataInfoProvider.close();
+      } catch (Exception e) {
+        LOGGER.error("Failed to close inputDataInfoProvider. Exception swallowed", e);
+      }
+      inputDataInfoProvider = null;
     }
   }
 
   private void runJobAndUpdateStatus() throws IOException {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_MAP_REDUCE_JOB);
     runningJob = runJobWithConfig(jobConf);
-    if (inputFileDataSize > 0) {
-      if (MRJobCounterHelper.getReducerClosedCount(runningJob.getCounters()) == 0) {
-        throw new VeniceException(String.format("MR job counter is not reliable since the reducer job closed count is 0 when the "
-            + "input file data size is %d byte(s)", inputFileDataSize));
-      }
+    if (!pushJobSetting.isMapOnly) {
+      // Skip counter validation is required for some integration tests to pass
+      validateCountersAfterPush();
     }
     Optional<ErrorMessage> errorMessage = updatePushJobDetailsWithMRDetails();
     if (errorMessage.isPresent()) {
       throw new VeniceException(errorMessage.get().getErrorMessage());
     }
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED);
+  }
+
+  private void validateCountersAfterPush() throws IOException {
+    if (inputFileDataSize > 0) {
+      if (MRJobCounterHelper.getReducerClosedCount(runningJob.getCounters()) == 0) {
+        throw new VeniceException(String.format(
+            "MR job counter is not reliable since the reducer job closed count is 0 when the " + "input file data size is %d byte(s)", inputFileDataSize));
+      }
+    }
   }
 
   private Optional<SSLFactory> createSSlFactory() {
@@ -698,7 +697,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private InputDataInfoProvider getInputDataInfoProvider() {
     if (inputDataInfoProvider == null) {
-      inputDataInfoProvider = new DefaultInputDataInfoProvider(storeSetting, pushJobSetting, props, hdfsExecutorService);
+      inputDataInfoProvider = new DefaultInputDataInfoProvider(storeSetting, pushJobSetting, props);
     }
     return inputDataInfoProvider;
   }
@@ -744,23 +743,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
             pushJobSetting.incrementalPushVersion, versionTopicInfo.partitionCount
         );
       }
-    }
-  }
-
-  private void shutdownHdfsExecutorService() {
-    if (hdfsExecutorService == null) {
-      LOGGER.warn("No HDFS executor service to shutdown");
-      return;
-    }
-    hdfsExecutorService.shutdownNow();
-    try {
-      if (!hdfsExecutorService.awaitTermination(30, TimeUnit.SECONDS)) {
-        LOGGER.warn("Unable to shutdown the executor service used for HDFS operations. "
-            + "The job may hang with leaked resources.");
-      }
-    } catch (InterruptedException e) {
-      LOGGER.error(e);
-      Thread.currentThread().interrupt();
     }
   }
 

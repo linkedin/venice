@@ -15,6 +15,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
@@ -41,7 +43,10 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   public static final String VALUE_FIELD_PROP = "value.field";
   public static final String COMPRESSION_DICTIONARY_SAMPLE_SIZE = "compression.dictionary.sample.size";
   public static final String COMPRESSION_DICTIONARY_SIZE_LIMIT = "compression.dictionary.size.limit";
-
+  /**
+   * Config to control the thread pool size for HDFS operations.
+   */
+  public static final String HDFS_OPERATIONS_PARALLEL_THREAD_NUM = "hdfs.operations.parallel.thread.num";
   /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
    * key/value schema and backend storage overhead, we are applying this factor to provide a more
@@ -56,18 +61,18 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   private final KafkaPushJob.PushJobSetting pushJobSetting;
   private KafkaPushJob.ZstdConfig zstdConfig;
   private final VeniceProperties props;
+  // Thread pool for Hadoop File System operations.
   private final ExecutorService hdfsExecutorService;
 
   DefaultInputDataInfoProvider(
       KafkaPushJob.StoreSetting storeSetting,
       KafkaPushJob.PushJobSetting pushJobSetting,
-      VeniceProperties props,
-      ExecutorService hdfsExecutorService
+      VeniceProperties props
   ) {
     this.storeSetting = storeSetting;
     this.pushJobSetting = pushJobSetting;
     this.props = props;
-    this.hdfsExecutorService = hdfsExecutorService;
+    this.hdfsExecutorService = Executors.newFixedThreadPool(props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20));
   }
 
   /**
@@ -312,5 +317,27 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     }
 
     return new Pair<>(recordReader.getFileSchema(), recordReader.getStoreSchema());
+  }
+
+  @Override
+  public void close() {
+    shutdownHdfsExecutorService();
+  }
+
+  private void shutdownHdfsExecutorService() {
+    if (hdfsExecutorService == null) {
+      LOGGER.warn("No HDFS executor service to shutdown");
+      return;
+    }
+    hdfsExecutorService.shutdownNow();
+    try {
+      if (!hdfsExecutorService.awaitTermination(30, TimeUnit.SECONDS)) {
+        LOGGER.warn("Unable to shutdown the executor service used for HDFS operations. "
+            + "The job may hang with leaked resources.");
+      }
+    } catch (InterruptedException e) {
+      LOGGER.error(e);
+      Thread.currentThread().interrupt();
+    }
   }
 }

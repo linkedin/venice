@@ -6,7 +6,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 /**
  * This interface lets users get input data information
  */
-public interface InputDataInfoProvider {
+public interface InputDataInfoProvider extends AutoCloseable {
 
   /**
    * A POJO that contains input data information (schema information and input data file size)
