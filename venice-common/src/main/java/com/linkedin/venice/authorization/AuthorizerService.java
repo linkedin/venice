@@ -6,8 +6,21 @@ import java.security.cert.X509Certificate;
 /**
  * An interface to provide functionality to manage ACL's for a {@link Resource} and provide access permission {@link Permission}
  * to principals {@link Principal} when performing {@link Method}. The underlying implementation can
- * choose any mechanism for storing and scanning of the ACL's. No guarantees are made about {@code canAccess} api
+ * choose any mechanism for storing and scanning of the ACL's.
+ * No guarantees are made about {@link #canAccess(Method, Resource, X509Certificate)} api
  * when duplicate or conflicting AceEntries are present.
+ *
+ * An example of how an application flow may looks like.
+ *   {@link #setupResource(Resource)}
+ *   {@link #setAcls(AclBinding)}
+ *   {@link #canAccess(Method, Resource, X509Certificate)}
+ *   {@link #addAce(Resource, AceEntry)}
+ *   {@link #canAccess(Method, Resource, X509Certificate)}
+ *   {@link #removeAce(Resource, AceEntry)}
+ *   {@link #canAccess(Method, Resource, X509Certificate)}
+ *   {@link #clearAcls(Resource)}
+ *   {@link #clearResource(Resource)}
+ * }
  */
 public interface AuthorizerService {
 
@@ -43,7 +56,7 @@ public interface AuthorizerService {
 
   /**
    * This will set the AceEntries in provided AclBinding object to be the current set of ACL's for the resource. This
-   * performs an overwrite operation. An empty AceEntries list will clear all acls and achieve a similar result like {@code clearAcls}.
+   * performs an overwrite operation. An empty AceEntries list will clear all acls and achieve a similar result like {@link #clearAcls(Resource)}.
    *
    * @param aclBinding A fully contained object having a list of AceEntries associated with the resource.
    */
@@ -74,4 +87,26 @@ public interface AuthorizerService {
    * @param aceEntry The AceEntry to be removed.
    */
   public void removeAce(Resource resource, AceEntry aceEntry);
+
+  /**
+   * This may perform any initialization steps that may be necessary before start provisioning any ACL's for a resource. This
+   * may be used to setup/allocate any metadata/context about the resource.
+   *
+   * This is optional to implement.
+   * Implementation should mandate if this needs to be called before start provisioning any ACL's for the resource.
+   * @param resource
+   */
+  public default void setupResource(Resource resource) {};
+
+  /**
+   * This may perform any finalization steps that may be necessary after all ACL's for a resource is deleted and the resource will
+   * not be used later. This may be used to clean up any metadata/context information about the resource that was setup in
+   * {@link #setupResource}.
+   *
+   * This is optional to implement.
+   * Implementation should mandate if this needs to be called after deleting all ACL's for the resource.
+   * @param resource
+   */
+  public default void clearResource(Resource resource) {};
+
 }
