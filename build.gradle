@@ -1,8 +1,36 @@
-// The start parameters below enable parallelization of many independent modules.
-// We can't enable it by default because it breaks buildAll. We can still use
-// parallel execution by doing: `./gradlew clean build --parallel`
-// gradle.startParameter.setParallelProjectExecutionEnabled(true)
-// gradle.startParameter.setMaxWorkerCount(10)
+buildscript {
+  dependencies {
+    classpath 'com.gradle:gradle-enterprise-gradle-plugin:3.5.2'
+    classpath 'gradle.plugin.com.dorongold.plugins:task-tree:1.5'
+  }
+}
+
+plugins {
+  id 'java'
+  id 'idea'
+}
+
+try {
+  apply plugin: 'com.gradle.build-scan'
+  gradleEnterprise {
+    server = System.getProperty('buildScanServer', 'Set systemProp.buildScanServer in ~/.gradle/gradle.properties')
+    buildScan {
+      def commitId = 'git rev-parse --verify HEAD'.execute().text.trim()
+      value 'CommitId', commitId
+    }
+  }
+} catch (Exception e) {
+  println "$e"
+}
+
+try {
+  apply plugin: 'com.dorongold.task-tree'
+  taskTree {
+    noRepeat = true
+  }
+} catch (Exception e) {
+  println "$e"
+}
 
 if (project.hasProperty('overrideBuildEnvironment')) {
   if (project.overrideBuildEnvironment) {
@@ -15,10 +43,6 @@ if (project.hasProperty('overrideBuildEnvironment')) {
   }
 }
 
-apply plugin: 'java'
-apply plugin: 'idea'
-apply plugin: 'jacoco' // Java Code Coverage plugin
-
 // Internal LinkedIn Kafka release
 def internalKafkaGroup = 'com.linkedin.kafka'
 def internalKafkaVersion = '2.3.0.23'
@@ -26,95 +50,97 @@ def internalKafkaVersion = '2.3.0.23'
 def ddsStorageCoreVersion = '9.0.0'
 def gobblinVersion = '0.15.0-dev-9467'
 
-ext.libraries = [ // Groovy map literal
-                  avro: 'org.apache.avro:avro:1.7.7',
-                  avroMapred: 'org.apache.avro:avro-mapred:1.7.7',
-                  avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:0.2.8',
-                  avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.2.23',
-                  azkaban: 'com.linkedin.azkaban:azkaban-common:3.84.18',
-                  brooklinCommon: 'com.linkedin.brooklin-li-common:brooklin-li-common:80.0.2',
-                  brooklinKafka: 'com.github.datastream:datastream-kafka-connector:36.0.1',
-                  brooklinKafkaTransport: 'com.github.datastream:datastream-kafka:36.0.1',
-                  brooklinTest: 'com.linkedin.brooklin-li-common:brooklin-test-pub:80.0.2',
-                  bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
-                  commonsCodec: 'commons-codec:commons-codec:1.4',
-                  commonsIo: 'commons-io:commons-io:2.4',
-                  helix: 'org.apache.helix:helix-core:1.0.1.24',
-                  kafka: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion,
-                  kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
-                  kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',
-                  mockito: 'org.mockito:mockito-core:3.3.3',
-                  netty: 'io.netty:netty-all:4.1.22.Final',
-                  zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
-                  d2: 'com.linkedin.container:pegasus-d2-server-factory:30.1.265',
-                  d2Client: 'com.linkedin.container:pegasus-d2-client-factory:30.1.265',
-                  r2Client: 'com.linkedin.container:pegasus-r2-client-factory:30.1.269',
-                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
-                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
-                  routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
-                  routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
-                  netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:' + ddsStorageCoreVersion,
-                  ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
-                  oss: 'org.sonatype.oss:oss-parent:7',
-                  asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
-                  scalaLogging: 'com.typesafe.scala-logging:scala-logging_2.11:3.9.0',
-                  zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
-                  zstd: 'com.github.luben:zstd-jni:1.4.4-7',
+ext.libraries = [
+    avro: 'org.apache.avro:avro:1.7.7',
+    avroMapred: 'org.apache.avro:avro-mapred:1.7.7',
+    avroUtilCompatibilityHelper: 'com.linkedin.avroutil1:helper-all:0.2.8',
+    avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.2.23',
+    azkaban: 'com.linkedin.azkaban:azkaban-common:3.84.18',
+    brooklinCommon: 'com.linkedin.brooklin-li-common:brooklin-li-common:80.0.2',
+    brooklinKafka: 'com.github.datastream:datastream-kafka-connector:36.0.1',
+    brooklinKafkaTransport: 'com.github.datastream:datastream-kafka:36.0.1',
+    brooklinTest: 'com.linkedin.brooklin-li-common:brooklin-test-pub:80.0.2',
+    bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
+    commonsCodec: 'commons-codec:commons-codec:1.4',
+    commonsIo: 'commons-io:commons-io:2.4',
+    helix: 'org.apache.helix:helix-core:1.0.1.24',
+    kafka: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion,
+    kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
+    kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',
+    mockito: 'org.mockito:mockito-core:3.3.3',
+    netty: 'io.netty:netty-all:4.1.22.Final',
+    zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
+    d2: 'com.linkedin.container:pegasus-d2-server-factory:30.1.265',
+    d2Client: 'com.linkedin.container:pegasus-d2-client-factory:30.1.265',
+    r2Client: 'com.linkedin.container:pegasus-r2-client-factory:30.1.269',
+    routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
+    routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
+    routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
+    routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
+    netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:' + ddsStorageCoreVersion,
+    ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
+    oss: 'org.sonatype.oss:oss-parent:7',
+    asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
+    scalaLogging: 'com.typesafe.scala-logging:scala-logging_2.11:3.9.0',
+    zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
+    zstd: 'com.github.luben:zstd-jni:1.4.4-7',
 
-                  // Gobblin dependencies
-                  gobblinCoreBase: 'org.apache.gobblin:gobblin-core-base:' + gobblinVersion,
-                  gobblinKafkaCommon: 'org.apache.gobblin:gobblin-kafka-common:' + gobblinVersion,
-                  gobblinDataManagement: 'org.apache.gobblin:gobblin-data-management:' + gobblinVersion,
+    // Gobblin dependencies
+    gobblinCoreBase: 'org.apache.gobblin:gobblin-core-base:' + gobblinVersion,
+    gobblinKafkaCommon: 'org.apache.gobblin:gobblin-kafka-common:' + gobblinVersion,
+    gobblinDataManagement: 'org.apache.gobblin:gobblin-data-management:' + gobblinVersion,
 
-                  // Hadoop to Venice Bridge dependencies
-                  mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
-                  commonsConfiguration: 'commons-configuration:commons-configuration:1.9',
-                  commonsLang: 'commons-lang:commons-lang:2.6',
-                  hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
-                  httpClient: 'org.apache.httpcomponents:httpclient:4.5.2',
-                  httpCore: 'org.apache.httpcomponents:httpcore:4.4.5',
-                  jacksonCore: 'org.codehaus.jackson:jackson-core-asl:1.9.6',
-                  jacksonMapper: 'org.codehaus.jackson:jackson-mapper-asl:1.9.6',
-                  javax: 'javax.servlet:javax.servlet-api:3.1.0',
-                  jdom: 'org.jdom:jdom:1.1',
-                  joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
-                  log4j: 'log4j:log4j:1.2.17',
-                  log4j2api: 'org.apache.logging.log4j:log4j-api:2.9.1',
-                  log4j2core: 'org.apache.logging.log4j:log4j-core:2.9.1',
-                  snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
-                  // TODO: move back to open source sparkjava once they fix Jetty SSL.
-                  // spark: 'com.sparkjava:spark-core:2.9.1',
-                  spark: 'com.linkedin.li-sparkjava:li-sparkjava-impl:0.0.2',
-                  testng: 'org.testng:testng:6.14.3',
-                  tehuti: 'io.tehuti:tehuti:0.8.8',
-                  // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
-                  xalan: 'xalan:xalan:2.7.1',
-                  xerces: 'xerces:xercesImpl:2.9.1',
+    // Hadoop to Venice Bridge dependencies
+    mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
+    commonsConfiguration: 'commons-configuration:commons-configuration:1.9',
+    commonsLang: 'commons-lang:commons-lang:2.6',
+    hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
+    httpClient: 'org.apache.httpcomponents:httpclient:4.5.2',
+    httpCore: 'org.apache.httpcomponents:httpcore:4.4.5',
+    jacksonCore: 'org.codehaus.jackson:jackson-core-asl:1.9.6',
+    jacksonMapper: 'org.codehaus.jackson:jackson-mapper-asl:1.9.6',
+    javax: 'javax.servlet:javax.servlet-api:3.1.0',
+    jdom: 'org.jdom:jdom:1.1',
+    joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
+    log4j: 'log4j:log4j:1.2.17',
+    log4j2api: 'org.apache.logging.log4j:log4j-api:2.9.1',
+    log4j2core: 'org.apache.logging.log4j:log4j-core:2.9.1',
+    snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
+    // TODO: move back to open source sparkjava once they fix Jetty SSL.
+    // spark: 'com.sparkjava:spark-core:2.9.1',
+    spark: 'com.linkedin.li-sparkjava:li-sparkjava-impl:0.0.2',
+    testng: 'org.testng:testng:6.14.3',
+    tehuti: 'io.tehuti:tehuti:0.8.8',
+    // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
+    xalan: 'xalan:xalan:2.7.1',
+    xerces: 'xerces:xercesImpl:2.9.1',
 
-                  // Hadoop to Venice Bridge test dependencies
-                  mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
+    // Hadoop to Venice Bridge test dependencies
+    mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
 
-                  // Samza dependencies
-                  samzaApi: 'com.linkedin.samza-li:samza-api:207.13.2.31', //equivalent to org.apache.samza 0.13
+    // Samza dependencies
+    samzaApi: 'com.linkedin.samza-li:samza-api:207.13.2.31', //equivalent to org.apache.samza 0.13
 
-                  // Added during dds-storage-core v2 => v3
-                  // Transitive dependency, to replace implicit version 11.0.17 which caused 4 test cases to fail:
-                  // 1. TestAdminSparkServer.controllerClientCanDeleteStore
-                  // 2. TestAdminSparkServer.controllerClientCanDeleteOldVersion
-                  // 3. TestAdminSparkServer.controllerClientCanDeleteAllVersion
-                  // 4. TestBrooklin.canReplicateKafkaWithBrooklinTopicReplicator
-                  restliDocgen: 'com.linkedin.pegasus:restli-docgen:15.1.10',
+    // Added during dds-storage-core v2 => v3
+    // Transitive dependency, to replace implicit version 11.0.17 which caused 4 test cases to fail:
+    // 1. TestAdminSparkServer.controllerClientCanDeleteStore
+    // 2. TestAdminSparkServer.controllerClientCanDeleteOldVersion
+    // 3. TestAdminSparkServer.controllerClientCanDeleteAllVersion
+    // 4. TestBrooklin.canReplicateKafkaWithBrooklinTopicReplicator
+    restliDocgen: 'com.linkedin.pegasus:restli-docgen:15.1.10',
 
-                  // RocksDB
-                  rocksdbjni: 'org.rocksdb:rocksdbjni:6.6.4',
+    // RocksDB
+    rocksdbjni: 'org.rocksdb:rocksdbjni:6.6.4',
 
-                  // Flatbuffer lib, currently for benchmark only
-                  flatbufferJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
+    // Flatbuffers lib, currently for benchmark only
+    flatbuffersJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
 
-                  // open source conscrypt from google
-                  conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
-                  classgraph: "io.github.classgraph:classgraph:4.8.60"
+    // open source conscrypt from google
+    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
+    classgraph: 'io.github.classgraph:classgraph:4.8.60',
 
+    jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
+    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28'
 ]
 
 subprojects {
