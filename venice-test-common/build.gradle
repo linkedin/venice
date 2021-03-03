@@ -4,27 +4,9 @@ plugins {
   id 'io.netifi.flatbuffers' version '1.0.6'
 }
 
-task createFlatBuffers(type: FlatBuffers) {
-  inputDir = file("src/jmh/flatbuffers")
-  outputDir = file("src/jmh/generated/flatbuffers")
-  language = 'java'
-}
-
-compileJava.dependsOn(createFlatBuffers)
-
-task buildJar(type: Jar) {
-  manifest {
-    attributes 'Implementation-Title': 'Venice Test Common',
-        'Implementation-Version': version
-  }
-  baseName = project.name
-  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
-  with jar
-}
-
-configurations.implementation {
-  exclude group: 'org.apache.kafka'
-  exclude group: 'org.mortbay.jetty', module: 'servlet-api'
+configurations {
+  jmhImplementation.extendsFrom testImplementation
+  integrationTestImplementation.extendsFrom testImplementation
 }
 
 configurations.all {
@@ -34,73 +16,31 @@ configurations.all {
   }
 }
 
-jar {
-  manifest {
-    attributes 'Implementation-Title': 'Venice Test Common',
-        'Implementation-Version': version
-  }
+configurations.implementation {
+  exclude group: 'org.apache.kafka'
+  exclude group: 'org.mortbay.jetty', module: 'servlet-api'
 }
 
 sourceSets {
+  jmh {
+    java.srcDirs = ['src/jmh/java']
+    compileClasspath += main.output
+    runtimeClasspath += main.output
+  }
+
   integrationTest {
     java.srcDirs = ['src/integrationtest/java']
     resources.srcDirs = ['src/integrationtest/resources']
     compileClasspath += main.output
     runtimeClasspath += main.output
   }
-
-  jmh {
-    java.srcDirs = ['src/jmh/java']
-    compileClasspath += main.output
-    runtimeClasspath += main.output
-  }
-}
-
-configurations {
-  integrationTestCompile.extendsFrom testImplementation
-  integrationTestRuntime.extendsFrom testRuntime
-  jmhImplementation.extendsFrom testImplementation
-}
-
-def applyConcurrencyConfig(task) {
-  String forkEveryConfigName = 'integrationTest.forkEvery'
-  if (project.hasProperty(forkEveryConfigName)) {
-    println "$forkEveryConfigName set to ${project.getProperty(forkEveryConfigName)}"
-    task.forkEvery = Integer.parseInt(project.getProperty(forkEveryConfigName))
-  } else {
-    println "$forkEveryConfigName not set, will use the default ($task.forkEvery)."
-  }
-
-  String maxParallelForksConfigName = 'integrationTest.maxParallelForks'
-  if (project.hasProperty(maxParallelForksConfigName)) {
-    println "$maxParallelForksConfigName set to ${project.getProperty(maxParallelForksConfigName)}"
-    task.maxParallelForks = Integer.parseInt(project.getProperty(maxParallelForksConfigName))
-  } else {
-    println "$maxParallelForksConfigName not set, will use the default ($task.maxParallelForks)."
-  }
-}
-
-task integrationTests(type: Test) {
-  mustRunAfter test
-  classpath = sourceSets.integrationTest.runtimeClasspath
-  testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
-  applyConcurrencyConfig(integrationTests)
-}
-
-task flakyIntegrationTests(type: Test) {
-  useTestNG() {
-    includeGroups 'flaky'
-  }
-  mustRunAfter test
-  classpath = sourceSets.integrationTest.runtimeClasspath
-  testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
-  applyConcurrencyConfig(flakyIntegrationTests)
 }
 
 dependencies {
   implementation libraries.testng
 
   implementation (libraries.brooklinTest) {
+    exclude group: 'org.testng'
     exclude group: 'org.mockito' //brooklin tries to pull in Mockito 1, we depend on Mockito 2
     exclude group: 'org.apache.kafka' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
     exclude group: 'kafka' //brooklin tries to pull in Kafka 0.11, but we have not upgraded to that yet.
@@ -141,7 +81,6 @@ dependencies {
   implementation libraries.samzaApi
   implementation libraries.avroUtilCompatibilityHelper
   implementation libraries.avroUtilFastserde
-  implementation libraries.flatbufferJava
   implementation libraries.scalaLogging
 
   runtime libraries.commonsConfiguration
@@ -149,20 +88,64 @@ dependencies {
   runtime libraries.httpCore
   runtime libraries.httpClient
 
+  compileOnly libraries.flatbuffersJava
+
   testImplementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
     exclude group: 'javax.servlet'
   }
   testImplementation project(':venice-admin-tool')
 
-  jmhImplementation 'org.openjdk.jmh:jmh-core:1.27'
-  jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.27'
+  jmhAnnotationProcessor libraries.jmhGenerator
+  jmhImplementation libraries.jmhCore
+  jmhImplementation libraries.flatbuffersJava
 }
 
-classes.finalizedBy(jmhClasses)
+task compileFlatBuffers(type: FlatBuffers) {
+  language = 'java'
+  inputDir = file('src/jmh/flatbuffers')
+  outputDir = file('src/jmh/generated/flatbuffers')
+}
+compileJava.dependsOn(compileFlatBuffers)
 
 task jmh(type: JavaExec, dependsOn: jmhClasses) {
   main = 'org.openjdk.jmh.Main'
   classpath = sourceSets.jmh.compileClasspath + sourceSets.jmh.runtimeClasspath
   classpath += sourceSets.integrationTest.compileClasspath + sourceSets.integrationTest.runtimeClasspath
+}
+classes.finalizedBy(jmhClasses)
+
+def applyConcurrencyConfig(task) {
+  String forkEveryConfigName = 'integrationTest.forkEvery'
+  if (project.hasProperty(forkEveryConfigName)) {
+    println "$forkEveryConfigName set to ${project.getProperty(forkEveryConfigName)}"
+    task.forkEvery = Integer.parseInt(project.getProperty(forkEveryConfigName))
+  } else {
+    println "$forkEveryConfigName not set, will use the default ($task.forkEvery)."
+  }
+
+  String maxParallelForksConfigName = 'integrationTest.maxParallelForks'
+  if (project.hasProperty(maxParallelForksConfigName)) {
+    println "$maxParallelForksConfigName set to ${project.getProperty(maxParallelForksConfigName)}"
+    task.maxParallelForks = Integer.parseInt(project.getProperty(maxParallelForksConfigName))
+  } else {
+    println "$maxParallelForksConfigName not set, will use the default ($task.maxParallelForks)."
+  }
+}
+
+task integrationTests(type: Test) {
+  mustRunAfter test
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
+  applyConcurrencyConfig(integrationTests)
+}
+
+task flakyIntegrationTests(type: Test) {
+  useTestNG() {
+    includeGroups 'flaky'
+  }
+  mustRunAfter test
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
+  applyConcurrencyConfig(flakyIntegrationTests)
 }
