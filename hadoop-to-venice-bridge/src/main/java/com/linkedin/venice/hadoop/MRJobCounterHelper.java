@@ -8,7 +8,7 @@ import org.apache.hadoop.mapred.Reporter;
  * All MapReducer job counters (identified by a group name + a counter name) are defined here and this util class
  * provides method to increment counters and read counters
  */
-class MRJobCounterHelper {
+public class MRJobCounterHelper {
   private static final String COUNTER_GROUP_QUOTA = "Quota";
   private static final String COUNTER_TOTAL_KEY_SIZE = "total key size";
   private static final String COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE = "total uncompressed value size";
