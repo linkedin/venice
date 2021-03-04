@@ -73,6 +73,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatus.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -2591,6 +2592,16 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public MetaStoreWriter getMetaStoreWriter() {
     return veniceHelixAdmin.getMetaStoreWriter();
+  }
+
+  @Override
+  public MetadataStoreWriter getMetadataStoreWriter() {
+    return veniceHelixAdmin.getMetadataStoreWriter();
+  }
+
+  @Override
+  public Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter() {
+    return veniceHelixAdmin.getPushStatusStoreRecordDeleter();
   }
 
   // Function that can be overridden in tests

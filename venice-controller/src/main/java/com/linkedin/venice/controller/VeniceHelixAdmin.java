@@ -728,6 +728,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 deleteAllVersionsInStore(clusterName, metaSystemStoreName);
                 resources.getPushMonitor().cleanupStoreStatus(metaSystemStoreName);
                 if (!store.isMigrating()) {
+                    // Clean up venice writer before truncating RT topic
+                    metaStoreWriter.removeMetaStoreWriter(metaSystemStoreName);
                     // Delete RT topic
                     truncateKafkaTopic(Version.composeRealTimeTopic(metaSystemStoreName));
                 } else {
@@ -4668,6 +4670,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
         deleteOldVersionInStore(clusterName, metadataStoreName, versionNumber);
         if (deleteRT) {
+            // Clean up venice writer before truncating RT topic
+            metadataStoreWriter.removeMetadataStoreWriter(storeName);
             truncateKafkaTopic(Version.composeRealTimeTopic(metadataStoreName));
         }
         storeMetadataUpdate(clusterName, storeName, store -> {
@@ -4702,6 +4706,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } finally {
             resources.unlockForMetadataOperation();
         }
+        // Clean up venice writer before truncating RT topic
+        pushStatusStoreDeleter.ifPresent(deleter -> deleter.removePushStatusStoreVeniceWriter(storeName));
         truncateKafkaTopic(Version.composeRealTimeTopic(pushStatusStoreName));
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setDaVinciPushStatusStoreEnabled(false);
@@ -4709,6 +4715,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    @Override
     public MetadataStoreWriter getMetadataStoreWriter() {
         return metadataStoreWriter;
     }
@@ -4799,6 +4806,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public MetaStoreWriter getMetaStoreWriter() {
         return metaStoreWriter;
+    }
+
+    @Override
+    public Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter() {
+        return pushStatusStoreDeleter;
     }
 
     /**

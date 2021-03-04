@@ -203,6 +203,7 @@ public class MetaSystemStoreTest {
     // Meta system store should be deleted when the regular Venice store gets deleted.
     ControllerResponse storeDeletionResponse = controllerClient.disableAndDeleteStore(regularVeniceStoreName);
     assertFalse(storeDeletionResponse.isError(), "Store deletion should success, but got error: " + storeDeletionResponse.getError());
+    assertNull(venice.getVeniceControllers().get(0).getVeniceAdmin().getMetaStoreWriter().getMetaStoreWriter(metaSystemStoreName));
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       try {
         storeClient.get(replicaStatusKeyForV3P0).get();

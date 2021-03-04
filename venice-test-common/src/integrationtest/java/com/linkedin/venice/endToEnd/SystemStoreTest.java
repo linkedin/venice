@@ -566,6 +566,7 @@ public class SystemStoreTest {
     ControllerResponse controllerResponse = parentControllerClient.disableAndDeleteStore(regularVeniceStoreName);
     assertFalse(controllerResponse.isError(), "Failed to delete the regular Venice store");
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      assertNull(venice.getVeniceControllers().get(0).getVeniceAdmin().getMetadataStoreWriter().getMetadataStoreWriter(regularVeniceStoreName));
       assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
       assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
       assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(

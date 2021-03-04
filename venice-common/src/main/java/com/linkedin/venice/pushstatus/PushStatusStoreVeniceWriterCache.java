@@ -31,7 +31,7 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
     this.writerFactory = writerFactory;
   }
 
-  public VeniceWriter getVeniceWriter(String storeName) {
+  public VeniceWriter prepareVeniceWriter(String storeName) {
     return veniceWriters.computeIfAbsent(storeName, s -> {
       String rtTopic = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
       VeniceWriter writer = writerFactory.createVeniceWriter(rtTopic, new VeniceAvroKafkaSerializer(PushStatusKey.SCHEMA$.toString()),
@@ -39,6 +39,18 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
               .empty(), SystemTime.INSTANCE);
       return writer;
     });
+  }
+
+  public void removeVeniceWriter(String storeName) {
+    VeniceWriter writer = veniceWriters.get(storeName);
+    if (writer != null) {
+      writer.close();
+      veniceWriters.remove(storeName);
+    }
+  }
+
+  public VeniceWriter getVeniceWriterFromMap(String storeName) {
+    return veniceWriters.get(storeName);
   }
 
   @Override
