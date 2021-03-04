@@ -19,6 +19,7 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -1391,6 +1392,56 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
+  public long getLeaderOffsetLag() {
+    /**
+     * If the admin client is scala based then getting offset from remote kafka is difficult as it needs the
+     * ZK address of the kafka broker. So this metric will not work in this case.
+     */
+    if (serverConfig.getKafkaAdminClass().contains(ScalaAdminUtils.class.getName())) {
+      return 0;
+    }
+
+    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+    if (!svs.isPresent()) {
+      /**
+       * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
+       * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
+       * window where there is no version metadata, which is not an error.
+       */
+      return 0;
+    }
+
+    if (partitionConsumptionStateMap.isEmpty()) {
+      /**
+       * Partition subscription happens after the ingestion task and stat are created, it's not an error.
+       */
+      return 0;
+    }
+
+    long offsetLag = partitionConsumptionStateMap.values()
+        .stream()
+        .filter(pcs -> pcs.getLeaderState().equals(LEADER))
+        //the lag is (latest VT offset - consumed VT offset)
+        .mapToLong((pcs) -> {
+          String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();
+          if (currentLeaderTopic == null || currentLeaderTopic.isEmpty()) {
+            currentLeaderTopic = kafkaVersionTopic;
+          }
+          if (!pcs.consumeRemotely()) {
+            return (cachedKafkaMetadataGetter.getOffset(currentLeaderTopic, pcs.getPartition()) - 1)
+                - pcs.getOffsetRecord().getOffset();
+          } else {
+            return
+                (cachedKafkaMetadataGetter.getOffsetFromRemoteKafka(nativeReplicationSourceAddress, currentLeaderTopic,
+                    pcs.getPartition()) - 1) - pcs.getOffsetRecord().getOffset();
+          }
+        })
+        .sum();
+
+    return minZeroLag(offsetLag);
+  }
+
+  @Override
   public long getFollowerOffsetLag() {
     Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (!svs.isPresent()) {
@@ -1421,6 +1472,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     return minZeroLag(offsetLag);
   }
+
+
 
   /**
    * Unsubscribe from all the topics being consumed for the partition in partitionConsumptionState

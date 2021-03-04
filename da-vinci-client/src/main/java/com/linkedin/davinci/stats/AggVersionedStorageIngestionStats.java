@@ -228,6 +228,13 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       return ingestionTaskErroredGauge;
     }
 
+    public long getLeaderOffsetLag() {
+      if (ingestionTask == null) {
+        return 0;
+      }
+      return ingestionTask.getLeaderOffsetLag();
+    }
+
     /**
      * @return This stats is usually aggregated across the nodes so that
      * we can see the overall lags between leaders and followers.
@@ -327,6 +334,8 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       registerSensor("ingestion_task_errored_gauge", new IngestionStatsGauge(this,
           () -> (double) getStats().getIngestionTaskErroredGauge()));
 
+      registerSensor("leader_offset_lag", new IngestionStatsGauge(this, () ->
+          (double) getStats().getLeaderOffsetLag(), 0));
       registerSensor("follower_offset_lag", new IngestionStatsGauge(this, () ->
           (double) getStats().getFollowerOffsetLag(), 0));
       registerSensor("write_compute_operation_failure", new IngestionStatsGauge(this,

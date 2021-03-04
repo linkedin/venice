@@ -263,6 +263,11 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
+  public long getLeaderOffsetLag() {
+    return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
+  }
+
+  @Override
   public long getFollowerOffsetLag() {
     return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
   }

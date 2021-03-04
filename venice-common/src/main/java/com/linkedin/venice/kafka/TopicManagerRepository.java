@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
@@ -88,6 +89,15 @@ public class TopicManagerRepository implements Closeable {
 
   public TopicManager getTopicManager(Pair<String, String> kafkaServerAndZk) {
     return topicManagersMap.computeIfAbsent(kafkaServerAndZk.getFirst(), k -> topicManagerCreator.apply(kafkaServerAndZk));
+  }
+
+  public TopicManager getTopicManager(String kafkaBootstrapServers) {
+    // Creating remote topic manager by remote Kafka server requires Java-based Kafka admin client
+    if (kafkaClientFactory.getKafkaAdminClient() instanceof ScalaAdminUtils) {
+      throw new VeniceException("Kafka ZK address is required by Scala Kafka admin client.");
+    }
+    return topicManagersMap.computeIfAbsent(kafkaBootstrapServers,
+        k -> topicManagerCreator.apply(Pair.create(kafkaBootstrapServers, "")));
   }
 
   @Override
