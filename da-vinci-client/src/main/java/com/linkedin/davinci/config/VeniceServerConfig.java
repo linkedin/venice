@@ -3,6 +3,7 @@ package com.linkedin.davinci.config;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -299,7 +300,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
 
     restServiceEpollEnabled = serverProperties.getBoolean(SERVER_REST_SERVICE_EPOLL_ENABLED, false);
-    kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
+    kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName());
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
     sharedConsumerPoolEnabled = serverProperties.getBoolean(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);

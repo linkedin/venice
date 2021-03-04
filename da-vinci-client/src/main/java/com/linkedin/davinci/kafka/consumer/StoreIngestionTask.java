@@ -1719,6 +1719,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return minZeroLag(offsetLag);
   }
 
+  public abstract long getLeaderOffsetLag();
+
   /**
    * Measure the offset lag between follower and leader
    */
@@ -2740,6 +2742,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     private final Map<String, Pair<Long, Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
     private final Map<Pair<String, Integer>, Pair<Long, Long>> offsetCache = new VeniceConcurrentHashMap<>();
     private final Map<Pair<String, Integer>, Pair<Long, Long>> lastProducerTimestampCache = new VeniceConcurrentHashMap<>();
+    private final Map<Pair<String, Integer>, Pair<Long, Long>> remoteOffsetCache = new VeniceConcurrentHashMap<>();
 
     CachedKafkaMetadataGetter(TopicManagerRepository topicManagerRepository, long timeToLiveMs) {
       this.ttl = MILLISECONDS.toNanos(timeToLiveMs);
@@ -2763,6 +2766,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       entry = offsetCache.compute(key, (k, oldValue) ->
           (oldValue != null && oldValue.getFirst() > now) ?
               oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager().getLatestOffsetAndRetry(topicName, partitionId, 10)));
+      return entry.getSecond();
+    }
+
+    long getOffsetFromRemoteKafka(String remoteKafkaServer, String topicName, int partitionId) {
+      long now = System.nanoTime();
+
+      Pair key = new Pair<>(topicName, partitionId);
+      Pair<Long, Long> entry = remoteOffsetCache.get(key);
+      if (entry != null && entry.getFirst() > now) {
+        return entry.getSecond();
+      }
+
+      entry = remoteOffsetCache.compute(key, (k, oldValue) ->
+          (oldValue != null && oldValue.getFirst() > now) ?
+              oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager(remoteKafkaServer).getLatestOffsetAndRetry(topicName, partitionId, 10)));
       return entry.getSecond();
     }
 
