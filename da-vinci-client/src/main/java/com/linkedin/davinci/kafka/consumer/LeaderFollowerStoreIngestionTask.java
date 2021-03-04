@@ -69,6 +69,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
@@ -1397,7 +1398,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * If the admin client is scala based then getting offset from remote kafka is difficult as it needs the
      * ZK address of the kafka broker. So this metric will not work in this case.
      */
-    if (serverConfig.getKafkaAdminClass().contains(ScalaAdminUtils.class.getName())) {
+    if (serverConfig.getKafkaAdminClass().contains(SCALA_BASED_KAFKA_ADMIN_CLIENT_CLASS_NAME)) {
       return 0;
     }
 
