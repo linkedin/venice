@@ -43,7 +43,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
   }
 
   public void writeHeartbeat(String storeName) {
-    VeniceWriter writer = veniceWriterCache.getVeniceWriter(storeName);
+    VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
     PushStatusValue pushStatusValue = new PushStatusValue();
     pushStatusValue.reportTimestamp = System.currentTimeMillis();
@@ -58,7 +58,7 @@ public class PushStatusStoreWriter implements AutoCloseable {
   }
 
   public void writePushStatus(String storeName, int version, int partitionId, ExecutionStatus status, Optional<String> incrementalPushVersion) {
-    VeniceWriter writer = veniceWriterCache.getVeniceWriter(storeName);
+    VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion);
     GenericData.Record writeComputeRecord = new GenericData.Record(WRITE_COMPUTE_SCHEMA);
     GenericData.Record instancesRecord = new GenericData.Record(WRITE_COMPUTE_SCHEMA.getField("instances").schema().getTypes().get(1));

@@ -135,6 +135,18 @@ public class MetadataStoreWriter implements Closeable {
     writer.put(clusterFreeKey, value, storeMetadataSchemaIdMap.get(clusterName));
   }
 
+  public void removeMetadataStoreWriter(String storeName) {
+    VeniceWriter writer = metadataStoreWriterMap.get(storeName);
+    if (writer != null) {
+      writer.close();
+      metadataStoreWriterMap.remove(storeName);
+    }
+  }
+
+  public VeniceWriter getMetadataStoreWriter(String storeName) {
+    return metadataStoreWriterMap.get(storeName);
+  }
+
   private VeniceWriter prepareToWrite(String clusterName, String storeName) {
     String rtTopic = Version.composeRealTimeTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName));
     if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {

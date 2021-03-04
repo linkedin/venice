@@ -16,7 +16,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
@@ -232,6 +231,18 @@ public class MetaStoreWriter implements Closeable {
     }});
     writer.delete(key, null);
     writer.flush();
+  }
+
+  public void removeMetaStoreWriter(String metaStoreName) {
+    VeniceWriter writer = metaStoreWriterMap.get(metaStoreName);
+    if (writer != null) {
+      writer.close();
+      metaStoreWriterMap.remove(metaStoreName);
+    }
+  }
+
+  public VeniceWriter getMetaStoreWriter(String metaStoreName) {
+    return metaStoreWriterMap.get(metaStoreName);
   }
 
   private void write(String storeName, MetaStoreDataType dataType,

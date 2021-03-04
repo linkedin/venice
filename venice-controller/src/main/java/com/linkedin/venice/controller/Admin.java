@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pushstatus.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 
@@ -567,4 +568,14 @@ public interface Admin extends AutoCloseable, Closeable {
      * Return a {@link MetaStoreWriter}, which can be shared across different Venice clusters.
      */
     MetaStoreWriter getMetaStoreWriter();
+
+    /**
+     * Return {@link MetadataStoreWriter}.
+     */
+    MetadataStoreWriter getMetadataStoreWriter();
+
+    /**
+     * Return {@link PushStatusStoreRecordDeleter}.
+     */
+    Optional<PushStatusStoreRecordDeleter> getPushStatusStoreRecordDeleter();
 }

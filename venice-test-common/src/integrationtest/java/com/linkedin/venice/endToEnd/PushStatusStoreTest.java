@@ -140,6 +140,8 @@ public class PushStatusStoreTest {
     parentControllerClient.deleteDaVinciPushStatusStore(storeName);
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      cluster.getVeniceControllers().get(0).getVeniceAdmin().getPushStatusStoreRecordDeleter()
+          .ifPresent(deleter -> assertNull(deleter.getPushStatusStoreVeniceWriter(storeName)));
       assertFalse(cluster.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(pushStatusStoreTopic));
       assertTrue(!cluster.getVeniceControllers().get(0).getVeniceAdmin().getTopicManager().containsTopic(pushStatusStoreTopic)
           || cluster.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(pushStatusStoreTopic));
