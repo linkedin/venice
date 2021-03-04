@@ -49,6 +49,7 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
@@ -63,10 +64,12 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreConfig;
@@ -570,7 +573,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             Store newStore = new ZKStore(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
-                config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
+                config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy(),
+                config.getReplicationFactor());
 
             if (config.isLeaderFollowerEnabledForAllStores()) {
                 // Enable L/F for the new store (no matter which type it is) if the config is set to true.

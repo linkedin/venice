@@ -286,7 +286,6 @@ public class VeniceControllerClusterConfig {
     return routingStrategy;
   }
 
-  @Deprecated
   public int getReplicationFactor() {
     return replicationFactor;
   }

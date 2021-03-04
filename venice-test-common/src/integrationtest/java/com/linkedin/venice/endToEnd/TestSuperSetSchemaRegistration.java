@@ -93,12 +93,10 @@ public class TestSuperSetSchemaRegistration {
     public void setUp() {
       Utils.thisIsLocalhost();
       veniceCluster = ServiceFactory.getVeniceCluster(); //Now with SSL!
-      controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
     }
 
     @AfterClass
     public void cleanUp() {
-      IOUtils.closeQuietly(controllerClient);
       IOUtils.closeQuietly(veniceCluster);
     }
 
@@ -115,13 +113,13 @@ public class TestSuperSetSchemaRegistration {
       Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
       props.setProperty(VALUE_FIELD_PROP, "value");
 
-      try (ControllerClient controllerClient = createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props)) {}
-
-      // set up superset schema gen configs
-      UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-      params.setReadComputationEnabled(true);
-      params.setAutoSchemaPushJobEnabled(true);
-      veniceCluster.updateStore(storeName, params);
+      try (ControllerClient controllerClient = createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props)) {
+        // set up superset schema gen configs
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+        params.setReadComputationEnabled(true);
+        params.setAutoSchemaPushJobEnabled(true);
+        TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+      }
 
       writeComplicatedAvroFileWithUserSchema(inputDir, true, true);
       props = defaultH2VProps(veniceCluster, inputDirPath, storeName);

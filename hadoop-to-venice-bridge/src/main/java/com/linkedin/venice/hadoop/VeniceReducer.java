@@ -598,9 +598,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     private String printDuplicateKey(byte[] keyBytes) {
       Object keyRecord = keySerializer.deserialize(topic, keyBytes);
-      ByteArrayOutputStream output = new ByteArrayOutputStream();
-
-      try {
+      try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
         Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(keySchema, output, false);
         avroDatumWriter.write(keyRecord, jsonEncoder);
         jsonEncoder.flush();

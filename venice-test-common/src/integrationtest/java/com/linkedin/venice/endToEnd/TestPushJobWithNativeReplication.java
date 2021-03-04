@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -26,6 +27,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.Arrays;
@@ -38,8 +40,11 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
@@ -72,7 +77,7 @@ public class  TestPushJobWithNativeReplication {
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
-    return new Object[][]{{50, 2}, {10000, 100}};
+    return new Object[][]{{50, 2}, {10000, 20}};
   }
 
 
@@ -117,231 +122,202 @@ public class  TestPushJobWithNativeReplication {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
   public void testNativeReplicationForBatchPush(int recordCount, int partitionCount) throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
-    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    motherOfAllTests(
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount),
+        recordCount,
+        (parentController, clusterName, storeName, props, inputDir) -> {
+          try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+            job.run();
 
-    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
-    /**
-     * Enable L/F and native replication features.
-     */
-    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(partitionCount)
-        .setLeaderFollowerModel(true)
-        .setNativeReplicationEnabled(true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+            //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+          }
 
-    try (ControllerClient dc0Client = new ControllerClient(clusterName,
-        childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            // Current version should become 1
+            for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
+              Assert.assertEquals(version, 1);
+            }
 
-      //verify the update store command has taken effect before starting the push job.
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
-    }
+            //Verify the data in the second child fabric which consumes remotely
+            VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+            String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+            try(AvroGenericStoreClient<String, Object> client =
+                ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+              for (int i = 1; i <= recordCount; ++i) {
+                String expected = "test_name_" + i;
+                String actual = client.get(Integer.toString(i)).get().toString();
+                Assert.assertEquals(actual, expected);
+              }
+            }
 
-    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
-      job.run();
+            /**
+             * The offset metadata recorded in storage node must be smaller than or equal to the end offset of the local version topic
+             */
+            String versionTopic = Version.composeKafkaTopic(storeName, 1);
+            VeniceServer serverInRemoteFabric = childDataCenter.getClusters().get(clusterName).getVeniceServers().get(0).getVeniceServer();
+            Set<Integer> partitionIds = serverInRemoteFabric.getStorageService().getStorageEngineRepository().getLocalStorageEngine(versionTopic).getPartitionIds();
+            Assert.assertFalse(partitionIds.isEmpty());
+            int partitionId = partitionIds.iterator().next();
+            // Get the end offset of the selected partition from version topic
+            long latestOffsetInVersionTopic = childDataCenter.getRandomController().getVeniceAdmin().getTopicManager().getLatestOffset(versionTopic, partitionId);
+            // Get the offset metadata of the selected partition from storage node
+            StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
+            OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
 
-      //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-    }
-
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      // Current version should become 1
-      for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
-        Assert.assertEquals(version, 1);
-      }
-
-      //Verify the data in the second child fabric which consumes remotely
-      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-      try(AvroGenericStoreClient<String, Object> client =
-          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= recordCount; ++i) {
-          String expected = "test_name_" + i;
-          String actual = client.get(Integer.toString(i)).get().toString();
-          Assert.assertEquals(actual, expected);
-        }
-      }
-
-      /**
-       * The offset metadata recorded in storage node must be smaller than or equal to the end offset of the local version topic
-       */
-      String versionTopic = Version.composeKafkaTopic(storeName, 1);
-      VeniceServer serverInRemoteFabric = childDataCenter.getClusters().get(clusterName).getVeniceServers().get(0).getVeniceServer();
-      Set<Integer> partitionIds = serverInRemoteFabric.getStorageService().getStorageEngineRepository().getLocalStorageEngine(versionTopic).getPartitionIds();
-      Assert.assertFalse(partitionIds.isEmpty());
-      int partitionId = partitionIds.iterator().next();
-      // Get the end offset of the selected partition from version topic
-      long latestOffsetInVersionTopic = childDataCenter.getRandomController().getVeniceAdmin().getTopicManager().getLatestOffset(versionTopic, partitionId);
-      // Get the offset metadata of the selected partition from storage node
-      StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
-      OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
-
-      Assert.assertTrue(offsetRecord.getOffset() <= latestOffsetInVersionTopic);
-    });
+            Assert.assertTrue(offsetRecord.getOffset() <= latestOffsetInVersionTopic);
+          });
+        });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationWithLeadershipHandover() throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
-    File inputDir = getTempDataDirectory();
     int recordCount = 10000;
-    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
-    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+    motherOfAllTests(
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        recordCount,
+        (parentController, clusterName, storeName, props, inputDir) -> {
+          Thread pushJobThread = new Thread(() -> {
+            TestPushUtils.runPushJob("Test push job", props);
+          });
+          pushJobThread.start();
 
-    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(1)
-        .setLeaderFollowerModel(true)
-        .setNativeReplicationEnabled(true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+          /**
+           * Restart leader SN (server1) to trigger leadership handover during batch consumption.
+           * When server1 stops, sever2 will be promoted to leader. When server1 starts, due to full-auto rebalance, server2:
+           * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
+           * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
+           * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
+           */
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+            VeniceClusterWrapper veniceClusterWrapper =
+                childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
+            String topic = Version.composeKafkaTopic(storeName, 1);
+            HelixBaseRoutingRepository routingDataRepo =
+                veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+            Assert.assertTrue(routingDataRepo.containsKafkaTopic(topic));
 
-    try (ControllerClient dc0Client = new ControllerClient(clusterName,
-        childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString())) {
+            Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);
+            Assert.assertNotNull(leaderNode);
+            logger.info("Restart server port " + leaderNode.getPort());
+            veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
+          });
 
-      //verify the update store command has taken effect before starting the push job.
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
-    }
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+            for (int version : parentController.getVeniceAdmin()
+                .getCurrentVersionsForMultiColos(clusterName, storeName)
+                .values()) {
+              Assert.assertEquals(version, 1, "Current version should become 1!");
+            }
 
-    Thread pushJobThread = new Thread(() -> {
-      TestPushUtils.runPushJob("Test push job", props);
-    });
-    pushJobThread.start();
-
-    /**
-     * Restart leader SN (server1) to trigger leadership handover during batch consumption.
-     * When server1 stops, sever2 will be promoted to leader. When server1 starts, due to full-auto rebalance, server2:
-     * 1) Will be demoted to follower. Leader->standby transition during remote consumption will be tested.
-     * 2) Or remain as leader. In this case, Leader->standby transition during remote consumption won't be tested.
-     * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
-     */
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
-      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
-      String topic = Version.composeKafkaTopic(storeName, 1);
-      HelixBaseRoutingRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
-      Assert.assertTrue(routingDataRepo.containsKafkaTopic(topic));
-
-      Instance leaderNode = routingDataRepo.getLeaderInstance(topic, 0);
-      Assert.assertNotNull(leaderNode);
-      logger.info("Restart server port " + leaderNode.getPort());
-      veniceClusterWrapper.stopAndRestartVeniceServer(leaderNode.getPort());
-    });
-
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      // Current version should become 1
-      for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
-        Assert.assertEquals(version, 1);
-      }
-
-      // Verify the data in the second child fabric which consumes remotely
-      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-      try (AvroGenericStoreClient<String, Object> client =
-          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= recordCount; ++i) {
-          String expected = "test_name_" + i;
-          String actual = client.get(Integer.toString(i)).get().toString();
-          Assert.assertEquals(actual, expected);
-        }
-      }
-    });
-    pushJobThread.join();
+            // Verify the data in the second child fabric which consumes remotely
+            VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+            String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+            try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+                ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+              for (int i = 1; i <= recordCount; ++i) {
+                String expected = "test_name_" + i;
+                String actual = client.get(Integer.toString(i)).get().toString();
+                Assert.assertEquals(actual, expected);
+              }
+            }
+          });
+          pushJobThread.join();
+        });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationForHybrid() throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
-    File inputDir = getTempDataDirectory();
-    VeniceControllerWrapper parentController =
-            parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = TestUtils.getUniqueString("store");
-    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
-    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-
-    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 10);
-    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
-
-    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
-            .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-            .setLeaderFollowerModel(true)
-            .setNativeReplicationEnabled(true)
+    motherOfAllTests(
+        updateStoreQueryParams -> updateStoreQueryParams
             .setHybridRewindSeconds(10)
-            .setHybridOffsetLagThreshold(10);
+            .setHybridOffsetLagThreshold(10),
+        10,
+        (parentController, clusterName, storeName, props, inputDir) -> {
+          // Write batch data
+          TestPushUtils.runPushJob("Test push job", props);
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+          //Verify version level hybrid config is set correctly. The current version should be 1.
+          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+          Optional<Version> version =
+              childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
+          HybridStoreConfig hybridConfig = version.get().getHybridStoreConfig();
+          Assert.assertNotNull(hybridConfig);
+          Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), 10);
+          Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 10);
 
-    try (ControllerClient dc0Client = new ControllerClient(clusterName,
-        childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString())) {
+          // Write Samza data (aggregated mode)
+          SystemProducer veniceProducer = null;
+          try {
+            Map<String, String> samzaConfig = new HashMap<>();
+            String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
+            samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+            samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+            samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
+            samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
+            samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
+            samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+            samzaConfig.put(SSL_ENABLED, "false");
+            VeniceSystemFactory factory = new VeniceSystemFactory();
+            veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+            veniceProducer.start();
 
-      //verify the update store command has taken effect before starting the push job.
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
-    }
-    // Write batch data
-    TestPushUtils.runPushJob("Test push job", props);
-
-    //Verify version level hybrid config is set correctly. The current version should be 1.
-    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-    Optional<Version> version = childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-    HybridStoreConfig hybridConfig = version.get().getHybridStoreConfig();
-    Assert.assertNotNull(hybridConfig);
-    Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), 10);
-    Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 10);
-
-
-    // Write Samza data (aggregated mode)
-    SystemProducer veniceProducer = null;
-    try {
-      Map<String, String> samzaConfig = new HashMap<>();
-      String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-      samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-      samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-      samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
-      samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
-      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
-      samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
-      samzaConfig.put(SSL_ENABLED, "false");
-      VeniceSystemFactory factory = new VeniceSystemFactory();
-      veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
-      veniceProducer.start();
-
-      //Verify the kafka URL being returned to Samza is the same as dc-0 kafka url.
-      Assert.assertEquals(((VeniceSystemProducer)veniceProducer).getKafkaBootstrapServers(),
-              childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-    } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
-      }
-    }
+            //Verify the kafka URL being returned to Samza is the same as dc-0 kafka url.
+            Assert.assertEquals(((VeniceSystemProducer) veniceProducer).getKafkaBootstrapServers(),
+                childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+          } finally {
+            if (veniceProducer != null) {
+              veniceProducer.stop();
+            }
+          }
+        });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationForIncrementalPush() throws Exception {
+    motherOfAllTests(
+        updateStoreQueryParams -> updateStoreQueryParams
+            .setIncrementalPushEnabled(true)
+            .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC),
+        100,
+        (parentController, clusterName, storeName, props, inputDir) -> {
+          // Write batch data
+          TestPushUtils.runPushJob("Test push job", props);
+
+          //Run incremental push job
+          props.setProperty(INCREMENTAL_PUSH, "true");
+          TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDir);
+          TestPushUtils.runPushJob("Test incremental push job", props);
+
+          //Verify following in child controller
+          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+
+          //Verify version level incremental push config is set correctly. The current version should be 1.
+          Optional<Version> version =
+              childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
+          Assert.assertTrue(version.get().isIncrementalPushEnabled());
+
+          //Verify the data in the second child fabric which consumes remotely
+          String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+          try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+            for (int i = 1; i <= 150; ++i) {
+              String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * 2);
+              String actual = client.get(Integer.toString(i)).get().toString();
+              Assert.assertEquals(actual, expected);
+            }
+          }
+        });
+  }
+
+  private interface NativeReplTest {
+    void run(VeniceControllerWrapper parentController, String clusterName, String storeName, Properties props, File inputDir) throws Exception;
+  }
+
+  private void motherOfAllTests(
+      Function<UpdateStoreQueryParams, UpdateStoreQueryParams> updateStoreParamsTransformer,
+      int recordCount,
+      NativeReplTest test) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
     VeniceControllerWrapper parentController =
@@ -351,54 +327,36 @@ public class  TestPushJobWithNativeReplication {
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
-    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 100);
+    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setLeaderFollowerModel(true)
-        .setNativeReplicationEnabled(true)
-        .setIncrementalPushEnabled(true)
-        .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+    UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer.apply(
+        new UpdateStoreQueryParams()
+            .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setLeaderFollowerModel(true)
+            .setNativeReplicationEnabled(true));
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+    ControllerClient parentControllerClient = null;
+    try {
+      parentControllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
 
-    try (ControllerClient dc0Client = new ControllerClient(clusterName,
-        childDatacenters.get(0).getControllerConnectString());
-        ControllerClient dc1Client = new ControllerClient(clusterName,
-            childDatacenters.get(1).getControllerConnectString())) {
+      try (ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+          ControllerClient dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
 
-      //verify the update store command has taken effect before starting the push job.
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
-    }
+        //verify the update store command has taken effect before starting the push job.
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+      }
 
-    // Write batch data
-    TestPushUtils.runPushJob("Test push job", props);
-
-    //Run incremental push job
-    props.setProperty(INCREMENTAL_PUSH, "true");
-    TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDir);
-    TestPushUtils.runPushJob("Test incremental push job", props);
-
-    //Verify following in child controller
-    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-
-    //Verify version level incremental push config is set correctly. The current version should be 1.
-    Optional<Version> version = childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-    Assert.assertTrue(version.get().isIncrementalPushEnabled());
-
-    //Verify the data in the second child fabric which consumes remotely
-    String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-    try(AvroGenericStoreClient<String, Object> client =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-      for (int i = 1; i <= 150; ++i) {
-        String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * 2);
-        String actual = client.get(Integer.toString(i)).get().toString();
-        Assert.assertEquals(actual, expected);
+      test.run(parentController, clusterName, storeName, props, inputDir);
+    } finally {
+      FileUtils.deleteDirectory(inputDir);
+      if (null != parentControllerClient) {
+        ControllerResponse deleteStoreResponse = parentControllerClient.disableAndDeleteStore(storeName);
+        IOUtils.closeQuietly(parentControllerClient);
+        Assert.assertFalse(deleteStoreResponse.isError(), "Failed to delete the test store: " + deleteStoreResponse.getError());
       }
     }
   }
-
 }

@@ -3,7 +3,6 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 
@@ -22,17 +21,6 @@ import static com.linkedin.venice.ConfigKeys.*;
  */
 public class IntegrationTestUtils {
   static final int MAX_ASYNC_START_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
-
-  /**
-   * N.B.: Visibility is package-private on purpose.
-   */
-  static File getDataDirectory(String serviceName) {
-    String tmpDirectory = System.getProperty(TestUtils.TEMP_DIRECTORY_SYSTEM_PROPERTY);
-    String directoryName = TestUtils.getUniqueString("VeniceTemp-" + serviceName + "-Data");
-    File dataDir = new File(tmpDirectory, directoryName).getAbsoluteFile();
-    dataDir.deleteOnExit(); //Doesn't always work
-    return dataDir;
-  }
 
   /**
    * N.B.: Visibility is package-private on purpose.

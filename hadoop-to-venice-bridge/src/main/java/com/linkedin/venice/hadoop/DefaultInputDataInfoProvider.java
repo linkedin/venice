@@ -202,6 +202,9 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     if (hdfsExecutorService == null) {
       throw new VeniceException("Unable to execute HDFS operations in parallel, the executor is uninitialized");
     }
+    if (hdfsExecutorService.isShutdown()) {
+      throw new VeniceException("Unable to execute HDFS operations in parallel, the executor has already been shutdown");
+    }
     int len = fileStatusList.length;
     CompletableFuture<Void>[] futures = new CompletableFuture[len];
     for (int cur = 0; cur < len; ++cur) {

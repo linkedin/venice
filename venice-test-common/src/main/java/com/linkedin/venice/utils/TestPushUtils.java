@@ -7,7 +7,6 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.etl.ETLUtils;
-import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -213,12 +212,7 @@ public class TestPushUtils {
   public static final String STRING_SCHEMA = "\"string\"";
 
   public static File getTempDataDirectory() {
-    String tmpDirectory = System.getProperty(TestUtils.TEMP_DIRECTORY_SYSTEM_PROPERTY);
-    String directoryName = TestUtils.getUniqueString("Venice-Data");
-    File dir = new File(tmpDirectory, directoryName).getAbsoluteFile();
-    dir.mkdir();
-    dir.deleteOnExit();
-    return dir;
+    return TestUtils.getTempDataDirectory();
   }
 
   /**
@@ -654,10 +648,10 @@ public class TestPushUtils {
     File file = new File(parentDir, fileName);
 
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(recordSchema);
-    DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
-    dataFileWriter.create(recordSchema, file);
-    fileWriter.write(recordSchema, dataFileWriter);
-    dataFileWriter.close();
+    try (DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter)) {
+      dataFileWriter.create(recordSchema, file);
+      fileWriter.write(recordSchema, dataFileWriter);
+    }
 
     return recordSchema;
   }

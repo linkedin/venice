@@ -294,9 +294,18 @@ public abstract class HelixBaseRoutingRepository
 
   protected abstract void onCustomizedViewDataChange(RoutingTableSnapshot routingTableSnapshot);
 
+  /**
+   * Used by tests only. Evaluate carefully if there is an intent to start using this in the main code.
+   *
+   * @return the leader {@link Instance} or null if there isn't one
+   */
   @Override
   public Instance getLeaderInstance(String resourceName, int partition) {
-    List<Instance> instances = resourceAssignment.getPartition(resourceName, partition).getLeaderInstance();
+    Partition p = resourceAssignment.getPartition(resourceName, partition);
+    if (null == p) {
+      return null;
+    }
+    List<Instance> instances = p.getLeaderInstance();
     if (instances.isEmpty()) {
       return null;
     }

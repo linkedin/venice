@@ -126,6 +126,9 @@ public class TestTopicRequestOnHybridDelete {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
 
+      // Ugh... I don't like doing this. Feels sketchy.
+      venice.refreshAllRouterMetaData();
+
       //verify new records appear
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
         try {

@@ -79,6 +79,6 @@ public class AggVersionedStorageIngestionStatsTest {
 
   private Store getMockStore(String storeName) {
     return new ZKStore(storeName, "test", 0, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
   }
 }

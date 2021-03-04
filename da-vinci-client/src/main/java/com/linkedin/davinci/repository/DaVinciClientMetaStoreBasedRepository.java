@@ -234,7 +234,8 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   // TODO Get the meta store from an endpoint instead of mocking it locally based on provided configs.
   private Store getMetaStore(String metaStoreName, String regularStoreName) {
     Store mockedStore = new ZKStore(metaStoreName, "venice-system", 0, PersistenceType.ROCKS_DB, RoutingStrategy.HASH,
-        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1); // TODO: figure out how to get hold of a sensible RF value here
     mockedStore.setPartitionCount(VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
     mockedStore.setHybridStoreConfig(new HybridStoreConfigImpl(VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
         OFFSET_LAG_THRESHOLD_FOR_META_STORE, TimeUnit.MINUTES.toSeconds(1)));

@@ -26,11 +26,6 @@ public class TestStoreStatusDecider {
   private PushMonitor mockPushMonitor = Mockito.mock(PushMonitor.class);
   private int replicationFactor = 3;
 
-  @BeforeClass
-  public void resetReplicationFactor() {
-    AbstractStore.setDefaultReplicationFactor(replicationFactor);
-  }
-
   @BeforeMethod
   public void setup() {
     storeList = new ArrayList<>();

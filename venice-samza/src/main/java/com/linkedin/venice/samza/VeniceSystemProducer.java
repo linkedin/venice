@@ -141,7 +141,9 @@ public class VeniceSystemProducer implements SystemProducer {
 
   protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier) {
     String errorMsg = "";
-    for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
+    Exception lastException = null;
+    for (int currentAttempt = 0; currentAttempt < 2; currentAttempt++) {
+      lastException = null;
       try {
         ControllerResponse controllerResponse = supplier.get();
         if (!controllerResponse.isError()) {
@@ -160,9 +162,10 @@ public class VeniceSystemProducer implements SystemProducer {
           throw new VeniceException(ie);
         }
         errorMsg = e.getMessage();
+        lastException = e;
       }
     }
-    throw new SamzaException("Failed to send request to Controller, error: " + errorMsg);
+    throw new SamzaException("Failed to send request to Controller, error: " + errorMsg, lastException);
   }
 
   /**

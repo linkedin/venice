@@ -7,8 +7,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 
-import com.google.common.base.Splitter;
-
 import java.util.HashSet;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -380,7 +378,9 @@ public class Utils {
    */
   public static Map<String, String> parseCommaSeparatedStringMapFromString(String value, String fieldName) {
     try {
-      return Splitter.on(",").withKeyValueSeparator("=").split(value);
+      Map<String, String> map = new HashMap<>();
+      Arrays.stream(value.split(",")).map(s -> s.split("=")).forEach(strings -> map.put(strings[0], strings[1]));
+      return map;
     } catch (Exception e) {
       throw new VeniceException(fieldName + " must be key value pairs separated by comma, but value: " + value);
     }

@@ -19,7 +19,7 @@ public enum RoutingStrategy {
 
     private static RoutingStrategy[] ALL_ROUTING_STRATEGIES = values();
 
-    private final int value;
+    public final int value;
 
     RoutingStrategy(int v) {
         this.value = v;

@@ -325,7 +325,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     CommandLine cmd = parser.parse(options, args);
 
     String clusterName = cmd.getOptionValue("cn");
-    int listenPort = Integer.valueOf(cmd.getOptionValue("lp"));
+    int listenPort = Integer.parseInt(cmd.getOptionValue("lp"));
     boolean ssl = false;
     String serverConfigPath = cmd.getOptionValue("scp");
     if (cmd.hasOption("ss")) {

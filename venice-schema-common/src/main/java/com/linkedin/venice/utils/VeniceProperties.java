@@ -173,7 +173,8 @@ public class VeniceProperties {
    * @throws IOException If there is an error writing
    */
   public void storeFlattened(File file) throws IOException {
-    try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(file))) {
+    try (FileOutputStream fos = new FileOutputStream(file);
+        BufferedOutputStream out = new BufferedOutputStream(fos);) {
       storeFlattened(out);
     }
   }

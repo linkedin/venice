@@ -18,7 +18,7 @@ public class TestSystemStore {
     Store zkSharedSystemStore = new ZKStore(systemStoreType.getZkSharedStoreName(), "test_zk_shared_store_owner", 10l,
         PersistenceType.IN_MEMORY, RoutingStrategy.HASH, ReadStrategy.FASTER_OF_TWO_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS, -1, 10000l,
-        10000l, null, null);
+        10000l, null, null, 3);
     zkSharedSystemStore.setLargestUsedVersionNumber(-1);
     zkSharedSystemStore.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100));
     zkSharedSystemStore.setLeaderFollowerModelEnabled(true);
@@ -29,7 +29,7 @@ public class TestSystemStore {
     Store veniceStore = new ZKStore(testStoreName, "test_customer", 0l,
         PersistenceType.ROCKS_DB, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 0, 1000l,
-        1000l, null, null);
+        1000l, null, null, 1);
 
     SystemStore systemStore = new SystemStore(zkSharedSystemStore, systemStoreType, veniceStore);
 

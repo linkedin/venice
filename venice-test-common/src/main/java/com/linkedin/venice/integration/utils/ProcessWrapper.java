@@ -27,8 +27,9 @@ public abstract class ProcessWrapper implements Closeable {
   private boolean isRunning;
 
   private final Exception constructionCallstack;
+  private final Thread shutdownHook;
   private boolean closeCalled;
-  private boolean closeFailed;
+  private Throwable closeThrowable = null;
 
   ProcessWrapper(String serviceName, File dataDirectory) {
     Utils.SUPPRESS_SYSTEM_EXIT.set(true);
@@ -58,8 +59,9 @@ public abstract class ProcessWrapper implements Closeable {
      * Since {@link ZKServerWrapper} is using singleton mode, currently, there is no way to close it explicitly, but at exit.
      * So no need to report the following error for {@link ZkServerWrapper}, and this hook will be in charge of closing it properly.
      */
+    this.shutdownHook = new Thread(() -> closeAudit("JVM shutdown time"));
     if (!getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.SINGLETON) {
-      Runtime.getRuntime().addShutdownHook(new Thread(() -> closeAudit("JVM shutdown time")));
+      Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
   }
 
@@ -157,8 +159,9 @@ public abstract class ProcessWrapper implements Closeable {
     closeCalled = true;
     try {
       stop();
+      Runtime.getRuntime().removeShutdownHook(shutdownHook);
     } catch (Throwable e) {
-      closeFailed = true;
+      closeThrowable = e;
       LOGGER.error("Failed to shutdown " + serviceName + " service running at " + getAddressForLogging(), e);
     }
     try {
@@ -173,8 +176,12 @@ public abstract class ProcessWrapper implements Closeable {
   private void closeAudit(String context) {
     if (!closeCalled) {
       System.out.println(getClass().getSimpleName() + " was not closed! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionCallstack));
-    } else if (closeFailed) {
-      System.err.println(context + ": " + getClass().getSimpleName() + " was closed but failed to stop! Constructed at:\n" + ExceptionUtils.stackTraceToString(constructionCallstack));
+    } else if (null != closeThrowable) {
+      System.err.println(context + ": " + getClass().getSimpleName()
+          + " was closed but failed to stop! Constructed at:\n"
+          + ExceptionUtils.stackTraceToString(constructionCallstack)
+          + "\n\nClose failure details:\n"
+          + ExceptionUtils.stackTraceToString(closeThrowable));
     }
   }
 }

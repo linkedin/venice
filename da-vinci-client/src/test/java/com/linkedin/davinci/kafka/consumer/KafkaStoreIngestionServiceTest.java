@@ -171,9 +171,9 @@ public class KafkaStoreIngestionServiceTest {
     String storeName = Version.parseStoreFromKafkaTopicName(topic1);
     String deletedStoreName = Version.parseStoreFromKafkaTopicName(invalidTopic);
     Store mockStore = new ZKStore(storeName, "unit-test", 0, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
     Store toBeDeletedStore = new ZKStore(deletedStoreName, "unit-test", 0, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
     toBeDeletedStore.addVersion(new VersionImpl(deletedStoreName, 1, "test-job-id"));
     doReturn(mockStore).when(mockmetadataRepo).getStore(storeName);

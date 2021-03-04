@@ -82,7 +82,7 @@ public class StoreBackendTest {
     when(backend.getCurrentVersion(anyString(), anySet())).thenCallRealMethod();
 
     store = new ZKStore("test-store", null, 0, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
     version1 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 5);
     store.addVersion(version1);
     version2 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 3);

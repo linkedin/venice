@@ -13,26 +13,16 @@ import java.util.Optional;
  */
 public abstract class AbstractStore implements Store {
 
-  public static int DEFAULT_REPLICATION_FACTOR = 3;
+  public static final int DEFAULT_REPLICATION_FACTOR = 3;
   /**
    * Default storage quota 20GB
    */
-  public static long DEFAULT_STORAGE_QUOTA = (long)20 * (1 << 30);
+  public static final long DEFAULT_STORAGE_QUOTA = (long)20 * (1 << 30);
 
   /**
    * Default read quota 1800 QPS per node
    */
-  public static long DEFAULT_READ_QUOTA = 1800;
-  //Only for testing
-  public static void setDefaultReplicationFactor(int defaultReplicationFactor) {
-    DEFAULT_REPLICATION_FACTOR = defaultReplicationFactor;
-  }
-  public static void setDefaultStorageQuota(long storageQuota) {
-    AbstractStore.DEFAULT_STORAGE_QUOTA = storageQuota;
-  }
-  public static void setDefaultReadQuota(long readQuota) {
-    AbstractStore.DEFAULT_READ_QUOTA = readQuota;
-  }
+  public static final long DEFAULT_READ_QUOTA = 1800;
 
   protected interface StoreVersionSupplier {
 

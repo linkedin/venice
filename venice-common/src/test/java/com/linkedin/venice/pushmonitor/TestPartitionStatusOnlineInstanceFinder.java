@@ -98,7 +98,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
     OfflinePushStatus offlinePushStatus = getMockPushStatus(topic).get(0);
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     store.setLeaderFollowerModelEnabled(true);
     Version version = new VersionImpl(storeName, versionNumber, "pushJobId");
     version.setLeaderFollowerModelEnabled(true);
@@ -118,7 +118,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
     offlinePushStatus = getMockPushStatus(topic).get(0);
     store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     store.setLeaderFollowerModelEnabled(true);
     version = new VersionImpl(storeName, versionNumber, "pushJobId");
     version.setLeaderFollowerModelEnabled(true);

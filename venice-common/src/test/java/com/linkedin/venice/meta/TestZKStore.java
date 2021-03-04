@@ -318,7 +318,7 @@ public class TestZKStore {
 
   @Test(expectedExceptions = VeniceException.class)
   public void invalidStoreNameThrows(){
-    Store store = new ZKStore("My Store Name", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new ZKStore("My Store Name", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
   }
 
   /**
@@ -327,7 +327,7 @@ public class TestZKStore {
   @Test(groups = {"flaky"})
   public void cannotAddDifferentVersionsWithSamePushId(){
     String storeName = "storeName";
-    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     String duplicatePushJobId = "pushId";
     Version versionOne = new VersionImpl(storeName, 1, duplicatePushJobId);
     store.addVersion(versionOne);
@@ -342,7 +342,7 @@ public class TestZKStore {
 
   @Test
   public void testStoreLevelAcl(){
-    Store store = new ZKStore("storeName", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new ZKStore("storeName", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     Assert.assertTrue(store.isAccessControlled());
   }
 }

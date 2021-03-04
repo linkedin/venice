@@ -86,13 +86,6 @@ public class VeniceClusterConfig {
     statusMessageRetryCount = clusterProps.getInt(STATUS_MESSAGE_RETRY_COUNT, 5);
     statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000l);
 
-    if (clusterProps.containsKey(DEFAULT_STORAGE_QUOTA)) {
-      AbstractStore.setDefaultStorageQuota(clusterProps.getLong(DEFAULT_STORAGE_QUOTA));
-    }
-    if (clusterProps.containsKey(DEFAULT_READ_QUOTA)) {
-      AbstractStore.setDefaultReadQuota(clusterProps.getLong(DEFAULT_READ_QUOTA));
-    }
-
     kafkaSecurityProtocol = clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
     if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);

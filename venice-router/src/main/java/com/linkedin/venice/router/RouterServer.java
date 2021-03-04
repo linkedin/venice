@@ -691,8 +691,15 @@ public class RouterServer extends AbstractVeniceService {
     routersClusterManager.clear();
     routingDataRepository.clear();
     metadataRepository.clear();
+    schemaRepository.clear();
     storeConfigRepository.clear();
+    hybridStoreQuotaRepository.ifPresent(repo -> repo.clear());
     liveInstanceMonitor.clear();
+    if (partitionStatusOnlineInstanceFinder != null) {
+      partitionStatusOnlineInstanceFinder.clear();
+    }
+    timeoutProcessor.shutdownNow();
+    dictionaryRetrievalService.stop();
     if (instanceConfigRepository != null) {
       instanceConfigRepository.clear();
     }

@@ -118,7 +118,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(replicationFactor));
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         partitionCount, replicationFactor);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
@@ -177,10 +177,10 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     String newNodeId = "localhost_9900";
     startParticipant(false, newNodeId);
     int newVersionReplicaCount = 2;
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(2));
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(newVersionReplicaCount));
     Version newVersion = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         partitionCount, newVersionReplicaCount);
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
           ExecutionStatus.COMPLETED);
     });

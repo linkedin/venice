@@ -238,6 +238,6 @@ public class AggVersionedDIVStatsTest {
 
   private Store createStore(String nameStore) {
     return new ZKStore(nameStore, "", 10, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
   }
 }

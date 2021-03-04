@@ -84,7 +84,8 @@ public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRep
       metadataSystemStores.computeIfAbsent(storeName, k -> {
         Store store = new ZKStore(storeName, "venice-system", 0,
             PersistenceType.ROCKS_DB, RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE,
-            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+            1); // TODO: figure out how to get hold of a sensible RF value here
         store.setPartitionCount(DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
         // TODO time based lag threshold might be more suitable than offset based for system store use cases.
         store.setHybridStoreConfig(new HybridStoreConfigImpl(DEFAULT_SYSTEM_STORE_REWIND_SECONDS,

@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.KeyStore;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
@@ -17,8 +18,6 @@ import javax.net.ssl.TrustManagerFactory;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
-import org.xeril.util.base64.Base64;
-import org.xeril.util.config.ConfigHelper;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 
@@ -331,7 +330,7 @@ public class DefaultSSLFactory implements SSLFactory {
 
     private InputStream toInputStream(String storeData)
     {
-      byte[] data = Base64.decode(storeData);
+      byte[] data = Base64.getDecoder().decode(storeData);
       return new ByteArrayInputStream(data);
     }
 
@@ -344,6 +343,33 @@ public class DefaultSSLFactory implements SSLFactory {
     SSLContext getContext()
     {
       return _secureContext;
+    }
+  }
+
+  private static class ConfigHelper {
+
+    private ConfigHelper() {}
+
+    public static Object getRequiredObject(Object o) throws MissingConfigParameterException {
+      if (o == null) {
+        throw new MissingConfigParameterException("required Object has not been defined");
+      } else {
+        return o;
+      }
+    }
+
+    public static <T> T getRequired(T o) throws MissingConfigParameterException {
+      if (o == null) {
+        throw new MissingConfigParameterException("required Object has not been defined");
+      } else {
+        return o;
+      }
+    }
+
+    public static class MissingConfigParameterException extends IllegalArgumentException {
+      public MissingConfigParameterException(String msg) {
+        super(msg);
+      }
     }
   }
 }

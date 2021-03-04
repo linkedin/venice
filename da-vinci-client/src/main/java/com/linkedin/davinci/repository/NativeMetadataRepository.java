@@ -492,7 +492,8 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
         storeProperties.storageQuotaInByte,
         storeProperties.readQuotaInCU,
         hybridStoreConfig,
-        partitionerConfig
+        partitionerConfig,
+        1 // TODO: figure out how to get hold of a sensible RF value here
     );
     store.setVersions(getVersionsFromCurrentVersionStates(storeProperties.name.toString(), currentVersionStates));
     store.setBackupStrategy(BackupStrategy.valueOf(storeProperties.backupStrategy.toString()));

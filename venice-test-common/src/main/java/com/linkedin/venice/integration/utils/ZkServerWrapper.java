@@ -35,6 +35,7 @@ public class ZkServerWrapper extends ProcessWrapper {
   private static final int MAX_WAIT_TIME_DURING_STARTUP = 5 * Time.MS_PER_SECOND;
   private static ZkServerWrapper INSTANCE = null;
   private static final ConcurrentLinkedQueue<String> CHROOTS = new ConcurrentLinkedQueue<>();
+  private static ZooKeeper zooKeeper = null;
 
   // TODO: Make sure the hardcoded defaults below make sense
 
@@ -76,7 +77,7 @@ public class ZkServerWrapper extends ProcessWrapper {
 
       String chroot = CHROOTS.poll();
       if (null == chroot) {
-        CHROOTS.addAll(addPathsToZk(INSTANCE.getAddress(), 100));
+        CHROOTS.addAll(addPathsToZk(INSTANCE.getAddress(), 1));
         chroot = CHROOTS.poll();
       }
       return new ZkServerWrapper(dataDirectory, chroot);
@@ -251,22 +252,35 @@ public class ZkServerWrapper extends ProcessWrapper {
    * @param count how many random root paths to create
    * @return List of paths that were created
    */
-  private static List<String> addPathsToZk(String zkConnection, int count) {
-    try {
-      ZooKeeper zooKeeper = new ZooKeeper(zkConnection, MAX_SESSION_TIMEOUT, event -> {});
-      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
-          () -> zooKeeper.getState().equals(ZooKeeper.States.CONNECTED));
-
-      List<String> paths = new ArrayList<>(count);
-      for (int i = 0; i < count; ++i) {
-        String path = TestUtils.getUniqueString("test");
-        zooKeeper.create("/" + path, null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-        paths.add(path);
+  private synchronized static List<String> addPathsToZk(String zkConnection, int count) {
+    if (null != zooKeeper && zooKeeper.getState() != ZooKeeper.States.CONNECTED) {
+      try {
+        zooKeeper.close();
+        zooKeeper = null;
+      } catch (InterruptedException e) {
+        throw new VeniceException(e);
       }
-      zooKeeper.close();
-      return paths;
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to create paths on zookeeper at: " + zkConnection, e);
     }
+    if (null == zooKeeper) {
+      try {
+        zooKeeper = new ZooKeeper(zkConnection, MAX_SESSION_TIMEOUT, event -> {});
+        TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
+            () -> zooKeeper.getState().equals(ZooKeeper.States.CONNECTED));
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to initialize ZK client: " + zkConnection, e);
+      }
+    }
+    List<String> paths = new ArrayList<>(count);
+    for (int i = 0; i < count; ++i) {
+      String path = TestUtils.getUniqueString("test");
+      try {
+        zooKeeper.create("/" + path, null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to create paths on zookeeper at: " + zkConnection, e);
+      }
+      paths.add(path);
+    }
+    return paths;
   }
+
 }

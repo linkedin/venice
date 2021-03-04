@@ -38,8 +38,10 @@ import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.ingestion.IngestionUtils;
 
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.concurrent.Future;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -240,8 +242,12 @@ public class DaVinciClientTest {
         CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
       writer.broadcastStartOfPush(Collections.emptyMap());
+      Future[] writerFutures = new Future[KEY_COUNT];
       for (int i = 0; i < KEY_COUNT; i++) {
-        writer.put(i, pushVersion, valueSchemaId).get();
+        writerFutures[i] = writer.put(i, pushVersion, valueSchemaId);
+      }
+      for (int i = 0; i < KEY_COUNT; i++) {
+        writerFutures[i].get();
       }
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       CompletableFuture<Void> future = client.subscribeAll();
@@ -595,7 +601,9 @@ public class DaVinciClientTest {
       DaVinciConfig daVinciConfig = new DaVinciConfig().setMemoryLimit(KEY_COUNT / 2);
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       assertThrows(() -> client.subscribeAll().get(5, TimeUnit.SECONDS));
-      double memoryUsage = metricsRepository.getMetric(".RocksDBMemoryStats--" + storeName + ".rocksdb.memory-usage.Gauge").value();
+      Metric memoryUsageMetric = metricsRepository.getMetric(".RocksDBMemoryStats--" + storeName + ".rocksdb.memory-usage.Gauge");
+      assertNotNull(memoryUsageMetric);
+      double memoryUsage = memoryUsageMetric.value();
       assertTrue(memoryUsage > 0);
     }
   }
@@ -697,8 +705,12 @@ public class DaVinciClientTest {
     VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     batchProducer.broadcastStartOfPush(Collections.emptyMap());
+    Future[] writerFutures = new Future[KEY_COUNT];
     for (int i = 0; i < KEY_COUNT; i++) {
-      batchProducer.put(i, i, valueSchemaId).get();
+      writerFutures[i] = batchProducer.put(i, i, valueSchemaId);
+    }
+    for (int i = 0; i < KEY_COUNT; i++) {
+      writerFutures[i].get();
     }
     batchProducer.broadcastEndOfPush(Collections.emptyMap());
 
@@ -712,8 +724,12 @@ public class DaVinciClientTest {
 
     VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(Version.composeRealTimeTopic(storeName),
         keySerializer, valueSerializer, false);
+    writerFutures = new Future[KEY_COUNT];
     for (int i = 0; i < KEY_COUNT; i++) {
-      realTimeProducer.put(i, i * 1000, valueSchemaId).get();
+      writerFutures[i] = realTimeProducer.put(i, i * 1000, valueSchemaId);
+    }
+    for (int i = 0; i < KEY_COUNT; i++) {
+      writerFutures[i].get();
     }
 
     /**
