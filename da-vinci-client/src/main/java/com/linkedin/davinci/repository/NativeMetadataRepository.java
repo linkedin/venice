@@ -41,6 +41,10 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.system.store.MetaStoreDataType;
+import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -48,6 +52,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +66,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static java.lang.Thread.*;
 
 
@@ -94,7 +100,7 @@ public abstract class NativeMetadataRepository
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
 
-  protected NativeMetadataRepository(ClientConfig<StoreMetadataValue> clientConfig, VeniceProperties backendConfig) {
+  protected NativeMetadataRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
     long refreshIntervalInSeconds = backendConfig.getLong(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         NativeMetadataRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
     this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
@@ -110,6 +116,10 @@ public abstract class NativeMetadataRepository
       logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
           + DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
       return new DaVinciClientMetaStoreBasedRepository(clientConfig, backendConfig, metaStoreVersions);
+    } else if (backendConfig.getBoolean(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, false)) {
+      logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
+          + ThinClientMetaStoreBasedRepository.class.getSimpleName());
+      return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig);
     } else {
       logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
           + ThinClientMetadataStoreBasedRepository.class.getSimpleName());
@@ -388,7 +398,48 @@ public abstract class NativeMetadataRepository
   protected abstract StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key)
       throws ExecutionException, InterruptedException;
 
-  // Helper function with common code for retrieving StoreConfig data from metadata system store based implementations
+  protected abstract StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key)
+      throws ExecutionException, InterruptedException;
+
+  // Helper function with common code for retrieving StoreConfig from meta system store.
+  protected StoreConfig getStoreConfigFromMetaSystemStore(String storeName) {
+    try {
+      StoreClusterConfig clusterConfig = getStoreMetaValue(storeName,
+          MetaStoreDataType.STORE_CLUSTER_CONFIG.getStoreMetaKey(
+              Collections.singletonMap(KEY_STRING_STORE_NAME, storeName))).storeClusterConfig;
+      return new StoreConfig(clusterConfig);
+    } catch (ExecutionException | InterruptedException e) {
+      throw new VeniceException("Failed to retrieve StoreConfig data from meta system store", e);
+    }
+  }
+
+  // Helper function with common code for retrieving SchemaData from meta system store.
+  protected SchemaData getSchemaDataFromMetaSystemStore(String storeName) {
+    try {
+      SchemaData schemaData = new SchemaData(storeName);
+      StoreMetaKey keySchemaKey = MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(
+          Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
+      StoreMetaKey valueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMAS.getStoreMetaKey(
+          Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
+      Map<CharSequence, CharSequence> keySchemaMap =
+          getStoreMetaValue(storeName, keySchemaKey).storeKeySchemas.keySchemaMap;
+      if (keySchemaMap.isEmpty()) {
+        throw new VeniceException("No key schema found for store: " + storeName);
+      }
+      Map.Entry<CharSequence, CharSequence> keySchemaEntry = keySchemaMap.entrySet().iterator().next();
+      schemaData.setKeySchema(
+          new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
+      Map<CharSequence, CharSequence> valueSchemaMap =
+          getStoreMetaValue(storeName, valueSchemaKey).storeValueSchemas.valueSchemaMap;
+      valueSchemaMap.forEach(
+          (k, v) -> schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(k.toString()), v.toString())));
+      return schemaData;
+    } catch (ExecutionException | InterruptedException e) {
+      throw new VeniceException("Failed to retrieve SchemaData from meta system store", e);
+    }
+  }
+
+  // Helper function with common code for retrieving StoreConfig data from metadata system store based implementations.
   protected StoreConfig getStoreConfigFromMetadataSystemStore(String storeName) {
     // Metadata system store based implementations doesn't support any other fields of the StoreConfig other than cluster.
     // Please use Meta system store based implementation if other StoreConfig fields are needed.

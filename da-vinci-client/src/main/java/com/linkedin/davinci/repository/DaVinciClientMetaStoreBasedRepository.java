@@ -30,7 +30,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.system.store.MetaStoreDataType;
-import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -95,7 +94,8 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     metaStoreSchemaReader = ClientFactory.getSchemaReader(clonedClientConfig);
   }
 
-  private StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key) {
+  @Override
+  protected StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key) {
     StoreMetaValue value;
     try {
       value = getDaVinciClientForMetaStore(storeName).get(key).get();
@@ -210,13 +210,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
 
   @Override
   protected StoreConfig getStoreConfigFromSystemStore(String storeName) {
-    StoreClusterConfig clusterConfig = getStoreMetaValue(storeName,
-        MetaStoreDataType.STORE_CLUSTER_CONFIG.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-        }})).storeClusterConfig;
-    StoreConfig storeConfig = new StoreConfig(storeName);
-    storeConfig.setCluster(clusterConfig.cluster.toString());
-    return storeConfig;
+    return getStoreConfigFromMetaSystemStore(storeName);
   }
 
   @Override
@@ -259,31 +253,14 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   @Override
   protected StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key)
       throws ExecutionException, InterruptedException {
-    throw new UnsupportedOperationException("getStoreMetadata is not supported in " + this.getClass().getSimpleName());
+    throw new UnsupportedOperationException(
+        "getStoreMetadata for store: " + storeName + " and key: " + key.toString() + " is not supported in "
+            + this.getClass().getSimpleName());
   }
 
   @Override
   protected SchemaData getSchemaDataFromSystemStore(String storeName) {
-    SchemaData schemaData = new SchemaData(storeName);
-    StoreMetaKey keySchemaKey = MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeName);
-    }});
-    StoreMetaKey valueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
-      put(KEY_STRING_STORE_NAME, storeName);
-    }});
-    Map<CharSequence, CharSequence> keySchemaMap =
-        getStoreMetaValue(storeName, keySchemaKey).storeKeySchemas.keySchemaMap;
-    if (keySchemaMap.isEmpty()) {
-      throw new VeniceException("No key schema found for store: " + storeName);
-    }
-    Map.Entry<CharSequence, CharSequence> keySchemaEntry = keySchemaMap.entrySet().iterator().next();
-    schemaData.setKeySchema(
-        new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
-    Map<CharSequence, CharSequence> valueSchemaMap =
-        getStoreMetaValue(storeName, valueSchemaKey).storeValueSchemas.valueSchemaMap;
-    valueSchemaMap.forEach(
-        (k, v) -> schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(k.toString()), v.toString())));
-    return schemaData;
+    return getSchemaDataFromMetaSystemStore(storeName);
   }
 
   private DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore(String storeName) {
