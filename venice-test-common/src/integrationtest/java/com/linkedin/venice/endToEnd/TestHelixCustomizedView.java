@@ -107,8 +107,11 @@ public class TestHelixCustomizedView {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     IOUtils.closeQuietly(veniceCluster);
+    IOUtils.closeQuietly(controllerClient);
     IOUtils.closeQuietly(veniceWriter);
-    admin.close();
+    if (admin != null) {
+      admin.close();
+    }
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

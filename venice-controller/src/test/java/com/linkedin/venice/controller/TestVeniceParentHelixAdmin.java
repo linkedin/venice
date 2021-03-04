@@ -130,7 +130,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         return;
       }
       Store newStore = new ZKStore(storeName, owner, System.currentTimeMillis(), PersistenceType.IN_MEMORY,
-          RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+          RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+          1);
       systemStores.put(storeName, newStore);
     }
 
@@ -796,7 +797,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .when(topicManager).listTopics();
 
     Store store = new ZKStore(storeName, "test_owner", 1, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     String pushJobId = "test_push_id";
     String pushJobId2 = "test_push_id2";
     store.addVersion(new VersionImpl(storeName, 1, pushJobId));
@@ -822,7 +824,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new HashSet<>(Arrays.asList(previousKafkaTopic)))
         .when(topicManager)
         .listTopics();
-    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     Version version = new VersionImpl(storeName, 1, pushJobId);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -861,7 +864,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .when(topicManager)
         .listTopics();
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     Version version = new VersionImpl(storeName, 1, pushJobId + "_different");
     store.addVersion(version);
     doReturn(true).when(internalAdmin).isTopicTruncated(previousKafkaTopic);
@@ -896,7 +900,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new HashSet<>(Arrays.asList(previousKafkaTopic)))
         .when(topicManager)
         .listTopics();
-    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     Version version = new VersionImpl(storeName, 1, Version.guidBasedDummyPushId());
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -915,7 +920,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testStoreVersionCleanUpWithFewerVersions() {
     String storeName = "test_store";
     Store testStore = new ZKStore(storeName, "test_owner", -1, PersistenceType.ROCKS_DB,
-            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
     testStore.addVersion(new VersionImpl(storeName, 1));
     testStore.addVersion(new VersionImpl(storeName, 2));
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
@@ -931,7 +936,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testStoreVersionCleanUpWithMoreVersions() {
     String storeName = "test_store";
     Store testStore = new ZKStore(storeName, "test_owner", -1, PersistenceType.ROCKS_DB,
-            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
     for (int i = 1; i <= 10; ++i) {
       testStore.addVersion(new VersionImpl(storeName, i));
     }
@@ -1463,7 +1468,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false);
 
     Store store = new ZKStore(storeName, "test_owner", 1, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
 
     store.addVersion(new VersionImpl(storeName, 1, "test_push_id"));
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);

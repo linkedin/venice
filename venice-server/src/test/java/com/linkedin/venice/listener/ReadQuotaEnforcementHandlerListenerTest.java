@@ -145,7 +145,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
 
   private Store getDummyStore(String storeName, List<Integer> versions, long rcuQuota){
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     for (int versionNumber : versions){
       Version version = new VersionImpl(storeName, versionNumber, Version.composeKafkaTopic(storeName, versionNumber));
       store.addVersion(version);

@@ -246,12 +246,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   @Override
   public void close(boolean shouldEndAllSegments) {
-    //If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
-    // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
-    if (shouldEndAllSegments) {
-      endAllSegments(true);
+    try {
+      //If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
+      // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
+      if (shouldEndAllSegments) {
+        endAllSegments(true);
+      }
+      producer.close(closeTimeOut);
+    } catch (Exception e) {
+      logger.warn("Swallowed an exception while trying to close the VeniceWriter for " + topicName, e);
     }
-    producer.close(closeTimeOut);
   }
 
   public void close() {

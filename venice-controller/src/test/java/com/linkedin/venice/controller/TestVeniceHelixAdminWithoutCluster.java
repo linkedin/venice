@@ -23,7 +23,7 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void canFindStartedVersionInStore(){
     String storeName = TestUtils.getUniqueString("store");
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     store.increaseVersion("123");
     Version version = store.getVersions().get(0);
     Optional<Version> returnedVersion = VeniceHelixAdmin.getStartedVersion(store);
@@ -38,7 +38,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     String pushId = TestUtils.getUniqueString("pushid");
     String storeName = TestUtils.getUniqueString("store");
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     store.increaseVersion(pushId);
     Version version = store.getVersions().get(0);
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);

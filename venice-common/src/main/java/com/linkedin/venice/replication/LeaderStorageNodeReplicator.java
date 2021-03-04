@@ -69,7 +69,7 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
     } else {
       sourceClusters.add(destKafkaBootstrapServers);
     }
-    getVeniceWriterFactory().useVeniceWriter(
+    VeniceWriterFactory.useVeniceWriter(
         () -> getVeniceWriterFactory().createBasicVeniceWriter(destinationTopic, getTimer()),
         veniceWriter -> veniceWriter.broadcastTopicSwitch(sourceClusters, sourceTopic, rewindStartTimestamp, new HashMap<>())
     );

@@ -39,7 +39,28 @@ public class ExceptionUtils {
       }
     }
     Throwable cause = throwableToInspect.getCause();
-    return cause != null && recursiveClassEquals(cause, throwableClassesToLookFor);
+    return recursiveClassEquals(cause, throwableClassesToLookFor);
+  }
+
+  /**
+   * Inspects a given {@link Throwable} as well as its nested causes, in order to look
+   * for a specific message.
+   *
+   * @return true if a the throwableToInspect contains the message parameter
+   */
+  public static boolean recursiveMessageContains(Throwable throwableToInspect, String message) {
+    if (null == throwableToInspect){
+      return false;
+    }
+    String throwableToInspectMessage = throwableToInspect.getMessage();
+    if (null == throwableToInspectMessage) {
+      return false;
+    }
+    if (throwableToInspectMessage.contains(message)) {
+      return true;
+    }
+    Throwable cause = throwableToInspect.getCause();
+    return recursiveMessageContains(cause, message);
   }
 
   /**

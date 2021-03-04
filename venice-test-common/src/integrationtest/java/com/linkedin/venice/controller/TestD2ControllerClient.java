@@ -21,7 +21,7 @@ import org.testng.annotations.Test;
 public class TestD2ControllerClient {
   private static final String CLUSTER_NAME = TestUtils.getUniqueString("test-cluster");
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testD2ControllerClientEnd2End() {
     D2Client d2Client = null;
     try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();VeniceControllerWrapper controllerWrapper =

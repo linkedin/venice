@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -302,8 +303,12 @@ public class StorageNodeReadTest {
       throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
-    for (int i = 0; i < numOfRecords; ++i) {
-      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId).get();
+    Future[] writerFutures = new Future[numOfRecords];
+    for (int i = 0; i < numOfRecords; i++) {
+      writerFutures[i] = veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId);
+    }
+    for (int i = 0; i < numOfRecords; i++) {
+      writerFutures[i].get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<>());

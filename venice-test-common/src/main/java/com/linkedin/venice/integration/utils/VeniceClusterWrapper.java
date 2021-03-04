@@ -214,32 +214,40 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * so we can assume they're reliable enough.
        */
       return (serviceName) -> {
-        VeniceClusterWrapper veniceClusterWrapper = new VeniceClusterWrapper(clusterName, standalone, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
-            veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicationFactor, partitionSize,
-            rebalanceDelayMs, minActiveReplica, sslToStorageNodes, sslToKafka);
-        // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
-        // VeniceClusterWrapper to tests.
-        if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
-          for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
-            TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-              Store store = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin().getStore(clusterName,
+        VeniceClusterWrapper veniceClusterWrapper = null;
+        try {
+          veniceClusterWrapper = new VeniceClusterWrapper(clusterName, standalone, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
+              veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicationFactor, partitionSize,
+              rebalanceDelayMs, minActiveReplica, sslToStorageNodes, sslToKafka);
+          // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
+          // VeniceClusterWrapper to tests.
+          if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
+            final VeniceClusterWrapper finalClusterWrapper = veniceClusterWrapper;
+            for (AvroProtocolDefinition avroProtocolDefinition : CLUSTER_LEADER_INITIALIZATION_ROUTINES) {
+              TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+                Store store = finalClusterWrapper.getMasterVeniceController().getVeniceAdmin().getStore(clusterName,
                     avroProtocolDefinition.getSystemStoreName());
-              Assert.assertNotNull(store, "Store: " + avroProtocolDefinition.getSystemStoreName()
-                  + "should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
-              if (avroProtocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
-                // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the
-                // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
-                // HelixReadOnlyStoreRepositoryAdapter.
-                Store readOnlyStore = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin()
-                    .getReadOnlyZKSharedSystemStoreRepository().getStore(avroProtocolDefinition.getSystemStoreName());
-                Assert.assertNotNull(readOnlyStore, "Store: " + avroProtocolDefinition.getSystemStoreName()
+                Assert.assertNotNull(store, "Store: " + avroProtocolDefinition.getSystemStoreName()
                     + "should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
-                Assert.assertTrue(readOnlyStore.isHybrid(), "Store: " + avroProtocolDefinition.getSystemStoreName()
-                    + " should be configured to hybrid by " + ClusterLeaderInitializationRoutine.class.getSimpleName()
-                    +  ". Store is hybrid in write repo: " + store.isHybrid());
-              }
-            });
+                if (avroProtocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
+                  // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the
+                  // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
+                  // HelixReadOnlyStoreRepositoryAdapter.
+                  Store readOnlyStore = finalClusterWrapper.getMasterVeniceController().getVeniceAdmin()
+                      .getReadOnlyZKSharedSystemStoreRepository().getStore(avroProtocolDefinition.getSystemStoreName());
+                  Assert.assertNotNull(readOnlyStore, "Store: " + avroProtocolDefinition.getSystemStoreName()
+                      + "should be initialized by " + ClusterLeaderInitializationRoutine.class.getSimpleName());
+                  Assert.assertTrue(readOnlyStore.isHybrid(), "Store: " + avroProtocolDefinition.getSystemStoreName()
+                      + " should be configured to hybrid by " + ClusterLeaderInitializationRoutine.class.getSimpleName()
+                      +  ". Store is hybrid in write repo: " + store.isHybrid());
+                }
+              });
+            }
           }
+        } catch (Throwable e) {
+          logger.error("Caught Throwable while creating the " + VeniceClusterWrapper.class.getSimpleName(), e);
+          IOUtils.closeQuietly(veniceClusterWrapper);
+          throw e;
         }
         return veniceClusterWrapper;
       };

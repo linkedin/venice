@@ -15,7 +15,7 @@ public enum ReadStrategy {
     /*Read from two of replication and use the result returned by the faster one.*/
     FASTER_OF_TWO_ONLINE(1);
 
-    private final int value;
+    public final int value;
 
     ReadStrategy(int v) {
         this.value = v;

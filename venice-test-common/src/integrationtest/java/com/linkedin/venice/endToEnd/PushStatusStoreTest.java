@@ -7,6 +7,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -92,17 +93,17 @@ public class PushStatusStoreTest {
     // set up push status store
     String owner = "test";
     String zkSharedPushStatusStoreName = VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(cluster.getClusterName());
-    assertFalse(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner).isError());
-    assertFalse(parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName).isError());
-    assertFalse(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA).isError());
-    assertFalse(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)).isError());
-    assertFalse(parentControllerClient.createDaVinciPushStatusStore(storeName).isError());
+    TestUtils.assertCommand(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner));
+    TestUtils.assertCommand(parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName));
+    TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA));
+    TestUtils.assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
+    TestUtils.assertCommand(parentControllerClient.createDaVinciPushStatusStore(storeName));
   }
 
   @AfterMethod
   public void cleanup() {
-    reader.close();
+    IOUtils.closeQuietly(reader);
     D2ClientUtils.shutdownClient(d2Client);
     IOUtils.closeQuietly(parentControllerClient);
     IOUtils.closeQuietly(parentController);
@@ -158,6 +159,7 @@ public class PushStatusStoreTest {
       daVinciClient.subscribeAll().get();
       h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
       runH2V(h2vProperties, 1, cluster);
+      // TODO: Add assertions
     }
   }
 

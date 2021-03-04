@@ -15,7 +15,7 @@ public enum OfflinePushStrategy {
     /*Wait until N-1 replicas are ready, the version is ready to serve*/
     WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION(1);
 
-    private final int value;
+    public final int value;
 
     OfflinePushStrategy(int v) {
         this.value = v;

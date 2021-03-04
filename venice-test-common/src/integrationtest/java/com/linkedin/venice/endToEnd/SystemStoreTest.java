@@ -63,6 +63,7 @@ import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -138,10 +139,10 @@ public class SystemStoreTest {
 
   @AfterClass
   public void cleanup() {
-    controllerClient.close();
-    parentControllerClient.close();
-    parentController.close();
-    venice.close();
+    IOUtils.closeQuietly(controllerClient);
+    IOUtils.closeQuietly(parentControllerClient);
+    IOUtils.closeQuietly(parentController);
+    IOUtils.closeQuietly(venice);
   }
 
   @Test
@@ -253,6 +254,7 @@ public class SystemStoreTest {
     // Now, try to delete the version and the corresponding kill message should be present even for an ONLINE version
     // Push a new version so the ONLINE version can be deleted to mimic retiring an old version.
     VersionCreationResponse newVersionResponse = getNewStoreVersion(parentControllerClient, storeName, false);
+    Assert.assertFalse(newVersionResponse.isError(), "Controller error: " + newVersionResponse.getError());
     parentControllerClient.writeEndOfPush(storeName, newVersionResponse.getVersion());
     TestUtils.waitForNonDeterministicPushCompletion(newVersionResponse.getKafkaTopic(),
         parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
@@ -415,7 +417,7 @@ public class SystemStoreTest {
 
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testDaVinciIngestionWithMetadataStore() throws Exception {
     // Create a new Venice store and materialize the corresponding metadata system store
     String regularVeniceStoreName = TestUtils.getUniqueString("regular_store_daVinci_ingestion");
@@ -473,6 +475,11 @@ public class SystemStoreTest {
     metricsRepository = new MetricsRepository();
     daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(memoryLimit);
+    /**
+     * N.B.: Need to re-create a D2 client here, since the previous one was closed as a side-effect of closing the
+     *       {@link CachingDaVinciClientFactory} it was passed into. We also cannot reuse the factory, since it
+     *       needs to be created with different properties.
+     */
     daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
@@ -574,7 +581,7 @@ public class SystemStoreTest {
     });
   }
 
-  @Test(timeOut =  60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testReMaterializeMetadataSystemStore() throws ExecutionException {
     // Create a new Venice store with metadata system store materialized.
     String regularVeniceStoreName = TestUtils.getUniqueString("regular_store_to_re_materialize");

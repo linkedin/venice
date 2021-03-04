@@ -409,13 +409,24 @@ public class VeniceServer {
       }
       logger.info("All services stopped");
 
+      try {
+        metricsRepository.close();
+      } catch (Exception e) {
+        exceptions.add(e);
+        logger.error("Exception in closing: " + metricsRepository.getClass().getSimpleName(), e);
+      }
+
+      try {
+        zkClient.close();
+      } catch (Exception e) {
+        exceptions.add(e);
+        logger.error("Exception in closing: " + zkClient.getClass().getSimpleName(), e);
+      }
+
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
       isStarted.set(false);
-
-      metricsRepository.close();
-      zkClient.close();
 
       // TODO - Efficient way to unlock java heap
     }

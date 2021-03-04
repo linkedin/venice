@@ -1,8 +1,11 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import org.apache.commons.cli.CommandLine;
 import org.testng.Assert;
@@ -34,11 +37,23 @@ public class TestAdminTool {
 
   @Test
   public void testAdminUpdateStoreArg() {
-    String[] args = {"--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store", "testStore"};
+    final String K1 = "k1", V1 = "v1", K2 = "k2", V2 = "v2", K3 = "k3", V3 = "v3";
+    String[] args = {
+        "--update-store",
+        "--url", "http://localhost:7036",
+        "--cluster", "test-cluster",
+        "--store", "testStore",
+        "--partitioner-params", K1 + "=" + V1 + "," + K2 + "=" + V2 + "," + K3 + "=" + V3};
 
     try {
       CommandLine commandLine = AdminTool.getCommandLine(args);
-      AdminTool.getUpdateStoreQueryParams(commandLine);
+      UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
+      Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
+      Assert.assertTrue(partitionerParams.isPresent());
+      Map<String, String> partitionerParamsMap = partitionerParams.get();
+      Assert.assertEquals(partitionerParamsMap.get(K1), V1);
+      Assert.assertEquals(partitionerParamsMap.get(K2), V2);
+      Assert.assertEquals(partitionerParamsMap.get(K3), V3);
     } catch (Exception e) {
       Assert.fail(" All options are not added to update-store arg doc");
     }

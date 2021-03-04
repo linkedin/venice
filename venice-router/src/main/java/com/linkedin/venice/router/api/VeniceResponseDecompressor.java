@@ -92,7 +92,7 @@ public class VeniceResponseDecompressor {
     if (null == compressionHeader) {
       return CompressionStrategy.NO_OP;
     }
-    return CompressionStrategy.valueOf(Integer.valueOf(compressionHeader));
+    return CompressionStrategy.valueOf(Integer.parseInt(compressionHeader));
   }
 
   private boolean canPassThroughResponse(CompressionStrategy responseCompression) {

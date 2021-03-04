@@ -966,15 +966,6 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testRunMRJobAndPBNJ() throws Exception {
-    testRunPushJobAndPBNJ(false);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testRunMapOnlyJobAndPBNJ() throws Exception {
-    testRunPushJobAndPBNJ(true);
-  }
-
-  private void testRunPushJobAndPBNJ(boolean mapOnly) throws Exception {
     Utils.thisIsLocalhost();
 
     File inputDir = getTempDataDirectory();
@@ -982,9 +973,6 @@ public abstract class TestBatch {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    if (mapOnly) {
-      props.setProperty(KafkaPushJob.VENICE_MAP_ONLY, "true");
-    }
     props.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
     props.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
     createStoreForJob(veniceCluster, recordSchema, props).close();

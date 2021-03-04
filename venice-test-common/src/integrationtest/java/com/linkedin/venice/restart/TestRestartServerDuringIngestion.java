@@ -102,7 +102,7 @@ public abstract class TestRestartServerDuringIngestion {
     cluster.close();
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void ingestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
@@ -118,12 +118,14 @@ public abstract class TestRestartServerDuringIngestion {
     TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
 
     // Create a new version
-    ControllerClient controllerClient =
-        new ControllerClient(cluster.getClusterName(), veniceUrl);
-    VersionCreationResponse versionCreationResponse =
-        controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(), false, true, false, Optional.empty(),
-            Optional.empty(), Optional.empty());
+    VersionCreationResponse versionCreationResponse = null;
+    try (ControllerClient controllerClient =
+        new ControllerClient(cluster.getClusterName(), veniceUrl)) {
+      versionCreationResponse =
+          controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
+              Version.guidBasedDummyPushId(), false, true, false, Optional.empty(),
+              Optional.empty(), Optional.empty());
+    }
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
@@ -173,69 +175,68 @@ public abstract class TestRestartServerDuringIngestion {
        */
       restartAllRouters();
 
-      // Build a venice client to verify all the data
-      AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
+      try (AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setVeniceURL(cluster.getRandomRouterURL())
-              .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
-      );
+              .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()))) {
 
-      for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
-        String key = deserializer.deserialize(entry.getKey()).toString();
-        CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
-        CharSequence returnedValue = storeClient.get(key).get();
-        Assert.assertEquals(returnedValue, expectedValue);
-      }
+        for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
+          String key = deserializer.deserialize(entry.getKey()).toString();
+          CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
+          CharSequence returnedValue = storeClient.get(key).get();
+          Assert.assertEquals(returnedValue, expectedValue);
+        }
 
-      /**
-       * Restart storage node during streaming ingestion.
-       */
-      Map<byte[], byte[]> unsortedInputRecords = generateInput(1000, false, 5000, serializer);
-      Set<Integer> restartPointSetForUnsortedInput = new HashSet();
-      restartPointSetForUnsortedInput.add(134);
-      restartPointSetForUnsortedInput.add(346);
-      restartPointSetForUnsortedInput.add(678);
-      restartPointSetForUnsortedInput.add(831);
-      cur = 0;
+        /**
+         * Restart storage node during streaming ingestion.
+         */
+        Map<byte[], byte[]> unsortedInputRecords = generateInput(1000, false, 5000, serializer);
+        Set<Integer> restartPointSetForUnsortedInput = new HashSet();
+        restartPointSetForUnsortedInput.add(134);
+        restartPointSetForUnsortedInput.add(346);
+        restartPointSetForUnsortedInput.add(678);
+        restartPointSetForUnsortedInput.add(831);
+        cur = 0;
 
-      try (VeniceWriter<byte[], byte[], byte[]> streamingWriter = veniceWriterFactory.createBasicVeniceWriter(
-          Version.composeRealTimeTopic(storeName))) {
+        try (VeniceWriter<byte[], byte[], byte[]> streamingWriter = veniceWriterFactory.createBasicVeniceWriter(
+            Version.composeRealTimeTopic(storeName))) {
+          for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
+            if (restartPointSetForUnsortedInput.contains(++cur)) {
+              // Restart server
+              cluster.stopVeniceServer(serverWrapper.getPort());
+              TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+                PartitionAssignment partitionAssignment =
+                    cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
+                // Ensure all of server are shutdown, no partition assigned.
+                return partitionAssignment.getAssignedNumberOfPartitions() == 0;
+              });
+              cluster.restartVeniceServer(serverWrapper.getPort());
+            }
+            streamingWriter.put(entry.getKey(), entry.getValue(), 1, null);
+          }
+        }
+
+        // Wait until all partitions have ready-to-serve instances
+        TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+          PartitionAssignment partitionAssignment =
+              cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
+          boolean allPartitionsReady = true;
+          for (Partition partition : partitionAssignment.getAllPartitions()) {
+            if (partition.getReadyToServeInstances().size() == 0) {
+              allPartitionsReady = false;
+              break;
+            }
+          }
+          return allPartitionsReady;
+        });
+        restartAllRouters();
+        // Verify all the key/value pairs
         for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
-          if (restartPointSetForUnsortedInput.contains(++cur)) {
-            // Restart server
-            cluster.stopVeniceServer(serverWrapper.getPort());
-            TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-              PartitionAssignment partitionAssignment =
-                  cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
-              // Ensure all of server are shutdown, no partition assigned.
-              return partitionAssignment.getAssignedNumberOfPartitions() == 0;
-            });
-            cluster.restartVeniceServer(serverWrapper.getPort());
-          }
-          streamingWriter.put(entry.getKey(), entry.getValue(), 1, null);
+          String key = deserializer.deserialize(entry.getKey()).toString();
+          CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
+          CharSequence returnedValue = storeClient.get(key).get();
+          Assert.assertEquals(returnedValue, expectedValue);
         }
-      }
-
-      // Wait until all partitions have ready-to-serve instances
-      TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-        PartitionAssignment partitionAssignment =
-            cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
-        boolean allPartitionsReady = true;
-        for (Partition partition : partitionAssignment.getAllPartitions()) {
-          if (partition.getReadyToServeInstances().size() == 0) {
-            allPartitionsReady = false;
-            break;
-          }
-        }
-        return allPartitionsReady;
-      });
-      restartAllRouters();
-      // Verify all the key/value pairs
-      for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
-        String key = deserializer.deserialize(entry.getKey()).toString();
-        CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
-        CharSequence returnedValue = storeClient.get(key).get();
-        Assert.assertEquals(returnedValue, expectedValue);
       }
     }
   }

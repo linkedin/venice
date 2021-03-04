@@ -1,10 +1,10 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -22,7 +22,6 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -35,6 +34,8 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
+import java.io.IOException;
+import org.apache.commons.io.FileUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -52,6 +53,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
+import org.testng.Assert;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.*;
@@ -91,13 +93,21 @@ public class TestUtils {
     return Paths.get(System.getProperty(TEMP_DIRECTORY_SYSTEM_PROPERTY), TestUtils.getUniqueString(prefix)).toAbsolutePath().toString();
   }
 
-  public static File getTempDataDirectory() {
+  public static File getTempDataDirectory(Optional<String> name) {
     String tmpDirectory = System.getProperty(TestUtils.TEMP_DIRECTORY_SYSTEM_PROPERTY);
-    String directoryName = TestUtils.getUniqueString("Venice-Data");
+    String directoryName = TestUtils.getUniqueString(name.orElse("Venice-Data"));
     File dir = new File(tmpDirectory, directoryName).getAbsoluteFile();
     dir.mkdir();
-    dir.deleteOnExit();
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      try {
+        FileUtils.deleteDirectory(dir);
+      } catch (IOException e) {}
+    }));
     return dir;
+  }
+
+  public static File getTempDataDirectory() {
+    return getTempDataDirectory(Optional.empty());
   }
 
   /**
@@ -261,7 +271,8 @@ public class TestUtils {
 
   public static Store createTestStore(String name, String owner, long createdTime) {
       Store store = new ZKStore(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
-          ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+          ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS,
+          3); // TODO: figure out how to get hold of a sensible RF value here
       // Set the default timestamp to make sure every creation will return the same Store object.
       store.setLatestVersionPromoteToCurrentTimestamp(-1);
       return store;
@@ -389,6 +400,12 @@ public class TestUtils {
         PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH,
         ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS);
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        3); // TODO: figure out how to get hold of a sensible RF value here
+  }
+
+  public static <T extends ControllerResponse> T assertCommand(T response) {
+    Assert.assertFalse(response.isError(), "Controller error: " + response.getError());
+    return response;
   }
 }

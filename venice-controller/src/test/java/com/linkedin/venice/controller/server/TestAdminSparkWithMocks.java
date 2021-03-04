@@ -43,7 +43,7 @@ public class TestAdminSparkWithMocks {
   public void testGetRealTimeTopicUsesAdmin() throws Exception {
     //setup server with mock admin, note returns topic "store_rt"
     VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
-    Store mockStore = new ZKStore("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Store mockStore = new ZKStore("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     mockStore.setHybridStoreConfig(new HybridStoreConfigImpl(25L, 100L, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isMasterController(anyString());

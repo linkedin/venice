@@ -65,7 +65,7 @@ public class TestHelixReadOnlySchemaRepository {
 
   private void createStore(String storeName) {
     Store store = new ZKStore(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
     storeRWRepo.addStore(store);
     TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> storeRORepo.hasStore(storeName));
   }

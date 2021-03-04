@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -21,6 +22,15 @@ import com.linkedin.davinci.client.DaVinciConfig;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
+import java.security.Permission;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
@@ -38,6 +48,51 @@ import java.util.Set;
 public class ServiceFactory {
   private static final Logger LOGGER = Logger.getLogger(ZkServerWrapper.class);
   private static final VeniceProperties EMPTY_VENICE_PROPS = new VeniceProperties();
+  private static final String ULIMIT;
+  private static final String VM_ARGS;
+  /**
+   * Calling {@link System#exit(int)} System.exit in tests is unacceptable. The Spark server lib, in particular, calls it.
+   */
+  static {
+    System.setSecurityManager(new SecurityManager() {
+      @Override
+      public void checkPermission(Permission perm) {}
+
+      @Override
+      public void checkPermission(Permission perm, Object context) {}
+
+      @Override
+      public void checkExit(int status) {
+        String message = "System exit requested with error " + status;
+        throw new SecurityException(message);
+      }
+    });
+
+    String ulimitOutput;
+    try {
+      String [] cmd={"/bin/bash", "-c", "ulimit -a"};
+      Process proc = Runtime.getRuntime().exec(cmd);
+      try (InputStream stderr = proc.getInputStream();
+          InputStreamReader isr = new InputStreamReader(stderr);
+          BufferedReader br = new BufferedReader(isr)) {
+        String line;
+        ulimitOutput = "";
+        while ((line = br.readLine()) != null) {
+          ulimitOutput += line + "\n";
+        }
+      } finally {
+        proc.destroyForcibly();
+      }
+    } catch (IOException e) {
+      ulimitOutput = "N/A";
+      LOGGER.error("Could not run ulimit.");
+    }
+    ULIMIT = ulimitOutput;
+
+    RuntimeMXBean runtimeMxBean = ManagementFactory.getRuntimeMXBean();
+    List<String> args = runtimeMxBean.getInputArguments();
+    VM_ARGS = args.stream().collect(Collectors.joining(", "));
+  }
 
   // Test config
   private static final int DEFAULT_MAX_ATTEMPT = 5;
@@ -531,12 +586,21 @@ public class ServiceFactory {
         ReflectUtils.printClasspath();
         IOUtils.closeQuietly(wrapper);
         throw e;
+      } catch (InterruptedException e) {
+        // This should mean that TestNG has timed out the test. We'll try to sneak a fast one and still close
+        // the process asynchronously, so it doesn't leak.
+        final S finalWrapper = wrapper;
+        CompletableFuture.runAsync(() -> IOUtils.closeQuietly(finalWrapper));
+        throw new VeniceException("Interrupted!", e);
       } catch (Exception e) {
+        IOUtils.closeQuietly(wrapper);
+        if (ExceptionUtils.recursiveMessageContains(e, "Too many open files")) {
+          throw new VeniceException("Too many open files!\nVM args: " + VM_ARGS + "\n$ ulimit -a\n" + ULIMIT, e);
+        }
         lastException = e;
         errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start " + serviceName +
             ". Attempt #" + attempt + "/" + maxAttempt + ".";
         LOGGER.warn(errorMessage, e);
-        IOUtils.closeQuietly(wrapper);
         // We don't throw for other exception types, since we want to retry.
       }
     }

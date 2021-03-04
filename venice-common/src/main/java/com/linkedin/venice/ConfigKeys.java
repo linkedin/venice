@@ -151,11 +151,6 @@ public class ConfigKeys {
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
-  /**
-   * replication_factor is moved to be a store level config
-   * check out {@link com.linkedin.venice.meta.Store#DEFAULT_REPLICATION_FACTOR}
-   */
-  @Deprecated
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
   public static final String DEFAULT_NUMBER_OF_PARTITION = "default.partition.count";
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
@@ -163,8 +158,6 @@ public class ConfigKeys {
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
   public static final String DELAY_TO_REBALANCE_MS = "delay.to.rebalance.ms";
   public static final String MIN_ACTIVE_REPLICA = "min.active.replica";
-  public static final String DEFAULT_STORAGE_QUOTA = "default.storage.quota";
-  public static final String DEFAULT_READ_QUOTA = "default.read.quota";
   public static final String CLUSTER_TO_D2 = "cluster.to.d2";
   public static final String HELIX_SEND_MESSAGE_TIMEOUT_MS = "helix.send.message.timeout.ms";
   public static final String REFRESH_ATTEMPTS_FOR_ZK_RECONNECT = "refresh.attempts.for.zk.reconnect";

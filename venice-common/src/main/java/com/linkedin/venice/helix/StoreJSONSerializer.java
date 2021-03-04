@@ -51,7 +51,8 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
             @JsonProperty("storageQuotaInByte") long storageQuotaInByte,
             @JsonProperty("readQuotaInCU") long readQuotaInCU,
             @JsonProperty("hybridStoreConfig") HybridStoreConfig hybridStoreConfig,
-            @JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig) {}
+            @JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig,
+            @JsonProperty("replicationFactor") int replicationFactor) {}
     }
 
     /**

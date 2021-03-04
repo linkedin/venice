@@ -54,41 +54,40 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
 
   public ZKStore(String name, String owner, long createdTime, PersistenceType persistenceType,
-      RoutingStrategy routingStrategy, ReadStrategy readStrategy,
-      OfflinePushStrategy offlinePushStrategy) {
+      RoutingStrategy routingStrategy, ReadStrategy readStrategy, OfflinePushStrategy offlinePushStrategy,
+      int replicationFactor) {
     this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
         NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null,
-        new PartitionerConfigImpl()); // Every store comes with default partitioner settings.
+        new PartitionerConfigImpl(), // Every store comes with default partitioner settings.
+        replicationFactor);
   }
 
   public ZKStore(String name, String owner, long createdTime, PersistenceType persistenceType,
       RoutingStrategy routingStrategy, ReadStrategy readStrategy,
       OfflinePushStrategy offlinePushStrategy, int currentVersion,
-      long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig, PartitionerConfig partitionerConfig) {
+      long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig,
+      PartitionerConfig partitionerConfig, int replicationFactor) {
     if (!Store.isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
 
     this.storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
-    // for testing
-    if (DEFAULT_REPLICATION_FACTOR != this.storeProperties.replicationFactor) {
-      this.storeProperties.replicationFactor = DEFAULT_REPLICATION_FACTOR;
-    }
+    this.storeProperties.replicationFactor = replicationFactor;
 
     this.storeProperties.name = name;
     this.storeProperties.owner = owner;
     this.storeProperties.createdTime = createdTime;
     if (persistenceType != null) {
-      this.storeProperties.persistenceType = persistenceType.ordinal();
+      this.storeProperties.persistenceType = persistenceType.value;
     }
     if (routingStrategy != null) {
-      this.storeProperties.routingStrategy = routingStrategy.ordinal();
+      this.storeProperties.routingStrategy = routingStrategy.value;
     }
     if (readStrategy != null) {
-      this.storeProperties.readStrategy = readStrategy.ordinal();
+      this.storeProperties.readStrategy = readStrategy.value;
     }
     if (offlinePushStrategy != null) {
-      this.storeProperties.offlinePushStrategy = offlinePushStrategy.ordinal();
+      this.storeProperties.offlinePushStrategy = offlinePushStrategy.value;
     }
     this.storeProperties.versions = new ArrayList<>();
     this.storeProperties.storageQuotaInByte = storageQuotaInByte;
@@ -731,7 +730,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
                   getStorageQuotaInByte(),
                   getReadQuotaInCU(),
                   null == getHybridStoreConfig() ? null : getHybridStoreConfig().clone(),
-                  null == getPartitionerConfig() ? null : getPartitionerConfig().clone());
+                  null == getPartitionerConfig() ? null : getPartitionerConfig().clone(),
+                  getReplicationFactor());
     clonedStore.setEnableReads(isEnableReads());
     clonedStore.setEnableWrites(isEnableWrites());
     clonedStore.setPartitionCount(getPartitionCount());

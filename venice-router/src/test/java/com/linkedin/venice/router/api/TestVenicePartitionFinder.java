@@ -33,7 +33,7 @@ public class TestVenicePartitionFinder {
     String storeName = TestUtils.getUniqueString("store");
     Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
     for (int i = 0; i < NUM_VERSIONS; i++) {
       store.increaseVersion(String.valueOf(i));
     }

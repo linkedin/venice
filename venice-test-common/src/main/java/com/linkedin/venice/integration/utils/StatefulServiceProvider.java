@@ -1,6 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
+import java.util.Optional;
+
 
 /**
  * A wrapper for {@link ServiceProvider} which
@@ -10,7 +13,7 @@ import java.io.File;
  */
 interface StatefulServiceProvider<Service extends ProcessWrapper> extends ServiceProvider<Service> {
   default Service get(String serviceName) throws Exception {
-    File dir = IntegrationTestUtils.getDataDirectory(serviceName);
+    File dir = TestUtils.getTempDataDirectory(Optional.of(serviceName));
     return get(serviceName, dir);
   }
 

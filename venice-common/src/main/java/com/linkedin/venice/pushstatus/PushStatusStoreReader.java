@@ -9,6 +9,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.Closeable;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -21,7 +22,7 @@ import org.apache.log4j.Logger;
  * One PushStatusStoreReader for one regular Venice store.
  * Don't keep a map of [storeName->client] to minimize states kept by controller.
  */
-public class PushStatusStoreReader implements AutoCloseable {
+public class PushStatusStoreReader implements Closeable {
   private static final Logger logger = Logger.getLogger(PushStatusStoreReader.class);
   private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients = new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;

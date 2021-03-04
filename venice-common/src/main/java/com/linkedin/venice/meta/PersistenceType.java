@@ -30,7 +30,7 @@ public enum PersistenceType {
      */
     BLACK_HOLE(3);
 
-    private final int value;
+    public final int value;
 
     PersistenceType(int v) {
         this.value = v;

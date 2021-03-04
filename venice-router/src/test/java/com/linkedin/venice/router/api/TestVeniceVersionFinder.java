@@ -78,7 +78,8 @@ public class TestVeniceVersionFinder {
   public void throws301onMigratedStore() {
     ReadOnlyStoreRepository mockRepo = Mockito.mock(ReadOnlyStoreRepository.class);
     Store store = new ZKStore("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
     store.setMigrating(true);
     int currentVersion = 10;
     store.setCurrentVersion(currentVersion);

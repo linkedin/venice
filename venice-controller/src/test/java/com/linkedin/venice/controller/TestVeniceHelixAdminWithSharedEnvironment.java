@@ -1049,7 +1049,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       String storeName = TestUtils.getUniqueString("store-" + storeNumber);
       Store store = new ZKStore(storeName, storeOwner, System.currentTimeMillis(), PersistenceType.ROCKS_DB,
           RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
 
       // Two active versions, selected at random
       List<Integer> activeVersions = new ArrayList<>();

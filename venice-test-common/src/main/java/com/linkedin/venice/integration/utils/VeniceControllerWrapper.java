@@ -88,8 +88,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       int adminSecurePort = Utils.getFreePort();
       List<VeniceProperties> propertiesList = new ArrayList<>();
 
-      AbstractStore.setDefaultReplicationFactor(replicationFactor);
-
       for(String clusterName : clusterNames) {
         VeniceProperties clusterProps =
             IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, zkAddress, kafkaBroker, sslToKafka);
