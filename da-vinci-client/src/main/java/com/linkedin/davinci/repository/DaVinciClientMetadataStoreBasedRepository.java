@@ -27,6 +27,8 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
@@ -209,6 +211,14 @@ public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRep
   protected StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key)
       throws ExecutionException, InterruptedException {
     return getDaVinciClientForSystemStore(storeName).get(key).get();
+  }
+
+  @Override
+  protected StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key)
+      throws ExecutionException, InterruptedException {
+    throw new UnsupportedOperationException(
+        "getStoreMetaValue for store: " + storeName + " and key: " + key.toString() + " is not supported in "
+            + this.getClass().getSimpleName());
   }
 
   @Override

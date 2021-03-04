@@ -8,17 +8,19 @@ import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
  * Configurations of a store which are non-cluster specified.
  */
 public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig> {
-  private final String storeName;
   private final StoreClusterConfig storeClusterConfig;
 
   public StoreConfig(String storeName) {
-    this.storeName = storeName;
     storeClusterConfig = Store.prefillAvroRecordWithDefaultValue(new StoreClusterConfig());
     storeClusterConfig.storeName = storeName;
   }
 
+  public StoreConfig(StoreClusterConfig storeClusterConfig) {
+    this.storeClusterConfig = storeClusterConfig;
+  }
+
   public String getStoreName() {
-    return storeName;
+    return storeClusterConfig.storeName.toString();
   }
 
   public boolean isDeleting() {
@@ -34,7 +36,7 @@ public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig>
       return storeClusterConfig.cluster.toString();
     } else {
       throw new VeniceException(
-          "Could not find cluster property in the config of store: " + storeName);
+          "Could not find cluster property in the config of store: " + storeClusterConfig.storeName.toString());
     }
   }
 
@@ -66,7 +68,7 @@ public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig>
   }
 
   public StoreConfig cloneStoreConfig() {
-    StoreConfig clonedStoreConfig = new StoreConfig(storeName);
+    StoreConfig clonedStoreConfig = new StoreConfig(storeClusterConfig.storeName.toString());
     clonedStoreConfig.setCluster(getCluster());
     clonedStoreConfig.setDeleting(isDeleting());
     clonedStoreConfig.setMigrationSrcCluster(getMigrationSrcCluster());
