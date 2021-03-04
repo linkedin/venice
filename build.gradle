@@ -139,8 +139,8 @@ ext.libraries = [
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
     classgraph: 'io.github.classgraph:classgraph:4.8.60',
 
-    jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
-    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28'
+    jmhCore: 'org.openjdk.jmh:jmh-core:1.25',
+    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.25'
 ]
 
 subprojects {
