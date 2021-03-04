@@ -37,6 +37,7 @@ import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -411,7 +412,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         .createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true));
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any());
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = "test-store";
     String pushJobId = "test-push-job-id";
@@ -1252,7 +1254,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     TopicManager mockedTopicManager = mock(TopicManager.class);
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any());
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = TestUtils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";
@@ -1457,7 +1460,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     TopicManager mockedTopicManager = mock(TopicManager.class);
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any());
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = TestUtils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";

@@ -4,6 +4,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.util.Optional;
@@ -46,7 +47,8 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     TopicManager mockedTopicManager = mock(TopicManager.class);
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
-    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any());
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
+    doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = TestUtils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";
