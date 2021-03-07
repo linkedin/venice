@@ -113,8 +113,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void processConsumerAction(ConsumerAction message)
-      throws InterruptedException {
+  protected void processConsumerAction(ConsumerAction message) throws InterruptedException {
     ConsumerActionType operation = message.getType();
     String topic = message.getTopic();
     int partition = message.getPartition();

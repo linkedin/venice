@@ -73,7 +73,7 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
 
 
       // Placing a latch in the transition if this is the current version
-      if (getMetaDataRepo().getStore(storeName).getCurrentVersion() == version
+      if (getMetaDataRepo().getStoreOrThrow(storeName).getCurrentVersion() == version
           && !VeniceSystemStoreUtils.isSystemStore(storeName)) {
         //startConsumption is called in order to create the latch
         notifier.startConsumption(resourceName, getPartition());

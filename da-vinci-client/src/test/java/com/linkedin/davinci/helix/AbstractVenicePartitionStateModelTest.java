@@ -67,7 +67,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     mockHelixManager = Mockito.mock(HelixManager.class);
 
     Mockito.when(mockMessage.getResourceName()).thenReturn(resourceName);
-    Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName)))
+    Mockito.when(mockReadOnlyStoreRepository.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName)))
         .thenReturn(mockStore);
     Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
 

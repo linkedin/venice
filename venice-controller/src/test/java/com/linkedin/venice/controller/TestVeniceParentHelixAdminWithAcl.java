@@ -31,7 +31,7 @@ import static org.mockito.Mockito.*;
  * Creating a new class as we need to pass MockAuthorizer during cluster setup.
  */
 public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentHelixAdmin {
-  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   MockVeniceAuthorizer authorizerService;

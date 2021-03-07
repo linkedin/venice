@@ -415,7 +415,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       accessor.getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
 
       //Fetch derived schemas if they are existing
-      Store store = storeRepository.getStore(storeName);
+      Store store = storeRepository.getStoreOrThrow(storeName);
       if (store.isWriteComputationEnabled()) {
         accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
         accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);

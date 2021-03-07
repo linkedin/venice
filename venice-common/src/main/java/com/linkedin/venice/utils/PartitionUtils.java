@@ -32,7 +32,7 @@ public class PartitionUtils {
     if (storeSizeBytes <= 0) {
       throw new VeniceException("Store size:" + storeSizeBytes + "is invalid.");
     }
-    Store store = storeRepository.getStore(storeName);
+    Store store = storeRepository.getStoreOrThrow(storeName);
     int previousPartitionCount = store.getPartitionCount();
     if (previousPartitionCount == 0) {
       // First Version, calculate partition count

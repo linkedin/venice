@@ -88,13 +88,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   @Override
   public Schema getKeySchema() {
     throwIfNotReady();
-    return daVinciBackend.get().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
+    return getBackend().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
   }
 
   @Override
   public Schema getLatestValueSchema() {
     throwIfNotReady();
-    return daVinciBackend.get().getSchemaRepository().getLatestValueSchema(getStoreName()).getSchema();
+    return getBackend().getSchemaRepository().getLatestValueSchema(getStoreName()).getSchema();
   }
 
   @Override
@@ -330,6 +330,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
   }
 
+  // Visible for testing
+  public static synchronized DaVinciBackend getBackend() {
+    return daVinciBackend.get();
+  }
+
   @Override
   public synchronized void start() {
     if (isReady()) {
@@ -340,13 +345,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     initBackend(clientConfig, configLoader, managedClients);
 
     try {
-      storeBackend = daVinciBackend.get().getStoreOrThrow(getStoreName());
+      storeBackend = getBackend().getStoreOrThrow(getStoreName());
       if (managedClients.isPresent()) {
         storeBackend.setManaged(daVinciConfig.isManaged());
       }
       storeBackend.setMemoryLimit(daVinciConfig.getMemoryLimit());
 
-      Schema keySchema = daVinciBackend.get().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
+      Schema keySchema = getBackend().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
       keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);
 
       if (isVeniceQueryAllowed()) {

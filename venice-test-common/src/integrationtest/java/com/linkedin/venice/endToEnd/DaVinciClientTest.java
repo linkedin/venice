@@ -29,6 +29,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.NonLocalAccessException;
@@ -44,10 +45,12 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -76,15 +79,24 @@ public class DaVinciClientTest {
   @BeforeClass
   public void setup() {
     Utils.thisIsLocalhost();
-    Properties extraProperties = new Properties();
-    extraProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    Properties clusterConfig = new Properties();
+    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
-        100, false, false, extraProperties);
+        100, false, false, clusterConfig);
   }
 
   @AfterClass
   public void cleanup() {
     IOUtils.closeQuietly(cluster);
+  }
+
+  @AfterMethod
+  public void verifyPostconditions(Method method) {
+    try {
+      assertThrows(NullPointerException.class, AvroGenericDaVinciClient::getBackend);
+    } catch (AssertionError e) {
+      throw new AssertionError(method.getName() + " leaked DaVinciBackend.", e);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

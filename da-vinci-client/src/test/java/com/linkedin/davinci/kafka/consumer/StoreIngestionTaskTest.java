@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
@@ -1156,10 +1157,10 @@ public class StoreIngestionTaskTest {
         // task should report an error to notifier that it's killed.
         verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
             eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
-            argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
+            argThat(new ExceptionClassMatcher(VeniceIngestionTaskKilledException.class)));
         verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
             eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-            argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
+            argThat(new ExceptionClassMatcher(VeniceIngestionTaskKilledException.class)));
 
         waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
             () -> storeIngestionTaskUnderTest.isRunning() == false);

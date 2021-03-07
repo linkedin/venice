@@ -96,7 +96,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           KafkaMessageEnvelope kafkaMessageEnvelope = message.get().value;
           if (MessageType.valueOf(kafkaMessageEnvelope) == MessageType.PUT && !message.get().isPutValueChanged()) {
             /**
-             * This is used to simulate the deserializtion in {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}
+             * This is used to simulate the deserialization in {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}
              * to leave some room in {@link Put#putValue} byte buffer.
              */
             Put put = (Put) kafkaMessageEnvelope.payloadUnion;
