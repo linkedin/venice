@@ -78,7 +78,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(executionIdAccessor).when(internalAdmin).getExecutionIdAccessor();
     doReturn(0L).when(executionIdAccessor).getLastSucceededExecutionId(any());
 
-    // Occassionally the startStoreMigrationMonitor will run and throw NPE's unless the internal
+    // Occasionally the startStoreMigrationMonitor will run and throw NPE's unless the internal
     // helix admin can proffer a set of StoreConfigRepo.  So we set up mocks for this
     // that... do a funny thing to get it to leave us alone.  This SHOULD be mocked to return a proper
     // list of store configs for the sake of correctness, but async scheduled threads can be the bane

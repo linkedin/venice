@@ -22,7 +22,6 @@ import static org.mockito.Mockito.*;
 
 
 public class AggVersionedStorageIngestionStatsTest {
-
   private AggVersionedStorageIngestionStats versionedIngestionStats;
   private MetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
@@ -47,8 +46,8 @@ public class AggVersionedStorageIngestionStatsTest {
     Store zkSharedStore = getMockStore(zkSharedStoreName);
     zkSharedStore.addVersion(new VersionImpl(zkSharedStoreName, 1, ""));
     zkSharedStore.setCurrentVersion(1);
-    doReturn(zkSharedStore).when(mockStoreRepository).getStore(zkSharedStoreName);
-    doReturn(zkSharedStore).when(mockStoreRepository).getStore(metadataStoreName);
+    doReturn(zkSharedStore).when(mockStoreRepository).getStoreOrThrow(zkSharedStoreName);
+    doReturn(zkSharedStore).when(mockStoreRepository).getStoreOrThrow(metadataStoreName);
     StoreIngestionTask mockMetadataStoreIngestionTask = mock(StoreIngestionTask.class);
     doReturn(zkSharedStore).when(mockMetadataStoreIngestionTask).getIngestionStore();
     doReturn(true).when(mockMetadataStoreIngestionTask).isHybridMode();
@@ -66,7 +65,7 @@ public class AggVersionedStorageIngestionStatsTest {
     Store ingestionStore = getMockStore(storeName);
     ingestionStore.addVersion(new VersionImpl(storeName, 1, ""));
     ingestionStore.setCurrentVersion(1);
-    doReturn(ingestionStore).when(mockStoreRepository).getStore(storeName);
+    doReturn(ingestionStore).when(mockStoreRepository).getStoreOrThrow(storeName);
     StoreIngestionTask mockStoreIngestionTask = mock(StoreIngestionTask.class);
     doReturn(ingestionStore).when(mockStoreIngestionTask).getIngestionStore();
     doReturn(true).when(mockStoreIngestionTask).isHybridMode();

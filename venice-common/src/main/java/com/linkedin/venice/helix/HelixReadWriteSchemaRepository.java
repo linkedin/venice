@@ -140,7 +140,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
     preCheckStoreCondition(storeName);
 
-    Store store = storeRepository.getStore(storeName);
+    Store store = storeRepository.getStoreOrThrow(storeName);
     Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
 
@@ -211,8 +211,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   public SchemaEntry getLatestValueSchema(String storeName) {
     Collection<SchemaEntry>  valueSchemas = getValueSchemas(storeName);
 
-    Store store = storeRepository.getStore(storeName);
-
+    Store store = storeRepository.getStoreOrThrow(storeName);
     if (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
       int latestValueSchemaId = store.getLatestSuperSetValueSchemaId();
       return accessor.getValueSchema(storeName, String.valueOf(latestValueSchemaId));

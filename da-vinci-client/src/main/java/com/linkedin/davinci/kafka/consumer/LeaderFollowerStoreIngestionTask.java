@@ -19,7 +19,6 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
-import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -212,21 +211,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public synchronized void promoteToLeader(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
-    validateState();
+    throwIfNotRunning();
     ConsumerAction newAction = new ConsumerAction(ConsumerActionType.STANDBY_TO_LEADER, topic, partitionId, nextSeqNum(), checker);
     consumerActionsQueue.add(newAction);
   }
 
   @Override
   public synchronized void demoteToStandby(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
-    validateState();
+    throwIfNotRunning();
     ConsumerAction newAction = new ConsumerAction(ConsumerActionType.LEADER_TO_STANDBY, topic, partitionId, nextSeqNum(), checker);
     consumerActionsQueue.add(newAction);
   }
 
   @Override
-  protected void processConsumerAction(ConsumerAction message)
-      throws InterruptedException {
+  protected void processConsumerAction(ConsumerAction message) throws InterruptedException {
     ConsumerActionType operation = message.getType();
     String topic = message.getTopic();
     int partition = message.getPartition();
@@ -250,7 +248,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + ", because this replica is the leader already.");
           return;
         }
-        Store store = storeRepository.getStore(storeName);
+        Store store = storeRepository.getStoreOrThrow(storeName);
         if (store.isMigrationDuplicateStore()) {
           partitionConsumptionState.setLeaderState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
           logger.info(consumerTaskId + " for partition " + partition + " is paused transition from STANDBY to LEADER;\n"
@@ -332,17 +330,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void checkLongRunningTaskState() throws InterruptedException{
     long checkStartTimeInNS = System.nanoTime();
     for (PartitionConsumptionState partitionConsumptionState : partitionConsumptionStateMap.values()) {
+      int partition = partitionConsumptionState.getPartition();
+
       switch (partitionConsumptionState.getLeaderState()) {
         case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
-          Store store = storeRepository.getStore(storeName);
+          Store store = storeRepository.getStoreOrThrow(storeName);
           if (!store.isMigrationDuplicateStore()) {
             partitionConsumptionState.setLeaderState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
             logger.info(consumerTaskId + " became in transition to leader for partition " + partitionConsumptionState.getPartition());
           }
           break;
-        case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
-          int partition = partitionConsumptionState.getPartition();
 
+        case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
           /**
            * If buffer replay is disabled, all replica are just consuming from version topic;
            * promote to leader immediately.
@@ -426,6 +425,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             defaultReadyToServeChecker.apply(partitionConsumptionState);
           }
           break;
+
         case LEADER:
           /**
            * Leader should finish consuming all the messages inside version topic before switching to real-time topic;
@@ -517,6 +517,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             defaultReadyToServeChecker.apply(partitionConsumptionState);
           }
           break;
+
         case STANDBY:
           // no long running task for follower
           break;

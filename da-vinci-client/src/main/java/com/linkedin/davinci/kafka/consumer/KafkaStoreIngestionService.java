@@ -594,16 +594,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private int getStoreMaximumVersionNumber(String storeName) {
-    Store store = metadataRepo.getStore(storeName);
-    if (store == null) {
-      throw new VeniceException("Could not find store " + storeName + " info in ZK");
-    }
-
-    int maxVersionNumber = store.getLargestUsedVersionNumber();
-    if (maxVersionNumber == 0) {
+    int maxVersionNumber = metadataRepo.getStoreOrThrow(storeName).getLargestUsedVersionNumber();
+    if (maxVersionNumber == Store.NON_EXISTING_VERSION) {
       throw new VeniceException("No version has been created yet for store " + storeName);
     }
-
     return maxVersionNumber;
   }
 
@@ -679,31 +673,34 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     synchronized (this) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topicName);
-      boolean killed = false;
-      if (consumerTask != null) {
-        if (consumerTask.isRunning()) {
-          consumerTask.kill();
-          killed = true;
-          logger.info("Killed consumption task for Topic " + topicName);
-        } else {
-          logger.warn("Ignoring kill signal for Topic " + topicName);
-        }
-        // cleanup the map regardless if the task was running or not to prevent mem leak where errored tasks will linger
-        // in the map since isRunning is set to false already.
-        topicNameToIngestionTaskMap.remove(topicName);
-        if (null != aggKafkaConsumerService) {
-          aggKafkaConsumerService.detach(consumerTask);
-        }
+      if (consumerTask == null) {
+        logger.info("Ignoring kill request for not-existing consumption task " + topicName);
+        return false;
+      }
 
-        /**
-         * For the same store, there will be only one task emitting metrics, if this is the only task that is emitting
-         * metrics, it means the latest ongoing push job is killed. In such case, find the largest version in the task
-         * map and enable metric emission.
-         */
-        if (consumerTask.isMetricsEmissionEnabled()) {
-          consumerTask.disableMetricsEmission();
-          updateStatsEmission(topicNameToIngestionTaskMap, Version.parseStoreFromKafkaTopicName(topicName));
-        }
+      boolean killed = false;
+      if (consumerTask.isRunning()) {
+        consumerTask.kill();
+        killed = true;
+        logger.info("Killed consumption task for topic " + topicName);
+      } else {
+        logger.warn("Ignoring kill request for stopped consumption task " + topicName);
+      }
+      // cleanup the map regardless if the task was running or not to prevent mem leak when failed tasks lingers
+      // in the map since isRunning is set to false already.
+      topicNameToIngestionTaskMap.remove(topicName);
+      if (null != aggKafkaConsumerService) {
+        aggKafkaConsumerService.detach(consumerTask);
+      }
+
+      /**
+       * For the same store, there will be only one task emitting metrics, if this is the only task that is emitting
+       * metrics, it means the latest ongoing push job is killed. In such case, find the largest version in the task
+       * map and enable metric emission.
+       */
+      if (consumerTask.isMetricsEmissionEnabled()) {
+        consumerTask.disableMetricsEmission();
+        updateStatsEmission(topicNameToIngestionTaskMap, Version.parseStoreFromKafkaTopicName(topicName));
       }
       return killed;
     }
@@ -750,7 +747,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public Set<String> getIngestingTopicsWithVersionStatusNotOnline() {
     Set<String> result = new HashSet<>();
     for (String topic : topicNameToIngestionTaskMap.keySet()) {
-      Store store = metadataRepo.getStore(Version.parseStoreFromKafkaTopicName(topic));
+      Store store = metadataRepo.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(topic));
       int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
       if (store == null || !store.getVersion(versionNumber).isPresent()
           || store.getVersion(versionNumber).get().getStatus() != VersionStatus.ONLINE) {

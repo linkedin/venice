@@ -64,10 +64,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   private VeniceVersionedStats<STATS, STATS_REPORTER> getVersionedStats(String storeName) {
     if (!aggStats.containsKey(storeName)) {
       addStore(storeName);
-      Store store = metadataRepository.getStore(storeName);
-      if (null == store) {
-        throw new VeniceException("Unknown store: " + storeName);
-      }
+      Store store = metadataRepository.getStoreOrThrow(storeName);
       updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
     }
     return aggStats.get(storeName);

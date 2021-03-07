@@ -83,19 +83,17 @@ public class VersionBackend {
   synchronized void close() {
     logger.info("Closing local version " + this);
     backend.getVersionByTopicMap().remove(version.kafkaTopicName(), this);
-
-    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-        backend.getIngestionRequestClient().killConsumptionTask(version.kafkaTopicName());
-    }
-
-    backend.getIngestionService().killConsumptionTask(version.kafkaTopicName());
     if (heartbeat != null) {
       heartbeat.cancel(true);
     }
-
     for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
       entry.getValue().cancel(true);
     }
+
+    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
+      backend.getIngestionRequestClient().killConsumptionTask(version.kafkaTopicName());
+    }
+    backend.getIngestionService().killConsumptionTask(version.kafkaTopicName());
   }
 
   synchronized void delete() {
@@ -271,6 +269,7 @@ public class VersionBackend {
       logger.warn("Sub-partition " + subPartition + " of " + this + " is not subscribed, ignoring unsubscribe request.");
       return;
     }
+    completeSubPartition(subPartition);
 
     if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
       // Will stop ingestion and remove the partition in the IngestionService if the partition is being ingested by Ingestion Service.
@@ -278,22 +277,19 @@ public class VersionBackend {
     }
 
     backend.getIngestionService().stopConsumptionAndWait(config, subPartition, 1, 30);
-    CompletableFuture future = subPartitionFutures.remove(subPartition);
-    if (future != null) {
-      future.complete(null);
-    }
+    subPartitionFutures.remove(subPartition);
+    tryStopHeartbeat();
 
     backend.getStorageService().dropStorePartition(config, subPartition);
-    tryStopHeartbeat();
   }
 
-  synchronized void completeSubPartition(int subPartition) {
+  void completeSubPartition(int subPartition) {
     logger.info("Sub-partition " + subPartition + " of " + this + " is ready to serve.");
     subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).complete(null);
     tryStopHeartbeat();
   }
 
-  synchronized void completeSubPartitionExceptionally(int subPartition, Throwable failure) {
+  void completeSubPartitionExceptionally(int subPartition, Throwable failure) {
     logger.warn("Failed to subscribe to sub-partition " + subPartition + " of " + this, failure);
     subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).completeExceptionally(failure);
     tryStopHeartbeat();

@@ -265,7 +265,7 @@ class IngestionNotificationDispatcher {
           return false;
         }
         // Once a replica is completed, there is not need to kill the state transition.
-        if(pcs.isCompletionReported()){
+        if (pcs.isCompletionReported()) {
           logger.warn("Partition:" + pcs.getPartition()
               + " has been marked as completed, so an error will not be reported...");
           return false;

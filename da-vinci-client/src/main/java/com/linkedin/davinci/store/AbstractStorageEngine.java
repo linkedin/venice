@@ -72,6 +72,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return storeName;
   }
 
+  @Override
+  public String toString() {
+    return getName();
+  }
+
   public abstract PersistenceType getType();
   public abstract long getStoreSizeInBytes();
   protected abstract Set<Integer> getPersistedPartitionIds();

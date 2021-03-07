@@ -72,6 +72,8 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -118,7 +120,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /** After processing the following number of messages, Venice SN will report progress metrics. */
   public static int OFFSET_REPORTING_INTERVAL = 1000;
-  private static final int MAX_CONTROL_MESSAGE_RETRIES = 3;
+  private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 3;
   private static final int MAX_IDLE_COUNTER  = 100;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   private static final long KILL_WAIT_TIME_MS = 5000l;
@@ -420,7 +422,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
   }
 
-  protected void validateState() {
+  protected void throwIfNotRunning() {
     if (!isRunning()) {
       throw new VeniceException(" Topic " + kafkaVersionTopic + " is shutting down, no more messages accepted");
     }
@@ -473,7 +475,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Adds an asynchronous partition subscription request for the task.
    */
   public synchronized void subscribePartition(String topic, int partition) {
-    validateState();
+    throwIfNotRunning();
     consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, partition, nextSeqNum()));
   }
 
@@ -481,7 +483,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Adds an asynchronous partition unsubscription request for the task.
    */
   public synchronized void unSubscribePartition(String topic, int partition) {
-    validateState();
+    throwIfNotRunning();
     consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, partition, nextSeqNum()));
   }
 
@@ -489,7 +491,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Adds an asynchronous resetting partition consumption offset request for the task.
    */
   public synchronized void resetPartitionConsumptionOffset(String topic, int partition) {
-    validateState();
+    throwIfNotRunning();
     consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, partition, nextSeqNum()));
   }
 
@@ -504,25 +506,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void demoteToStandby(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
 
   public synchronized void kill() {
-    validateState();
+    throwIfNotRunning();
     consumerActionsQueue.add(ConsumerAction.createKillAction(kafkaVersionTopic, nextSeqNum()));
-    int currentAttempts = 0;
+
     try {
-      // Check whether the task is really killed
-      while (isRunning() && currentAttempts < MAX_KILL_CHECKING_ATTEMPTS) {
+      for (int attempt = 0; isRunning() && attempt < MAX_KILL_CHECKING_ATTEMPTS; ++attempt) {
         MILLISECONDS.sleep(KILL_WAIT_TIME_MS / MAX_KILL_CHECKING_ATTEMPTS);
-        currentAttempts ++;
       }
     } catch (InterruptedException e) {
-      logger.warn("Wait killing is interrupted.", e);
-      Thread.currentThread().interrupt();
+      logger.warn("StoreIngestionTask::kill was interrupted.", e);
     }
+
     if (isRunning()) {
       // If task is still running, force close it.
       notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Received the signal to kill this consumer. Topic " + kafkaVersionTopic,
           new VeniceException("Kill the consumer"));
-      // close can not stop the consumption synchronizely, but the status of helix would be set to ERROR after
-      // reportError. The only way to stop it synchronizely is interrupt the current running thread, but it's an unsafe
+      // close can not stop the consumption synchronously, but the status of helix would be set to ERROR after
+      // reportError. The only way to stop it synchronously is interrupt the current running thread, but it's an unsafe
       // operation, for example it could break the ongoing db operation, so we should avoid that.
       close();
     }
@@ -1103,19 +1103,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
-    // Update thread name to include topic to make it easy debugging
-    Thread.currentThread().setName("venice-consumer-" + kafkaVersionTopic);
-
-    logger.info("Running " + consumerTaskId);
     try {
-      /**
-       * Consumers will be initialized lazily
-       */
+      // Update thread name to include topic to make it easy debugging
+      Thread.currentThread().setName("venice-consumer-" + kafkaVersionTopic);
+      logger.info("Running " + consumerTaskId);
       versionedStorageIngestionStats.resetIngestionTaskErroredGauge(storeName, versionNumber);
-      /**
-       * Here we could not use isRunning() since it is a synchronized function, whose lock could be
-       * acquired by some other synchronized function, such as {@link #kill()}.
-        */
+
       while (isRunning()) {
         processConsumerActions();
         checkLongRunningTaskState();
@@ -1145,37 +1138,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         syncOffset(kafkaVersionTopic, partitionConsumptionState);
       }
 
-    } catch (VeniceIngestionTaskKilledException ke) {
-      logger.info(consumerTaskId + " is killed, start to report to notifier.", ke);
-      notificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), ke);
-    } catch (org.apache.kafka.common.errors.InterruptException | InterruptedException interruptException) {
+    } catch (VeniceIngestionTaskKilledException e) {
+      logger.info(consumerTaskId + " has been killed.", e);
+      notificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), e);
+
+    } catch (org.apache.kafka.common.errors.InterruptException | InterruptedException e) {
       // Known exceptions during graceful shutdown of storage server. Report error only if the server is still running.
       if (isRunning()) {
         // Report ingestion failure if it is not caused by kill operation or server restarts.
-        logger.error(consumerTaskId + " failed with InterruptException.", interruptException);
+        logger.error(consumerTaskId + " has failed.", e);
         notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
-            "Caught InterruptException during ingestion.", interruptException);
+            "Caught InterruptException during ingestion.", e);
         storeIngestionStats.recordIngestionFailure(storeName);
         versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
       }
+
     } catch (Throwable t) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
       // So even this storage node recover eventually, controller will not confused.
       // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
       // recovered, it will send STARTED message to controller again)
+      logger.error(consumerTaskId + " has failed.", t);
       if (t instanceof Exception) {
-        logger.error(consumerTaskId + " failed with Exception.", t);
         reportError(partitionConsumptionStateMap.values(), errorPartitionId,
-            "Caught Exception during ingestion.", (Exception)t);
+            "Caught Exception during ingestion.", (Exception) t);
       } else {
-        logger.error(consumerTaskId + " failed with Error!!!", t);
         reportError(partitionConsumptionStateMap.values(), errorPartitionId,
-            "Caught non-exception Throwable during ingestion in " + getClass().getSimpleName() + "'s run() function.", new VeniceException(t));
+            "Caught non-exception Throwable during ingestion.", new VeniceException(t));
       }
       storeIngestionStats.recordIngestionFailure(storeName);
       if (partitionConsumptionStateMap.values().stream().anyMatch(PartitionConsumptionState::isEndOfPushReceived)) {
         versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
       }
+
     } finally {
       internalClose();
     }
@@ -1285,28 +1280,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Consumes the kafka actions messages in the queue.
    */
-  private void processConsumerActions() {
-    long consumerActionStartTimeInNS = System.nanoTime();
-    while (!consumerActionsQueue.isEmpty()) {
+  private void processConsumerActions() throws InterruptedException {
+    Instant startTime = Instant.now();
+    for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
-      ConsumerAction message = consumerActionsQueue.peek();
-      try {
-        message.incrementAttempt();
-        processConsumerAction(message);
-      } catch (InterruptedException e) {
-        throw new VeniceIngestionTaskKilledException(kafkaVersionTopic, e);
-      } catch (Exception ex) {
-        if (message.getAttemptsCount() < MAX_CONTROL_MESSAGE_RETRIES) {
-          logger.info("Error Processing message will retry later " + message , ex);
-          return;
-        } else {
-          logger.error("Ignoring message:  " + message + " after retries " + message.getAttemptsCount(), ex);
-        }
+      ConsumerAction action = consumerActionsQueue.peek();
+      if (action == null) {
+        break;
       }
-      consumerActionsQueue.poll();
+      try {
+        logger.info("Starting consumer action " + action);
+        action.incrementAttempt();
+        processConsumerAction(action);
+        consumerActionsQueue.poll();
+        logger.info("Finished consumer action " + action);
+
+      } catch (VeniceIngestionTaskKilledException | InterruptedException e) {
+        throw e;
+
+      } catch (Throwable e) {
+        if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
+          logger.warn("Failed to process consumer action " + action + ", will retry later.", e);
+          return;
+        }
+        logger.error("Ignoring consumer action " + action + " after " + action.getAttemptsCount() + " attempts.", e);
+        consumerActionsQueue.poll();
+      }
     }
     if (emitMetrics.get()) {
-      storeIngestionStats.recordProcessConsumerActionLatency(storeName, LatencyUtils.getLatencyInMS(consumerActionStartTimeInNS));
+      storeIngestionStats.recordProcessConsumerActionLatency(storeName, Duration.between(startTime, Instant.now()).toMillis());
     }
   }
 
@@ -1377,8 +1379,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return everSubscribedTopics;
   }
 
-  protected void processCommonConsumerAction(ConsumerActionType operation, String topic, int partition)
-      throws InterruptedException {
+  protected void processCommonConsumerAction(ConsumerActionType operation, String topic, int partition) throws InterruptedException {
     switch (operation) {
       case SUBSCRIBE:
         // Drain the buffered message by last subscription.
@@ -1471,7 +1472,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case KILL:
         logger.info("Kill this consumer task for Topic:" + topic);
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
-        throw new InterruptedException("Received the signal to kill this consumer. Topic " + topic);
+        throw new VeniceIngestionTaskKilledException("Received the signal to kill this consumer. Topic " + topic);
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }

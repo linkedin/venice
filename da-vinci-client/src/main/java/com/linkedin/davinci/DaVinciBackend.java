@@ -224,7 +224,9 @@ public class DaVinciBackend implements Closeable {
   }
 
   protected synchronized void bootstrap(Optional<Set<String>> managedClients, Map<Version, List<Integer>> bootstrapVersions) {
-    for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
+    List<AbstractStorageEngine> storageEngines = storageService.getStorageEngineRepository().getAllLocalStorageEngines();
+    logger.info("Starting bootstrap, storageEngines=" + storageEngines + ", managedClients=" + managedClients);
+    for (AbstractStorageEngine storageEngine : storageEngines) {
       String kafkaTopicName = storageEngine.getName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
 
@@ -260,7 +262,7 @@ public class DaVinciBackend implements Closeable {
       if (managedClients.isPresent()) {
         if (storeBackend.isManaged() && !managedClients.get().contains(storeName)) {
           logger.info("Deleting unused managed version " + kafkaTopicName);
-          storeBackend.delete();
+          deleteStore(storeName);
           storageService.removeStorageEngine(kafkaTopicName);
           continue;
         }
@@ -441,6 +443,13 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
+  protected void deleteStore(String storeName) {
+    StoreBackend storeBackend = storeByNameMap.remove(storeName);
+    if (storeBackend != null) {
+      storeBackend.delete();
+    }
+  }
+
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
     @Override
     public void handleStoreChanged(Store store) {
@@ -453,10 +462,7 @@ public class DaVinciBackend implements Closeable {
 
     @Override
     public void handleStoreDeleted(Store store) {
-      StoreBackend storeBackend = storeByNameMap.remove(store.getName());
-      if (storeBackend != null) {
-        storeBackend.delete();
-      }
+      deleteStore(store.getName());
     }
   };
 

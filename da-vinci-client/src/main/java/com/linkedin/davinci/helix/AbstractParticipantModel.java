@@ -315,7 +315,7 @@ public abstract class AbstractParticipantModel extends StateModel {
       int bootstrapToOnlineTimeoutInHours;
       try {
         bootstrapToOnlineTimeoutInHours = getMetaDataRepo()
-            .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
+            .getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName))
             .getBootstrapToOnlineTimeoutInHours();
       } catch (Exception e) {
         logger.warn("Failed to fetch bootstrapToOnlineTimeoutInHours from store config for resource "

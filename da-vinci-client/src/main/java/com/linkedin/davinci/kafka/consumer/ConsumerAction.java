@@ -45,7 +45,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   }
 
   public void incrementAttempt() {
-    attempts ++;
+    attempts++;
   }
 
   public int getAttemptsCount() {
