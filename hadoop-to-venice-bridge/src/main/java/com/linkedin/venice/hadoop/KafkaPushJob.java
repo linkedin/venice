@@ -1181,6 +1181,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (null == veniceWriterProperties) {
       veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
+      veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
       }

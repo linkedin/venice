@@ -63,6 +63,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final String ENABLE_CHUNKING = VENICE_WRITER_CONFIG_PREFIX + "chunking.enabled";
   public static final String MAX_ATTEMPTS_WHEN_TOPIC_MISSING = VENICE_WRITER_CONFIG_PREFIX + "max.attemps.when.topic.missing";
   public static final String SLEEP_TIME_MS_WHEN_TOPIC_MISSING = VENICE_WRITER_CONFIG_PREFIX + "sleep.time.ms.when.topic.missing";
+  /**
+   * A negative value or 0 will disable the feature.
+   */
   public static final String MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS = VENICE_WRITER_CONFIG_PREFIX + "max.elapsed.time.for.segment.in.ms";
 
   /**
@@ -143,6 +146,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
   private final Map<CharSequence, CharSequence> defaultDebugInfo;
+  private final boolean elapsedTimeForClosingSegmentEnabled;
 
   private String writerId;
   /**
@@ -193,6 +197,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.maxAttemptsWhenTopicMissing = props.getInt(MAX_ATTEMPTS_WHEN_TOPIC_MISSING, DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING);
     this.sleepTimeMsWhenTopicMissing = props.getInt(SLEEP_TIME_MS_WHEN_TOPIC_MISSING, DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING);
     this.maxElapsedTimeForSegmentInMs = props.getLong(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS);
+    this.elapsedTimeForClosingSegmentEnabled = maxElapsedTimeForSegmentInMs > 0;
     this.defaultDebugInfo = Utils.getDebugInfo();
 
     //if INSTANCE_ID is not set, we'd use "hostname:port" as the default writer id
@@ -1047,13 +1052,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     Segment currentSegment = segmentsMap.get(partition);
     if (null == currentSegment || currentSegment.isEnded()) {
       currentSegment = startSegment(partition);
-    } else {
+    } else if (elapsedTimeForClosingSegmentEnabled) {
       //Close the current segment and create a new one if the current segment is
       //timed out. The segment won't be closed if the ongoing message itself is
       //a "end_of_segment" message.
       if (!sendEndOfSegment) {
         long currentSegmentCreationTime = segmentsCreationTimeMap.get(partition);
-        if (currentSegmentCreationTime != -1 && LatencyUtils.getElapsedTimeInMs(currentSegmentCreationTime) > maxElapsedTimeForSegmentInMs) {
+        if (currentSegmentCreationTime != -1
+            && LatencyUtils.getElapsedTimeInMs(currentSegmentCreationTime) > maxElapsedTimeForSegmentInMs) {
           segmentsCreationTimeMap.put(partition, -1L);
           endSegment(partition, true);
           currentSegment = startSegment(partition);
