@@ -3,6 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Version;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.util.Attribute;
@@ -21,6 +22,14 @@ import javax.net.ssl.SSLPeerUnverifiedException;
 public class ServerStoreAclHandler extends StoreAclHandler {
   public ServerStoreAclHandler(DynamicAccessController accessController, ReadOnlyStoreRepository metadataRepository) {
     super(accessController, metadataRepository);
+  }
+
+  /**
+   * In Venice Server, the resource name is actually a Kafka topic name.
+   */
+  @Override
+  protected String extractStoreName(String resourceName) {
+    return Version.parseStoreFromKafkaTopicName(resourceName);
   }
 
   @Override

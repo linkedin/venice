@@ -42,6 +42,13 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   }
 
   /**
+   * Extract the store name from the incoming resource name.
+   */
+  protected String extractStoreName(String resourceName) {
+    return resourceName;
+  }
+
+  /**
    * Verify if client has permission to access.
    *
    * @param ctx
@@ -59,7 +66,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
       NettyUtils.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, ("Invalid request  uri: " + uri).getBytes(), false, ctx);
       return;
     }
-    String storeName = requestParts[2];
+    String storeName = extractStoreName(requestParts[2]);
 
     String method = req.method().name();
     try {
