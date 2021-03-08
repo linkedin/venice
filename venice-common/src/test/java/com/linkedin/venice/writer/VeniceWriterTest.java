@@ -11,9 +11,13 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -29,10 +33,13 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.*;
 
 
 @Test
@@ -55,7 +62,8 @@ public class VeniceWriterTest {
     topicManager.close();
   }
 
-  private void testThreadSafety(int numberOfThreads, Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask) throws ExecutionException, InterruptedException {
+  private void testThreadSafety(int numberOfThreads, Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask)
+      throws ExecutionException, InterruptedException {
     String topicName = TestUtils.getUniqueString("topic-for-vw-thread-safety");
     topicManager.createTopic(topicName, 1, 1, true);
     Properties properties = new Properties();
@@ -64,7 +72,8 @@ public class VeniceWriterTest {
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
 
     ExecutorService executorService = null;
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(properties).createVeniceWriter(topicName)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(properties)
+        .createVeniceWriter(topicName)) {
       executorService = Executors.newFixedThreadPool(numberOfThreads);
       Future[] vwFutures = new Future[numberOfThreads];
       for (int i = 0; i < numberOfThreads; i++) {
@@ -103,9 +112,10 @@ public class VeniceWriterTest {
             lastSeenSegmentNumber = currentSegmentNumber;
             lastSeenSequenceNumber = currentSequenceNumber;
           } else {
-            Assert.fail("DIV Error caught.\n"
-                + "Last segment Number: " + lastSeenSegmentNumber + ". Current segment number: " + currentSegmentNumber + ".\n"
-                + "Last sequence Number: " + lastSeenSequenceNumber + ". Current sequence number: " + currentSequenceNumber + ".");
+            Assert.fail(
+                "DIV Error caught.\n" + "Last segment Number: " + lastSeenSegmentNumber + ". Current segment number: "
+                    + currentSegmentNumber + ".\n" + "Last sequence Number: " + lastSeenSequenceNumber
+                    + ". Current sequence number: " + currentSequenceNumber + ".");
           }
         }
       } while (!records.isEmpty());
@@ -114,7 +124,39 @@ public class VeniceWriterTest {
 
   @Test(invocationCount = 3)
   public void testThreadSafetyForPutMessages() throws ExecutionException, InterruptedException {
-    testThreadSafety(100, veniceWriter -> veniceWriter.put(
-          new KafkaKey(MessageType.PUT, "blah".getBytes()), "blah".getBytes(), 1, null));
+    testThreadSafety(100,
+        veniceWriter -> veniceWriter.put(new KafkaKey(MessageType.PUT, "blah".getBytes()), "blah".getBytes(), 1, null));
+  }
+
+  @Test
+  public void testCloseSegmentBasedOnElapsedTime() {
+    KafkaProducerWrapper mockedProducer = mock(KafkaProducerWrapper.class);
+    Future mockedFuture = mock(Future.class);
+    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
+    when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenReturn(mockedFuture);
+    Properties writerProperties = new Properties();
+    writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 0);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test";
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(new VeniceProperties(writerProperties), testTopic, serializer, serializer, serializer,
+            new DefaultVenicePartitioner(), SystemTime.INSTANCE, () -> mockedProducer);
+    for (int i = 0; i < 1000; i++) {
+      writer.put(Integer.toString(i), Integer.toString(i), 1, null);
+    }
+    ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
+        ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(1000)).sendMessage(eq(testTopic), any(),
+        kafkaMessageEnvelopeArgumentCaptor.capture(), anyInt(), any());
+    int segmentNumber = -1;
+    for (KafkaMessageEnvelope envelope : kafkaMessageEnvelopeArgumentCaptor.getAllValues()) {
+      if (segmentNumber == -1) {
+        segmentNumber = envelope.producerMetadata.segmentNumber;
+      } else {
+        // Segment number should not change since we disabled closing segment based on elapsed time.
+        Assert.assertEquals(envelope.producerMetadata.segmentNumber, segmentNumber);
+      }
+    }
   }
 }

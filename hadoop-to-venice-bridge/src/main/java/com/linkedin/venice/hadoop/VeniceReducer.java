@@ -245,6 +245,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     Properties writerProps = props.toProperties();
     writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION,
         GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
+    // Closing segments based on elapsed time should always be disabled in MR to prevent storage nodes consuming out of
+    // order keys when speculative execution is in play.
+    writerProps.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
     // The JobId (e.g. "job_200707121733_0003") consists of two parts. The job tracker identifier (job_200707121733)
     // and the id (0003) for the job in that specific job tracker. The job tracker identifier is converted into a long
     // by removing all the non-digit characters.
