@@ -72,7 +72,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import static com.linkedin.venice.meta.HybridStoreConfig.*;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static org.mockito.Mockito.*;
 
@@ -81,7 +80,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @BeforeMethod
   public void setupTestCase() {
-    setupTestCase(Optional.empty());
+    setupInternalMocks();
+    initializeParentAdmin(Optional.empty());
   }
 
   @AfterMethod
