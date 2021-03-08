@@ -36,7 +36,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       logger.info("Controller works as a normal controller.");
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
-    consumerServices = new HashMap<>();
+    consumerServices = new HashMap<>(multiClusterConfigs.getClusters().size());
     for (String cluster : multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService =
           new AdminConsumerService(internalAdmin, multiClusterConfigs.getConfigForCluster(cluster), metricsRepository);

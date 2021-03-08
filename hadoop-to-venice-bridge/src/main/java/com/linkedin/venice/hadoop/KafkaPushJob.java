@@ -328,7 +328,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     boolean isChunkingEnabled;
     long storeStorageQuota;
     double storageEngineOverheadRatio;
-    boolean isSchemaAutoRegisteFromPushJobEnabled;
+    boolean isSchemaAutoRegisterFromPushJobEnabled;
     CompressionStrategy compressionStrategy;
     boolean isLeaderFollowerModelEnabled;
     boolean isWriteComputeEnabled;
@@ -542,7 +542,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       schemaInfo = inputInfo.getSchemaInfo();
       inputFileDataSize = inputInfo.getInputFileDataSizeInBytes();
       validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
-      validateValueSchema(controllerClient, pushJobSetting, schemaInfo, storeSetting.isSchemaAutoRegisteFromPushJobEnabled);
+      validateValueSchema(controllerClient, pushJobSetting, schemaInfo, storeSetting.isSchemaAutoRegisterFromPushJobEnabled);
 
       if (!pushJobSetting.enablePush) {
         LOGGER.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
@@ -992,45 +992,50 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    * This method will talk to controller to validate value schema.
    */
   private void validateValueSchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo,
-      boolean schemaAutoRegisteFromPushJobEnabled) {
+      boolean schemaAutoRegisterFromPushJobEnabled) {
     LOGGER.info("Validating value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
 
-    SchemaResponse valueSchemaResponse;
+    SchemaResponse getValueSchemaIdResponse;
 
     if (setting.enableWriteCompute) {
-      valueSchemaResponse = ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c ->
+      getValueSchemaIdResponse = ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c ->
           c.getValueOrDerivedSchemaId(setting.storeName, schemaInfo.valueSchemaString));
     } else {
-      valueSchemaResponse = ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c ->
+      getValueSchemaIdResponse = ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c ->
           c.getValueSchemaID(setting.storeName, schemaInfo.valueSchemaString));
     }
-    if (valueSchemaResponse.isError() && !schemaAutoRegisteFromPushJobEnabled) {
+    if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
       throw new VeniceException("Failed to validate value schema for store: " + setting.storeName
-          + "\nError from the server: " + valueSchemaResponse.getError()
+          + "\nError from the server: " + getValueSchemaIdResponse.getError()
           + "\nSchema for the data file: " + schemaInfo.valueSchemaString
       );
     }
 
-    if (schemaAutoRegisteFromPushJobEnabled) {
-      if (valueSchemaResponse.isError()) {
-        LOGGER.info("Auto registering value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
-        ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c ->
-            c.addValueSchema(setting.storeName, schemaInfo.valueSchemaString));
-        if (valueSchemaResponse.isError()) {
-          throw new VeniceException("Failed to auto-register value schema for store: " + setting.storeName
-              + "\nError from the server: " + valueSchemaResponse.getError()
-              + "\nSchema for the data file: " + schemaInfo.valueSchemaString
-          );
-        }
+    if (getValueSchemaIdResponse.isError() && schemaAutoRegisterFromPushJobEnabled) {
+      LOGGER.info("Auto registering value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
+      SchemaResponse addValueSchemaResponse = ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c ->
+          c.addValueSchema(setting.storeName, schemaInfo.valueSchemaString));
+      if (addValueSchemaResponse.isError()) {
+        throw new VeniceException("Failed to auto-register value schema for store: " + setting.storeName
+            + "\nError from the server: " + addValueSchemaResponse.getError()
+            + "\nSchema for the data file: " + schemaInfo.valueSchemaString
+        );
       }
-    }
+      // Add value schema successfully
+      setSchemaIdPropInSchemaInfo(schemaInfo, addValueSchemaResponse, setting.enableWriteCompute);
 
+    } else {
+      // Get value schema ID successfully
+      setSchemaIdPropInSchemaInfo(schemaInfo, getValueSchemaIdResponse, setting.enableWriteCompute);
+    }
+    LOGGER.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
+  }
+
+  private void setSchemaIdPropInSchemaInfo(SchemaInfo schemaInfo, SchemaResponse valueSchemaResponse, boolean enableWriteCompute) {
     schemaInfo.valueSchemaId = valueSchemaResponse.getId();
-    if (setting.enableWriteCompute) {
+    if (enableWriteCompute) {
       schemaInfo.derivedSchemaId = valueSchemaResponse.getDerivedSchemaId();
     }
-
-    LOGGER.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
   }
 
   private StoreSetting getSettingsFromController(ControllerClient controllerClient, PushJobSetting setting) {
@@ -1042,7 +1047,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       throw new VeniceException("Can't get store info. " + storeResponse.getError());
     }
     storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
-    storeSetting.isSchemaAutoRegisteFromPushJobEnabled = storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
+    storeSetting.isSchemaAutoRegisterFromPushJobEnabled = storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
     if (storeSetting.storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA && setting.isMapOnly) {
       throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. " + "Store: " + setting.storeName);
     }

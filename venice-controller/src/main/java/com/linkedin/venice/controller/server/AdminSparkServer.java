@@ -31,7 +31,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 /**
  * Controller admin API leveraging sparkjava: http://sparkjava.com/documentation.html
  * <p>
- * AdminSparkServer is shared by multiple cluster'scontroller controllers running in one physical Venice controller instance.
+ * AdminSparkServer is shared by multiple clusters' controllers running in one physical Venice controller instance.
  */
 public class AdminSparkServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(AdminSparkServer.class);
@@ -66,7 +66,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
     this.admin = admin;
-    statsMap = new HashMap<>();
+    statsMap = new HashMap<>(clusters.size());
     String statsPrefix = sslEnabled ? "secure_" : "";
     for(String cluster : clusters){
       statsMap.put(cluster, new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
