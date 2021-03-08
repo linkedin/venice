@@ -52,14 +52,14 @@ public class AbstractTestVeniceParentHelixAdmin {
   VeniceControllerConfig config;
   ZkClient zkClient;
   VeniceWriter veniceWriter;
-  VeniceParentHelixAdmin parentAdmin;
+  VeniceParentHelixAdmin parentAdmin = null;
   VeniceHelixResources resources;
   Store store;
   ParentHelixOfflinePushAccessor accessor;
   HelixReadOnlyStoreConfigRepository readOnlyStoreConfigRepository;
   Map<String, ControllerClient> controllerClients = new HashMap<>();
 
-  public void setupTestCase(Optional<AuthorizerService> authorizerService)  {
+  public void setupInternalMocks()  {
     topicManager = mock(TopicManager.class);
     doReturn(new HashSet<String>(Arrays.asList(topicName))).when(topicManager).listTopics();
     Map<String, Long> topicRetentions = new HashMap<>();
@@ -106,6 +106,17 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(manager).when(resources).getRoutersClusterManager();
     doReturn(10).when(manager).getLiveRoutersCount();
 
+    accessor = mock(ParentHelixOfflinePushAccessor.class);
+
+    // Need to bypass VeniceWriter initialization
+    veniceWriter = mock(VeniceWriter.class);
+  }
+
+  /**
+   * Separate internal mocks setup and initialization so tests can change the behavior of the mocks without running into
+   * concurrency issues. i.e. change mock's behavior in test thread while it's being used in some background threads.
+   */
+  public void initializeParentAdmin(Optional<AuthorizerService> authorizerService) {
     parentAdmin =
         new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config), false,
             Optional.empty(), authorizerService);
@@ -113,20 +124,16 @@ public class AbstractTestVeniceParentHelixAdmin {
         .get()
         .getFabricToControllerClientsMap()
         .put(coloName, mock(ControllerClient.class));
-
-    accessor = mock(ParentHelixOfflinePushAccessor.class);
     parentAdmin.setOfflinePushAccessor(accessor);
-
-
-    // Need to bypass VeniceWriter initialization
-    veniceWriter = mock(VeniceWriter.class);
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
   }
 
   public void cleanupTestCase() {
     controllerClients.values().forEach(ControllerClient::close);
     controllerClients.clear();
-    parentAdmin.close();
+    if (parentAdmin != null) {
+      parentAdmin.close();
+    }
   }
 
   VeniceControllerConfig mockConfig(String clusterName) {
