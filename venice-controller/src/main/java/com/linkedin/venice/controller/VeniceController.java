@@ -99,8 +99,7 @@ public class VeniceController {
     createServices();
   }
 
-
-  public void createServices(){
+  private void createServices() {
     controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled, multiClusterConfigs.getSslConfig(), accessController, authorizerService, d2Client);
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
