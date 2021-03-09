@@ -273,16 +273,16 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
       tableConfig.setFormatVersion(2); // Latest version
       options.setTableFormatConfig(tableConfig);
+    }
 
-      if (storagePartitionConfig.isWriteOnlyConfig()) {
-        options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
-        options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
-        options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
-      } else {
-        options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
-        options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
-        options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
-      }
+    if (storagePartitionConfig.isWriteOnlyConfig()) {
+      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTriggerWriteOnlyVersion());
+      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTriggerWriteOnlyVersion());
+      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTriggerWriteOnlyVersion());
+    } else {
+      options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
+      options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
+      options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
     }
 
     // Memtable options
@@ -697,7 +697,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public boolean verifyConfig(StoragePartitionConfig partitionConfig) {
     if (options.tableFormatConfig() instanceof PlainTableConfig) {
-      return readOnly == partitionConfig.isReadOnly();
+      return readOnly == partitionConfig.isReadOnly() && writeOnly == partitionConfig.isWriteOnlyConfig();
     }
     return deferredWrite == partitionConfig.isDeferredWrite() &&
                readOnly == partitionConfig.isReadOnly() &&

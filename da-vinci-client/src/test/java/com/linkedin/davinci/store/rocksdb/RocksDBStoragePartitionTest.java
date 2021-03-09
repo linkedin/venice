@@ -7,12 +7,14 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 import org.apache.commons.lang.RandomStringUtils;
@@ -23,6 +25,9 @@ import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class RocksDBStoragePartitionTest {
@@ -207,13 +212,9 @@ public class RocksDBStoragePartitionTest {
   public void testChecksumVerificationFailure() {
     String storeName = "test_store_c1";
     String storeDir = getTempDatabaseDir(storeName);
-
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     partitionConfig.setDeferredWrite(true);
-    Options options = new Options();
-    options.setCreateIfMissing(true);
-    Map<String, String> inputRecords = generateInput(1024 , true, 230);
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
 
@@ -224,6 +225,7 @@ public class RocksDBStoragePartitionTest {
     Optional<Supplier<byte[]>> checksumSupplier = Optional.of(() -> new byte[16]);
     storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
 
+    Map<String, String> inputRecords = generateInput(1024 , true, 230);
     for (Map.Entry<String, String> entry : inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
     }
@@ -231,7 +233,51 @@ public class RocksDBStoragePartitionTest {
     Assert.assertTrue(ex.getMessage().contains("last sstFile checksum didn't match for store"));
 
     storagePartition.drop();
-    options.close();
+    removeDir(storeDir);
+  }
+
+  @Test
+  public void testPlainTableCompactionTriggerSetting() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String storeDir = getTempDatabaseDir(storeName);
+    Properties properties = new Properties();
+    properties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.toString());
+    properties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "true");
+    properties.put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 10);
+    properties.put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20);
+    properties.put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 30);
+    properties.put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 40);
+    properties.put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 50);
+    properties.put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setWriteOnlyConfig(true);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+
+    // By default, it is write only
+    Options writeOnlyOptions = storagePartition.getOptions();
+    Assert.assertEquals(writeOnlyOptions.level0FileNumCompactionTrigger(), 40);
+    Assert.assertEquals(writeOnlyOptions.level0SlowdownWritesTrigger(), 50);
+    Assert.assertEquals(writeOnlyOptions.level0StopWritesTrigger(), 60);
+    StoragePartitionConfig newStoragePartitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    newStoragePartitionConfig.setWriteOnlyConfig(false);
+    // VerifyConfig should return false because of different write config
+    Assert.assertFalse(storagePartition.verifyConfig(newStoragePartitionConfig));
+
+    storagePartition.close();
+    //Reopen with write-only disabled
+    partitionConfig.setWriteOnlyConfig(false);
+    storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+    Options readWriteOptions = storagePartition.getOptions();
+    Assert.assertEquals(readWriteOptions.level0FileNumCompactionTrigger(), 10);
+    Assert.assertEquals(readWriteOptions.level0SlowdownWritesTrigger(), 20);
+    Assert.assertEquals(readWriteOptions.level0StopWritesTrigger(), 30);
+
+    storagePartition.drop();
     removeDir(storeDir);
   }
 
