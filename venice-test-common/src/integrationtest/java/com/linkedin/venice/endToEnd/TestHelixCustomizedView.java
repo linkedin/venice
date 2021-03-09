@@ -4,8 +4,11 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -14,6 +17,8 @@ import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -32,6 +37,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.CustomizedStateConfig;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
@@ -102,6 +108,15 @@ public class TestHelixCustomizedView {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+
+    /**
+     * Explicitly add an emtpy push status ZK path to make both write and read paths are robust to empty push status ZNodes
+     */
+    ZkClient zkClient = ZkClientFactory.newZkClient(veniceCluster.getZk().getAddress());
+    HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(veniceCluster.getClusterName(), zkClient,
+        adapterSerializer, 3, 1000);
+    HelixUtils.create(offlinePushStatusAccessor.getOfflinePushStatusAccessor(), offlinePushStatusAccessor.getOfflinePushStatuesParentPath() + "/invalid_topic", null);
   }
 
   @AfterClass(alwaysRun = true)

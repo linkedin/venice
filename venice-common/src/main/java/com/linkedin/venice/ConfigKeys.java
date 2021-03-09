@@ -1461,4 +1461,9 @@ public class ConfigKeys {
    * store acls if any synchronization is needed.
    */
   public static final String CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS = "controller.system.store.acl.synchronization.delay.ms";
+
+  /**
+   * This config defines the sleep interval in leaked push status clean up service.
+   */
+  public static final String LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS = "leaked.push.status.clean.up.service.interval.ms";
 }

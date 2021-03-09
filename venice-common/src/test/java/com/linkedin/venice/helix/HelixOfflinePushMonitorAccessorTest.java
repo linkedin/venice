@@ -57,7 +57,7 @@ public class HelixOfflinePushMonitorAccessorTest {
   @Test
   public void testDeleteOfflinePushStatus() {
     accessor.createOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
-    accessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
+    accessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic());
     try {
       accessor.getOfflinePushStatusAndItsPartitionStatuses(topic);
       Assert.fail("Push status should be deleted.");

@@ -326,7 +326,7 @@ public abstract class AbstractPushMonitor
     try {
       topicToPushMap.remove(offlinePushStatus.getKafkaTopic());
       if (deletePushStatus) {
-        offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
+        offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic());
       }
     } catch (Exception e) {
       logger.warn("Could not delete legacy push status: " + offlinePushStatus.getKafkaTopic(), e);

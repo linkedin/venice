@@ -34,6 +34,6 @@ public class TestPushMonitorDelegator {
     Mockito.doReturn(Arrays.asList(legacyStatus)).when(offlinePushAccessor).loadOfflinePushStatusesAndPartitionStatuses();
 
     delegator.loadAllPushes();
-    Mockito.verify(offlinePushAccessor).deleteOfflinePushStatusAndItsPartitionStatuses(legacyStatus);
+    Mockito.verify(offlinePushAccessor).deleteOfflinePushStatusAndItsPartitionStatuses(legacyStatus.getKafkaTopic());
   }
 }

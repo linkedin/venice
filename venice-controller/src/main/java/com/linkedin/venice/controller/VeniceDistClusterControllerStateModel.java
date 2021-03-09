@@ -137,6 +137,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
             accessController, metadataStoreWriter, helixAdminClient);
         resources.refresh();
         resources.startErrorPartitionResetTask();
+        resources.startLeakedPushStatusCleanUpService();
         logger.info(controllerName + " is the leader of " + clusterName);
       } else {
         // TODO: It seems like this should throw an exception.  Otherwise the case would be you'd have an instance be leader
@@ -232,6 +233,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     if (resources != null) {
       resources.clear();
       resources.stopErrorPartitionResetTask();
+      resources.stopLeakedPushStatusCleanUpService();
       resources = null;
     }
   }
