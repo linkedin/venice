@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.utils.VeniceProperties;
+import org.apache.avro.Schema;
 
 
 /**
@@ -31,5 +32,11 @@ public interface InputDataInfoProvider extends AutoCloseable {
 
   InputDataInfo validateInputAndGetSchema(String inputUri, VeniceProperties props) throws Exception;
 
+  void initZstdConfig(int numFiles);
+
+  void loadZstdTrainingSamples(AbstractVeniceRecordReader recordReader);
+
   byte[] getZstdDictTrainSamples();
+
+  Schema extractAvroSubSchema(Schema origin, String fieldName);
 }
