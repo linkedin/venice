@@ -40,6 +40,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
 
@@ -307,6 +308,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     VeniceProperties config = new PropertyBuilder()
             .put(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
             .put(SERVER_ENABLE_KAFKA_OPENSSL, false)
+            .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB default config
+            .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20) // RocksDB default config
+            .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 36) // RocksDB default config
+            .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 40)
+            .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60)
+            .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 80)
             .put(backendConfig.toProperties())
             .put(CLUSTER_NAME, clusterName)
             .put(ZOOKEEPER_ADDRESS, zkAddress)
