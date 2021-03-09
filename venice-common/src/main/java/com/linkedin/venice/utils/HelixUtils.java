@@ -6,6 +6,7 @@ import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 
@@ -111,6 +112,16 @@ public class HelixUtils {
       }
     }
     throw new VeniceException("Got partial children from zk after retry " + attempt + " times.");
+  }
+
+  public static <T> List<String> listPathContents(ZkBaseDataAccessor<T> dataAccessor, String path) {
+    try {
+      List<String> paths = dataAccessor.getChildNames(path, AccessOption.PERSISTENT);
+      return paths == null ? Collections.emptyList() : paths;
+    } catch (Exception e) {
+      logger.error("Error when listing contents in path " + path, e);
+      throw e;
+    }
   }
 
   public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data){

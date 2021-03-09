@@ -123,7 +123,7 @@ public abstract class AbstractPushMonitorTest {
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
     monitor.stopMonitorOfflinePush(topic, true);
-    verify(mockAccessor, atLeastOnce()).deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus);
+    verify(mockAccessor, atLeastOnce()).deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus.getKafkaTopic());
     verify(mockAccessor, atLeastOnce()).unsubscribePartitionsStatusChange(pushStatus, monitor);
     verify(mockRoutingDataRepo, atLeastOnce()).unSubscribeRoutingDataChange(getTopic(), monitor);
 

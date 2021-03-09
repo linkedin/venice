@@ -16,6 +16,11 @@ public interface OfflinePushAccessor {
   List<OfflinePushStatus> loadOfflinePushStatusesAndPartitionStatuses();
 
   /**
+   * Load store versions of all existing push statuses on Zookeeper, without actually deserializing the contents
+   */
+  List<String> loadOfflinePushStatusPaths();
+
+  /**
    * Read one offline push and its partitions status from persistent storage.
    */
   OfflinePushStatus getOfflinePushStatusAndItsPartitionStatuses(String kafkaTopic);
@@ -32,9 +37,9 @@ public interface OfflinePushAccessor {
 
   /**
    * Delete offline push and its partition statuses from persistent storage.
-   * @param pushStatus
+   * @param kafkaTopic version topic
    */
-  void deleteOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus);
+  void deleteOfflinePushStatusAndItsPartitionStatuses(String kafkaTopic);
   /**
    * Update one particular replica status and progress by given topic, partition and instanceId to the persistent storage.
    */

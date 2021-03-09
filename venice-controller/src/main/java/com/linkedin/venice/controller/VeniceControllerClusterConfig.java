@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.pushmonitor.PushMonitorType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
@@ -137,6 +139,11 @@ public class VeniceControllerClusterConfig {
    */
   private String helixRebalanceAlg;
 
+  /**
+   * Sleep interval inside {@link LeakedPushStatusCleanUpService}
+   */
+  private long leakedPushStatusCleanUpServiceSleepIntervalInMs;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
       this.props = props;
@@ -248,6 +255,8 @@ public class VeniceControllerClusterConfig {
     }
 
     this.skipBufferRelayForHybrid = props.getBoolean(CONTROLLER_SKIP_BUFFER_REPLAY_FOR_HYBRID, false);
+
+    this.leakedPushStatusCleanUpServiceSleepIntervalInMs = props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
   }
 
   public VeniceProperties getProps() {
@@ -430,5 +439,9 @@ public class VeniceControllerClusterConfig {
 
   public boolean isControllerSchemaValidationEnabled() {
     return controllerSchemaValidationEnabled;
+  }
+
+  public long getLeakedPushStatusCleanUpServiceSleepIntervalInMs() {
+    return leakedPushStatusCleanUpServiceSleepIntervalInMs;
   }
 }

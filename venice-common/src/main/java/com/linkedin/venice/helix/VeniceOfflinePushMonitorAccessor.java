@@ -120,6 +120,14 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   }
 
   @Override
+  public List<String> loadOfflinePushStatusPaths() {
+    logger.info("Start listing all offline pushes paths from ZK in cluster (only list path names): " + clusterName);
+    List<String> paths = HelixUtils.listPathContents(offlinePushStatusAccessor, offlinePushStatusParentPath);
+    logger.info("Listed " + paths.size() + " offline pushes statuses path names from ZK in cluster:" + clusterName);
+    return paths;
+  }
+
+  @Override
   public OfflinePushStatus getOfflinePushStatusAndItsPartitionStatuses(String kafkaTopic) {
     OfflinePushStatus offlinePushStatus =
         offlinePushStatusAccessor.get(getOfflinePushStatusPath(kafkaTopic), null, AccessOption.PERSISTENT);
@@ -156,11 +164,11 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   }
 
   @Override
-  public void deleteOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus) {
+  public void deleteOfflinePushStatusAndItsPartitionStatuses(String kafkaTopic) {
     logger.info(
-        "Start deleting offline push status for topic: " + pushStatus.getKafkaTopic() + " in cluster: " + clusterName);
-    HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()));
-    logger.info("Deleted offline push status for topic: " + pushStatus.getKafkaTopic() + " in cluster: " + clusterName);
+        "Start deleting offline push status for topic: " + kafkaTopic + " in cluster: " + clusterName);
+    HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(kafkaTopic));
+    logger.info("Deleted offline push status for topic: " + kafkaTopic + " in cluster: " + clusterName);
   }
 
   @Override
@@ -303,7 +311,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     }
   }
 
-  private String getOfflinePushStatuesParentPath() {
+  public String getOfflinePushStatuesParentPath() {
     return HelixUtils.getHelixClusterZkPath(clusterName) + "/" + OFFLINE_PUSH_SUB_PATH;
   }
 
@@ -327,6 +335,13 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       return false;
     }
     return true;
+  }
+
+  /**
+   * For testing only.
+   */
+  public ZkBaseDataAccessor<OfflinePushStatus> getOfflinePushStatusAccessor() {
+    return offlinePushStatusAccessor;
   }
 
   /**

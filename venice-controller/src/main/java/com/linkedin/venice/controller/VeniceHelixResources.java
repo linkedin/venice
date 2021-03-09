@@ -21,6 +21,8 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.pushmonitor.AggPushStatusCleanUpStats;
+import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -47,6 +49,7 @@ import org.apache.log4j.Logger;
 public class VeniceHelixResources implements VeniceResource {
   private static final Logger LOGGER = Logger.getLogger(VeniceHelixResources.class);
 
+  private final String clusterName;
   private final SafeHelixManager controller;
   private final ReadWriteStoreRepository metadataRepository;
   private final HelixExternalViewRepository routingDataRepository;
@@ -54,6 +57,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
   private final PushMonitorDelegator pushMonitor;
+  private final LeakedPushStatusCleanUpService leakedPushStatusCleanUpService;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
   private final AggStoreStats aggStoreStats;
@@ -98,6 +102,7 @@ public class VeniceHelixResources implements VeniceResource {
                               Optional<DynamicAccessController> accessController,
                               MetadataStoreWriter metadataStoreWriter,
                               HelixAdminClient helixAdminClient) {
+    this.clusterName = clusterName;
     this.config = config;
     this.controller = helixManager;
     /**
@@ -131,11 +136,14 @@ public class VeniceHelixResources implements VeniceResource {
     this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
     this.messageChannel = new HelixStatusMessageChannel(helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
+    VeniceOfflinePushMonitorAccessor offlinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(clusterName, zkClient,
+        adapterSerializer, config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
-        new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
-            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), admin,
-        metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid(),
-        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metricsRepository, metadataStoreWriter);
+        offlinePushMonitorAccessor, admin, metadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
+        config.isSkipBufferRelayForHybrid(), onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metricsRepository,
+        metadataStoreWriter);
+    this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, metadataRepository,
+        new AggPushStatusCleanUpStats(clusterName, metricsRepository), this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
     this.routersClusterManager =
         new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),
@@ -204,6 +212,22 @@ public class VeniceHelixResources implements VeniceResource {
         errorPartitionResetExecutorService.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  public void startLeakedPushStatusCleanUpService() {
+    if (leakedPushStatusCleanUpService != null) {
+      leakedPushStatusCleanUpService.start();
+    }
+  }
+
+  public void stopLeakedPushStatusCleanUpService() {
+    if (leakedPushStatusCleanUpService != null) {
+      try {
+        leakedPushStatusCleanUpService.stop();
+      } catch (Exception e) {
+        LOGGER.error("Error when stopping leaked push status clean-up service for cluster " + clusterName);
       }
     }
   }

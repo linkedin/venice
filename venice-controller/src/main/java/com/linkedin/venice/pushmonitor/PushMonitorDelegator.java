@@ -134,7 +134,7 @@ public class PushMonitorDelegator implements PushMonitor {
       offlinePushMonitor.loadAllPushes(offlinePushMonitorStatuses);
       partitionStatusBasedPushStatusMonitor.loadAllPushes(partitionStatusBasedPushMonitorStatuses);
 
-      legacyPushStatuses.forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
+      legacyPushStatuses.forEach(pushStatus -> offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus.getKafkaTopic()));
       logger.info("Load all pushes finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } finally {
       unlockAllPushMonitors();
