@@ -243,6 +243,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   // Job config for pbnj
   protected JobConf pbnjJobConf = new JobConf();
 
+  protected InputDataInfoProvider inputDataInfoProvider;
+
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
   private long jobStartTimeMs;
@@ -252,7 +254,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private JobClientWrapper jobClientWrapper;
   // A controller client that is used to discover cluster
   private ControllerClient clusterDiscoveryControllerClient;
-  private InputDataInfoProvider inputDataInfoProvider;
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
 
   protected static class SchemaInfo {
@@ -695,7 +696,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     return jobClientWrapper.runJobWithConfig(jobConf);
   }
 
-  private InputDataInfoProvider getInputDataInfoProvider() {
+  protected InputDataInfoProvider getInputDataInfoProvider() {
     if (inputDataInfoProvider == null) {
       inputDataInfoProvider = new DefaultInputDataInfoProvider(storeSetting, pushJobSetting, props);
     }

@@ -151,7 +151,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return new InputDataInfo(schemaInfo, inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR);
   }
 
-  protected void initZstdConfig(int numFiles) {
+  @Override
+  public void initZstdConfig(int numFiles) {
     if (zstdConfig != null) {
       return;
     }
@@ -241,7 +242,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    * This function loads training samples from an Avro file for building the Zstd dictionary.
    * @param recordReader The data accessor of input records.
    */
-  protected void loadZstdTrainingSamples(AbstractVeniceRecordReader recordReader) {
+  @Override
+  public void loadZstdTrainingSamples(AbstractVeniceRecordReader recordReader) {
     int fileSampleSize = 0;
     Iterator<Pair<byte[], byte[]>> it = recordReader.iterator();
     while (it.hasNext()) {
@@ -277,7 +279,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return zstdConfig.zstdDictTrainer.trainSamples();
   }
 
-  protected Schema extractAvroSubSchema(Schema origin, String fieldName) {
+  @Override
+  public Schema extractAvroSubSchema(Schema origin, String fieldName) {
     Schema.Field field = origin.getField(fieldName);
 
     if (field == null) {
