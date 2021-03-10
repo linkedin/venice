@@ -233,7 +233,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private String inputDirectory;
   // Immutable state
-  private final VeniceProperties props;
+  protected final VeniceProperties props;
   private final String jobId;
   private ControllerClient controllerClient;
   private String clusterName;
