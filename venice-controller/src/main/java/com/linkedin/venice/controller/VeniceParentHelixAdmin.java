@@ -549,7 +549,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber) {
+  public void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber, boolean waitOnRTTopicDeletion) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       logger.info("Deleting store: " + storeName + " from cluster: " + clusterName);

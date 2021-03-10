@@ -1368,7 +1368,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.start(clusterName);
-    parentAdmin.deleteStore(clusterName, storeName, 0);
+    parentAdmin.deleteStore(clusterName, storeName, 0, true);
 
     verify(veniceWriter)
         .put(any(), any(), anyInt());

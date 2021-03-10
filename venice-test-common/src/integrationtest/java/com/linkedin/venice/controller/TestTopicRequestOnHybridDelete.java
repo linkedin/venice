@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -17,6 +18,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.Optional;
 import org.apache.avro.util.Utf8;
@@ -28,6 +30,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.meta.Version.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -97,14 +100,18 @@ public class TestTopicRequestOnHybridDelete {
           .setEnableReads(false)
           .setEnableWrites(false));
 
-      // wait on delete store as it blocks on deletion of RT topic
-      TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
-        return !finalControllerClient.deleteStore(storeName).isError(); //error because store no longer exists
-      });
+      // delete store should return immediately without any error.
+      ControllerResponse response = finalControllerClient.deleteStore(storeName);
+      Assert.assertFalse(response.isError());
 
-      TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
-        return finalControllerClient.getStore(storeName).isError(); //error because store no longer exists
-      });
+      TopicManager topicManager = venice.getMasterVeniceController().getVeniceAdmin().getTopicManager();
+      try {
+        topicManager.ensureTopicIsDeletedAndBlock(composeRealTimeTopic(storeName));
+      } catch (ExecutionException e) {
+        fail("Exception during topic deletion " + e);
+      }
+
+      Assert.assertTrue(finalControllerClient.getStore(storeName).isError());
 
       //recreate store
       venice.getNewStore(storeName);

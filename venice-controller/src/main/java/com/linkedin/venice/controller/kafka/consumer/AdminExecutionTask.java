@@ -470,9 +470,9 @@ public class AdminExecutionTask implements Callable<Void> {
        *
        * TODO: revise this logic when store migration is redesigned, new design should avoid this edge case altogether.
        */
-      admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+      admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, true);
     } else {
-      admin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
+      admin.deleteStore(clusterName, storeName, largestUsedVersionNumber, true);
     }
 
     logger.info("Deleted store: " + storeName + " in cluster: " + clusterName);

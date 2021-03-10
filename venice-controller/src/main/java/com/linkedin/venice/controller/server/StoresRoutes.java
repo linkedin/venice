@@ -250,11 +250,11 @@ public class StoresRoutes extends AbstractRoute {
           // Lock the tracker to get the execution id for the last admin command.
           // If will not make our performance worse, because we lock the whole cluster while handling the admin operation in parent admin.
           synchronized (adminCommandExecutionTracker) {
-            admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+            admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, false);
             veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
           }
         } else {
-          admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+          admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, false);
         }
       }
     };
