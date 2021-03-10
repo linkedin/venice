@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -62,14 +63,22 @@ public class TestMetaDataHandler {
       ReadOnlySchemaRepository schemaRepo, HelixReadOnlyStoreConfigRepository storeConfigRepository,
       Map<String,String> clusterToD2ServiceMap, OnlineInstanceFinderDelegator onlineInstanceFinder)
       throws IOException {
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
     Store store = TestUtils.createTestStore("testStore", "test", System.currentTimeMillis());
     store.setCurrentVersion(1);
-
-    FullHttpRequest httpRequest = Mockito.mock(FullHttpRequest.class);
-    Mockito.doReturn(EmptyHttpHeaders.INSTANCE).when(httpRequest).headers();
     HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     Mockito.doReturn(store).when(helixReadOnlyStoreRepository).getStore(Mockito.anyString());
+    return passRequestToMetadataHandler(requestUri, routing, schemaRepo, storeConfigRepository, clusterToD2ServiceMap,
+        onlineInstanceFinder, helixReadOnlyStoreRepository);
+  }
+
+  public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing,
+      ReadOnlySchemaRepository schemaRepo, HelixReadOnlyStoreConfigRepository storeConfigRepository,
+      Map<String,String> clusterToD2ServiceMap, OnlineInstanceFinderDelegator onlineInstanceFinder,
+      HelixReadOnlyStoreRepository helixReadOnlyStoreRepository)
+      throws IOException {
+    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
+    FullHttpRequest httpRequest = Mockito.mock(FullHttpRequest.class);
+    Mockito.doReturn(EmptyHttpHeaders.INSTANCE).when(httpRequest).headers();
     Mockito.doReturn(requestUri).when(httpRequest).uri();
 
     ReadOnlySchemaRepository schemaRepoToUse = null;
@@ -282,8 +291,6 @@ public class TestMetaDataHandler {
     String resourceName = "test-store_v1";
     OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
-    Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
-        .when(storeConfigRepository).getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
     Mockito.doReturn(2).when(mockOnlineInstanceFinder).getNumberOfPartitions(resourceName);
     List<ReplicaState> replicaStates0 = new ArrayList<>();
     replicaStates0.add(new ReplicaState(0, "test-host_0", HelixState.LEADER_STATE,
@@ -325,8 +332,38 @@ public class TestMetaDataHandler {
   }
 
   @Test
+  public void testResourceStateLookupOfSystemStores() throws IOException {
+    String storeName = "regular-test-store";
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
+    List<String> systemStoreResources = new ArrayList<>();
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    replicaStates.add(
+        new ReplicaState(0, "test-host_0", HelixState.ONLINE_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    for (VeniceSystemStoreType systemStoreType : VeniceSystemStoreType.values()) {
+      String resourceName = Version.composeKafkaTopic(systemStoreType.getSystemStoreName(storeName), 1);
+      systemStoreResources.add(resourceName);
+      Mockito.doReturn(1).when(mockOnlineInstanceFinder).getNumberOfPartitions(resourceName);
+      Mockito.doReturn(replicaStates).when(mockOnlineInstanceFinder).getReplicaStates(resourceName, 0);
+    }
+    for (String systemStoreResource : systemStoreResources) {
+      FullHttpResponse response =
+          passRequestToMetadataHandler("http://myRouterHost:4567/resource_state/" + systemStoreResource, null,
+              null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder);
+      Assert.assertEquals(response.status().code(), 200);
+      ResourceStateResponse resourceStateResponse = mapper.readValue(response.content().array(), ResourceStateResponse.class);
+      Assert.assertTrue(resourceStateResponse.isReadyToServe());
+      List<ReplicaState> responseReplicaStates = resourceStateResponse.getReplicaStates();
+      for (int i = 0; i < replicaStates.size(); i++) {
+        Assert.assertEquals(responseReplicaStates.get(i).toString(), replicaStates.get(i).toString());
+      }
+    }
+  }
+
+  @Test
   public void testResourceStateLookupWithErrors() throws IOException {
     String resourceName = "test-store_v1";
+    HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(Optional.empty())
@@ -334,7 +371,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(2).when(mockOnlineInstanceFinder).getNumberOfPartitions(resourceName);
     FullHttpResponse response =
         passRequestToMetadataHandler("http://myRouterHost:4567/resource_state/" + resourceName, null,
-            null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder);
+            null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder, helixReadOnlyStoreRepository);
     Assert.assertEquals(response.status().code(), 404);
     Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
         .when(storeConfigRepository).getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));

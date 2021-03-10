@@ -254,10 +254,16 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String resourceName = helper.getResourceName();
     boolean isResourceReadyToServe = true;
     checkResourceName(resourceName, "/" + TYPE_RESOURCE_STATE + "/${resourceName}");
-    if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
+    if (!Version.isVersionTopic(resourceName)) {
+      byte[] errBody = ("Invalid resource name: " + resourceName).getBytes();
+      setupResponseAndFlush(BAD_REQUEST, errBody, false, ctx);
+      return;
+    }
+    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+    if (storeRepository.getStore(storeName) == null) {
       byte[] errBody =
-          ("Cannot fetch the state for resource: " + resourceName + " because the store: "
-              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+          ("Cannot fetch the state for resource: " + resourceName + " because the store: " + storeName
+              + " cannot be found in cluster: " + clusterName).getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
