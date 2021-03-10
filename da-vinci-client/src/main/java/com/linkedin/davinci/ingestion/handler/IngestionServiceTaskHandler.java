@@ -532,7 +532,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isRestarted = true;
+      report.isEndOfPushReceived = true;
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
