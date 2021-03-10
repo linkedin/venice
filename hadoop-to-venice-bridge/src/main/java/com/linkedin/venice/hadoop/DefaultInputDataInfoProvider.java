@@ -57,12 +57,12 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    */
   public static final long INPUT_DATA_SIZE_FACTOR = 2;
 
-  private final KafkaPushJob.StoreSetting storeSetting;
-  private final KafkaPushJob.PushJobSetting pushJobSetting;
-  private KafkaPushJob.ZstdConfig zstdConfig;
-  private final VeniceProperties props;
+  protected final KafkaPushJob.StoreSetting storeSetting;
+  protected final KafkaPushJob.PushJobSetting pushJobSetting;
+  protected KafkaPushJob.ZstdConfig zstdConfig;
+  protected final VeniceProperties props;
   // Thread pool for Hadoop File System operations.
-  private final ExecutorService hdfsExecutorService;
+  protected final ExecutorService hdfsExecutorService;
 
   DefaultInputDataInfoProvider(
       KafkaPushJob.StoreSetting storeSetting,
