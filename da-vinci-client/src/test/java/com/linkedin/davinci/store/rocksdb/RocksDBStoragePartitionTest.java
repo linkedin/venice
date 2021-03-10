@@ -7,7 +7,6 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.davinci.store.StoragePartitionConfig;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -231,6 +230,33 @@ public class RocksDBStoragePartitionTest {
     }
     VeniceException ex = Assert.expectThrows(VeniceException.class, storagePartition::endBatchWrite);
     Assert.assertTrue(ex.getMessage().contains("last sstFile checksum didn't match for store"));
+
+    storagePartition.drop();
+    removeDir(storeDir);
+  }
+
+  @Test
+  public void testRocksDBValidityCheck() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setDeferredWrite(false);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+
+    storagePartition.close();
+    try {
+      storagePartition.get((keyPrefix + "10").getBytes());
+      Assert.fail("VeniceException is expected when looking up an already closed DB");
+    } catch (VeniceException e) {
+      Assert.assertTrue(e.getMessage().contains("RocksDB has been closed for store"));
+    }
+
 
     storagePartition.drop();
     removeDir(storeDir);

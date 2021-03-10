@@ -12,6 +12,7 @@ import com.linkedin.venice.utils.ByteUtils;
 
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
@@ -83,6 +84,19 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private final String storeName;
   private final int partitionId;
   private final String fullPathForPartitionDB;
+
+  /**
+   * If the internal RocksDB handler has been closed or in the middle of closing, any other RocksDB operations
+   * will crash.
+   * We will use {@link #isClosed} to indicate whether the current RocksDB is closed or not.
+   */
+  private boolean isClosed = false;
+  /**
+   * Since all the modification functions are synchronized, we don't need any other synchronization for the update path
+   * to guard RocksDB closing behavior.
+   * The following {@link #readCloseRWLock} is only used to guard {@link #get} since we don't want to synchronize get requests.
+   */
+  private final ReentrantReadWriteLock readCloseRWLock = new ReentrantReadWriteLock();
 
   /**
    * This class will be used in {@link #put(byte[], ByteBuffer)} to improve GC.
@@ -184,6 +198,13 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     registerDBStats();
     LOGGER.info("Opened RocksDB for store: " + storeName + ", partition id: " + partitionId + " in "
         + (this.readOnly ? "read-only" : "read-write") + " mode and " + (this.deferredWrite ? "deferred write" : "non-deferred write") + " mode");
+  }
+
+  private void makeSureRocksDBIsStillOpen() {
+    if (isClosed) {
+      throw new VeniceException("RocksDB has been closed for store: " + storeName + ", partition id: " + partitionId +
+          ", any further operation is disallowed");
+    }
   }
 
   private void makeSureAllPreviousSSTFilesBeforeCheckpointingExist() {
@@ -296,6 +317,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> expectedChecksumSupplier) {
+    makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
@@ -342,6 +364,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void endBatchWrite() {
+    makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
       LOGGER.info("'endBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
@@ -409,6 +432,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
+    makeSureRocksDBIsStillOpen();
     if (readOnly) {
       throw new VeniceException("Cannot make writes while partition is opened in read-only mode" +
           ", partition=" + storeName + "_" + partitionId);
@@ -452,16 +476,22 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public byte[] get(byte[] key) {
+    readCloseRWLock.readLock().lock();
     try {
+      makeSureRocksDBIsStillOpen();
       return rocksDB.get(key);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+    } finally {
+      readCloseRWLock.readLock().unlock();
     }
   }
 
   @Override
   public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
+    readCloseRWLock.readLock().lock();
     try {
+      makeSureRocksDBIsStillOpen();
       int size = rocksDB.get(key, valueToBePopulated.array());
       if (size == RocksDB.NOT_FOUND) {
         return null;
@@ -476,20 +506,27 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       return valueToBePopulated;
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+    } finally {
+      readCloseRWLock.readLock().unlock();
     }
   }
 
   @Override
   public byte[] get(ByteBuffer keyBuffer) {
+    readCloseRWLock.readLock().lock();
     try {
+      makeSureRocksDBIsStillOpen();
       return rocksDB.get(keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+    } finally {
+      readCloseRWLock.readLock().unlock();
     }
   }
 
   @Override
   public synchronized void delete(byte[] key) {
+    makeSureRocksDBIsStillOpen();
     try {
       if (deferredWrite) {
         throw new VeniceException("Deletion is unexpected in 'deferredWrite' mode");
@@ -503,6 +540,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized Map<String, String> sync() {
+    makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
       LOGGER.debug("Flush memtable to disk for store: " + storeName + ", partition id: " + partitionId);
 
@@ -662,7 +700,13 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
      * The following operations are used to free up memory.
      */
     deRegisterDBStats();
-    rocksDB.close();
+    readCloseRWLock.writeLock().lock();
+    try {
+      rocksDB.close();
+    } finally {
+      isClosed = true;
+      readCloseRWLock.writeLock().unlock();
+    }
     if (null != envOptions) {
       envOptions.close();
     }
@@ -728,14 +772,17 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public void warmUp() {
-    /**
-     * Since we don't care about the returned value in Java world, so partial result is fine.
-     */
-    byte[] value = new byte[1];
-    // Iterate the whole database
-    RocksIterator iterator = rocksDB.newIterator();
-    long entryCnt = 0;
+    RocksIterator iterator = null;
+    readCloseRWLock.readLock().lock();
     try {
+      makeSureRocksDBIsStillOpen();
+      /**
+       * Since we don't care about the returned value in Java world, so partial result is fine.
+       */
+      byte[] value = new byte[1];
+      // Iterate the whole database
+      iterator = rocksDB.newIterator();
+      long entryCnt = 0;
       iterator.seekToFirst();
       while (iterator.isValid()) {
         rocksDB.get(iterator.key(), value);
@@ -748,12 +795,16 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     } catch (RocksDBException e) {
       throw new VeniceException("Encountered RocksDBException while warming up cache", e);
     } finally {
-      iterator.close();
+      readCloseRWLock.readLock().unlock();
+      if (iterator != null) {
+        iterator.close();
+      }
     }
   }
 
   @Override
   public synchronized CompletableFuture<Void> compactDB() {
+    makeSureRocksDBIsStillOpen();
     if (!this.options.disableAutoCompactions()) {
       // Auto compaction is on, so no need to do manual compaction.
       return CompletableFuture.completedFuture(null);
