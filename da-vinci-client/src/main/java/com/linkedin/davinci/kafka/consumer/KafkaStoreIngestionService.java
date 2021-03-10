@@ -626,7 +626,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param numRetries
    */
   @Override
-  public synchronized void stopConsumptionAndWait(VeniceStoreConfig veniceStore, int partitionId, int sleepSeconds, int numRetries) {
+  public void stopConsumptionAndWait(VeniceStoreConfig veniceStore, int partitionId, int sleepSeconds, int numRetries) {
     stopConsumption(veniceStore, partitionId);
     try {
       for (int i = 0; i < numRetries; i++) {

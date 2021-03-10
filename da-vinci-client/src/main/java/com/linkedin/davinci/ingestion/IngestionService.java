@@ -27,9 +27,11 @@ import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
@@ -51,6 +53,8 @@ public class IngestionService extends AbstractVeniceService {
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
   private final int servicePort;
+  private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
+  private final ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
@@ -134,9 +138,19 @@ public class IngestionService extends AbstractVeniceService {
 
     heartbeatCheckScheduler.shutdownNow();
     ingestionExecutor.shutdown();
+    longRunningTaskExecutor.shutdown();
     try {
-      if (!ingestionExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-        ingestionExecutor.shutdownNow();
+      if (!longRunningTaskExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+        longRunningTaskExecutor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      currentThread().interrupt();
+    }
+
+    statusReportingExecutor.shutdown();
+    try {
+      if (!statusReportingExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+        statusReportingExecutor.shutdownNow();
       }
     } catch (InterruptedException e) {
       currentThread().interrupt();
@@ -231,9 +245,37 @@ public class IngestionService extends AbstractVeniceService {
   public void reportIngestionStatus(IngestionTaskReport report) {
     if (report.isCompleted || report.isError) {
       // Use async to avoid deadlock waiting in StoreBufferDrainer
-      ingestionExecutor.execute(() -> stopIngestionAndReportIngestionStatus(report));
+      Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
+      statusReportingExecutor.execute(() -> {
+        String topicName = report.topicName.toString();
+        int partitionId = report.partitionId;
+        long offset = report.offset;
+        try {
+          executionFuture.get();
+        } catch (ExecutionException | InterruptedException e) {
+          logger.info("Encounter exception when trying to stop consumption and close storage for " + partitionId + " of topic: " + topicName);
+        }
+        if (report.isCompleted) {
+          logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
+          // Set offset record in ingestion report.
+          OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partitionId);
+          report.offsetRecord = ByteBuffer.wrap(offsetRecord.toBytes());
+          logger.info("OffsetRecord of topic " + topicName + " , partition " + partitionId + " " + offsetRecord.toString());
+
+          // Set store version state in ingestion report.
+          Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
+          if (storeVersionState.isPresent()) {
+            report.storeVersionState = ByteBuffer.wrap(IngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
+          } else {
+            throw new VeniceException("StoreVersionState does not exist for version " + topicName);
+          }
+        } else {
+          logger.error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
+        }
+        reportClient.reportIngestionTask(report);
+      });
     } else {
-      reportClient.reportIngestionTask(report);
+      statusReportingExecutor.execute(() ->  reportClient.reportIngestionTask(report));
     }
   }
 
@@ -245,36 +287,17 @@ public class IngestionService extends AbstractVeniceService {
    * Handle the logic of COMPLETED/ERROR here since we need to stop related ingestion task and close RocksDB partition.
    * Since the logic takes time to wait for completion, we need to execute it in async fashion to prevent blocking other operations.
    */
-  private void stopIngestionAndReportIngestionStatus(IngestionTaskReport report) {
+  private Future<?> submitStopConsumptionAndCloseStorageTask(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
-    long offset = report.offset;
-
-    VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
-    // Make sure partition is not consuming so we can safely close the rocksdb partition
-    getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, 60);
-    // Close RocksDB partition in Ingestion Service.
-    getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
-    logger.info("Partition: " + partitionId + " of topic: " + topicName + " closed.");
-
-    if (report.isCompleted) {
-      logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
-      // Set offset record in ingestion report.
-      OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partitionId);
-      report.offsetRecord = ByteBuffer.wrap(offsetRecord.toBytes());
-      logger.info("OffsetRecord of topic " + topicName + " , partition " + partitionId + " " + offsetRecord.toString());
-
-      // Set store version state in ingestion report.
-      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
-      if (storeVersionState.isPresent()) {
-        report.storeVersionState = ByteBuffer.wrap(IngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
-      } else {
-        throw new VeniceException("StoreVersionState does not exist for version " + topicName);
-      }
-    } else {
-      logger.error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
-    }
-    reportClient.reportIngestionTask(report);
+    return longRunningTaskExecutor.submit(() -> {
+      VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
+      // Make sure partition is not consuming so we can safely close the rocksdb partition
+      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, 60);
+      // Close RocksDB partition in Ingestion Service.
+      getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
+      logger.info("Partition: " + partitionId + " of topic: " + topicName + " closed.");
+    });
   }
 
   private void checkHeartbeatTimeout() {
