@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -14,6 +15,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -25,6 +27,7 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
@@ -858,5 +861,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public StoreIngestionTask getStoreIngestionTask(String topicName) {
     return topicNameToIngestionTaskMap.get(topicName);
+  }
+
+  @Override
+  public AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions) {
+    AdminResponse response = new AdminResponse();
+    StoreIngestionTask ingestionTask = getStoreIngestionTask(topicName);
+    if (ingestionTask != null) {
+      ingestionTask.dumpPartitionConsumptionStates(response, partitions);
+      ingestionTask.dumpStoreVersionState(response);
+    } else {
+      String msg = "Ingestion task for " + topicName + " doesn't exist for " + ServerAdminAction.DUMP_INGESTION_STATE + " admin command";
+      logger.warn(msg);
+      response.setMessage(msg);
+    }
+    return response;
   }
 }

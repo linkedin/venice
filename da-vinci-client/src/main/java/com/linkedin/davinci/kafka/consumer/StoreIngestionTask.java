@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
@@ -62,6 +63,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
@@ -2746,6 +2748,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   @FunctionalInterface
   interface ProduceToTopic {
     Future<RecordMetadata> apply(Callback callback, long sourceTopicOffset);
+  }
+
+  /**
+   * Invoked by admin request to dump the requested partition consumption states
+   */
+  public void dumpPartitionConsumptionStates(AdminResponse response, ComplementSet<Integer> partitions) {
+    for (Map.Entry<Integer, PartitionConsumptionState> entry : partitionConsumptionStateMap.entrySet()) {
+      try {
+        if (partitions.contains(entry.getKey())) {
+          response.addPartitionConsumptionState(entry.getValue());
+        }
+      } catch (Throwable e) {
+        logger.error("Error when dumping consumption state for store " + this.storeName + " partition " + entry.getKey(), e);
+      }
+    }
+  }
+
+  /**
+   * Invoked by admin request to dump store version state metadata.
+   */
+  public void dumpStoreVersionState(AdminResponse response) {
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+    if (storeVersionState.isPresent()) {
+      response.addStoreVersionState(storeVersionState.get());
+    }
   }
 
   /**

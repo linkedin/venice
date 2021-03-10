@@ -23,13 +23,22 @@ public class ByteUtils {
   private final static int MAX_LENGTH_TO_LOG = 50;
 
   /**
-   * Translate the given byte array into a hexidecimal string
+   * Translate the given byte array into a hexadecimal string
    *
    * @param bytes The bytes to translate
    * @return The string
    */
   public static String toHexString(byte[] bytes) {
     return Hex.encodeHexString(bytes);
+  }
+
+  /**
+   * Translate the given byte array with specific start position and length into a hexadecimal string
+   */
+  public static String toHexString(byte[] bytes, int start, int len) {
+    byte[] newBytes = new byte[len];
+    System.arraycopy(bytes, start, newBytes, 0, len);
+    return Hex.encodeHexString(newBytes);
   }
 
   /**

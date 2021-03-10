@@ -58,9 +58,6 @@ public class PartitionConsumptionState {
   private int processedRecordSize;
   private long processedRecordSizeSinceLastSync;
 
-  private long lastTimeOfSourceTopicOffsetLookup;
-  private long sourceTopicMaxOffset;
-
   /**
    * An in-memory state to track whether the leader consumer is consuming from remote or not; it will be updated with
    * correct value during ingestion.
@@ -83,14 +80,6 @@ public class PartitionConsumptionState {
    */
   private ConcurrentMap<ByteBuffer, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
 
-  public void setSourceTopicMaxOffset(long sourceTopicMaxOffset) {
-    this.sourceTopicMaxOffset = sourceTopicMaxOffset;
-  }
-
-  public long getSourceTopicMaxOffset() {
-
-    return sourceTopicMaxOffset;
-  }
 
   public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid, boolean isIncrementalPushEnabled) {
     this.partition = partition;
@@ -103,8 +92,6 @@ public class PartitionConsumptionState {
     this.processedRecordNum = 0;
     this.processedRecordSize = 0;
     this.processedRecordSizeSinceLastSync = 0;
-    this.lastTimeOfSourceTopicOffsetLookup = -1;
-    this.sourceTopicMaxOffset = -1;
     this.leaderState = LeaderFollowerStateType.STANDBY;
     this.expectedSSTFileChecksum = Optional.empty();
     /**
@@ -195,12 +182,6 @@ public class PartitionConsumptionState {
   }
   public void setIncrementalPush(IncrementalPush ip) {
     this.offsetRecord.setIncrementalPush(ip);
-  }
-  public long getLastTimeOfSourceTopicOffsetLookup() {
-    return lastTimeOfSourceTopicOffsetLookup;
-  }
-  public void setLastTimeOfSourceTopicOffsetLookup(long lastTimeOfSourceTopicOffsetLookup) {
-    this.lastTimeOfSourceTopicOffsetLookup = lastTimeOfSourceTopicOffsetLookup;
   }
 
   public boolean isHybrid() {

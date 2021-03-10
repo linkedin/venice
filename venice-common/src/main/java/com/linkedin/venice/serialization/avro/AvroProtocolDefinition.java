@@ -1,5 +1,6 @@
 package com.linkedin.venice.serialization.avro;
 
+import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
@@ -134,7 +135,12 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for push status system store.
    */
-  PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class, "PushStatus");
+  PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class, "PushStatus"),
+
+  /**
+   * Response record for admin request v1
+   */
+  SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class);
 
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();

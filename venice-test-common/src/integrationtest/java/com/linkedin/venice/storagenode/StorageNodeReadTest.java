@@ -1,6 +1,8 @@
 package com.linkedin.venice.storagenode;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -8,11 +10,13 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -28,11 +32,12 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,6 +47,9 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.Encoder;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -132,7 +140,7 @@ public class StorageNodeReadTest {
    *    {@link #pushSyntheticData(String, String, int, VeniceClusterWrapper, VeniceWriter, int)} so it is not
    *    clear why that would be the case. TODO: Debug why the offset occasionally shows as zero
    */
-  @Test(timeOut = 10 * Time.MS_PER_SECOND, groups = {"flaky"})
+  @Test(timeOut = 30 * Time.MS_PER_SECOND, groups = {"flaky"})
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
@@ -227,6 +235,43 @@ public class StorageNodeReadTest {
         for (int i = 0; i < 10; ++i) {
           Assert.assertEquals(results.get(i), valuePrefix + i);
         }
+      }
+
+      /**
+       * Test admin endpoint
+       */
+      sb = new StringBuilder().append("http://")
+          .append(serverAddr)
+          .append("/")
+          .append(QueryAction.ADMIN.toString().toLowerCase())
+          .append("/")
+          .append(storeVersionName)
+          .append("/")
+          .append(ServerAdminAction.DUMP_INGESTION_STATE.toString().toLowerCase());
+      HttpGet adminReq = new HttpGet(sb.toString());
+      future = client.execute(adminReq, null);
+      response = future.get();
+      try (InputStream bodyStream = response.getEntity().getContent()) {
+        byte[] body = IOUtils.toByteArray(bodyStream);
+        Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+            "Response did not return 200: " + new String(body));
+        RecordDeserializer<AdminResponseRecord> adminResponseDeserializer =
+            SerializerDeserializerFactory.getAvroGenericDeserializer(AdminResponseRecord.SCHEMA$);
+        Object value = adminResponseDeserializer.deserialize(null, body);
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+          GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(AdminResponseRecord.SCHEMA$);
+          Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(AdminResponseRecord.SCHEMA$, output, true);
+          avroDatumWriter.write(value, jsonEncoder);
+          jsonEncoder.flush();
+          output.flush();
+
+          LOGGER.info("Got an admin response: " + (new String(output.toByteArray())));
+        } catch (IOException exception) {
+          throw new VeniceException(exception);
+        }
+        GenericRecord adminResponse = (GenericRecord) value;
+        Assert.assertNotNull(adminResponse.get("partitionConsumptionStates"));
+        Assert.assertTrue(((List)adminResponse.get("partitionConsumptionStates")).size() > 0);
       }
     }
 
