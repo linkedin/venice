@@ -853,11 +853,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         "Kafka topic should be created.");
 
     // Store has not been disabled.
-    Assert.assertThrows(VeniceException.class, () -> veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION));
+    Assert.assertThrows(VeniceException.class, () -> veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION,
+        true));
 
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
     veniceAdmin.setStoreWriteability(clusterName, storeName, false);
-    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, true);
     Assert.assertNull(veniceAdmin.getStore(clusterName, storeName), "Store should be deleted before.");
     Assert.assertEquals(
         veniceAdmin.getStoreGraveyard().getLargestUsedVersionNumber(storeName),
@@ -888,7 +889,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
       veniceAdmin.setStoreReadability(clusterName, storeName, false);
       veniceAdmin.setStoreWriteability(clusterName, storeName, false);
-      veniceAdmin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
+      veniceAdmin.deleteStore(clusterName, storeName, largestUsedVersionNumber, true);
       Assert.assertNull(veniceAdmin.getStore(clusterName, storeName), "Store should be deleted before.");
       Assert.assertEquals(veniceAdmin.getStoreGraveyard().getLargestUsedVersionNumber(storeName),
           largestUsedVersionNumber, "LargestUsedVersionNumber should be overwritten and kept in graveyard.");
@@ -906,7 +907,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     store.setEnableReads(false);
     store.setEnableWrites(false);
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
-    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, true);
 
     //Re-create store with incompatible schema
     veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"long\"", "\"long\"");

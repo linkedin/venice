@@ -49,7 +49,6 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
-import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
@@ -64,12 +63,10 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreConfig;
@@ -593,7 +590,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (existingStore != null) {
                     // We already check the pre-condition before, so if we could find a store with the same name,
                     // it means the store is a legacy store which is left by a failed deletion. So we should delete it.
-                    deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber());
+                    deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber(), true);
                 }
                 // Now there is not store exists in the store repository, we will try to retrieve the info from the graveyard.
                 // Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
@@ -633,7 +630,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * One exception is for stores with isMigrating flag set. In that case, the corresponding kafka topics and storeConfig
      * will not be deleted so that they are still available for the cloned store.
      */
-    public synchronized void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber) {
+    public synchronized void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber,
+        boolean waitOnRTTopicDeletion) {
         checkControllerMastership(clusterName);
         logger.info("Start deleting store: " + storeName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
@@ -707,7 +705,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // for RT topic block on deletion so that next create store does not see the lingering RT topic which could have different partition count
                 String rtTopic = Version.composeRealTimeTopic(storeName);
                 truncateKafkaTopic(rtTopic);
-                if (getTopicManager().containsTopic(rtTopic)) {
+                if (getTopicManager().containsTopic(rtTopic) && waitOnRTTopicDeletion) {
                     throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
                 }
                 String metadataSystemStoreRTTopic =
