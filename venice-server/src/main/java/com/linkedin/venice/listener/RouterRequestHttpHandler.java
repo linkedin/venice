@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -106,6 +107,11 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(dictionaryFetchRequest.getStoreName());
           ctx.fireChannelRead(dictionaryFetchRequest);
           break;
+        case ADMIN:
+          AdminRequest adminRequest = AdminRequest.parseAdminHttpRequest(req);
+          statsHandler.setStoreName(adminRequest.getStoreName());
+          ctx.fireChannelRead(adminRequest);
+          break;
         default:
           throw new VeniceException("Unrecognized query action");
       }
@@ -143,13 +149,15 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     HttpMethod reqMethod = req.method();
     if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) ||
         requestParts.length < 2) {
-      throw new VeniceException("Only able to parse GET or POST requests for actions: storage, health, compute.  Cannot parse request for: " + req.uri());
+      throw new VeniceException("Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
+          + "Cannot parse request for: " + req.uri());
     }
 
     try {
       return QueryAction.valueOf(requestParts[1].toUpperCase());
     } catch (IllegalArgumentException e) {
-      throw new VeniceException("Only able to parse GET or POST requests for actions: storage, health, compute.  Cannot support action: " + requestParts[1], e);
+      throw new VeniceException("Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
+          + "Cannot support action: " + requestParts[1], e);
     }
   }
 }

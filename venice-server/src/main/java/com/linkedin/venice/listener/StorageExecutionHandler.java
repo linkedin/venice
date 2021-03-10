@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
@@ -14,6 +15,7 @@ import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestK
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -47,6 +49,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -109,6 +112,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final int parallelBatchGetChunkSize;
   private final boolean keyValueProfilingEnabled;
   private final RocksDBComputeAccessMode rocksDBComputeAccessMode;
+  private final VeniceServerConfig serverConfig;
 
   private static class ReusableObjects {
     // reuse buffer for rocksDB value object
@@ -154,6 +158,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     this.parallelBatchGetChunkSize = parallelBatchGetChunkSize;
     this.keyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
     this.rocksDBComputeAccessMode = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
+    this.serverConfig = serverConfig;
   }
 
   @Override
@@ -256,6 +261,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       }
     } else if (message instanceof DictionaryFetchRequest) {
       BinaryResponse response = handleDictionaryFetchRequest((DictionaryFetchRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof AdminRequest) {
+      AdminResponse response = handleServerAdminRequest((AdminRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
@@ -629,5 +637,28 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
 
     return responseRecord;
+  }
+
+  private AdminResponse handleServerAdminRequest(AdminRequest adminRequest) {
+    switch (adminRequest.getServerAdminAction()) {
+      case DUMP_INGESTION_STATE:
+        String topicName = adminRequest.getStoreVersion();
+        Integer partitionId = adminRequest.getPartition();
+        ComplementSet<Integer> partitions = (partitionId == null) ? ComplementSet.universalSet() : ComplementSet.of(partitionId);
+        AdminResponse response = metadataRetriever.getConsumptionSnapshots(topicName, partitions);
+        return response;
+      case DUMP_SERVER_CONFIGS:
+        AdminResponse configResponse = new AdminResponse();
+        if (this.serverConfig == null) {
+          configResponse.setError(true);
+          configResponse.setMessage("Server config doesn't exist");
+        } else {
+          configResponse.addServerConfigs(this.serverConfig.getClusterProperties().toProperties());
+        }
+        return configResponse;
+      default:
+        throw new VeniceException("Not a valid admin action: " + adminRequest.getServerAdminAction().toString());
+    }
+
   }
 }

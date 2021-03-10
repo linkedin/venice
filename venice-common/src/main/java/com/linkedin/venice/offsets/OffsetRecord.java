@@ -1,5 +1,6 @@
 package com.linkedin.venice.offsets;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
@@ -10,7 +11,12 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
+import org.apache.avro.io.Encoder;
 import org.apache.avro.util.Utf8;
 
 import java.util.HashMap;
@@ -301,6 +307,23 @@ public class OffsetRecord {
     }
     sb.append("\n}");
     return sb.toString();
+  }
+
+  /**
+   * PartitionState will be encoded with an in-house JsonEncoder which would transfer all data with "bytes" schema
+   * to hexadecimal strings.
+   */
+  public String toJsonString() {
+    try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+      GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(PartitionState.SCHEMA$);
+      Encoder byteToHexJsonEncoder = new ByteBufferToHexFormatJsonEncoder(PartitionState.SCHEMA$, output);
+      avroDatumWriter.write(partitionState, byteToHexJsonEncoder);
+      byteToHexJsonEncoder.flush();
+      output.flush();
+      return new String(output.toByteArray());
+    } catch (IOException exception) {
+      throw new VeniceException(exception);
+    }
   }
 
   @Override

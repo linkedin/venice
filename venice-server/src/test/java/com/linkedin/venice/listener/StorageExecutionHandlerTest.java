@@ -1,11 +1,15 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
@@ -13,6 +17,9 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.meta.ServerAdminAction;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -221,5 +228,61 @@ public class StorageExecutionHandlerTest {
 
     // Asserting that the exception got logged
     Assert.assertTrue(errorLogCount.get() > 0);
+  }
+
+  @Test
+  public static void testAdminRequestsPassInStorageExecutionHandler() throws Exception {
+    String topic = "test_store_v1";
+    int expectedPartitionId = 12345;
+    List<Object> outputArray = new ArrayList<Object>();
+
+    //[0]""/[1]"action"/[2]"store_version"/[3]"dump_ingestion_state"
+    String uri = "/" + QueryAction.ADMIN.toString().toLowerCase() + "/" + topic + "/" + ServerAdminAction.DUMP_INGESTION_STATE.toString();
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
+    AdminRequest testRequest = AdminRequest.parseAdminHttpRequest(httpRequest);
+
+    // Mock the AdminResponse from ingestion task
+    AdminResponse expectedAdminResponse = new AdminResponse();
+    PartitionConsumptionState state = new PartitionConsumptionState(expectedPartitionId, new OffsetRecord(
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer()), false, false);
+    expectedAdminResponse.addPartitionConsumptionState(state);
+
+    MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
+    doReturn(expectedAdminResponse).when(mockMetadataRetriever).getConsumptionSnapshots(eq(topic), any());
+
+    /**
+     * Capture the output written by {@link StorageExecutionHandler}
+     */
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+    doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      outputArray.add(i.getArguments()[0]);
+      return null;
+    });
+
+    ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+        new LinkedBlockingQueue<>(2));
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
+    doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
+
+    //Actual test
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
+        mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
+        10, serverConfig);
+    testHandler.channelRead(mockCtx, testRequest);
+
+    waitUntilStorageExecutionHandlerRespond(outputArray);
+
+    //parsing of response
+    Assert.assertEquals(outputArray.size(), 1);
+    Assert.assertTrue(outputArray.get(0) instanceof AdminResponse);
+    AdminResponse obj = (AdminResponse) outputArray.get(0);
+
+    //Verification
+    Assert.assertEquals(obj.getResponseRecord().partitionConsumptionStates.size(), 1);
+    Assert.assertEquals(obj.getResponseRecord().partitionConsumptionStates.get(0).partitionId, expectedPartitionId);
+    Assert.assertEquals(obj.getResponseSchemaIdHeader(), AvroProtocolDefinition.SERVER_ADMIN_RESPONSE_V1.getCurrentProtocolVersion());
   }
 }

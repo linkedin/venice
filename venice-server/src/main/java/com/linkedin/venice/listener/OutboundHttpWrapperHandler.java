@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.BinaryResponse;
@@ -85,6 +86,23 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         body = ((BinaryResponse) msg).getBody();
         contentType = HttpConstants.BINARY;
         responseStatus = ((BinaryResponse) msg).getStatus();
+      } else if (msg instanceof AdminResponse) {
+        AdminResponse adminResponse = (AdminResponse) msg;
+        if (!adminResponse.isError()) {
+          body = adminResponse.getResponseBody();
+          schemaIdHeader = adminResponse.getResponseSchemaIdHeader();
+        } else {
+          /**
+           * If error happens, return error message if any as well as 500 error code
+           */
+          String errorMessage = adminResponse.getMessage();
+          if (null == errorMessage) {
+            errorMessage = "Unknown error";
+          }
+          body = Unpooled.wrappedBuffer(errorMessage.getBytes(StandardCharsets.UTF_8));
+          contentType = HttpConstants.TEXT_PLAIN;
+          responseStatus = INTERNAL_SERVER_ERROR;
+        }
       } else if (msg instanceof DefaultFullHttpResponse){
         ctx.writeAndFlush(msg);
         return;
