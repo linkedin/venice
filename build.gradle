@@ -173,7 +173,10 @@ subprojects {
       exclude group: 'com.linkedin.util', module: 'util-sql'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
       // exclude group: 'org.eclipse.jetty'
-      // exclude group: 'com.google.guava', module: 'guava' // Wish we could exclude this globally, but Gobblin leaks it in its API...
+    }
+    compileOnly {
+      // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
+      exclude group: 'com.google.guava', module: 'guava' // Used by Brooklin at runtime
     }
   }
 
@@ -197,6 +200,8 @@ subprojects {
   tasks.withType(Test) {
     useTestNG() {
       excludeGroups 'flaky'
+      Set<String> suiteListeners = ["com.linkedin.venice.testng.VeniceSuiteListener"]
+      setListeners(suiteListeners)
     }
 
     forkEvery = Integer.valueOf(System.getProperty('forkEvery', '0'))

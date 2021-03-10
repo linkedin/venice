@@ -9,9 +9,9 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
-import com.google.common.collect.ImmutableSet;
 import com.google.flatbuffers.FlatBufferBuilder;
 
+import com.linkedin.venice.utils.Utils;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -41,9 +41,9 @@ import static java.lang.Float.*;
 
 public class BenchmarkUtils {
   private static final Set<String> OLDGEN_GC_NAMES =
-      ImmutableSet.of("MarkSweepCompact", "PS MarkSweep", "ConcurrentMarkSweep", "G1 Mixed Generation");
+      Utils.setOf("MarkSweepCompact", "PS MarkSweep", "ConcurrentMarkSweep", "G1 Mixed Generation");
   private static final Set<String> NEWGEN_GC_NAMES =
-      ImmutableSet.of("Copy", "PS Scavenge", "ParNew", "ParNew", "G1 Young Generation");
+      Utils.setOf("Copy", "PS Scavenge", "ParNew", "ParNew", "G1 Young Generation");
   private BenchmarkUtils() {
   }
 

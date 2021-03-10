@@ -148,6 +148,7 @@ public class SystemStoreTest {
       D2ClientUtils.shutdownClient(d2Client);
     }
     IOUtils.closeQuietly(venice);
+    IOUtils.closeQuietly(parentZk);
   }
 
   @Test

@@ -33,7 +33,8 @@ import static org.mockito.Mockito.*;
 
 public class TestKafkaPushJobWithReporterCounters {
 
-  private final String SCHEMA_STR = "{" +
+  private static final int PARTITION_COUNT = 10;
+  private static final String SCHEMA_STR = "{" +
       "  \"namespace\" : \"example.avro\",  " +
       "  \"type\": \"record\",   " +
       "  \"name\": \"User\",     " +
@@ -52,7 +53,7 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1001), // Quota exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
             new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 1)
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
         ),
         Arrays.asList(
             KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
@@ -68,7 +69,7 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 1), // Write ACL failed
             new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 1)
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
         ),
         Arrays.asList(
             KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
@@ -84,7 +85,7 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
             new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 1), // Duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 1)
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
         ),
         Arrays.asList(
             KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
@@ -94,19 +95,37 @@ public class TestKafkaPushJobWithReporterCounters {
   }
 
   @Test (expectedExceptions = { VeniceException.class })
-  public void testCounterValidationFailure() throws Exception {
+  public void testHandleZeroClosedReducersFailure() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
-            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // Duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0)
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all closed
         ),
         Arrays.asList(
             KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             KafkaPushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
             KafkaPushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE),
         10L // Non-empty input data file
+    );
+  }
+
+  @Test (expectedExceptions = { VeniceException.class })
+  public void testHandleInsufficientClosedReducersFailure() throws Exception { // Successful workflow
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1) // Some but not all reducers closed
+        ),
+        Arrays.asList(
+            KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            KafkaPushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            KafkaPushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            KafkaPushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED
+        )
     );
   }
 
@@ -117,7 +136,7 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
             new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 1)
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
         ),
         Arrays.asList(
             KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
@@ -256,7 +275,7 @@ public class TestKafkaPushJobWithReporterCounters {
     when(versionCreationResponse.getKafkaTopic()).thenReturn("kafka-topic");
     when(versionCreationResponse.getVersion()).thenReturn(1);
     when(versionCreationResponse.getKafkaBootstrapServers()).thenReturn("kafka-bootstrap-server");
-    when(versionCreationResponse.getPartitions()).thenReturn(1);
+    when(versionCreationResponse.getPartitions()).thenReturn(PARTITION_COUNT);
     when(versionCreationResponse.isEnableSSL()).thenReturn(false);
     when(versionCreationResponse.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(versionCreationResponse.isDaVinciPushStatusStoreEnabled()).thenReturn(false);

@@ -5,12 +5,11 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
-import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -42,7 +41,6 @@ import org.apache.hadoop.util.Progressable;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
-import javax.xml.bind.DatatypeConverter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Iterator;
@@ -62,7 +60,9 @@ import static com.linkedin.venice.hadoop.KafkaPushJob.*;
  * much smaller than before);
  *
  */
-public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, NullWritable, NullWritable> {
+public class VeniceReducer
+    extends AbstractMapReduceTask
+    implements Reducer<BytesWritable, BytesWritable, NullWritable, NullWritable> {
   public static final String MAP_REDUCE_JOB_ID_PROP = "mapred.job.id";
   private static final Logger LOGGER = Logger.getLogger(VeniceReducer.class);
   private static final String NON_INITIALIZED_LEADER = "N/A";
@@ -98,18 +98,13 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private long aggregateTimeOfReduceExecutionInNS = 0;
   private long aggregateTimeOfInBetweenReduceInvocationsInNS = 0;
   private InputStorageQuotaTracker inputStorageQuotaTracker;
-  private boolean exceedQuota;
-  private boolean hasWriteAclFailure;
-  private boolean hasDuplicateKeyWithDistinctValue;
-  private HadoopJobClientProvider hadoopJobClientProvider;
+  private boolean exceedQuota = false;
+  private boolean hasWriteAclFailure = false;
+  private boolean hasDuplicateKeyWithDistinctValue = false;
+  private HadoopJobClientProvider hadoopJobClientProvider = new DefaultHadoopJobClientProvider();
   private boolean isDuplicateKeyAllowed = DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 
-  VeniceReducer() {
-    this.exceedQuota = false;
-    this.hasWriteAclFailure = false;
-    this.hasDuplicateKeyWithDistinctValue = false;
-    this.hadoopJobClientProvider = new DefaultHadoopJobClientProvider();
-  }
+  VeniceReducer() {}
 
   @Override
   public void reduce(
@@ -129,31 +124,33 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     if (updatePreviousReporter(reporter)) {
       callback = new KafkaMessageCallback(reporter);
     }
-    /**
-     * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
-     */
-    byte[] keyBytes = key.copyBytes();
-    if (!values.hasNext()) {
-      throw new VeniceException("There is no value corresponding to key bytes: " +
-          DatatypeConverter.printHexBinary(keyBytes));
-    }
-    byte[] valueBytes = values.next().copyBytes();
+    if (key.getLength() > VeniceMRPartitioner.EMPTY_KEY_LENGTH) {
+      /**
+       * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
+       */
+      byte[] keyBytes = key.copyBytes();
+      if (!values.hasNext()) {
+        throw new VeniceException("There is no value corresponding to key bytes: " +
+            ByteUtils.toHexString(keyBytes));
+      }
+      byte[] valueBytes = values.next().copyBytes();
 
-    if (hasReportedFailure(reporter, this.isDuplicateKeyAllowed)) {
-      updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
-      return;
-    }
-    try {
-      sendMessageToKafka(keyBytes, valueBytes, reporter);
-    } catch (VeniceException e) {
-      if (e instanceof TopicAuthorizationVeniceException) {
-        MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
-        LOGGER.error(e);
+      if (hasReportedFailure(reporter, this.isDuplicateKeyAllowed)) {
+        updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
         return;
       }
-      throw e;
+      try {
+        sendMessageToKafka(keyBytes, valueBytes, reporter);
+      } catch (VeniceException e) {
+        if (e instanceof TopicAuthorizationVeniceException) {
+          MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
+          LOGGER.error(e);
+          return;
+        }
+        throw e;
+      }
+      duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
     }
-    duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
     updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
   }
 
@@ -299,7 +296,6 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   @Override
   public void close() throws IOException {
-    MRJobCounterHelper.incrReducerClosedCount(previousReporter, 1);
     LOGGER.info("Kafka message progress before flushing and closing producer:");
     logMessageProgress();
     if (null != veniceWriter) {
@@ -314,17 +310,12 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     if (messageSent != messageCompleted.get()) {
       throw new VeniceException("Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
     }
+    MRJobCounterHelper.incrReducerClosedCount(previousReporter, 1);
   }
 
   @Override
-  public void configure(JobConf job) {
-    SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(job.get(SSL_CONFIGURATOR_CLASS_CONFIG));
-    try {
-      Properties javaProps = configurator.setupSSLConfig(HadoopUtils.getProps(job), UserCredentialsFactory.getHadoopUserCredentials());
-      props = new VeniceProperties(javaProps);
-    } catch (IOException e) {
-      throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
-    }
+  protected void configureTask(VeniceProperties props, JobConf job) {
+    this.props = props;
     this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     this.mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
@@ -382,25 +373,25 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   }
 
   private String getProducerMetricsPrettyPrint() {
+    if (this.veniceWriter == null) {
+      LOGGER.info("Unable to get internal producer metrics because writer is uninitialized");
+      return "";
+    }
     return getProducerMetricsPrettyPrint(veniceWriter.getMeasurableProducerMetrics());
   }
 
   private String getProducerMetricsPrettyPrint(Map<String, Double> producerMetrics) {
-    StringWriter prettyPrintWriter = new StringWriter();
-    PrintWriter writer = new PrintWriter(prettyPrintWriter, true);
-    if (this.veniceWriter != null) {
-      try {
-        writer.println();
-        for (Map.Entry<String, Double> entry : producerMetrics.entrySet()) {
-          writer.println(entry.getKey() + ": " + entry.getValue());
-        }
-      } catch (Exception e) {
-        LOGGER.info("Failed to get internal producer metrics because of unexpected exception", e);
+    try (StringWriter prettyPrintWriter = new StringWriter();
+        PrintWriter writer = new PrintWriter(prettyPrintWriter, true)) {
+      writer.println();
+      for (Map.Entry<String, Double> entry : producerMetrics.entrySet()) {
+        writer.println(entry.getKey() + ": " + entry.getValue());
       }
-    } else {
-      LOGGER.info("Unable to get internal producer metrics because writer is uninitialized");
+      return prettyPrintWriter.toString();
+    } catch (IOException e) {
+      LOGGER.info("Failed to get internal producer metrics because of unexpected exception", e);
+      return "";
     }
-    return prettyPrintWriter.toString();
   }
 
   private void maybePropagateCallbackException() {
@@ -443,7 +434,17 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       } else {
         long messageCount = messageCompleted.incrementAndGet();
         int partition = recordMetadata.partition();
-        partitionLeaderMap.computeIfAbsent(partition, k -> NON_INITIALIZED_LEADER);
+        partitionLeaderMap.putIfAbsent(partition, NON_INITIALIZED_LEADER);
+        if (partition != getTaskId()) {
+          // Reducer input and output are not aligned!
+          messageErrored.incrementAndGet();
+          sendException = new VeniceException(String.format(
+              "The reducer is not writing to the Kafka partition that maps to its task. This could mean that MR "
+                  + "shuffling is buggy or that the configured %s (%s) is non-deterministic. Active partitions: %s",
+              VenicePartitioner.class.getSimpleName(),
+              props.getString(ConfigKeys.PARTITIONER_CLASS),
+              partitionLeaderMap.keySet().toString()));
+        }
         if (messageCount % telemetryMessageInterval == 0) {
           kafkaTelemetry(reporter);
         }
@@ -461,11 +462,14 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private void kafkaTelemetry(Reporter reporter) {
     if (partitionLeaderMap.size() != 1) {
       /**
-       * When running the push job in map-only mode, we can write to more than one partition, in which case
-       * the per-broker counters don't make much sense, since the metrics they are based on are per-producer
-       * and therefore co-mingle numbers relating to any broker.
+       * History lesson: it used to be possible to the push job in map-only mode, where each mapper would write
+       * directly to Kafka, with no shuffling stage and no reducers. In that mode, mappers could write to more
+       * than one partition, in which case the per-broker counters didn't make much sense, since the metrics
+       * they are based on are per-producer and therefore co-mingle numbers relating to any broker.
        *
-       * If there is a need to expose those metrics in map-only mode, we can revisit later.
+       * Nowadays, the map-only mode doesn't exist anymore, but it still wouldn't make sense to measure this
+       * telemetry in case of interacting with many partitions. At this point, this check is just defensive
+       * coding.
        */
       return;
     }
@@ -547,17 +551,16 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       this.topic = jobConf.get(TOPIC_PROP);
       this.isDupKeyAllowed = jobConf.getBoolean(ALLOW_DUPLICATE_KEY, false);
 
-      AbstractVeniceMapper<?, ?> mapper = jobConf.getBoolean(VSON_PUSH, false) ?
-          new VeniceVsonMapper() : new VeniceAvroMapper();
-      mapper.configure(jobConf);
+      VeniceProperties veniceProperties = HadoopUtils.getVeniceProps(jobConf);
+      AbstractVeniceRecordReader recordReader = jobConf.getBoolean(VSON_PUSH, false) ?
+          new VeniceVsonRecordReader(veniceProperties) : new VeniceAvroRecordReader(veniceProperties);
+      this.keySchema = Schema.parse(recordReader.getKeySchemaStr());
 
-      this.keySchema = Schema.parse(mapper.getRecordReader().getKeySchemaStr());
-
-      if (mapper.getRecordReader().getKeySerializer() == null) {
+      if (recordReader.getKeySerializer() == null) {
         throw new VeniceException("key serializer can not be null.");
       }
 
-      this.keySerializer = mapper.getRecordReader().getKeySerializer();
+      this.keySerializer = recordReader.getKeySerializer();
       this.avroDatumWriter = new GenericDatumWriter<>(keySchema);
     }
 

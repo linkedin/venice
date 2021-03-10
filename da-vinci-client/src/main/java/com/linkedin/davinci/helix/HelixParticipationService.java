@@ -173,7 +173,11 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   @Override
   public void stopInner() {
     if (manager != null) {
-      manager.disconnect();
+      try {
+        manager.disconnect();
+      } catch (Exception e) {
+        logger.error("Swallowed an exception while trying to disconnect the " + manager.getClass().getSimpleName(), e);
+      }
     }
 
     onlineOfflineParticipantModelFactory.getExecutorService().shutdownNow();

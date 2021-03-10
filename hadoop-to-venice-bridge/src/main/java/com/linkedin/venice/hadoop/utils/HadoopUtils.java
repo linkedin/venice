@@ -12,9 +12,7 @@ import java.util.Properties;
  */
 public class HadoopUtils {
   public static VeniceProperties getVeniceProps(JobConf conf) {
-    Properties javaProps = new Properties();
-    conf.forEach(entry -> javaProps.put(entry.getKey(), entry.getValue()));
-    return new VeniceProperties(javaProps);
+    return new VeniceProperties(getProps(conf));
   }
 
   public static Properties getProps(JobConf conf) {

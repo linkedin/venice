@@ -4,8 +4,12 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.hadoop.partitioner.BuggyOffsettingMapReduceShufflePartitioner;
+import com.linkedin.venice.hadoop.partitioner.BuggySprayingMapReduceShufflePartitioner;
+import com.linkedin.venice.hadoop.partitioner.NonDeterministicVenicePartitioner;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -19,6 +23,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -31,7 +36,6 @@ import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
-//TODO: we shall probably move it to integration test
 public class TestKafkaPushJob {
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
@@ -70,24 +74,22 @@ public class TestKafkaPushJob {
     Schema schema = Schema.parse(schemaStr);
     File file = new File(parentDir, "simple_user.avro");
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
-    DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
-    dataFileWriter.create(schema, file);
+    try (DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter)) {
+      dataFileWriter.create(schema, file);
 
-    String name = "test_name_";
-    for (int i = 1; i <= 100; ++i) {
-      GenericRecord user = new GenericData.Record(schema);
-      user.put("id", Integer.toString(i));
-      GenericRecord oldValue = new GenericData.Record(schema.getField("value").schema());
-      oldValue.put("favorite_number", i);
-      if (addFieldWithDefaultValue) {
-        oldValue.put("favorite_color", "red");
+      for (int i = 1; i <= 100; ++i) {
+        GenericRecord user = new GenericData.Record(schema);
+        user.put("id", Integer.toString(i));
+        GenericRecord oldValue = new GenericData.Record(schema.getField("value").schema());
+        oldValue.put("favorite_number", i);
+        if (addFieldWithDefaultValue) {
+          oldValue.put("favorite_color", "red");
+        }
+        user.put("value", oldValue);
+        dataFileWriter.append(user);
       }
-      user.put("value", oldValue);
-      dataFileWriter.append(user);
+      return schema;
     }
-
-    dataFileWriter.close();
-    return schema;
   }
 
   /**
@@ -111,23 +113,21 @@ public class TestKafkaPushJob {
     Schema schema = Schema.parse(schemaStr);
     File file = new File(parentDir, "simple_user_with_different_schema.avro");
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
-    DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
-    dataFileWriter.create(schema, file);
+    try (DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter)) {
+      dataFileWriter.create(schema, file);
 
-    String name = "test_name_";
-    String company = "company_";
-    for (int i = 1; i <= 100; ++i) {
-      GenericRecord user = new GenericData.Record(schema);
-      user.put("id", Integer.toString(i));
-      user.put("name", name + i);
-      user.put("age", i);
-      user.put("company", company + i);
-      dataFileWriter.append(user);
+      String name = "test_name_";
+      String company = "company_";
+      for (int i = 1; i <= 100; ++i) {
+        GenericRecord user = new GenericData.Record(schema);
+        user.put("id", Integer.toString(i));
+        user.put("name", name + i);
+        user.put("age", i);
+        user.put("company", company + i);
+        dataFileWriter.append(user);
+      }
+      return schema;
     }
-
-
-    dataFileWriter.close();
-    return schema;
   }
 
   @BeforeClass
@@ -139,13 +139,8 @@ public class TestKafkaPushJob {
 
   @AfterClass
   public void cleanUp() {
-    if (controllerClient != null) {
-      controllerClient.close();
-    }
-
-    if (veniceCluster != null) {
-      veniceCluster.close();
-    }
+    IOUtils.closeQuietly(controllerClient);
+    IOUtils.closeQuietly(veniceCluster);
   }
 
   /**
@@ -443,4 +438,67 @@ public class TestKafkaPushJob {
 
     TestPushUtils.runPushJob("Test push job", props);
   }
+
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  public void testRunJobWithBuggySprayingMapReduceShufflePartitioner() throws Exception {
+    File inputDir = getTempDataDirectory();
+    writeSimpleAvroFileWithUserSchema(inputDir);
+
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
+    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setPartitionCount(3)));
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+
+    TestPushUtils.runPushJob("Test push job", props,
+        job -> job.setMapRedPartitionerClass(BuggySprayingMapReduceShufflePartitioner.class));
+    // No need for asserts, because we are expecting an exception to be thrown!
+  }
+
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  public void testRunJobWithBuggyOffsettingMapReduceShufflePartitioner() throws Exception {
+    File inputDir = getTempDataDirectory();
+    writeSimpleAvroFileWithUserSchema(inputDir);
+
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
+    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setPartitionCount(3)));
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+
+    TestPushUtils.runPushJob("Test push job", props,
+        job -> job.setMapRedPartitionerClass(BuggyOffsettingMapReduceShufflePartitioner.class));
+    // No need for asserts, because we are expecting an exception to be thrown!
+  }
+
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during Hadoop to Venice Bridge.*")
+  public void testRunJobWithNonDeterministcPartitioner() throws Exception {
+    File inputDir = getTempDataDirectory();
+    writeSimpleAvroFileWithUserSchema(inputDir);
+
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
+    String nonDeterministicPartitionerClassName = NonDeterministicVenicePartitioner.class.getName();
+    TestUtils.assertCommand(veniceCluster.updateStore(storeName, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setPartitionCount(3)
+        .setPartitionerClass(nonDeterministicPartitionerClassName)));
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    props.setProperty(VENICE_PARTITIONERS_PROP, nonDeterministicPartitionerClassName);
+
+    TestPushUtils.runPushJob("Test push job", props);
+    // No need for asserts, because we are expecting an exception to be thrown!
+  }
+
 }

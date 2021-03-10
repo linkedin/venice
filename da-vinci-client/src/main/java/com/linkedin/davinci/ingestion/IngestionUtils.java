@@ -1,6 +1,5 @@
 package com.linkedin.davinci.ingestion;
 
-import com.google.common.base.Charsets;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
@@ -33,6 +32,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -136,7 +136,7 @@ public class IngestionUtils {
   }
 
   public static HttpResponse buildHttpResponse(HttpResponseStatus status, String msg) {
-    ByteBuf contentBuf = Unpooled.copiedBuffer(msg, Charsets.UTF_8);
+    ByteBuf contentBuf = Unpooled.copiedBuffer(msg, StandardCharsets.UTF_8);
     return buildHttpResponse(status, contentBuf);
   }
 

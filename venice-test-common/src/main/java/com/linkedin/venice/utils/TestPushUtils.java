@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VeniceReducer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -681,34 +683,34 @@ public class TestPushUtils {
     Schema schemaWithSymbolDoc = Schema.parse(schemaWithSymbolDocStr);
     File file = new File(parentDir, "schema_with_unknown_field.avro");
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schemaWithSymbolDoc);
-    DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
-    dataFileWriter.create(schemaWithSymbolDoc, file);
+    try (DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter)) {
+      dataFileWriter.create(schemaWithSymbolDoc, file);
 
-    for (int i = 1; i <= 10; ++i) {
-      GenericRecord newRecord = new GenericData.Record(schemaWithSymbolDoc);
-      GenericRecord keyRecord = new GenericData.Record(schemaWithSymbolDoc.getField("key").schema());
-      keyRecord.put("memberId", (long)i);
-      if (0 == i % 2) {
-        keyRecord.put("source", testRecordType.NEARLINE);
-      } else {
-        keyRecord.put("source", testRecordType.OFFLINE);
+      for (int i = 1; i <= 10; ++i) {
+        GenericRecord newRecord = new GenericData.Record(schemaWithSymbolDoc);
+        GenericRecord keyRecord = new GenericData.Record(schemaWithSymbolDoc.getField("key").schema());
+        keyRecord.put("memberId", (long) i);
+        if (0 == i % 2) {
+          keyRecord.put("source", testRecordType.NEARLINE);
+        } else {
+          keyRecord.put("source", testRecordType.OFFLINE);
+        }
+
+        GenericRecord valueRecord = new GenericData.Record(schemaWithSymbolDoc.getField("value").schema());
+        valueRecord.put("priority", i);
+        if (0 == i % 3) {
+          valueRecord.put("targetedField", testTargetedField.WEBSITE_URL);
+        } else if (1 == i % 3) {
+          valueRecord.put("targetedField", testTargetedField.LOGO);
+        } else {
+          valueRecord.put("targetedField", testTargetedField.INDUSTRY);
+        }
+
+        newRecord.put("key", keyRecord);
+        newRecord.put("value", valueRecord);
+        dataFileWriter.append(newRecord);
       }
-
-      GenericRecord valueRecord = new GenericData.Record(schemaWithSymbolDoc.getField("value").schema());
-      valueRecord.put("priority", i);
-      if (0 == i % 3) {
-        valueRecord.put("targetedField", testTargetedField.WEBSITE_URL);
-      } else if (1 == i % 3) {
-        valueRecord.put("targetedField", testTargetedField.LOGO);
-      } else {
-        valueRecord.put("targetedField", testTargetedField.INDUSTRY);
-      }
-
-      newRecord.put("key", keyRecord);
-      newRecord.put("value", valueRecord);
-      dataFileWriter.append(newRecord);
     }
-    dataFileWriter.close();
 
     /**
      * return a schema without symbolDoc field so that the venice store is created with schema
@@ -1127,7 +1129,12 @@ public class TestPushUtils {
   }
 
   public static void runPushJob(String jobId, Properties props) {
+    runPushJob(jobId, props, noOp -> {});
+  }
+
+  public static void runPushJob(String jobId, Properties props, Consumer<KafkaPushJob> jobTransformer) {
     try (KafkaPushJob job = new KafkaPushJob(jobId, props)) {
+      jobTransformer.accept(job);
       job.run();
     }
   }

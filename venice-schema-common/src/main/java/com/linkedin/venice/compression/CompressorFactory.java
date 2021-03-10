@@ -45,7 +45,7 @@ public class CompressorFactory {
     return versionSpecificCompressorMap.containsKey(kafkaTopic);
   }
 
-  private static VeniceCompressor createCompressor(CompressionStrategy compressionStrategy) {
+  public static VeniceCompressor createCompressor(CompressionStrategy compressionStrategy) {
     if (compressionStrategy == CompressionStrategy.GZIP) {
       return new GzipCompressor();
     } else if (compressionStrategy == CompressionStrategy.NO_OP) {
@@ -55,7 +55,7 @@ public class CompressorFactory {
     throw new IllegalArgumentException("unsupported compression strategy: " + compressionStrategy.toString());
   }
 
-  private static VeniceCompressor createCompressorWithDictionary(CompressionStrategy compressionStrategy, final byte[] dictionary, int level) {
+  public static VeniceCompressor createCompressorWithDictionary(CompressionStrategy compressionStrategy, final byte[] dictionary, int level) {
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       return new ZstdWithDictCompressor(dictionary, level);
     }

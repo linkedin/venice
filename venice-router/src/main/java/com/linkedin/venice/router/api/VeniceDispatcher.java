@@ -1,6 +1,5 @@
 package com.linkedin.venice.router.api;
 
-import com.google.common.collect.ImmutableSet;
 import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
 import com.linkedin.ddsstorage.base.concurrency.AsyncPromise;
 import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
@@ -27,6 +26,7 @@ import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.throttle.PendingRequestThrottler;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -64,8 +64,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   private final AtomicLong uniqueRequestId = new AtomicLong(0);
 
-  private static final Set<Integer> PASS_THROUGH_ERROR_CODES = ImmutableSet.of(TOO_MANY_REQUESTS.code());
-  private static final Set<Integer> RETRIABLE_ERROR_CODES = ImmutableSet.of(INTERNAL_SERVER_ERROR.code(), SERVICE_UNAVAILABLE.code());
+  private static final Set<Integer> PASS_THROUGH_ERROR_CODES = Utils.setOf(TOO_MANY_REQUESTS.code());
+  private static final Set<Integer> RETRIABLE_ERROR_CODES = Utils.setOf(INTERNAL_SERVER_ERROR.code(), SERVICE_UNAVAILABLE.code());
 
   private final VeniceRouterConfig routerConfig;
   private final ReadOnlyStoreRepository storeRepository;

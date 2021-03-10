@@ -27,7 +27,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
-import java.security.Permission;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -54,19 +53,7 @@ public class ServiceFactory {
    * Calling {@link System#exit(int)} System.exit in tests is unacceptable. The Spark server lib, in particular, calls it.
    */
   static {
-    System.setSecurityManager(new SecurityManager() {
-      @Override
-      public void checkPermission(Permission perm) {}
-
-      @Override
-      public void checkPermission(Permission perm, Object context) {}
-
-      @Override
-      public void checkExit(int status) {
-        String message = "System exit requested with error " + status;
-        throw new SecurityException(message);
-      }
-    });
+    TestUtils.preventSystemExit();
 
     String ulimitOutput;
     try {

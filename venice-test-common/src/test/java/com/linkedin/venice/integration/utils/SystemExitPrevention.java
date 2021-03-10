@@ -12,7 +12,7 @@ public class SystemExitPrevention {
      */
     try (ZkServerWrapper throwAway = ServiceFactory.getZkServer()) {
       Assert.assertThrows(SecurityException.class, () -> System.exit(1));
-      Assert.assertThrows(SecurityException.class, () -> System.exit(134));
+      Assert.assertThrows(SecurityException.class, () -> System.exit(100));
     }
   }
 }

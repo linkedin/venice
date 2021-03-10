@@ -1,8 +1,10 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.IndexedRecord;
@@ -11,22 +13,32 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.mapred.TaskAttemptContextImpl;
+import org.apache.hadoop.mapred.TaskAttemptID;
+import org.apache.hadoop.mapred.TaskID;
+import org.apache.hadoop.mapreduce.TaskType;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import java.io.IOException;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static org.mockito.Mockito.*;
 
-public class TestVeniceAvroMapper extends AbstractTestVeniceMR {
+public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMapper> {
 
-  @Test
-  public void testConfigure() {
-    JobConf job = setupJobConf();
+  protected VeniceAvroMapper newMapper() {
+    return new VeniceAvroMapper();
+  }
+
+  @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  public void testConfigure(int numReducers, int taskId) {
+    JobConf job = setupJobConf(numReducers, taskId);
     VeniceAvroMapper mapper = new VeniceAvroMapper();
     try {
       mapper.configure(job);
@@ -43,86 +55,74 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMR {
     mapper.configure(job);
   }
 
-  @Test
-  public void testMap() throws IOException {
+  @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  public void testMap(int numReducers, int taskId) throws IOException {
     final String keyFieldValue = "key_field_value";
     final String valueFieldValue = "value_field_value";
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceAvroMapper mapper = new VeniceAvroMapper();
-    mapper.configure(setupJobConf());
+    VeniceAvroMapper mapper = getMapper(numReducers, taskId);
     mapper.map(wrapper, NullWritable.get(), output, null);
 
     ArgumentCaptor<BytesWritable> keyCaptor = ArgumentCaptor.forClass(BytesWritable.class);
     ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
-    verify(output).collect(keyCaptor.capture(), valueCaptor.capture());
+
+    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
+        .collect(keyCaptor.capture(), valueCaptor.capture());
     Assert.assertTrue(getHexString(keyCaptor.getValue().copyBytes())
         .endsWith(getHexString(keyFieldValue.getBytes())));
     Assert.assertTrue(getHexString(valueCaptor.getValue().copyBytes())
         .endsWith(getHexString(valueFieldValue.getBytes())));
+
+    /** Subsequent calls should trigger just one call to the {@link OutputCollector}, no matter the task ID */
+    final String keyFieldValue2 = "key_field_value_2";
+    final String valueFieldValue2 = "value_field_value_2";
+    AvroWrapper<IndexedRecord> wrapper2 = getAvroWrapper(keyFieldValue2, valueFieldValue2);
+    OutputCollector<BytesWritable, BytesWritable> output2 = mock(OutputCollector.class);
+
+    mapper.map(wrapper2, NullWritable.get(), output2, null);
+    verify(output2).collect(keyCaptor.capture(), valueCaptor.capture());
+    Assert.assertTrue(getHexString(keyCaptor.getValue().copyBytes())
+        .endsWith(getHexString(keyFieldValue2.getBytes())));
+    Assert.assertTrue(getHexString(valueCaptor.getValue().copyBytes())
+        .endsWith(getHexString(valueFieldValue2.getBytes())));
   }
 
-  @Test (expectedExceptions = VeniceException.class)
-  public void testMapWithNullKey() throws IOException {
+  @Test (expectedExceptions = VeniceException.class, dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  public void testMapWithNullKey(int numReducers, int taskId) throws IOException {
     final String valueFieldValue = "value_field_value";
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(null, valueFieldValue);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceAvroMapper mapper = new VeniceAvroMapper();
-    mapper.configure(setupJobConf());
+    VeniceAvroMapper mapper = getMapper(numReducers, taskId);
     mapper.map(wrapper, NullWritable.get(), output, null);
   }
 
-  @Test
-  public void testMapWithNullValue() throws IOException {
+  @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  public void testMapWithNullValue(int numReducers, int taskId) throws IOException {
     final String keyFieldValue = "key_field_value";
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, null);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceAvroMapper mapper = new VeniceAvroMapper();
-    mapper.configure(setupJobConf());
+    VeniceAvroMapper mapper = getMapper(numReducers, taskId);
     mapper.map(wrapper, NullWritable.get(), output, mock(Reporter.class));
 
-    verify(output, never()).collect(Mockito.any(), Mockito.any());
+    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId) - 1)).collect(Mockito.any(), Mockito.any());
   }
 
-  @Test
-  public void testMapWithTopicAuthorizationException() throws IOException {
-    final String keyFieldValue = "key_field_value";
-    final String valueFieldValue = "value_field_value";
-    AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
-    OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
-    Reporter mockReporter = createMockReporterWithCount(0L);
-    VeniceReducer mockReducer = mock(VeniceReducer.class);
-    doThrow(new TopicAuthorizationVeniceException("No ACL permission")).when(mockReducer).sendMessageToKafka(any(), any(), any());
-
-    VeniceAvroMapper mapper = new VeniceAvroMapper();
-    mapper.configure(setupJobConf());
-    mapper.setVeniceReducer(mockReducer);
-    mapper.setIsMapperOnly(true);
-    mapper.map(wrapper, NullWritable.get(), output, mockReporter);
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
-        eq(1L)
-    );
-  }
-
-  @Test
-  public void testMapWithExceededQuota() throws IOException {
+  @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  public void testMapWithExceededQuota(int numReducers, int taskId) throws IOException {
     final String keyFieldValue = "key_field_value";
     final String valueFieldValue = "value_field_value";
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
     Reporter mockReporter = createMockReporterWithCount(1L);
 
-    VeniceAvroMapper mapper = new VeniceAvroMapper();
-    JobConf mapperJobConfig = setupJobConf();
-    mapperJobConfig.set(STORAGE_QUOTA_PROP, "18"); // With this setup, storage quota should be exceeded
-    mapperJobConfig.set(STORAGE_ENGINE_OVERHEAD_RATIO, "1.5");
-    mapper.configure(mapperJobConfig);
-    mapper.setIsMapperOnly(false);
+    VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+      mapperJobConfig.set(STORAGE_QUOTA_PROP, "18"); // With this setup, storage quota should be exceeded
+      mapperJobConfig.set(STORAGE_ENGINE_OVERHEAD_RATIO, "1.5");
+    });
     mapper.map(wrapper, NullWritable.get(), output, mockReporter);
 
     verify(mockReporter, times(1)).
@@ -149,23 +149,21 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMR {
         eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
         anyLong()
     );
-    verify(output, times(1)).collect(any(), any());
+    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId))).collect(any(), any());
   }
 
-  @Test
-  public void testMapWithQuotaNotExceeded() throws IOException {
+  @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  public void testMapWithQuotaNotExceeded(int numReducers, int taskId) throws IOException {
     final String keyFieldValue = "key_field_value";
     final String valueFieldValue = "value_field_value";
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
     Reporter mockReporter = createMockReporterWithCount(1L);
 
-    VeniceAvroMapper mapper = new VeniceAvroMapper();
-    JobConf mapperJobConfig = setupJobConf();
-    mapperJobConfig.set(STORAGE_QUOTA_PROP, "100"); // With this setup, storage quota should not exceeded
-    mapperJobConfig.set(STORAGE_ENGINE_OVERHEAD_RATIO, "1.5");
-    mapper.configure(mapperJobConfig);
-    mapper.setIsMapperOnly(false);
+    VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+      mapperJobConfig.set(STORAGE_QUOTA_PROP, "100"); // With this setup, storage quota should not exceeded
+      mapperJobConfig.set(STORAGE_ENGINE_OVERHEAD_RATIO, "1.5");
+    });
     mapper.map(wrapper, NullWritable.get(), output, mockReporter);
 
     verify(mockReporter, times(1)).
@@ -193,7 +191,7 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMR {
         anyLong()
     );
     // Expect the output collect to collect output due to no early termination
-    verify(output, times(1)).collect(any(), any());
+    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId))).collect(any(), any());
   }
 
   private AvroWrapper<IndexedRecord> getAvroWrapper(String keyFieldValue, String valueFieldValue) {

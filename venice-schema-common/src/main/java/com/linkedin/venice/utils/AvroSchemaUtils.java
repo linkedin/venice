@@ -2,7 +2,6 @@ package com.linkedin.venice.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.Lists;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -248,7 +247,7 @@ public class AvroSchemaUtils {
   }
 
   private static Schema unionSchema(Schema s1, Schema s2) {
-    List<Schema> combinedSchema = Lists.newArrayList();
+    List<Schema> combinedSchema = new ArrayList<>();
     Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
     for (Schema s : s1.getTypes()) {
       if (s2Schema.get(s.getName()) != null) {
@@ -264,7 +263,7 @@ public class AvroSchemaUtils {
   }
 
   private static List<Schema.Field> mergeFields(Schema s1, Schema s2) {
-    List<Schema.Field> fields = Lists.newArrayList();
+    List<Schema.Field> fields = new ArrayList<>();
 
     for (Schema.Field f1 : s1.getFields()) {
       Schema.Field f2 = s2.getField(f1.name());

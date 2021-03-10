@@ -1,18 +1,18 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
-import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
@@ -23,6 +23,9 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+
 
 public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapper<IndexedRecord>, NullWritable> {
   private static final Logger LOGGER = Logger.getLogger(VeniceAvroRecordReader.class);
@@ -61,6 +64,14 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
     }
     this.etlValueSchemaTransformation = etlValueSchemaTransformation;
     setupSchema(keyFieldStr, valueFieldStr);
+  }
+
+  public VeniceAvroRecordReader(VeniceProperties props) {
+    this(props.getString(TOPIC_PROP),
+        AvroCompatibilityHelper.parse(props.getString(SCHEMA_STRING_PROP)),
+        props.getString(KEY_FIELD_PROP),
+        props.getString(VALUE_FIELD_PROP),
+        ETLValueSchemaTransformation.valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name())));
   }
 
   /**
@@ -136,15 +147,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
 
   @Override
   protected Object getAvroValue(AvroWrapper<IndexedRecord> record, NullWritable nullValue) {
-    Object valueDatum = record.datum().get(valueFieldPos);
-
-    if (null == valueDatum) {
-      // TODO: maybe we want to write a null value anyways?
-      LOGGER.warn("Skipping record with null value.");
-      return null;
-    }
-
-    return valueDatum;
+    return record.datum().get(valueFieldPos);
   }
 
   public Schema getFileSchema() {
