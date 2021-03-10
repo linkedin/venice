@@ -1,5 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -25,10 +31,12 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -58,8 +66,11 @@ import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
 
 
 public class  TestPushJobWithNativeReplication {
@@ -227,9 +238,58 @@ public class  TestPushJobWithNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testNativeReplicationWithDaVinciAndIngestionIsolation() throws Exception {
+    int recordCount = 100;
+    motherOfAllTests(
+        updateStoreParams -> updateStoreParams
+        .setPartitionCount(2),
+        recordCount,
+        (parentController, clusterName, storeName, props, inputDir) -> {
+          try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+            job.run();
+
+            //Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+          }
+
+          //Test Da-vinci client is able to consume from NR colo which is consuming remotely
+          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
+          String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+          int applicationListenerPort = Utils.getFreePort();
+          int servicePort = Utils.getFreePort();
+          VeniceProperties backendConfig = new PropertyBuilder().put(DATA_BASE_PATH, baseDataPath)
+              .put(PERSISTENCE_TYPE, ROCKS_DB)
+              .put(SERVER_INGESTION_MODE, ISOLATED)
+              .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+              .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
+              .put(D2_CLIENT_ZK_HOSTS_ADDRESS, childDataCenter.getClusters().get(clusterName).getZk().getAddress())
+              .build();
+
+          D2Client d2Client = new D2ClientBuilder().setZkHosts(childDataCenter.getClusters().get(clusterName).getZk().getAddress())
+              .setZkSessionTimeout(3, TimeUnit.SECONDS)
+              .setZkStartupTimeout(3, TimeUnit.SECONDS)
+              .build();
+          D2ClientUtils.startClient(d2Client);
+          MetricsRepository metricsRepository = new MetricsRepository();
+
+          try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository,
+              backendConfig)) {
+            DaVinciClient<String, Object> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+            client.subscribeAll().get();
+            for (int i = 1; i <= recordCount; ++i) {
+              String expected = "test_name_" + i;
+              String actual = client.get(Integer.toString(i)).get().toString();
+              Assert.assertEquals(actual, expected);
+            }
+          }
+        });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationForHybrid() throws Exception {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams
+            .setPartitionCount(2)
             .setHybridRewindSeconds(10)
             .setHybridOffsetLagThreshold(10),
         10,
@@ -277,25 +337,35 @@ public class  TestPushJobWithNativeReplication {
   public void testNativeReplicationForIncrementalPush() throws Exception {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams
+            .setPartitionCount(2)
             .setIncrementalPushEnabled(true)
             .setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC),
         100,
         (parentController, clusterName, storeName, props, inputDir) -> {
           // Write batch data
           TestPushUtils.runPushJob("Test push job", props);
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            // Current version should become 3
+            for (int version : parentController.getVeniceAdmin()
+                .getCurrentVersionsForMultiColos(clusterName, storeName)
+                .values()) {
+              Assert.assertEquals(version, 1);
+            }
+          });
 
           //Run incremental push job
           props.setProperty(INCREMENTAL_PUSH, "true");
           TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDir);
           TestPushUtils.runPushJob("Test incremental push job", props);
+          for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+            //Verify version level incremental push config is set correctly. The current version should be 1.
+            Optional<Version> version =
+                childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
+            Assert.assertTrue(version.get().isIncrementalPushEnabled());
+          }
 
           //Verify following in child controller
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
-
-          //Verify version level incremental push config is set correctly. The current version should be 1.
-          Optional<Version> version =
-              childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-          Assert.assertTrue(version.get().isIncrementalPushEnabled());
 
           //Verify the data in the second child fabric which consumes remotely
           String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
