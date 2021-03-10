@@ -201,8 +201,8 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
         Assert.assertEquals(version, 1);
       }
 
-      // Verify the data in the second child fabric which consumes remotely
-      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+      // Verify the data in the first child fabric which consumes remotely
+      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
       String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
@@ -215,7 +215,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     });
   }
 
-  @Test(dependsOnMethods = "testNativeReplicationForBatchPushFromNewCorp", timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
   public void testNativeReplicationForBatchPushWithSourceOverride(int recordCount, int partitionCount) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
@@ -280,7 +280,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       }
 
       // Verify the data in the second child fabric which consumes remotely
-      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
       String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
