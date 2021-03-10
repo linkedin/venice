@@ -107,7 +107,7 @@ public class TestHybrid {
    * certain specific characteristics which makes it awkward to re-use, though not necessarily impossible.
    * Further reuse of this shared cluster can be attempted later.
    */
-  @BeforeClass
+  @BeforeClass(alwaysRun=true)
   public void setUp() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
@@ -125,7 +125,7 @@ public class TestHybrid {
     sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun=true)
   public void tearDown() {
     IOUtils.closeQuietly(sharedVenice);
   }
