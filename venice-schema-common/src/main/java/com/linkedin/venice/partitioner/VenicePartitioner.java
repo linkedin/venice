@@ -32,5 +32,18 @@ public abstract class VenicePartitioner {
      */
     public abstract int getPartitionId(byte[] keyBytes, int numPartitions);
 
+    /**
+     * Implementors of this class can optionally provide an implementation of this function,
+     * which would result in eliminating an instantiation of {@link ByteBuffer} in the case
+     * where the provided offset and length do not map to the boundaries of the byte[]. This
+     * is just a minor optimization.
+     */
+    public int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
+        if (0 != offset && keyBytes.length != length) {
+            return getPartitionId(ByteBuffer.wrap(keyBytes, offset, length), numPartitions);
+        }
+        return getPartitionId(keyBytes, numPartitions);
+    }
+
     public abstract int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions);
 }

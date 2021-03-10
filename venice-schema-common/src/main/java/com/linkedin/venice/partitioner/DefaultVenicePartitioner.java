@@ -51,7 +51,7 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     super(props);
   }
 
-  private int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
+  public int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
     PartitionerState ps = partitionerState.get();
 
     ps.md.update(keyBytes, offset, length);

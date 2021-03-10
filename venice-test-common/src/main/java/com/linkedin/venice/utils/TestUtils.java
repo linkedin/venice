@@ -35,6 +35,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import java.io.IOException;
+import java.security.Permission;
 import org.apache.commons.io.FileUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -407,5 +408,27 @@ public class TestUtils {
   public static <T extends ControllerResponse> T assertCommand(T response) {
     Assert.assertFalse(response.isError(), "Controller error: " + response.getError());
     return response;
+  }
+
+  public static void preventSystemExit() {
+    System.setSecurityManager(new SecurityManager() {
+      @Override
+      public void checkPermission(Permission perm) {}
+
+      @Override
+      public void checkPermission(Permission perm, Object context) {}
+
+      @Override
+      public void checkExit(int status) {
+        String message = "System exit requested with error " + status;
+        SecurityException e = new SecurityException(message);
+        LOGGER.info("checkExit called", e);
+        throw e;
+      }
+    });
+  }
+
+  public static void restoreSystemExit() {
+    System.setSecurityManager(null);
   }
 }

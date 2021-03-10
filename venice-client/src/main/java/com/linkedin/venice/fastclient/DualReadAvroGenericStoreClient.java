@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import com.google.common.util.concurrent.AtomicDouble;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.fastclient.stats.ClientStats;
@@ -8,6 +7,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 
@@ -35,7 +35,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   }
 
   private CompletableFuture<V> sendRequest(Supplier<CompletableFuture<V>> supplier, long startTimeNS,
-      AtomicBoolean error, AtomicDouble latency, CompletableFuture<V> valueFuture) {
+      AtomicBoolean error, AtomicReference<Double> latency, CompletableFuture<V> valueFuture) {
     CompletableFuture<V> requestFuture;
     try {
       requestFuture = supplier.get();
@@ -81,8 +81,8 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     long startTimeNS = System.nanoTime();
     AtomicBoolean fastClientError = new AtomicBoolean(false);
     AtomicBoolean thinClientError = new AtomicBoolean(false);
-    AtomicDouble fastClientLatency = new AtomicDouble();
-    AtomicDouble thinClientLatency = new AtomicDouble();
+    AtomicReference<Double> fastClientLatency = new AtomicReference<>();
+    AtomicReference<Double> thinClientLatency = new AtomicReference<>();
     CompletableFuture<V> fastClientFuture = sendRequest(() -> super.get(requestContext, key),
         startTimeNS, fastClientError, fastClientLatency, valueFuture);
     CompletableFuture<V> thinClientFuture = sendRequest(() -> thinClient.get(key),

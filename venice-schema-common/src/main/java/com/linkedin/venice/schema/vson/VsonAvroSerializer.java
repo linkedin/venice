@@ -79,7 +79,11 @@ public class VsonAvroSerializer {
   }
 
   public Object bytesToAvro(byte[] bytes) {
-    try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
+    return bytesToAvro(bytes, 0, bytes.length);
+  }
+
+  public Object bytesToAvro(byte[] bytes, int offset, int length) {
+    try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes, offset, length))) {
       return bytesToAvro(input);
     } catch (IOException e) {
       throw new VsonSerializationException(e);

@@ -5,6 +5,7 @@ import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
@@ -34,6 +35,14 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
   private TreeMap<String, String> metadataMap;
 
   private SequenceFile.Reader fileReader;
+
+  public VeniceVsonRecordReader(VeniceProperties props) {
+    this(props.getString(TOPIC_PROP),
+        props.getString(FILE_KEY_SCHEMA),
+        props.getString(FILE_VALUE_SCHEMA),
+        props.getString(KEY_FIELD_PROP, ""),
+        props.getString(VALUE_FIELD_PROP, ""));
+  }
 
   public VeniceVsonRecordReader(String topicName, String keySchemaString, String valueSchemaString, String keyField, String valueField) {
     super(topicName);
@@ -92,7 +101,7 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
 
   @Override
   protected Object getAvroKey(BytesWritable inputKey, BytesWritable inputValue) {
-    Object avroKeyObject = keyDeserializer.bytesToAvro(inputKey.getBytes());
+    Object avroKeyObject = keyDeserializer.bytesToAvro(inputKey.getBytes(), 0, inputKey.getLength());
     if (!keyField.isEmpty()) {
       return ((GenericData.Record) avroKeyObject).get(keyField);
     }
@@ -101,7 +110,7 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
 
   @Override
   protected Object getAvroValue(BytesWritable inputKey, BytesWritable inputValue) {
-    Object avroValueObject = valueDeserializer.bytesToAvro(inputValue.getBytes());
+    Object avroValueObject = valueDeserializer.bytesToAvro(inputValue.getBytes(), 0, inputValue.getLength());
     if (!valueField.isEmpty()) {
       return ((GenericData.Record) avroValueObject).get(valueField);
     }
@@ -176,8 +185,8 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
     @Override
     public Pair<byte[], byte[]> next() {
       currentValueRead = true;
-      Object avroKey = recordReader.getKeyDeserializer().bytesToAvro(currentKey.getBytes());
-      Object avroValue = recordReader.getValueDeserializer().bytesToAvro(currentValue.getBytes());
+      Object avroKey = recordReader.getKeyDeserializer().bytesToAvro(currentKey.getBytes(), 0, currentKey.getLength());
+      Object avroValue = recordReader.getValueDeserializer().bytesToAvro(currentValue.getBytes(), 0, currentValue.getLength());
       if (!recordReader.getKeyField().isEmpty()) {
         avroKey = ((GenericData.Record) avroKey).get(recordReader.getKeyField());
       }

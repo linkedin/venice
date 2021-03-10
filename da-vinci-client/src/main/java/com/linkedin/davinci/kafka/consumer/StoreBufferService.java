@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -334,7 +333,7 @@ public class StoreBufferService extends AbstractVeniceService {
     return maxUsage;
   }
 
-  @VisibleForTesting
+  /** Used for testing */
   Map<TopicPartition, Long> getTopicToTimeSpentMap(int i) {
     return drainerList.get(i).topicToTimeSpent;
   }

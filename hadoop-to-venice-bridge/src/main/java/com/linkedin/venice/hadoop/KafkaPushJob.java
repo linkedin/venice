@@ -57,6 +57,7 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -143,9 +144,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   public static final String VENICE_PARTITIONERS_PROP = "venice.partitioners";
 
-  // Map-only job or a Map-Reduce job for data push, by default it is a map-reduce job.
-  public static final String VENICE_MAP_ONLY = "venice.map.only";
-
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";
   public static final String KAFKA_URL_PROP = "venice.kafka.url";
@@ -206,7 +204,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    * Config to control the Compression Level for ZSTD Dictionary Compression.
    */
   public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
-  public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
+  public static final int DEFAULT_BATCH_BYTES_SIZE = 1000000;
+  public static final boolean SORTED = true;
   private static final Logger LOGGER = Logger.getLogger(KafkaPushJob.class);
 
   /**
@@ -255,6 +254,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   // A controller client that is used to discover cluster
   private ControllerClient clusterDiscoveryControllerClient;
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
+  private Class<? extends Partitioner> mapRedPartitionerClass = VeniceMRPartitioner.class;
 
   protected static class SchemaInfo {
     boolean isAvro = true;
@@ -279,8 +279,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     String storeName;
     String batchStartingFabric;
     int batchNumBytes;
-    // TODO: Map only code should be removed; it's incompatible with sorted keys
-    boolean isMapOnly;
     boolean enablePBNJ;
     boolean pbnjFailFast;
     boolean pbnjAsync;
@@ -319,7 +317,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     int amplificationFactor;
   }
 
-  private VersionTopicInfo versionTopicInfo;
+  private VersionTopicInfo kafkaTopicInfo;
 
   private PushJobDetails pushJobDetails;
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
@@ -421,7 +419,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       pushJobSetting.batchStartingFabric = props.getString(BATCH_STARTING_FABRIC);
     }
     pushJobSetting.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
-    pushJobSetting.isMapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
     pushJobSetting.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
     pushJobSetting.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
     pushJobSetting.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
@@ -498,6 +495,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     this.sentPushJobDetailsTracker = sentPushJobDetailsTracker;
   }
 
+  // Visible for testing
+  protected void setMapRedPartitionerClass(Class<? extends Partitioner> mapRedPartitionerClass) {
+    this.mapRedPartitionerClass = mapRedPartitionerClass;
+  }
+
   /**
    * Do not change this method argument type.
    * Used by Azkaban
@@ -556,18 +558,18 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
         // Update and send push job details with new info to the controller
         pushJobDetails.pushId = pushId;
-        pushJobDetails.partitionCount = versionTopicInfo.partitionCount;
-        pushJobDetails.valueCompressionStrategy = versionTopicInfo.compressionStrategy.getValue();
+        pushJobDetails.partitionCount = kafkaTopicInfo.partitionCount;
+        pushJobDetails.valueCompressionStrategy = kafkaTopicInfo.compressionStrategy.getValue();
         pushJobDetails.chunkingEnabled = storeSetting.isChunkingEnabled;
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.TOPIC_CREATED.getValue()));
         sendPushJobDetailsToController();
         // Log Venice data push job related info
-        logPushJobProperties(versionTopicInfo, pushJobSetting, schemaInfo, clusterName, inputDirectory, inputFileDataSize);
+        logPushJobProperties(kafkaTopicInfo, pushJobSetting, schemaInfo, clusterName, inputDirectory, inputFileDataSize);
 
         // Setup the hadoop job
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
-        setupMRConf(jobConf, versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, jobId, inputDirectory);
+        setupMRConf(jobConf, kafkaTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, jobId, inputDirectory);
         if (pushJobSetting.isIncrementalPush) {
           /**
            * N.B.: For now, we always send control messages directly for incremental pushes, regardless of
@@ -576,16 +578,16 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
            * to completely stop using the {@link VeniceWriter} from this class.
            */
           pushJobSetting.incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
-          getVeniceWriter(versionTopicInfo).broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());
+          getVeniceWriter(kafkaTopicInfo).broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());
           runJobAndUpdateStatus();
-          getVeniceWriter(versionTopicInfo)
+          getVeniceWriter(kafkaTopicInfo)
               .broadcastEndOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), Collections.emptyMap());
         } else {
           if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(versionTopicInfo).broadcastStartOfPush(
-                !pushJobSetting.isMapOnly,
+            getVeniceWriter(kafkaTopicInfo).broadcastStartOfPush(
+                SORTED,
                 storeSetting.isChunkingEnabled,
-                versionTopicInfo.compressionStrategy,
+                kafkaTopicInfo.compressionStrategy,
                 optionalCompressionDictionary,
                 Collections.emptyMap()
             );
@@ -597,9 +599,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
           }
           runJobAndUpdateStatus();
           if (pushJobSetting.sendControlMessagesDirectly) {
-            getVeniceWriter(versionTopicInfo).broadcastEndOfPush(Collections.emptyMap());
+            getVeniceWriter(kafkaTopicInfo).broadcastEndOfPush(Collections.emptyMap());
           } else {
-            controllerClient.writeEndOfPush(pushJobSetting.storeName, versionTopicInfo.version);
+            controllerClient.writeEndOfPush(pushJobSetting.storeName, kafkaTopicInfo.version);
           }
         }
         // Close VeniceWriter before polling job status since polling job status could
@@ -611,7 +613,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         sendPushJobDetailsToController();
         // Waiting for Venice Backend to complete consumption
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_JOB_STATUS_POLLING);
-        pollStatusUntilComplete(pushJobSetting.incrementalPushVersion, controllerClient, pushJobSetting, versionTopicInfo);
+        pollStatusUntilComplete(pushJobSetting.incrementalPushVersion, controllerClient, pushJobSetting, kafkaTopicInfo);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTimeMs;
@@ -622,7 +624,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
       if (pushJobSetting.enablePBNJ) {
         LOGGER.info("Post-Bulkload Analysis Job is about to run.");
-        setupPBNJConf(pbnjJobConf, versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, jobId, inputDirectory);
+        setupPBNJConf(pbnjJobConf, kafkaTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, jobId, inputDirectory);
         runningJob = runJobWithConfig(pbnjJobConf);
       }
     } catch (Throwable e) {
@@ -639,7 +641,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         LOGGER.error("Error before killing the failed push job; still issue the kill job command to clean up states in backend", ex);
       } finally {
         try {
-          killJobAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
+          killJobAndCleanup(pushJobSetting, controllerClient, kafkaTopicInfo);
           LOGGER.info("Successfully killed the failed push job.");
         } catch (Exception ex) {
           LOGGER.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
@@ -659,10 +661,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private void runJobAndUpdateStatus() throws IOException {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_MAP_REDUCE_JOB);
     runningJob = runJobWithConfig(jobConf);
-    if (!pushJobSetting.isMapOnly) {
-      // Skip counter validation is required for some integration tests to pass
-      validateCountersAfterPush();
-    }
+    validateCountersAfterPush();
     Optional<ErrorMessage> errorMessage = updatePushJobDetailsWithMRDetails();
     if (errorMessage.isPresent()) {
       throw new VeniceException(errorMessage.get().getErrorMessage());
@@ -672,9 +671,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private void validateCountersAfterPush() throws IOException {
     if (inputFileDataSize > 0) {
-      if (MRJobCounterHelper.getReducerClosedCount(runningJob.getCounters()) == 0) {
+      long reducerClosedCount = MRJobCounterHelper.getReducerClosedCount(runningJob.getCounters());
+      if (reducerClosedCount < kafkaTopicInfo.partitionCount) {
         throw new VeniceException(String.format(
-            "MR job counter is not reliable since the reducer job closed count is 0 when the " + "input file data size is %d byte(s)", inputFileDataSize));
+            "MR job counter is not reliable since the reducer job closed count (%d) < the partition count (%d), "
+                + "while the input file data size is %d byte(s)",
+            reducerClosedCount, kafkaTopicInfo.partitionCount, inputFileDataSize));
       }
     }
   }
@@ -735,13 +737,13 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     // delete outdated incremental push status
     // TODO(xnma): if KafkaPushJob might hang forever, incremental push status wont get purged.
     // Design and implement a better scenario when Da Vinci have incremental push use cases.
-    if (pushJobSetting.isIncrementalPush && versionTopicInfo.daVinciPushStatusStoreEnabled) {
+    if (pushJobSetting.isIncrementalPush && kafkaTopicInfo.daVinciPushStatusStoreEnabled) {
       try (PushStatusStoreRecordDeleter pushStatusStoreDeleter =
-          new PushStatusStoreRecordDeleter(new VeniceWriterFactory(getVeniceWriterProperties(versionTopicInfo)))) {
+          new PushStatusStoreRecordDeleter(new VeniceWriterFactory(getVeniceWriterProperties(kafkaTopicInfo)))) {
         pushStatusStoreDeleter.deletePushStatus(
             pushJobSetting.storeName,
-            versionTopicInfo.version,
-            pushJobSetting.incrementalPushVersion, versionTopicInfo.partitionCount
+            kafkaTopicInfo.version,
+            pushJobSetting.incrementalPushVersion, kafkaTopicInfo.partitionCount
         );
       }
     }
@@ -912,7 +914,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
-      int version = versionTopicInfo == null ? UNCREATED_VERSION_NUMBER : versionTopicInfo.version;
+      int version = kafkaTopicInfo == null ? UNCREATED_VERSION_NUMBER : kafkaTopicInfo.version;
       ControllerResponse response = controllerClient.sendPushJobDetails(
           pushJobSetting.storeName,
           version,
@@ -1049,9 +1051,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
     storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
     storeSetting.isSchemaAutoRegisterFromPushJobEnabled = storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
-    if (storeSetting.storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA && setting.isMapOnly) {
-      throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. " + "Store: " + setting.storeName);
-    }
     StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse = ControllerClient.retryableRequest(
         controllerClient,
         setting.controllerRetries,
@@ -1107,7 +1106,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     Version.PushType pushType = setting.isIncrementalPush ?
         Version.PushType.INCREMENTAL : Version.PushType.BATCH;
     boolean askControllerToSendControlMessage = !pushJobSetting.sendControlMessagesDirectly;
-    boolean sorted = !pushJobSetting.isMapOnly;
     Optional<String> partitioners;
     if (props.containsKey(VENICE_PARTITIONERS_PROP)) {
       partitioners = Optional.of(props.getString(VENICE_PARTITIONERS_PROP));
@@ -1130,12 +1128,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     //If WriteCompute is enabled, request for intermediate topic
     final boolean finalWriteComputeEnabled = writeComputeEnabled;
-    versionTopicInfo = new VersionTopicInfo();
+    kafkaTopicInfo = new VersionTopicInfo();
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
         controllerClient,
         setting.controllerRetries,
         c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
-            askControllerToSendControlMessage, sorted, finalWriteComputeEnabled, partitioners, dictionary,
+            askControllerToSendControlMessage, SORTED, finalWriteComputeEnabled, partitioners, dictionary,
             Optional.ofNullable(setting.batchStartingFabric))
     );
     if (versionCreationResponse.isError()) {
@@ -1147,16 +1145,16 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     } else {
       LOGGER.info(versionCreationResponse.toString());
     }
-    versionTopicInfo.topic = versionCreationResponse.getKafkaTopic();
-    versionTopicInfo.version = versionCreationResponse.getVersion();
-    versionTopicInfo.kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    versionTopicInfo.partitionCount = versionCreationResponse.getPartitions();
-    versionTopicInfo.sslToKafka = versionCreationResponse.isEnableSSL();
-    versionTopicInfo.compressionStrategy = versionCreationResponse.getCompressionStrategy();
-    versionTopicInfo.partitionerClass = versionCreationResponse.getPartitionerClass();
-    versionTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
-    versionTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
-    versionTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
+    kafkaTopicInfo.topic = versionCreationResponse.getKafkaTopic();
+    kafkaTopicInfo.version = versionCreationResponse.getVersion();
+    kafkaTopicInfo.kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    kafkaTopicInfo.partitionCount = versionCreationResponse.getPartitions();
+    kafkaTopicInfo.sslToKafka = versionCreationResponse.isEnableSSL();
+    kafkaTopicInfo.compressionStrategy = versionCreationResponse.getCompressionStrategy();
+    kafkaTopicInfo.partitionerClass = versionCreationResponse.getPartitionerClass();
+    kafkaTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
+    kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
+    kafkaTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
@@ -1221,7 +1219,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         sslProperties.putAll(sslWriterProperties);
         // Get the certs from Azkaban executor's file system.
       } catch (IOException e) {
-        throw new VeniceException("Could not get user credential for kafka push job for topic" + versionTopicInfo.topic);
+        throw new VeniceException("Could not get user credential for kafka push job for topic" + kafkaTopicInfo.topic);
       }
     }
     return sslProperties;
@@ -1268,6 +1266,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
             Version.composeKafkaTopic(pushJobSetting.storeName, versionTopicInfo.version) :
             versionTopicInfo.topic;
 
+    List<ExecutionStatus> successfulStatuses = Arrays.asList(ExecutionStatus.COMPLETED, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+
     for (;;) {
       long currentTime = System.currentTimeMillis();
       if (pollTime > currentTime) {
@@ -1301,11 +1301,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
 
       if (overallStatus.isTerminal()) {
-        if (completedDatacenters.size() != datacenterSpecificInfo.size()) {
-          // One datacenter (could be more) is in an UNKNOWN status and has never successfully reported a completed
-          // status before but the majority of datacenters have completed so we give up on the unreachable datacenter
+        if (completedDatacenters.size() != datacenterSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
+          // One or more DC could have an UNKNOWN status and never successfully reported a completed status before,
+          // but if the majority of datacenters have completed, we give up on the unreachable datacenter
           // and start truncating the data topic.
-          throw new VeniceException("Push job triggered error for: " + pushJobSetting.veniceControllerUrl);
+          throw new VeniceException("Push job error reported by controller: " + pushJobSetting.veniceControllerUrl
+              + "\ncontroller response: " + response.toString());
         }
 
         // Every known datacenter have successfully reported a completed status at least once.
@@ -1419,8 +1420,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         conf.set(key, props.getString(key));
       });
     }
-    conf.setBoolean(VENICE_MAP_ONLY, pushJobSetting.isMapOnly);
-
     conf.setBoolean(ALLOW_DUPLICATE_KEY, pushJobSetting.isDuplicateKeyAllowed);
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, storeSetting.isChunkingEnabled);
 
@@ -1527,17 +1526,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   private void setupReducerConf(JobConf jobConf, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
-    if (pushJobSetting.isMapOnly) {
-      jobConf.setMapSpeculativeExecution(false);
-      jobConf.setNumReduceTasks(0);
-    } else {
-      jobConf.setPartitionerClass(VeniceMRPartitioner.class);
-      jobConf.setMapOutputKeyClass(BytesWritable.class);
-      jobConf.setMapOutputValueClass(BytesWritable.class);
-      jobConf.setReducerClass(VeniceReducer.class);
-      jobConf.setReduceSpeculativeExecution(pushJobSetting.enableReducerSpeculativeExecution);
-      jobConf.setNumReduceTasks(versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor);
-    }
+    jobConf.setPartitionerClass(this.mapRedPartitionerClass);
+    jobConf.setMapOutputKeyClass(BytesWritable.class);
+    jobConf.setMapOutputValueClass(BytesWritable.class);
+    jobConf.setReducerClass(VeniceReducer.class);
+    jobConf.setReduceSpeculativeExecution(pushJobSetting.enableReducerSpeculativeExecution);
+    jobConf.setNumReduceTasks(versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor);
   }
 
   private void logPushJobProperties(
@@ -1593,8 +1587,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   @Override
   public void cancel() {
-    killJobAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
-    if (versionTopicInfo != null && Utils.isNullOrEmpty(versionTopicInfo.topic)) {
+    killJobAndCleanup(pushJobSetting, controllerClient, kafkaTopicInfo);
+    if (kafkaTopicInfo != null && Utils.isNullOrEmpty(kafkaTopicInfo.topic)) {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
     } else {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
@@ -1690,11 +1684,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   public String getKafkaTopic() {
-    return versionTopicInfo.topic;
+    return kafkaTopicInfo.topic;
   }
 
   public String getKafkaUrl() {
-    return versionTopicInfo.kafkaUrl;
+    return kafkaTopicInfo.kafkaUrl;
   }
 
   public String getInputDirectory() {

@@ -14,6 +14,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.File;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -164,78 +165,75 @@ public class KafkaTopicDumper {
     Schema outputSchema = Schema.createRecord("KafkaRecord", "", "none", false);
     outputSchema.setFields(outputSchemaFields);
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(outputSchema);
-    DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
-    try {
-      dataFileWriter.create(outputSchema, file);
-    } catch (Exception e) {
-      logger.error("Failed on creating avro file");
-    }
-
-    // build key/value reader
-    GenericDatumReader<Object> keyReader = null;
-    GenericDatumReader<Object>[] valueReaders = null;
-    keyReader = new GenericDatumReader<>(Schema.parse(this.keySchemaStr));
-
-    int valueSchemaNum = allValueSchemas.length;
-    valueReaders = new GenericDatumReader[valueSchemaNum];
-    for (int schemaId = 0; schemaId < valueSchemaNum; schemaId++) {
-      valueReaders[schemaId] = new GenericDatumReader<>(allValueSchemas[schemaId], allValueSchemas[valueSchemaNum - 1]);
-    }
-
-    DecoderFactory decoderFactory = new DecoderFactory();
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : kafkaRecordList) {
+    try (DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter)) {
       try {
-        KafkaKey kafkaKey = record.key();
-        KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
-        if (kafkaKey.isControlMessage()) {
-          logger.info("Found a control message, continue");
-          continue;
-        }
-        // build the record
-        GenericRecord convertedRecord = new GenericData.Record(outputSchema);
-        convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.offset());
-
-        byte[] keyBytes = kafkaKey.getKey();
-        Decoder keyDecoder = decoderFactory.createBinaryDecoder(keyBytes, null);
-        Object keyRecord = keyReader.read(null, keyDecoder);
-        convertedRecord.put(VENICE_ETL_KEY_FIELD, keyRecord);
-        Map<CharSequence, CharSequence> metadataMap = new HashMap<>();
-
-        metadataMap.put(VENICE_ETL_PARTITION_FIELD, String.valueOf(record.partition()));
-        metadataMap.put(VENICE_ETL_PRODUCER_TIMESTAMP_FIELD, String.valueOf(kafkaMessageEnvelope.producerMetadata.messageTimestamp));
-        metadataMap.put(VENICE_ETL_BROKER_TIMESTAMP_FIELD, String.valueOf(TimestampType.LOG_APPEND_TIME.equals(record.timestampType()) ? record.timestamp() : 0));
-
-        convertedRecord.put(VENICE_ETL_METADATA_FIELD, metadataMap);
-
-        switch (MessageType.valueOf(kafkaMessageEnvelope)) {
-          case PUT:
-            // put message
-            Put put = (Put) kafkaMessageEnvelope.payloadUnion;
-            ByteBuffer putValue = put.putValue;
-            int schemaId = put.schemaId;
-            Decoder valueDecoder = decoderFactory.createBinaryDecoder(ByteUtils.extractByteArray(putValue), null);
-            Object valueRecord = valueReaders[schemaId - 1].read(null, valueDecoder);
-            convertedRecord.put(VENICE_ETL_VALUE_FIELD, valueRecord);
-            break;
-          case DELETE:
-            convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.offset());
-            break;
-          case UPDATE:
-            logger.info("Found update message! continue");
-            continue;
-          default:
-            throw new VeniceException("How come?");
-        }
-        dataFileWriter.append(convertedRecord);
-      } catch (Exception e) {
-        logger.error("Failed when building record for offset " + record.offset(), e);
+        dataFileWriter.create(outputSchema, file);
+      } catch (IOException e) {
+        throw new VeniceException("Failed on creating avro file", e);
       }
-    }
-    try {
-      dataFileWriter.flush();
-      dataFileWriter.close();
-    } catch (Exception e) {
-      logger.error("Failed when flushing avro file");
+
+      // build key/value reader
+      GenericDatumReader<Object> keyReader = null;
+      GenericDatumReader<Object>[] valueReaders = null;
+      keyReader = new GenericDatumReader<>(Schema.parse(this.keySchemaStr));
+
+      int valueSchemaNum = allValueSchemas.length;
+      valueReaders = new GenericDatumReader[valueSchemaNum];
+      for (int schemaId = 0; schemaId < valueSchemaNum; schemaId++) {
+        valueReaders[schemaId] = new GenericDatumReader<>(allValueSchemas[schemaId], allValueSchemas[valueSchemaNum - 1]);
+      }
+
+      DecoderFactory decoderFactory = new DecoderFactory();
+      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : kafkaRecordList) {
+        try {
+          KafkaKey kafkaKey = record.key();
+          KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
+          if (kafkaKey.isControlMessage()) {
+            logger.info("Found a control message, continue");
+            continue;
+          }
+          // build the record
+          GenericRecord convertedRecord = new GenericData.Record(outputSchema);
+          convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.offset());
+
+          byte[] keyBytes = kafkaKey.getKey();
+          Decoder keyDecoder = decoderFactory.createBinaryDecoder(keyBytes, null);
+          Object keyRecord = keyReader.read(null, keyDecoder);
+          convertedRecord.put(VENICE_ETL_KEY_FIELD, keyRecord);
+          Map<CharSequence, CharSequence> metadataMap = new HashMap<>();
+
+          metadataMap.put(VENICE_ETL_PARTITION_FIELD, String.valueOf(record.partition()));
+          metadataMap.put(VENICE_ETL_PRODUCER_TIMESTAMP_FIELD, String.valueOf(kafkaMessageEnvelope.producerMetadata.messageTimestamp));
+          metadataMap.put(VENICE_ETL_BROKER_TIMESTAMP_FIELD, String.valueOf(TimestampType.LOG_APPEND_TIME.equals(record.timestampType()) ? record.timestamp() : 0));
+
+          convertedRecord.put(VENICE_ETL_METADATA_FIELD, metadataMap);
+
+          switch (MessageType.valueOf(kafkaMessageEnvelope)) {
+            case PUT:
+              // put message
+              Put put = (Put) kafkaMessageEnvelope.payloadUnion;
+              ByteBuffer putValue = put.putValue;
+              int schemaId = put.schemaId;
+              Decoder valueDecoder = decoderFactory.createBinaryDecoder(ByteUtils.extractByteArray(putValue), null);
+              Object valueRecord = valueReaders[schemaId - 1].read(null, valueDecoder);
+              convertedRecord.put(VENICE_ETL_VALUE_FIELD, valueRecord);
+              break;
+            case DELETE:
+              convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.offset());
+              break;
+            case UPDATE:
+              logger.info("Found update message! continue");
+              continue;
+            default:
+              throw new VeniceException("How come?");
+          }
+          dataFileWriter.append(convertedRecord);
+        } catch (Exception e) {
+          logger.error("Failed when building record for offset " + record.offset(), e);
+        }
+      }
+    } catch (IOException e) {
+      throw new VeniceException("IOException while trying to dump to file.", e);
     }
   }
 

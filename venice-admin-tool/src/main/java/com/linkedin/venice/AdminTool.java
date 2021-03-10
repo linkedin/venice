@@ -1,6 +1,5 @@
 package com.linkedin.venice;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -411,7 +410,6 @@ public class AdminTool {
     }
   }
 
-  @VisibleForTesting
   static CommandLine getCommandLine(String[] args) throws ParseException, IOException {
     /**
      * Command Options are split up for help text formatting, see printUsageAndExit()
@@ -646,7 +644,6 @@ public class AdminTool {
     printSuccess(response);
   }
 
-  @VisibleForTesting
   static UpdateStoreQueryParams getUpdateStoreQueryParams(CommandLine cmd) {
     Set<Arg> argSet = new HashSet<>(Arrays.asList(Command.UPDATE_STORE.getOptionalArgs()));
     argSet.addAll(new HashSet<>(Arrays.asList(Command.UPDATE_STORE.getRequiredArgs())));

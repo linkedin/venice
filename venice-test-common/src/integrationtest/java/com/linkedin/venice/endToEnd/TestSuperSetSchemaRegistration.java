@@ -66,27 +66,26 @@ public class TestSuperSetSchemaRegistration {
       Schema schema = Schema.parse(schemaStr);
       File file = new File(parentDir, "simple_user.avro");
       DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
-      DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
-      dataFileWriter.create(schema, file);
+      try (DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter)) {
+        dataFileWriter.create(schema, file);
 
-      String name = "test_name_";
-      for (int i = 1; i <= 100; ++i) {
-        GenericRecord user = new GenericData.Record(schema);
-        user.put("id", Integer.toString(i));
-        GenericRecord oldValue = new GenericData.Record(schema.getField("value").schema());
-        oldValue.put("favorite_number", i);
-        if (addFieldWithDefaultValue1) {
-          oldValue.put("favorite_color", "red");
+        for (int i = 1; i <= 100; ++i) {
+          GenericRecord user = new GenericData.Record(schema);
+          user.put("id", Integer.toString(i));
+          GenericRecord oldValue = new GenericData.Record(schema.getField("value").schema());
+          oldValue.put("favorite_number", i);
+          if (addFieldWithDefaultValue1) {
+            oldValue.put("favorite_color", "red");
+          }
+          if (addFieldWithDefaultValue2) {
+            oldValue.put("favorite_food", "italian");
+          }
+          user.put("value", oldValue);
+          dataFileWriter.append(user);
         }
-        if (addFieldWithDefaultValue2) {
-          oldValue.put("favorite_food", "italian");
-        }
-        user.put("value", oldValue);
-        dataFileWriter.append(user);
+
+        return schema;
       }
-
-      dataFileWriter.close();
-      return schema;
     }
 
     @BeforeClass

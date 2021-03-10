@@ -1,8 +1,10 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.util.Arrays;
@@ -16,6 +18,8 @@ import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.mapred.TaskAttemptID;
+import org.apache.hadoop.mapreduce.TaskType;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -31,6 +35,17 @@ import static com.linkedin.venice.hadoop.MRJobCounterHelper.*;
 import static org.mockito.Mockito.*;
 
 public class TestVeniceReducer extends AbstractTestVeniceMR {
+
+  private static final int TASK_ID = 2;
+
+  @Override
+  protected Configuration getDefaultJobConfiguration() {
+    Configuration conf = super.getDefaultJobConfiguration();
+    TaskAttemptID taskAttemptID = new TaskAttemptID("200707121733", 3, TaskType.REDUCE, TASK_ID, 0);
+    conf.set(AbstractVeniceMapper.MAPRED_TASK_ID_PROP_NAME, taskAttemptID.toString());
+    conf.set(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
+    return conf;
+  }
 
   @Test
   public void testReduce() {
@@ -275,7 +290,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     reducer.configure(setupJobConf());
 
     reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
-    RecordMetadata recordMetadata = new RecordMetadata(new TopicPartition("topic-name", 0), 1, 1, 1, 1L, 1, 1);
+    RecordMetadata recordMetadata = new RecordMetadata(new TopicPartition("topic-name", TASK_ID), 1, 1, 1, 1L, 1, 1);
     reducer.callback.onCompletion(recordMetadata, null);
     reducer.close();
 

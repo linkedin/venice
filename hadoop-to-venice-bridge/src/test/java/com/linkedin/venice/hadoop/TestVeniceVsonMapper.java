@@ -10,7 +10,6 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
@@ -18,33 +17,36 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 import java.util.HashMap;
 
+import static org.mockito.Mockito.*;
+
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 
-public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
+public class TestVeniceVsonMapper extends AbstractTestVeniceMapper<VeniceVsonMapper> {
   private String fileKeySchemaStr = "\"int32\"";
   private String fileValueSchemaStr = "{\"userId\": \"int32\", \"userEmail\": \"string\"}";
-
-  private VeniceVsonMapper mapper;
 
   private VsonAvroSerializer keyDeserializer;
   private VsonAvroSerializer valueDeserializer;
 
   private VeniceAvroKafkaSerializer keySerializer;
 
+  protected VeniceVsonMapper newMapper() {
+    return new VeniceVsonMapper();
+  }
+
   @BeforeTest
   public void setup() {
-    mapper = new VeniceVsonMapper();
     keyDeserializer = VsonAvroSerializer.fromSchemaStr(fileKeySchemaStr);
     valueDeserializer = VsonAvroSerializer.fromSchemaStr(fileValueSchemaStr);
     keySerializer =
         new VeniceAvroKafkaSerializer(VsonAvroSchemaAdapter.parse(fileKeySchemaStr).toString());
   }
 
-  @Test
-  public void testMapWithoutSelectedField() throws IOException {
-    mapper.configure(setupJobConf());
+  @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  public void testMapWithoutSelectedField(int numReducers, int taskId) throws IOException {
+    VeniceVsonMapper mapper = getMapper(numReducers, taskId);
 
-    OutputCollector<BytesWritable, BytesWritable> collector = Mockito.mock(OutputCollector.class);
+    OutputCollector<BytesWritable, BytesWritable> collector = mock(OutputCollector.class);
     ArgumentCaptor<BytesWritable> keyCaptor = ArgumentCaptor.forClass(BytesWritable.class);
     ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
 
@@ -54,20 +56,19 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
     Pair<BytesWritable, BytesWritable> record = generateRecord();
     mapper.map(record.getFirst(), record.getSecond(), collector, null);
 
-    Mockito.verify(collector).collect(keyCaptor.capture(), valueCaptor.capture());
-    Assert.assertEquals(keyCaptor.getValue().getBytes(),
-        keySerializer.serialize("fake_topic", keyDeserializer.bytesToAvro(record.getFirst().getBytes())));
-    Assert.assertEquals(valueCaptor.getValue().getBytes(),
-        valueSerializer.serialize("fake_topic", valueDeserializer.bytesToAvro(record.getSecond().getBytes())));
+    verify(collector, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
+        .collect(keyCaptor.capture(), valueCaptor.capture());
+    Assert.assertEquals(keyCaptor.getValue().copyBytes(),
+        keySerializer.serialize("fake_topic", keyDeserializer.bytesToAvro(record.getFirst().copyBytes())));
+    Assert.assertEquals(valueCaptor.getValue().copyBytes(),
+        valueSerializer.serialize("fake_topic", valueDeserializer.bytesToAvro(record.getSecond().copyBytes())));
   }
 
-  @Test
-  public void testMapWithSelectedField() throws IOException {
-    JobConf conf = setupJobConf();
-    conf.set(KafkaPushJob.VALUE_FIELD_PROP, "userId");
-    mapper.configure(conf);
+  @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
+  public void testMapWithSelectedField(int numReducers, int taskId) throws IOException {
+    VeniceVsonMapper mapper = getMapper(numReducers, taskId, conf -> conf.set(KafkaPushJob.VALUE_FIELD_PROP, "userId"));
 
-    OutputCollector<BytesWritable, BytesWritable> collector = Mockito.mock(OutputCollector.class);
+    OutputCollector<BytesWritable, BytesWritable> collector = mock(OutputCollector.class);
     ArgumentCaptor<BytesWritable> keyCaptor = ArgumentCaptor.forClass(BytesWritable.class);
     ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
 
@@ -78,18 +79,19 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
     Pair<BytesWritable, BytesWritable> record = generateRecord();
     mapper.map(record.getFirst(), record.getSecond(), collector, null);
 
-    Mockito.verify(collector).collect(keyCaptor.capture(), valueCaptor.capture());
-    Assert.assertEquals(keyCaptor.getValue().getBytes(),
-        keySerializer.serialize("fake_topic", keyDeserializer.bytesToAvro(record.getFirst().getBytes())));
+    verify(collector, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
+        .collect(keyCaptor.capture(), valueCaptor.capture());
+    Assert.assertEquals(keyCaptor.getValue().copyBytes(),
+        keySerializer.serialize("fake_topic", keyDeserializer.bytesToAvro(record.getFirst().copyBytes())));
 
-    GenericData.Record valueRecord = (GenericData.Record) valueDeserializer.bytesToAvro(record.getSecond().getBytes());
-    Assert.assertEquals(valueCaptor.getValue().getBytes(),
+    GenericData.Record valueRecord = (GenericData.Record) valueDeserializer.bytesToAvro(record.getSecond().copyBytes());
+    Assert.assertEquals(valueCaptor.getValue().copyBytes(),
         valueSerializer.serialize("fake_topic", valueRecord.get("userId")));
   }
 
   @Override
-  protected JobConf setupJobConf() {
-    JobConf jobConf = super.setupJobConf();
+  protected JobConf setupJobConf(int numReducers, int taskId) {
+    JobConf jobConf = super.setupJobConf(numReducers, taskId);
 
     //remove key/value fields
     jobConf.set(KEY_FIELD_PROP, "");

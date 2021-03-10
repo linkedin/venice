@@ -17,6 +17,8 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> impleme
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
 
+  Object avroKey, avroValue;
+
   public AbstractVeniceRecordReader(String topicName) {
     this.topicName = topicName;
   }
@@ -44,7 +46,7 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> impleme
    * Return a serialized output key
    */
   byte[] getKeyBytes(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
-    Object avroKey = getAvroKey(inputKey, inputValue);
+    avroKey = getAvroKey(inputKey, inputValue);
 
     if (avroKey == null) {
       return null;
@@ -57,7 +59,7 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> impleme
    * Return a serialized output value
    */
   byte[] getValueBytes(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
-    Object avroValue = getAvroValue(inputKey, inputValue);
+    avroValue = getAvroValue(inputKey, inputValue);
 
     if (avroValue == null) {
       return null;

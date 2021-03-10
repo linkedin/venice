@@ -140,4 +140,14 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
     response.setError(errorMessage);
     return response;
   }
+
+  public String toString() {
+    return JobStatusQueryResponse.class.getSimpleName() + "(\n"
+        + "version: " + version + ",\n"
+        + "status: " + status + ",\n"
+        + "statusDetails: " + statusDetails + ",\n"
+        + "extraInfo: " + extraInfo + ",\n"
+        + "extraDetails: " + extraDetails + ",\n"
+        + super.toString() + ")";
+  }
 }
