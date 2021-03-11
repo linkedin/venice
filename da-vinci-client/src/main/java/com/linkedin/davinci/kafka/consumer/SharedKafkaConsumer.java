@@ -152,7 +152,8 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
       }
       //no action to take actually, just return;
     } catch (InterruptedException e) {
-      throw new VeniceException("Wait for poll request in `unSubscribe` function got interrupted.");
+      LOGGER.info("Wait for poll request in `unSubscribe` function got interrupted.");
+      Thread.currentThread().interrupt();
     }
   }
 
