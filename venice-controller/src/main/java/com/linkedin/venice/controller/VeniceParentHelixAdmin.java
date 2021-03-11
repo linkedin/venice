@@ -85,10 +85,12 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1332,6 +1334,14 @@ public class VeniceParentHelixAdmin implements Admin {
         partitionerConfigRecord.amplificationFactor = amplificationFactor
             .map(addToUpdatedConfigList(updatedConfigsList, AMPLIFICATION_FACTOR))
             .orElseGet(store.getPartitionerConfig()::getAmplificationFactor);
+
+        // Before setting, verify the resulting partitionerConfig can be built
+        try {
+          PartitionUtils.getVenicePartitioner(partitionerConfigRecord.partitionerClass.toString(), partitionerConfigRecord.amplificationFactor, new VeniceProperties(partitionerConfigRecord.partitionerParams));
+        } catch (Exception e) {
+          throw new VeniceException("Partitioner Configs invalid, please verify that partitioner configs like classpath and parameters are correct!", e);
+        }
+
         setStore.partitionerConfig = partitionerConfigRecord;
       }
 
