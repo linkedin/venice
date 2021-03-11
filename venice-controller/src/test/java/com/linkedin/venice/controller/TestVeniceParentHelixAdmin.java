@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -1248,7 +1249,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
         .setIncrementalPushEnabled(false)
         .setPartitionCount(64)
-        .setPartitionerClass("com.linkedin.venice.partitioner.DaVinciPartitioner")
+        .setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner")
         .setPartitionerParams(testPartitionerParams)
         .setReadQuotaInCU(readQuota)
         .setAccessControlled(accessControlled)
@@ -1279,7 +1280,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(updateStore.partitionerConfig.amplificationFactor, 1);
     Assert.assertEquals(updateStore.partitionerConfig.partitionerParams.toString(), testPartitionerParams.toString());
     Assert.assertEquals(updateStore.partitionerConfig.partitionerClass.toString(),
-        "com.linkedin.venice.partitioner.DaVinciPartitioner");
+        "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
     Assert.assertEquals(updateStore.replicationFactor, 2);
     // Disable Access Control
     accessControlled = false;
@@ -1296,7 +1297,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
         .setIncrementalPushEnabled(false)
         .setPartitionCount(64)
-        .setPartitionerClass("com.linkedin.venice.partitioner.DaVinciPartitioner")
+        .setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner")
         .setPartitionerParams(testPartitionerParams)
         .setReadQuotaInCU(readQuota)
         .setAccessControlled(accessControlled)
@@ -1350,6 +1351,24 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue("dc1".equals(updateStore.nativeReplicationSourceFabric.toString()), "Native replication source fabric does not match after updating the store!");
+  }
+
+  @Test
+  public void testUpdateStoreWithBadPartitionerConfigs() {
+    String storeName = TestUtils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))).when(
+        veniceWriter).put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+
+    parentAdmin.start(clusterName);
+    Assert.assertThrows(() -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setPartitionerClass("com.linkedin.im.a.bad.man")
+        .setAmplificationFactor(-1)));
   }
 
   @Test

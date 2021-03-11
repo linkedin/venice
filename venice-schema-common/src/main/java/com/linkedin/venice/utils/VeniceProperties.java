@@ -33,6 +33,15 @@ public class VeniceProperties {
     }
   }
 
+  public VeniceProperties(Map<CharSequence, CharSequence> properties) {
+    for (Map.Entry<CharSequence, CharSequence> e : properties.entrySet()) {
+      props.put(
+          e.getKey().toString(),
+          null == e.getValue() ? null : e.getValue().toString()
+      );
+    }
+  }
+
   public Set<String> keySet() {
     return props.keySet();
   }
