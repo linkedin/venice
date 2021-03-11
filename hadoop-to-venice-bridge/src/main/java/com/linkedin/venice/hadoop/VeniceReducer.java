@@ -2,7 +2,6 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -110,6 +109,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private boolean exceedQuota;
   private boolean hasWriteAclFailure;
   private boolean hasDuplicateKeyWithDistinctValue;
+  private HadoopJobClientProvider hadoopJobClientProvider;
 
   public VeniceReducer() {
     this(true);
@@ -120,6 +120,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     this.exceedQuota = false;
     this.hasWriteAclFailure = false;
     this.hasDuplicateKeyWithDistinctValue = false;
+    this.hadoopJobClientProvider = new DefaultHadoopJobClientProvider();
   }
 
   @Override
@@ -129,6 +130,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       OutputCollector<NullWritable, NullWritable> output,
       Reporter reporter
   ) {
+    if (exceedQuota) {
+      return;
+    }
     final long timeOfLastReduceFunctionStartInNS = System.nanoTime();
     if (timeOfLastReduceFunctionEndInNS > 0) {
       // Will only be true starting from the 2nd invocation.
@@ -192,6 +196,11 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       this.hasDuplicateKeyWithDistinctValue = true;
     }
     return hasDuplicateKeyWithDistinctValue;
+  }
+
+  // Visible for testing
+  boolean getExceedQuotaFlag() {
+    return exceedQuota;
   }
 
   private boolean exceedQuota(Reporter reporter) {
@@ -327,7 +336,6 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
     }
     mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
-    prepushStorageQuotaCheck(job, props.getLong(STORAGE_QUOTA_PROP), props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO));
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
     this.derivedValueSchemaId = (props.containsKey(DERIVED_SCHEMA_ID_PROP)) ? props.getInt(DERIVED_SCHEMA_ID_PROP) : -1;
     this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) && props.getBoolean(ENABLE_WRITE_COMPUTE);
@@ -339,34 +347,31 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
-
-    Long storeStorageQuota = props.containsKey(STORAGE_QUOTA_PROP) ? props.getLong(STORAGE_QUOTA_PROP) : null;
-    Double storageEngineOverheadRatio = props.containsKey(STORAGE_ENGINE_OVERHEAD_RATIO) ?
-        props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO) : null;
-    inputStorageQuotaTracker = new InputStorageQuotaTracker(storeStorageQuota, storageEngineOverheadRatio);
+    initStorageQuotaFields(props, job);
   }
 
-  private void prepushStorageQuotaCheck(JobConf job, long maxStorageQuota, double storageEngineOverheadRatio) {
-    //skip the check if the quota is unlimited
-    if (maxStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
+  private void initStorageQuotaFields(VeniceProperties props, JobConf job) {
+    Double storageEngineOverheadRatio = props.containsKey(STORAGE_ENGINE_OVERHEAD_RATIO) ?
+        props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO) : null;
+    Long storeStorageQuota = props.containsKey(STORAGE_QUOTA_PROP) ? props.getLong(STORAGE_QUOTA_PROP) : null;
+    inputStorageQuotaTracker = new InputStorageQuotaTracker(storeStorageQuota, storageEngineOverheadRatio);
+    if (storeStorageQuota == null) {
       return;
     }
+    if (storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
+      exceedQuota = false;
+    } else {
+      exceedQuota = inputStorageQuotaTracker.exceedQuota(getTotalIncomingDataSizeInBytes(job));
+    }
+  }
 
+  private long getTotalIncomingDataSizeInBytes(JobConf jobConfig) {
     JobClient hadoopJobClient = null;
-
     try {
-      hadoopJobClient = new JobClient(job);
-      Counters quotaCounters =
-          hadoopJobClient.getJob(JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP))).getCounters();
-      long incomingDataSize = estimatedVeniceDiskUsage(
-          MRJobCounterHelper.getTotalKeySize(quotaCounters) + MRJobCounterHelper.getTotalValueSize(quotaCounters),
-          storageEngineOverheadRatio
-      );
+      hadoopJobClient = hadoopJobClientProvider.getJobClientFromConfig(jobConfig);
+      Counters quotaCounters = hadoopJobClient.getJob(JobID.forName(jobConfig.get(MAP_REDUCE_JOB_ID_PROP))).getCounters();
+      return MRJobCounterHelper.getTotalKeySize(quotaCounters) + MRJobCounterHelper.getTotalValueSize(quotaCounters);
 
-      if (incomingDataSize > maxStorageQuota) {
-        throw new QuotaExceededException("Venice reducer data push",
-            Long.toString(incomingDataSize), Long.toString(maxStorageQuota));
-      }
     } catch (IOException e) {
       throw new VeniceException("Can't read input file size from counters", e);
     } finally {
@@ -374,7 +379,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
         try {
           hadoopJobClient.close();
         } catch (IOException e) {
-          throw new VeniceException("Can't close hadoopJobClient", e);
+          throw new VeniceException("Cannot close hadoopJobClient", e);
         }
       }
     }
@@ -427,6 +432,11 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   // Visible for testing
   protected void setVeniceWriter(AbstractVeniceWriter veniceWriter) {
     this.veniceWriter = veniceWriter;
+  }
+
+  // Visible for testing
+  protected void setHadoopJobClientProvider(HadoopJobClientProvider hadoopJobClientProvider) {
+    this.hadoopJobClientProvider = hadoopJobClientProvider;
   }
 
   protected class KafkaMessageCallback implements Callback {
