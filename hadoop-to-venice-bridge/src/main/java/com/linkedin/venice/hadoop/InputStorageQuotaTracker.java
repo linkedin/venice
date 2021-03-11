@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.meta.Store;
 import javax.annotation.Nullable;
 
 
@@ -21,7 +22,10 @@ class InputStorageQuotaTracker {
   }
 
   boolean exceedQuota(long totalInputStorageSizeInBytes) {
-    if (storeStorageQuota == null || storageEngineOverheadRatio == null || storeStorageQuota < 0.0) {
+    if (storageEngineOverheadRatio == null
+        || storeStorageQuota == null
+        || storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA
+    ) {
       return false;
     }
     final long veniceDiskUsageEstimate = (long) (totalInputStorageSizeInBytes / storageEngineOverheadRatio);

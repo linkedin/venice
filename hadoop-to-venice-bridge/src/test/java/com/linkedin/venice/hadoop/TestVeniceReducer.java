@@ -2,13 +2,18 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
-import java.util.List;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.Counters;
+import org.apache.hadoop.mapred.JobClient;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.mapred.RunningJob;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -16,9 +21,12 @@ import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.concurrent.Future;
+import java.util.ArrayList;
+import java.util.List;
 
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.MRJobCounterHelper.*;
 import static org.mockito.Mockito.*;
 
 public class TestVeniceReducer extends AbstractTestVeniceMR {
@@ -125,6 +133,56 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
         new BytesWritable("test_value1".getBytes()));
     OutputCollector mockCollector = mock(OutputCollector.class);
     reducer.reduce(keyWritable, values.iterator(), mockCollector, reporter);
+  }
+
+  @Test
+  public void testReducerConfigWithUnlimitedStorageQuota() {
+    VeniceReducer reducer = new VeniceReducer();
+    Configuration jobConfig = getDefaultJobConfiguration();
+    jobConfig.setLong(STORAGE_QUOTA_PROP, Store.UNLIMITED_STORAGE_QUOTA);
+    reducer.configure(new JobConf(jobConfig));
+    Assert.assertFalse(reducer.getExceedQuotaFlag());
+  }
+
+  @Test
+  public void testReducerDetectExceededQuotaInConfig() throws IOException {
+    reducerDetectExceededQuotaInConfig(1024, 1024, 2048); // Not exceed
+    reducerDetectExceededQuotaInConfig(1024, 512, 2048);  // Not exceed
+    reducerDetectExceededQuotaInConfig(1024, 1024, 1024); // Exceed
+  }
+
+  private void reducerDetectExceededQuotaInConfig(
+      long totalKeySizeInBytes,
+      long totalValueSizeInBytes,
+      long storageQuotaInBytes
+  ) throws IOException {
+
+    JobClient jobClient = mock(JobClient.class);
+    Counters counters = mock(Counters.class);
+    Counters.Group group = mock(Counters.Group.class);
+    when(group.getCounter(TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName())).thenReturn(totalKeySizeInBytes);
+    when(counters.getGroup(TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName())).thenReturn(group);
+
+    group = mock(Counters.Group.class);
+    when(group.getCounter(TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName())).thenReturn(totalValueSizeInBytes);
+    when(counters.getGroup(TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName())).thenReturn(group);
+    RunningJob runningJob = mock(RunningJob.class);
+    when(runningJob.getCounters()).thenReturn(counters);
+    when(jobClient.getJob(any(JobID.class))).thenReturn(runningJob);
+
+    HadoopJobClientProvider hadoopJobClientProvider = mock(HadoopJobClientProvider.class);
+    when(hadoopJobClientProvider.getJobClientFromConfig(any())).thenReturn(jobClient);
+    Configuration jobConfig = getDefaultJobConfiguration();
+    jobConfig.setLong(STORAGE_QUOTA_PROP, storageQuotaInBytes);
+    VeniceReducer reducer = new VeniceReducer();
+    reducer.setHadoopJobClientProvider(hadoopJobClientProvider);
+    reducer.configure(new JobConf(jobConfig));
+
+    if (totalKeySizeInBytes + totalValueSizeInBytes > storageQuotaInBytes) {
+      Assert.assertTrue(reducer.getExceedQuotaFlag());
+    } else {
+      Assert.assertFalse(reducer.getExceedQuotaFlag());
+    }
   }
 
   @Test

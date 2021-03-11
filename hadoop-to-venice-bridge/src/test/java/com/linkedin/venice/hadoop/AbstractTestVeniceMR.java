@@ -27,23 +27,27 @@ public class AbstractTestVeniceMR {
   protected static final String TOPIC_NAME = "test_store_v1";
 
   protected JobConf setupJobConf() {
-    Configuration config = new Configuration();
-    config.set(TOPIC_PROP, TOPIC_NAME);
-    config.set(KEY_FIELD_PROP, KEY_FIELD);
-    config.set(VALUE_FIELD_PROP, VALUE_FIELD);
-    config.set(SCHEMA_STRING_PROP, SCHEMA_STR);
-    config.setInt(VALUE_SCHEMA_ID_PROP, VALUE_SCHEMA_ID);
-    config.setLong(STORAGE_QUOTA_PROP, Store.UNLIMITED_STORAGE_QUOTA);
-    config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
-    config.setBoolean(VENICE_MAP_ONLY, false);
-    config.setBoolean(ALLOW_DUPLICATE_KEY, false);
-    config.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
-    config.set(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName());
-    config.set(SSL_KEY_STORE_PROPERTY_NAME, "li.datavault.identity");
-    config.set(SSL_TRUST_STORE_PROPERTY_NAME, "li.datavault.truststore");
-    config.set(VeniceReducer.MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
-    config.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, "180000");
-    return new JobConf(config);
+    return new JobConf(getDefaultJobConfiguration());
+  }
+
+  protected Configuration getDefaultJobConfiguration() {
+    Configuration defaultJobConfiguration = new Configuration();
+    defaultJobConfiguration.set(TOPIC_PROP, TOPIC_NAME);
+    defaultJobConfiguration.set(KEY_FIELD_PROP, KEY_FIELD);
+    defaultJobConfiguration.set(VALUE_FIELD_PROP, VALUE_FIELD);
+    defaultJobConfiguration.set(SCHEMA_STRING_PROP, SCHEMA_STR);
+    defaultJobConfiguration.setInt(VALUE_SCHEMA_ID_PROP, VALUE_SCHEMA_ID);
+    defaultJobConfiguration.setLong(STORAGE_QUOTA_PROP, Store.UNLIMITED_STORAGE_QUOTA);
+    defaultJobConfiguration.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
+    defaultJobConfiguration.setBoolean(VENICE_MAP_ONLY, false);
+    defaultJobConfiguration.setBoolean(ALLOW_DUPLICATE_KEY, false);
+    defaultJobConfiguration.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
+    defaultJobConfiguration.set(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName());
+    defaultJobConfiguration.set(SSL_KEY_STORE_PROPERTY_NAME, "li.datavault.identity");
+    defaultJobConfiguration.set(SSL_TRUST_STORE_PROPERTY_NAME, "li.datavault.truststore");
+    defaultJobConfiguration.set(VeniceReducer.MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
+    defaultJobConfiguration.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, "180000");
+    return defaultJobConfiguration;
   }
 
   public static String getHexString(byte[] bytes) {
