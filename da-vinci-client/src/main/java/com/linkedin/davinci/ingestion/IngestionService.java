@@ -14,6 +14,7 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -28,7 +29,9 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 
 import static java.lang.Thread.*;
@@ -39,10 +42,15 @@ import static java.lang.Thread.*;
  */
 public class IngestionService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(IngestionService.class);
+
+  private final RedundantExceptionFilter redundantExceptionFilter = new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
   private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(10);
+  private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
+  private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
+  private final int servicePort;
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
@@ -55,16 +63,13 @@ public class IngestionService extends AbstractVeniceService {
   private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private boolean isInitiated = false;
-
-
-  private final int servicePort;
   private IngestionRequestClient reportClient;
+  private long heartbeatTime = -1;
+  private long heartbeatTimeoutMs;
 
-  //TODO: move netty config to a config file
-  private static int nettyBacklogSize = 1000;
-
-  public IngestionService(int servicePort) {
+  public IngestionService(int servicePort, long heartbeatTimeoutMs) {
     this.servicePort = servicePort;
+    this.heartbeatTimeoutMs = heartbeatTimeoutMs;
 
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
@@ -73,11 +78,15 @@ public class IngestionService extends AbstractVeniceService {
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
         .childHandler(new IngestionServiceChannelInitializer(this))
-        .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
+        .option(ChannelOption.SO_BACKLOG, 1000)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
     logger.info("IngestionService created");
+  }
+
+  public IngestionService(int servicePort) {
+    this(servicePort, TimeUnit.MILLISECONDS.toMillis(60));
   }
 
   @Override
@@ -97,6 +106,7 @@ public class IngestionService extends AbstractVeniceService {
       Utils.sleep(100);
     }
     logger.info("Listener service started on port: " + servicePort);
+    heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
   }
@@ -108,13 +118,21 @@ public class IngestionService extends AbstractVeniceService {
     bossGroup.shutdownGracefully();
     shutdown.sync();
 
+    // Shutdown the internal clean up executor of redundant exception filter.
+    redundantExceptionFilter.shutdown();
+
     try {
-      storeIngestionService.stop();
-      storageService.stop();
+      if (storeIngestionService != null) {
+        storeIngestionService.stop();
+      }
+      if (storageService != null) {
+        storageService.stop();
+      }
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Ingestion Service", e);
     }
 
+    heartbeatCheckScheduler.shutdownNow();
     ingestionExecutor.shutdown();
     try {
       if (!ingestionExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -206,6 +224,10 @@ public class IngestionService extends AbstractVeniceService {
     return storeVersionStateSerializer;
   }
 
+  public void updateHeartbeatTime() {
+    this.heartbeatTime = System.currentTimeMillis();
+  }
+
   public void reportIngestionStatus(IngestionTaskReport report) {
     if (report.isCompleted || report.isError) {
       // Use async to avoid deadlock waiting in StoreBufferDrainer
@@ -213,6 +235,10 @@ public class IngestionService extends AbstractVeniceService {
     } else {
       reportClient.reportIngestionTask(report);
     }
+  }
+
+  public RedundantExceptionFilter getRedundantExceptionFilter() {
+    return redundantExceptionFilter;
   }
 
   /**
@@ -251,13 +277,37 @@ public class IngestionService extends AbstractVeniceService {
     reportClient.reportIngestionTask(report);
   }
 
+  private void checkHeartbeatTimeout() {
+    if (!isShuttingDown.get()) {
+      long currentTimeMillis = System.currentTimeMillis();
+      logger.info("Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat: " + heartbeatTime);
+
+      if ((heartbeatTime != -1) && ((currentTimeMillis - heartbeatTime) > heartbeatTimeoutMs)) {
+        logger.warn("Lost connection to parent process, will shutdown the ingestion backend gracefully.");
+        isShuttingDown.set(true);
+        try {
+          stop();
+          // Force closing the JVM process as we don't want any lingering process. It is safe to exit the JVM now as all necessary resources are shutdown.
+          System.exit(0);
+        } catch (Exception e) {
+          logger.info("Unable to shutdown ingestion service gracefully", e);
+        }
+      }
+    }
+  }
+
   public static void main(String[] args) throws Exception {
     logger.info("Capture arguments: " + Arrays.toString(args));
-    if (args.length != 1) {
-      throw new VeniceException("Expected one arguments: port. Got " + args.length);
+    if (args.length < 1) {
+      throw new VeniceException("Expected at least one arguments: port. Got " + args.length);
     }
     int port = Integer.parseInt(args[0]);
-    IngestionService ingestionService = new IngestionService(port);
-    ingestionService.startInner();
+    IngestionService ingestionService;
+    if (args.length == 2) {
+      ingestionService = new IngestionService(port, Long.parseLong(args[1]));
+    } else {
+      ingestionService = new IngestionService(port);
+    }
+    ingestionService.start();
   }
 }

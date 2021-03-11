@@ -3,8 +3,7 @@ package com.linkedin.davinci.ingestion;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.channel.IngestionReportChannelInitializer;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.venice.kafka.protocol.state.PartitionState;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
@@ -23,6 +22,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static java.lang.Thread.*;
 
 
@@ -38,24 +38,22 @@ public class IngestionReportListener extends AbstractVeniceService {
   private final int ingestionServicePort;
   private final ScheduledExecutorService metricsRequestScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
+  private final IngestionRequestClient metricsClient;
+  private final IngestionRequestClient heartbeatClient;
+  private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
 
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository;
-  private IngestionRequestClient metricsClient;
-  private IngestionRequestClient heartbeatClient;
   private IngestionProcessStats ingestionProcessStats;
   private IngestionStorageMetadataService storageMetadataService;
-  private Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
 
   private VeniceConfigLoader configLoader;
   private VeniceNotifier ingestionNotifier = null;
   private long heartbeatTime = -1;
+  private long heartbeatTimeoutMs;
 
-  //TODO: move netty config to a config file
-  private static int nettyBacklogSize = 1000;
-
-  public IngestionReportListener(int applicationPort, int ingestionServicePort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+  public IngestionReportListener(int applicationPort, int ingestionServicePort) {
     this.applicationPort = applicationPort;
     this.ingestionServicePort = ingestionServicePort;
 
@@ -65,8 +63,8 @@ public class IngestionReportListener extends AbstractVeniceService {
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-            .childHandler(new IngestionReportChannelInitializer(this, partitionStateSerializer))
-            .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
+            .childHandler(new IngestionReportChannelInitializer(this))
+            .option(ChannelOption.SO_BACKLOG, 1000)
             .childOption(ChannelOption.SO_KEEPALIVE, true)
             .option(ChannelOption.SO_REUSEADDR, true)
             .childOption(ChannelOption.TCP_NODELAY, true);
@@ -79,6 +77,11 @@ public class IngestionReportListener extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(applicationPort).sync();
     logger.info("Report listener service started on port: " + applicationPort);
+    if (configLoader == null) {
+      throw new VeniceException("Venice config not found in IngestionReportListener!");
+    }
+    heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS
+        .toMillis(60));
     setupMetricsCollection();
 
     // There is no async process in this function, so we are completely finished with the start up process.
@@ -200,7 +203,7 @@ public class IngestionReportListener extends AbstractVeniceService {
     }
 
     if (heartbeatTime != -1) {
-      if ((currentTimeMillis - heartbeatTime) > 30000) {
+      if ((currentTimeMillis - heartbeatTime) > heartbeatTimeoutMs) {
         logger.warn("Lost connection to forked ingestion process since timestamp, restarting forked process.");
         restartForkedProcess();
       }

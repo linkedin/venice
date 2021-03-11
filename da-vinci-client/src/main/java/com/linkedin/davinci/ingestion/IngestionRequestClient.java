@@ -16,13 +16,15 @@ import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.IngestionUtils.*;
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -49,9 +51,11 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
         }
       }
       // Start forking child ingestion process.
+      long heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS,
+          TimeUnit.SECONDS.toMillis(60));
       Process isolatedIngestionService = ForkedJavaProcess.exec(
           IngestionService.class,
-          Collections.singletonList(String.valueOf(ingestionServicePort)),
+          Arrays.asList(String.valueOf(ingestionServicePort), String.valueOf(heartbeatTimeoutMs)),
           jvmArgs,
           Optional.empty()
       );

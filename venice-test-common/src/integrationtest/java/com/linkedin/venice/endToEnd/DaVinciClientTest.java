@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.davinci.DaVinciUserApp;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -18,6 +19,7 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
@@ -41,6 +43,9 @@ import com.linkedin.davinci.ingestion.IngestionUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
@@ -751,6 +756,42 @@ public class DaVinciClientTest {
 
     batchProducer.close();
     realTimeProducer.close();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testCrashedDaVinciWithIngestionIsolation() throws Exception {
+    String storeName = cluster.createStore(KEY_COUNT);
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    String zkHosts = cluster.getZk().getAddress();
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
+        DaVinciUserApp.class,
+        Arrays.asList(zkHosts, baseDataPath, storeName, "100", "10"),
+        new ArrayList<>(),
+        Optional.empty()
+    );
+    // Sleep long enough so the forked Da Vinci app process can finish ingestion.
+    Thread.sleep(60000);
+    IngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
+    // Sleep long enough so the heartbeat timeout is detected by IngestionService.
+    Thread.sleep(15000);
+    D2Client d2Client = new D2ClientBuilder()
+        .setZkHosts(zkHosts)
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client);
+    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, zkHosts)
+        .build();
+
+    // Re-open the same store's database to verify RocksDB metadata partition's lock has been released.
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+      DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+      client.subscribeAll().get();
+    }
   }
 
   private void setupHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {

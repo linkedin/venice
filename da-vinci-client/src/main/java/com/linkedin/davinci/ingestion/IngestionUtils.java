@@ -252,7 +252,7 @@ public class IngestionUtils {
     }
   }
 
-  static String executeShellCommand(String command) {
+  public static String executeShellCommand(String command) {
     try {
       Process process = Runtime.getRuntime().exec(command);
       String output = IOUtils.toString(process.getInputStream());

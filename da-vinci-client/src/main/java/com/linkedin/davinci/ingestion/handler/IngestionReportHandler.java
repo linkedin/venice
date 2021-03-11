@@ -9,6 +9,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -21,14 +22,12 @@ import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 
 public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionReportHandler.class);
+  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   private final IngestionReportListener ingestionReportListener;
-  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  public IngestionReportHandler(IngestionReportListener ingestionReportListener,
-                                InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+  public IngestionReportHandler(IngestionReportListener ingestionReportListener) {
     logger.info("IngestionReportHandler created.");
     this.ingestionReportListener = ingestionReportListener;
-    this.partitionStateSerializer = partitionStateSerializer;
   }
 
   @Override
