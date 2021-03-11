@@ -31,12 +31,12 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
-import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -51,7 +51,6 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.channel.ChannelHandlerContext;
@@ -65,7 +64,6 @@ import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -76,7 +74,7 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionServiceTaskHandler.class);
-  private static final RedundantExceptionFilter redundantExceptionFilter = RedundantExceptionFilter.getRedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
+
   private static final byte[] dummyContent = new byte[0];
   private final IngestionService ingestionService;
 
@@ -127,6 +125,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           if (logger.isDebugEnabled()) {
             logger.debug("Received HEARTBEAT message.");
           }
+          ingestionService.updateHeartbeatTime();
           ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
           break;
         case UPDATE_METADATA:
@@ -394,7 +393,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
             report.aggregatedMetrics.put(name, metric.value());
           } catch (Exception e) {
             String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
-            if (!redundantExceptionFilter.isRedundantException(exceptionLogMessage)) {
+            if (!ingestionService.getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {
               logger.error(exceptionLogMessage, e);
             }
           }

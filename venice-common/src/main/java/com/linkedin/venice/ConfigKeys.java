@@ -472,6 +472,9 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST = "server.ingestion.isolation.stats.class.list";
 
+
+  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS = "server.ingestion.isolation.heartbeat.timout.ms";
+
   /**
    * A list of JVM arguments for forked child process, separated by comma.
    */

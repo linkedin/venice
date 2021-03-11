@@ -192,6 +192,7 @@ public class DaVinciBackend implements Closeable {
       // Initialize isolated ingestion service.
       int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
       int ingestionListenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
+      long ingestionIsolationHeartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(60));
       ingestionRequestClient = new IngestionRequestClient(ingestionServicePort);
       isolatedIngestionService = ingestionRequestClient.startForkedIngestionProcess(configLoader);
 
@@ -207,7 +208,7 @@ public class DaVinciBackend implements Closeable {
       };
 
       try {
-        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort, partitionStateSerializer);
+        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort);
         ingestionReportListener.setIngestionNotifier(isolatedIngestionListener);
         ingestionReportListener.setMetricsRepository(metricsRepository);
         ingestionReportListener.setStorageMetadataService((IngestionStorageMetadataService) storageMetadataService);

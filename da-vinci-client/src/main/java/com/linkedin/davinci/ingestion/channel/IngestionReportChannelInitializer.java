@@ -13,12 +13,9 @@ import io.netty.handler.codec.http.HttpResponseEncoder;
 
 public class IngestionReportChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final IngestionReportListener ingestionReportListener;
-  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  public IngestionReportChannelInitializer(IngestionReportListener ingestionReportListener,
-                                           InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+  public IngestionReportChannelInitializer(IngestionReportListener ingestionReportListener) {
     this.ingestionReportListener = ingestionReportListener;
-    this.partitionStateSerializer = partitionStateSerializer;
   }
 
   @Override
@@ -26,6 +23,6 @@ public class IngestionReportChannelInitializer extends ChannelInitializer<Socket
     ch.pipeline().addLast(new HttpRequestDecoder());
     ch.pipeline().addLast(new HttpObjectAggregator(1024 * 1024));
     ch.pipeline().addLast(new HttpResponseEncoder());
-    ch.pipeline().addLast(new IngestionReportHandler(ingestionReportListener, partitionStateSerializer));
+    ch.pipeline().addLast(new IngestionReportHandler(ingestionReportListener));
   }
 }
