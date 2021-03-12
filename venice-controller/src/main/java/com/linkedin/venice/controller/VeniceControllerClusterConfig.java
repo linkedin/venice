@@ -82,6 +82,13 @@ public class VeniceControllerClusterConfig {
   private boolean nativeReplicationEnabledForHybrid;
 
   /**
+   * When this option is set to true, we will not check if leader follower mode has been enabled at cluster level or store level.
+   * Just enabling native replication should be good enough to turn a cluster or store NR enabled. This should be set to false
+   * at child controller and true in parent controller.
+   */
+  private boolean lfModelDependencyCheckDisabled;
+
+  /**
    * When this option is enabled, all new hybrid stores will have leader follower enabled.
    */
   private boolean leaderFollowerEnabledForHybridStores;
@@ -211,8 +218,9 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, false);
     leaderFollowerEnabledForAllStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, false);
     controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
+    lfModelDependencyCheckDisabled = props.getBoolean(LF_MODEL_DEPENDENCY_CHECK_DISABLED, false);
 
-    if (!leaderFollowerEnabledForAllStores
+    if (!leaderFollowerEnabledForAllStores && !lfModelDependencyCheckDisabled
         && (nativeReplicationEnabledForBatchOnly || nativeReplicationEnabledForIncremental || nativeReplicationEnabledForHybrid)) {
       logger.error("Cannot enable native replication when leader follower is not enabled for all stores. Will revert "
           + "the cluster-level native replication flags to false");
@@ -423,6 +431,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isNativeReplicationEnabledForHybrid() {
     return nativeReplicationEnabledForHybrid;
+  }
+
+  public boolean isLfModelDependencyCheckDisabled() {
+    return lfModelDependencyCheckDisabled;
   }
 
   public boolean isLeaderFollowerEnabledForHybridStores() {
