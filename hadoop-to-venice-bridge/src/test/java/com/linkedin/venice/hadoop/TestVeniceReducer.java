@@ -5,6 +5,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import java.util.Arrays;
+import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.Counters;
@@ -23,7 +25,6 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 import java.util.concurrent.Future;
 import java.util.ArrayList;
-import java.util.List;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.hadoop.MRJobCounterHelper.*;
@@ -127,10 +128,9 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
         new VeniceAvroKafkaSerializer("\"string\"").serialize("test_topic", "test_key");
 
     BytesWritable keyWritable = new BytesWritable(keyBytes);
-    ArrayList<BytesWritable> values = new ArrayList<>();
+    List<BytesWritable> values = new ArrayList<>();
     values.add(new BytesWritable("test_value".getBytes()));
-    values.add(sameValue ? new BytesWritable("test_value".getBytes()) :
-        new BytesWritable("test_value1".getBytes()));
+    values.add(sameValue ? new BytesWritable("test_value".getBytes()) : new BytesWritable("test_value1".getBytes()));
     OutputCollector mockCollector = mock(OutputCollector.class);
     reducer.reduce(keyWritable, values.iterator(), mockCollector, reporter);
   }
@@ -183,6 +183,53 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     } else {
       Assert.assertFalse(reducer.getExceedQuotaFlag());
     }
+  }
+
+  @Test
+  public void testReducerAllowDuplicatedKeys() {
+    Reporter mockReporter = mock(Reporter.class);
+    Counters.Counter zeroCounters = mock(Counters.Counter.class);
+    when(zeroCounters.getCounter()).thenReturn(0L); // No counted
+    Counters.Counter nonZeroCounters = mock(Counters.Counter.class);
+    when(nonZeroCounters.getCounter()).thenReturn(1L);
+
+    when(mockReporter.getCounter(
+        MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName(),
+        MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName())
+    ).thenReturn(zeroCounters);
+    when(mockReporter.getCounter(
+        MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName(),
+        MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName())
+    ).thenReturn(zeroCounters);
+    when(mockReporter.getCounter(
+        MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName(),
+        MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName())
+    ).thenReturn(zeroCounters);
+
+    when(mockReporter.getCounter(
+        MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME.getGroupName(),
+        MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME.getCounterName())
+    ).thenReturn(nonZeroCounters);
+
+    final boolean isDuplicateKeyAllowed = true;
+
+    AbstractVeniceWriter mockWriter = mock(AbstractVeniceWriter.class);
+    VeniceReducer reducer = new VeniceReducer();
+    reducer.setVeniceWriter(mockWriter);
+    Configuration jobConfiguration = getDefaultJobConfiguration();
+    jobConfiguration.set(ALLOW_DUPLICATE_KEY, String.valueOf(isDuplicateKeyAllowed)); // Allow dup key
+    reducer.configure(new JobConf(jobConfiguration));
+
+    byte[] keyBytes =
+        new VeniceAvroKafkaSerializer("\"string\"").serialize("test_topic", "test_key");
+    List<BytesWritable> values = Arrays.asList(
+        new BytesWritable("test_value_0".getBytes()),
+        new BytesWritable("test_value_1".getBytes())
+    );
+    OutputCollector mockCollector = mock(OutputCollector.class);
+    reducer.reduce(new BytesWritable(keyBytes), values.iterator(), mockCollector, mockReporter);
+    verify(mockWriter).put(any(), any(), anyInt(),any()); // Expect the writer to be invoked
+    Assert.assertFalse(reducer.hasReportedFailure(mockReporter, isDuplicateKeyAllowed));
   }
 
   @Test

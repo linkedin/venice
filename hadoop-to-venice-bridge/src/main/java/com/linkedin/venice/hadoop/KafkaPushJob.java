@@ -218,7 +218,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    * TODO: for map-reduce job, we could come up with more accurate estimation.
    */
   public static final long INPUT_DATA_SIZE_FACTOR = 2;
-
+  protected static final boolean DEFAULT_IS_DUPLICATED_KEY_ALLOWED = false;
   /**
    * Placeholder for version number that is yet to be created.
    */

@@ -82,15 +82,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private long telemetryMessageInterval;
   private List<String> kafkaMetricsToReportAsMrCounters;
   private final Map<Integer, String> partitionLeaderMap = new VeniceConcurrentHashMap<>();
-
-  /**
-   * Having dup key checking does not make sense in Mapper only mode
-   * and would even cause a circular dependency issue between Mapper and reducer.
-   * This flag helps disable it when running in that
-   */
-  private final boolean checkDupKey;
   private DuplicateKeyPrinter duplicateKeyPrinter;
-
   private Exception sendException = null;
 
   // Visible for testing purpose
@@ -110,13 +102,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private boolean hasWriteAclFailure;
   private boolean hasDuplicateKeyWithDistinctValue;
   private HadoopJobClientProvider hadoopJobClientProvider;
+  private boolean isDuplicateKeyAllowed = DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 
-  public VeniceReducer() {
-    this(true);
-  }
-
-  VeniceReducer(boolean checkDupKey) {
-    this.checkDupKey = checkDupKey;
+  VeniceReducer() {
     this.exceedQuota = false;
     this.hasWriteAclFailure = false;
     this.hasDuplicateKeyWithDistinctValue = false;
@@ -151,7 +139,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     }
     byte[] valueBytes = values.next().copyBytes();
 
-    if (hasReportedFailure(reporter)) {
+    if (hasReportedFailure(reporter, this.isDuplicateKeyAllowed)) {
       updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
       return;
     }
@@ -165,14 +153,21 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       }
       throw e;
     }
-    if (checkDupKey) {
-      duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
-    }
+    duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
     updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
   }
 
-  protected boolean hasReportedFailure(Reporter reporter) {
-    return hasWriteAclFailure(reporter) || hasDuplicateKeyWithDistinctValue(reporter) || exceedQuota(reporter);
+  protected boolean hasReportedFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
+    return hasWriteAclFailure(reporter)
+        || exceedQuota(reporter)
+        || hasDuplicatedKeyWithDistinctValueFailure(reporter, isDuplicateKeyAllowed);
+  }
+
+  private boolean hasDuplicatedKeyWithDistinctValueFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
+    if (isDuplicateKeyAllowed) {
+      return false;
+    }
+    return hasDuplicateKeyWithDistinctValue(reporter);
   }
 
   private boolean hasWriteAclFailure(Reporter reporter) {
@@ -323,11 +318,6 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   @Override
   public void configure(JobConf job) {
-    /*
-     * Before producing kafka msg, reducer would check storage quota first.
-     * Reducer reads input file size from mappers' counter and check it with
-     * Venice controller. It stops and throws exception if the quota is exceeded.
-     */
     SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(job.get(SSL_CONFIGURATOR_CLASS_CONFIG));
     try {
       Properties javaProps = configurator.setupSSLConfig(HadoopUtils.getProps(job), UserCredentialsFactory.getHadoopUserCredentials());
@@ -335,16 +325,13 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     } catch (IOException e) {
       throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
     }
-    mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
+    this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
+    this.mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
     this.derivedValueSchemaId = (props.containsKey(DERIVED_SCHEMA_ID_PROP)) ? props.getInt(DERIVED_SCHEMA_ID_PROP) : -1;
     this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) && props.getBoolean(ENABLE_WRITE_COMPUTE);
     this.minimumLoggingIntervalInMS = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
-
-    if (checkDupKey) {
-      this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
-    }
-
+    this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
     initStorageQuotaFields(props, job);
