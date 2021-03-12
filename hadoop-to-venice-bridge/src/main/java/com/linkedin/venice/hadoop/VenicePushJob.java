@@ -11,6 +11,10 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.heartbeat.DefaultPushJobHeartbeatSenderFactory;
+import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSenderFactory;
+import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
+import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -77,6 +81,7 @@ import java.util.concurrent.TimeUnit;
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.hadoop.heartbeat.HeartbeatConfigs.*;
 import static org.apache.hadoop.mapreduce.MRJobConfig.*;
 import static org.apache.hadoop.security.UserGroupInformation.*;
 
@@ -240,7 +245,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   protected JobConf jobConf = new JobConf();
   // Job config for pbnj
   protected JobConf pbnjJobConf = new JobConf();
-
   protected InputDataInfoProvider inputDataInfoProvider;
 
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
@@ -335,6 +339,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   protected StoreSetting storeSetting;
   private InputStorageQuotaTracker inputStorageQuotaTracker;
+  private PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
+  private final boolean jobHeartbeatEnabled;
 
   protected static class ZstdConfig {
     ZstdDictTrainer zstdDictTrainer;
@@ -375,6 +381,14 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     LOGGER.info("Constructing " + VenicePushJob.class.getSimpleName() + ": " + props.toString(true));
     // Optional configs:
     pushJobSetting = getPushJobSetting(props);
+    jobHeartbeatEnabled = props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
+    if (jobHeartbeatEnabled) {
+      LOGGER.info("Push job heartbeat is enabled.");
+      pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
+    } else {
+      LOGGER.info("Push job heartbeat is NOT enabled.");
+      pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
+    }
   }
 
   private VeniceProperties getVenicePropsFromVanillaProps(Properties vanillaProps) {
@@ -495,10 +509,17 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     this.mapRedPartitionerClass = mapRedPartitionerClass;
   }
 
+  // Visible for testing
+  protected void setPushJobHeartbeatSenderFactory(PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory) {
+    this.pushJobHeartbeatSenderFactory = pushJobHeartbeatSenderFactory;
+  }
+
   /**
    * @throws VeniceException
    */
   public void run() {
+    PushJobHeartbeatSender pushJobHeartbeatSender =
+            pushJobHeartbeatSenderFactory.createHeartbeatSender(props, Optional.empty());
     try {
       initPushJobDetails();
       jobStartTimeMs = System.currentTimeMillis();
@@ -548,6 +569,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         pushJobDetails.valueCompressionStrategy = kafkaTopicInfo.compressionStrategy.getValue();
         pushJobDetails.chunkingEnabled = storeSetting.isChunkingEnabled;
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.TOPIC_CREATED.getValue()));
+        pushJobHeartbeatSender.start(pushJobSetting.storeName, kafkaTopicInfo.version);
         sendPushJobDetailsToController();
         // Log Venice data push job related info
         logPushJobProperties(kafkaTopicInfo, pushJobSetting, schemaInfo, clusterName, inputDirectory, inputFileDataSize);
@@ -640,6 +662,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       } catch (Exception e) {
         LOGGER.error("Failed to close inputDataInfoProvider. Exception swallowed", e);
       }
+      pushJobHeartbeatSender.stop();
       inputDataInfoProvider = null;
     }
   }
@@ -1074,8 +1097,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         throw new VeniceException("Leader follower mode needs to be enabled for write compute.");
       }
     }
-
     return storeSetting;
+  }
+
+  private Version.PushType getPushType(PushJobSetting pushJobSetting) {
+    return pushJobSetting.isIncrementalPush ? Version.PushType.INCREMENTAL : Version.PushType.BATCH;
   }
 
   /**
@@ -1089,8 +1115,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       VeniceProperties props,
       Optional<ByteBuffer> optionalCompressionDictionary
   ) {
-    Version.PushType pushType = setting.isIncrementalPush ?
-        Version.PushType.INCREMENTAL : Version.PushType.BATCH;
+    Version.PushType pushType = getPushType(setting);
     boolean askControllerToSendControlMessage = !pushJobSetting.sendControlMessagesDirectly;
     Optional<String> partitioners;
     if (props.containsKey(VENICE_PARTITIONERS_PROP)) {
@@ -1120,7 +1145,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         setting.controllerRetries,
         c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
             askControllerToSendControlMessage, SORTED, finalWriteComputeEnabled, partitioners, dictionary,
-            Optional.ofNullable(setting.batchStartingFabric))
+            Optional.ofNullable(setting.batchStartingFabric), jobHeartbeatEnabled)
     );
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl
@@ -1164,23 +1189,28 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   private synchronized Properties getVeniceWriterProperties(VersionTopicInfo versionTopicInfo) {
     if (null == veniceWriterProperties) {
-      veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
-      veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
-      if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
-        veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
-      }
-      if (versionTopicInfo.sslToKafka) {
-        Properties sslProps = getSslProperties();
-        veniceWriterProperties.putAll(sslProps);
-      }
-      if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
-        // Not a typo, we actually want to set delivery timeout!
-        veniceWriterProperties.setProperty(KAFKA_DELIVERY_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS));
-      }
-      if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
-        veniceWriterProperties.setProperty(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
-      }
+      veniceWriterProperties = createVeniceWriterProperties(versionTopicInfo.kafkaUrl, versionTopicInfo.sslToKafka);
+    }
+    return veniceWriterProperties;
+  }
+
+  private Properties createVeniceWriterProperties(String kafkaUrl, boolean sslToKafka) {
+    Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+    veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
+    if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
+      veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
+    }
+    if (sslToKafka) {
+      Properties sslProps = getSslProperties();
+      veniceWriterProperties.putAll(sslProps);
+    }
+    if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
+      // Not a typo, we actually want to set delivery timeout!
+      veniceWriterProperties.setProperty(KAFKA_DELIVERY_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS));
+    }
+    if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
+      veniceWriterProperties.setProperty(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
     }
     return veniceWriterProperties;
   }

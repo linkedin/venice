@@ -377,7 +377,6 @@ public class TestVenicePushJob {
     props.put(INCREMENTAL_PUSH, true);
 
     TestPushUtils.runPushJob("Test push job", props);
-
   }
 
   /**
