@@ -234,6 +234,7 @@ public class MetadataStoreWriter implements Closeable {
     storeProperties.pushStreamSourceAddress = store.getPushStreamSourceAddress();
     storeProperties.persistenceType = store.getPersistenceType().toString();
     storeProperties.writeComputationEnabled = store.isWriteComputationEnabled();
+    storeProperties.daVinciPushStatusStoreEnabled = store.isDaVinciPushStatusStoreEnabled();
     return storeProperties;
   }
 

@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -128,7 +129,13 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(1, StoreMetaValue.class, "StoreMeta");
+  METADATA_SYSTEM_SCHEMA_STORE(1, StoreMetaValue.class, "StoreMeta"),
+
+  /**
+   * Value schema for push status system store.
+   */
+  PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class, "PushStatus");
+
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 

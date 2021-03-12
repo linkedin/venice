@@ -7,7 +7,6 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -68,6 +67,7 @@ public class PushStatusStoreTest {
         false,
         extraProperties);
     Properties controllerConfig = new Properties();
+    controllerConfig.setProperty(CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED, String.valueOf(true));
     parentController =
         ServiceFactory.getVeniceParentController(cluster.getClusterName(), ServiceFactory.getZkServer().getAddress(), cluster.getKafka(),
             cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
@@ -86,6 +86,8 @@ public class PushStatusStoreTest {
     backendConfig = new PropertyBuilder()
         .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
         .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .build();
@@ -93,12 +95,20 @@ public class PushStatusStoreTest {
     // set up push status store
     String owner = "test";
     String zkSharedPushStatusStoreName = VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(cluster.getClusterName());
+    String zkSharedMetadataStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(cluster.getClusterName());
     TestUtils.assertCommand(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner));
     TestUtils.assertCommand(parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName));
+    TestUtils.assertCommand(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedMetadataStoreName, owner));
+    TestUtils.assertCommand(parentControllerClient.newZkSharedStoreVersion(zkSharedMetadataStoreName));
     TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA));
     TestUtils.assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
     TestUtils.assertCommand(parentControllerClient.createDaVinciPushStatusStore(storeName));
+    String metadataStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName), 1);
+    // The corresponding metadata store should be materialized automatically.
+    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, cluster.getControllerClient(), 30, TimeUnit.SECONDS,
+        Optional.empty());
   }
 
   @AfterMethod
@@ -125,6 +135,8 @@ public class PushStatusStoreTest {
         .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
         .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
         .build();
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
