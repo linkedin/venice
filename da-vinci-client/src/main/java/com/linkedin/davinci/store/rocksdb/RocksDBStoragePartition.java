@@ -580,13 +580,13 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
           long startMs = System.currentTimeMillis();
           if (!verifyChecksum(fullPathForLastFinishedSSTFile, recordNumInLastSSTFile, checksumToMatch)) {
             throw new VeniceChecksumException(
-                "verifyChecksum: last sstFile checksum didn't match for store: " + storeName + ", partition: " + partitionId
+                "verifyChecksum: failure. last sstFile checksum didn't match for store: " + storeName + ", partition: " + partitionId
                     + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: " + recordNumInLastSSTFile
                     + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
           }
         }
       } else {
-        LOGGER.warn("Sync get invoked for store: " + storeName + ", partition id: " + partitionId
+        LOGGER.warn("Sync gets invoked for store: " + storeName + ", partition id: " + partitionId
             +", but the last sst file: " + composeFullPathForSSTFile(currentSSTFileNo) + " is empty");
       }
     } catch (RocksDBException e) {
@@ -629,11 +629,15 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       readOptions.setVerifyChecksums(false);
       readOptions.setFillCache(false);
 
-      if (sstFileReader.getTableProperties().getNumEntries() != expectedRecordNumInSSTFile) {
-        LOGGER.error("verifyChecksum: SSTFile record does not match");
+      long actualRecordCounts = sstFileReader.getTableProperties().getNumEntries();
+      if (actualRecordCounts != expectedRecordNumInSSTFile) {
+        LOGGER.error(
+            "verifyChecksum: failure. SSTFile record count does not match expected: " + expectedRecordNumInSSTFile + " actual:"
+                + actualRecordCounts);
         return false;
       }
 
+      long recordCount = 0;
       Optional<CheckSum> sstFileFinalCheckSum = CheckSum.getInstance(CheckSumType.MD5);
       sstFileReaderIterator = sstFileReader.newIterator(readOptions);
       sstFileReaderIterator.seekToFirst();
@@ -641,12 +645,17 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
         sstFileFinalCheckSum.get().update(sstFileReaderIterator.key());
         sstFileFinalCheckSum.get().update(sstFileReaderIterator.value());
         sstFileReaderIterator.next();
+        recordCount++;
       }
       final byte[] finalChecksum = sstFileFinalCheckSum.get().getCheckSum();
       boolean result = Arrays.equals(finalChecksum, checksumToMatch);
+      if (!result) {
+        LOGGER.error("verifyChecksum: failure. SSTFile recordCount: " + recordCount + " expectedChecksum: "
+            + ByteUtils.toHexString(checksumToMatch) + " actualChecksum: " + ByteUtils.toHexString(finalChecksum));
+      }
       return result;
     } catch (Exception e) {
-      throw new VeniceException("Failed to verify checksum", e);
+      throw new VeniceException("verifyChecksum: failure. Exception:", e);
     } finally {
       if (sstFileReader != null) {
         sstFileReader.close();

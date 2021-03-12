@@ -981,6 +981,16 @@ public class TestPushUtils {
     return controllerClient;
   }
 
+  public static void makeStoreLF(VeniceClusterWrapper venice, String storeName) {
+    try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())) {
+      ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(true));
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
+    }
+  }
+
   public static void makeStoreHybrid(VeniceClusterWrapper venice, String storeName, long rewindSeconds, long offsetLag) {
     try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())) {
       ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
