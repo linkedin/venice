@@ -105,6 +105,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     updateLock.lock();
     try {
       List<Store> newStores = getStoresFromZk();
+      logger.info("Got " + newStores.size() + " stores from cluster " + clusterName + " during refresh in repo: " + getClass().getSimpleName());
       Set<String> deletedStoreNames = storeMap.values().stream().map(Store::getName).collect(Collectors.toSet());
       for (Store newStore : newStores) {
         putStore(newStore);
