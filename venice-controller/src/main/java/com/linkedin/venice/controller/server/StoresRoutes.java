@@ -518,7 +518,7 @@ public class StoresRoutes extends AbstractRoute {
         storeCandidates = storeCandidates.stream().filter(store -> !store.isSystemStore()).collect(Collectors.toList());
 
         boolean isLFEnabled = Utils.parseBooleanFromString(request.queryParams(STATUS), "isLFEnabled");
-        storeCandidates.forEach(store -> admin.setLeaderFollowerModelEnabled(cluster, store.getName(), isLFEnabled));
+        storeCandidates.forEach(store -> admin.enableLeaderFollowerModelLocally(cluster, store.getName(), isLFEnabled));
 
         veniceResponse.setCluster(cluster);
 

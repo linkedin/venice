@@ -238,6 +238,11 @@ public interface Admin extends AutoCloseable, Closeable {
 
     void setLeaderFollowerModelEnabled(String clusterName, String storeName, boolean leaderFollowerModelEnabled);
 
+    /**
+     * Enable or disable L/F model for the store locally, without propagating the change to any other fabrics
+     */
+    void enableLeaderFollowerModelLocally(String clusterName, String storeName, boolean leaderFollowerModelEnabled);
+
     void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params);
 
     double getStorageEngineOverheadRatio(String clusterName);

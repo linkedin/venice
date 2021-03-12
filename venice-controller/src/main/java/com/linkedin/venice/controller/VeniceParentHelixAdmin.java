@@ -1197,10 +1197,22 @@ public class VeniceParentHelixAdmin implements Admin {
     setStoreWriteability(clusterName, storeName, isAccessible);
   }
 
+  /**
+   * Expectation for this API: Also send out an admin message to admin channel.
+   */
   @Override
   public void setLeaderFollowerModelEnabled(String clusterName, String storeName, boolean leaderFollowerModelEnabled) {
     //place holder
     //will add it in the following RB
+  }
+
+  /**
+   * Only change the configs in parent; do not send it to admin channel.
+   */
+  @Override
+  public void enableLeaderFollowerModelLocally(String clusterName, String storeName,
+      boolean leaderFollowerModelEnabled) {
+    veniceHelixAdmin.setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled);
   }
 
   @Override
