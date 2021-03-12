@@ -40,7 +40,6 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   private boolean isMapperOnly;
   private VeniceReducer reducer = null;
   private VeniceCompressor compressor;
-
   protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> veniceRecordReader;
 
   // Visible for testing
@@ -79,7 +78,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     MRJobCounterHelper.incrTotalValueSize(reporter, recordValue.length);
 
     if (isMapperOnly) {
-      if (reporter != null && reducer.hasReportedFailure(reporter)) {
+      if (reporter != null && reducer.hasReportedFailure(reporter, DEFAULT_IS_DUPLICATED_KEY_ALLOWED)) {
         return;
       }
       try {
@@ -136,13 +135,11 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     if (this.veniceRecordReader == null) {
       throw new VeniceException("Record reader not initialized");
     }
-
     this.isMapperOnly = props.getBoolean(VENICE_MAP_ONLY);
     if (isMapperOnly) {
-      this.reducer = new VeniceReducer(false);
+      this.reducer = new VeniceReducer();
       reducer.configure(job);
     }
-
     if (CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)) == CompressionStrategy.ZSTD_WITH_DICT) {
       String topicName = props.getString(TOPIC_PROP);
       ByteBuffer compressionDictionary = DictionaryUtils.readDictionaryFromKafka(topicName, props);
