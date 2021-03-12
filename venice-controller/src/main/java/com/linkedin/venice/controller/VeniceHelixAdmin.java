@@ -2658,6 +2658,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void enableLeaderFollowerModelLocally(String clusterName, String storeName,
+            boolean leaderFollowerModelEnabled) {
+        setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled);
+    }
+
     public void setNativeReplicationEnabled(String clusterName, String storeName,
         boolean nativeReplicationEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
