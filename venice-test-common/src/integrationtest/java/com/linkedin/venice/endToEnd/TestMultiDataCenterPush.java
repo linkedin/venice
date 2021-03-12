@@ -285,7 +285,7 @@ public class TestMultiDataCenterPush {
     Assert.assertNull(controllerClient.getStore(storeName).getStore().getHybridStoreConfig());
 
     // Try to upate partitioner config on batch store, it should succeed now.
-    response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionerClass("testClassName"));
+    response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner"));
     Assert.assertFalse(response.isError(), "There is error in setting partitioner config in non-hybrid store");
   }
 
