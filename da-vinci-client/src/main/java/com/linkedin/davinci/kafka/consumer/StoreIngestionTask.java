@@ -17,6 +17,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
+import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
@@ -1158,6 +1159,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // So even this storage node recover eventually, controller will not confused.
       // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
       // recovered, it will send STARTED message to controller again)
+
+      /**
+       * It's possible to receive checksum verification failure exception here from the above syncOffset() call.
+       * If this task is getting closed aneway (most likely due to SN being shut down), we should not report this replica
+       * as ERROR. just record the relevant metrics.
+       */
+      if (t instanceof VeniceChecksumException) {
+        recordChecksumVerificationFailure();
+        if (!isRunning()) {
+          logger.error(consumerTaskId + " received verifyChecksum: exception ", t);
+          return;
+        }
+      }
+
       logger.error(consumerTaskId + " has failed.", t);
       if (t instanceof Exception) {
         reportError(partitionConsumptionStateMap.values(), errorPartitionId,
