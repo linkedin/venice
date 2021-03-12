@@ -30,6 +30,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/ComputeRouterRequestKey/*"
   "venice-schema-common/src/main/resources/avro/StreamingFooterRecord/*"
   "venice-common/src/main/resources/avro/PushJobDetails/v2/*"
+  "venice-common/src/main/resources/avro/BatchJobHeartbeat/v1/*"
   "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataKey/*"
   "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataValue/v2/*"
   "venice-common/src/main/resources/avro/StoreMeta/StoreMetaKey/*"
@@ -63,6 +64,7 @@ CODE_GEN_PATH=(
   "venice-common/src/main/java"
   "venice-common/src/main/java"
   "venice-common/src/main/java"
+  "venice-common/src/main/java"
 )
 FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[0]}/com/linkedin/venice/kafka/protocol/*.java"
@@ -84,12 +86,13 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[16]}/com/linkedin/venice/compute/protocol/request/router/*.java"
   "${CODE_GEN_PATH[17]}/com/linkedin/venice/read/protocol/response/streaming/*.java"
   "${CODE_GEN_PATH[18]}/com/linkedin/venice/status/protocol/*.java"
-  "${CODE_GEN_PATH[19]}/com/linkedin/venice/meta/systemstore/schemas/*.java"
+  "${CODE_GEN_PATH[19]}/com/linkedin/venice/status/protocol/*.java"
   "${CODE_GEN_PATH[20]}/com/linkedin/venice/meta/systemstore/schemas/*.java"
-  "${CODE_GEN_PATH[21]}/com/linkedin/venice/systemstore/schemas/*.java"
+  "${CODE_GEN_PATH[21]}/com/linkedin/venice/meta/systemstore/schemas/*.java"
   "${CODE_GEN_PATH[22]}/com/linkedin/venice/systemstore/schemas/*.java"
-  "${CODE_GEN_PATH[23]}/com/linkedin/venice/pushstatus/*.java"
+  "${CODE_GEN_PATH[23]}/com/linkedin/venice/systemstore/schemas/*.java"
   "${CODE_GEN_PATH[24]}/com/linkedin/venice/pushstatus/*.java"
+  "${CODE_GEN_PATH[25]}/com/linkedin/venice/pushstatus/*.java"
 )
 
 if [[ $# < 1 ]]; then

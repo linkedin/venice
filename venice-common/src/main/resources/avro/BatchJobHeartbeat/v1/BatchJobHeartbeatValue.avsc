@@ -1,0 +1,13 @@
+{
+  "name": "BatchJobHeartbeatValue",
+  "namespace": "com.linkedin.venice.status.protocol",
+  "doc": "Value part of the heartbeat sent by a push job",
+  "type": "record",
+  "fields": [
+    {
+      "name": "timestamp",
+      "doc": "Epoch time of when a heartbeat is generated.",
+      "type": "long"
+    }
+  ]
+}

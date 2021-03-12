@@ -8,6 +8,9 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 
 import java.util.HashSet;
+import java.util.concurrent.ThreadFactory;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -155,6 +158,16 @@ public class Utils {
     if (null != t) {
       function.accept(t);
     }
+  }
+
+  public static String stringNotNullNorEmpty(String stringObject) {
+    if (stringObject == null) {
+      throw new IllegalArgumentException("This String object MUST be non-null.");
+    }
+    if (stringObject.isEmpty()) {
+      throw new IllegalArgumentException("This String object MUST be non-empty.");
+    }
+    return stringObject;
   }
 
   /**
@@ -750,8 +763,94 @@ public class Utils {
     return res;
   }
 
-  // TODO (lcli): Remove this method after Java version is bumped to 9 or 9+ since there will be identical method provided
-  // in the standard library
+  // This class is defined so that we can give a name to the thread which is used by the executor service
+  static public class NamedThreadFactory implements ThreadFactory {
+    private static final Logger LOGGER = Logger.getLogger(NamedThreadFactory.class);
+    private String threadName;
+    private final Runnable uncaughtExceptionHook;
+    private int threadSequenceNum;
+
+    /**
+     * This constructor is used when the thread name is unknown (or do not need to be set at construct time)
+     */
+    public NamedThreadFactory() {
+      this(null);
+    }
+
+    public NamedThreadFactory(String threadName) {
+      this(threadName, null);
+    }
+
+    public NamedThreadFactory(String threadName, Runnable uncaughtExceptionHook) {
+      this.threadName = threadName;
+      this.uncaughtExceptionHook = uncaughtExceptionHook;
+      this.threadSequenceNum = 0;
+    }
+
+    public Thread newThreadWithName(Runnable runnable, String threadName) {
+      Utils.notNull(runnable);
+      Utils.notNull(threadName);
+      this.threadName = threadName;
+      return newThread(runnable);
+    }
+
+    @Override
+    public Thread newThread(Runnable runnable) {
+      Thread thread = new Thread(runnable, this.threadName + "-" + this.threadSequenceNum);
+      thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+        public void uncaughtException(Thread t, Throwable e) {
+          LOGGER.error("Thread " + t.getName() + " throws uncaught exception. ", e);
+          if (uncaughtExceptionHook != null) {
+            uncaughtExceptionHook.run();
+          }
+        }
+      });
+      thread.setDaemon(true);
+      this.threadSequenceNum++;
+      return thread;
+    }
+  }
+
+  /**
+   * This class encapsulates config entity information such as config name, default value, config document
+   * @param <T> Type of the default value to this config properties
+   */
+  public static class ConfigEntity<T> {
+    private final String configName;
+    private final T defaultValue;
+    private final String doc;
+
+    public ConfigEntity(@Nonnull String configName) {
+      this(configName, null, null);
+    }
+
+    public ConfigEntity(@Nonnull String configName, @Nullable T defaultValue) {
+      this(configName, defaultValue, null);
+    }
+
+    public ConfigEntity(@Nonnull String configName, @Nullable T defaultValue, @Nullable String doc) {
+      this.configName = stringNotNullNorEmpty(configName);
+      this.defaultValue = defaultValue;
+      this.doc = doc;
+    }
+
+    @Nonnull
+    public String getConfigName() {
+      return configName;
+    }
+
+    @Nullable
+    public T getDefaultValue() {
+      return defaultValue;
+    }
+
+    @Nullable
+    public String getDoc() {
+      return doc;
+    }
+  }
+
+  // TODO (lcli): Remove it when Java 9+ is used since Set.of is supported in Java 9+
   @SafeVarargs
   public static <T> Set<T> setOf(T... objs) {
     return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(objs)));

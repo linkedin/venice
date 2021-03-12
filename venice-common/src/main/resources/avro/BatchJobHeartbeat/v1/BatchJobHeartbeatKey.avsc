@@ -1,0 +1,18 @@
+{
+  "name": "BatchJobHeartbeatKey",
+  "namespace": "com.linkedin.venice.status.protocol",
+  "doc": "Key part of the heartbeat sent by a push job. Each key represents a session of heartbeats from one push job instance",
+  "type": "record",
+  "fields": [
+    {
+      "name": "storeName",
+      "doc": "Name of the store which the running push job instance is pushing data to",
+      "type": "string"
+    },
+    {
+      "name": "storeVersion",
+      "doc": "Version of the store which the running push job instance is pushing data to",
+      "type": "int"
+    }
+  ]
+}
