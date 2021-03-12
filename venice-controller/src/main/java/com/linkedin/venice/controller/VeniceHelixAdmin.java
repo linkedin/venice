@@ -1431,6 +1431,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         version.setPushType(pushType);
                         store.addVersion(version);
                     }
+                    //We set the version level LF config to true if this LF dependency check is disabled.
+                    //This should be applicable for parent controllers only.
+                    if (clusterConfig.isLfModelDependencyCheckDisabled()) {
+                        version.setLeaderFollowerModelEnabled(true);
+                    }
+
                     if (version.isLeaderFollowerModelEnabled()) {
                         isLeaderFollowerStateModel = true;
                     }

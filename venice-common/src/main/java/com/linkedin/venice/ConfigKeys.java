@@ -117,6 +117,13 @@ public class ConfigKeys {
   public static final String ENABLE_NATIVE_REPLICATION_FOR_HYBRID = "enable.native.replication.for.hybrid";
 
   /**
+   * Controller level config to disable the dependency that L/F mode must be enabled before turning on native replication.
+   * This may be set to TRUE in parent controller only, and must always be set to FALSE in child controller.
+   * Default value is FALSE.
+   */
+  public static final String LF_MODEL_DEPENDENCY_CHECK_DISABLED = "lf.model.dependency.check.disabled";
+
+  /**
    * Sets the default for whether or not leader follower is enabled or not for a hybrid store.
    */
   public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES =
