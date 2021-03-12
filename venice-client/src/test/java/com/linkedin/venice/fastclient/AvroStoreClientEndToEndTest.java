@@ -1,5 +1,9 @@
 package com.linkedin.venice.fastclient;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -70,6 +74,7 @@ public class AvroStoreClientEndToEndTest {
   private VeniceWriter<Object, Object, Object> veniceWriter;
   private Client r2Client;
   private VeniceProperties daVinciBackendConfig;
+  private D2Client d2Client;
 
   private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
   private static final String KEY_SCHEMA_STR = "\"string\"";
@@ -77,6 +82,8 @@ public class AvroStoreClientEndToEndTest {
   private static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"TestValueSchema\",\n" + "\"namespace\": \"com.linkedin.venice.fastclient.schema\",\n"
       + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
   private static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
+
+
   @DataProvider(name = "useDaVinciClientBasedMetadata", parallel = true)
   public static Object[][] useDaVinciClientBasedMetadata() {
     return new Object[][]{{false}, {true}};
@@ -91,6 +98,8 @@ public class AvroStoreClientEndToEndTest {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false);
 
     r2Client = ClientTestUtils.getR2Client();
+
+    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
 
     prepareData();
     prepareMetaSystemStore();
@@ -171,11 +180,30 @@ public class AvroStoreClientEndToEndTest {
     if (r2Client != null) {
       r2Client.shutdown(null);
     }
+    if (d2Client != null) {
+      try {
+        d2Client.shutdown(null);
+      } catch (Exception e) {
+        // Not sure why d2 shutdown could throw exception
+      }
+    }
   }
 
   // Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.
   private void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, Optional<RouterBasedStoreMetadata> metadata,
       boolean useDaVinciClientBasedMetadata) throws Exception {
+    DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
+    CachingDaVinciClientFactory daVinciClientFactory = null;
+    if (useDaVinciClientBasedMetadata) {
+      daVinciClientFactory = new CachingDaVinciClientFactory(d2Client,
+          new MetricsRepository(), daVinciBackendConfig);
+      daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
+          VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+          new DaVinciConfig(),
+          StoreMetaValue.class);
+    }
+
+
     // always specify a different MetricsRepository to avoid conflict.
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     // Test generic store client first
@@ -183,7 +211,7 @@ public class AvroStoreClientEndToEndTest {
     if (metadata.isPresent()) {
       genericFastClient = ClientFactory.getAndStartGenericStoreClient(metadata.get(), clientConfigBuilder.build());
     } else if (useDaVinciClientBasedMetadata){
-      clientConfigBuilder.setD2Client(D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress())); // Avoid d2 client conflict
+      clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
       genericFastClient = ClientFactory.getAndStartGenericStoreClient(clientConfigBuilder.build());
     } else {
       ClientConfig clientConfig = clientConfigBuilder.build();
@@ -203,7 +231,7 @@ public class AvroStoreClientEndToEndTest {
     if (metadata.isPresent()) {
       specificFastClient = ClientFactory.getAndStartSpecificStoreClient(metadata.get(), specificClientConfigBuilder.build());
     } else if (useDaVinciClientBasedMetadata){
-      specificClientConfigBuilder.setD2Client(D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress())); // Avoid d2 client conflict
+      clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
       specificFastClient = ClientFactory.getAndStartSpecificStoreClient(specificClientConfigBuilder.build());
     } else {
       ClientConfig clientConfig = specificClientConfigBuilder.build();
@@ -215,6 +243,12 @@ public class AvroStoreClientEndToEndTest {
       assertEquals(value.int_field, i);
     }
     specificFastClient.close();
+    if (daVinciClientForMetaStore != null) {
+      daVinciClientForMetaStore.close();
+    }
+    if (daVinciClientFactory != null) {
+      daVinciClientFactory.close();
+    }
   }
 
   @Test(timeOut = TIME_OUT)
@@ -251,9 +285,6 @@ public class AvroStoreClientEndToEndTest {
     clientConfigBuilder.setClusterName(veniceCluster.getClusterName());
 
     Optional<RouterBasedStoreMetadata> storeMetadata = Optional.empty();
-    if (useDaVinciClientBasedMetadata) {
-      clientConfigBuilder.setDaVinciBackendConfig(daVinciBackendConfig);
-    }
 
     runTest(clientConfigBuilder, storeMetadata, useDaVinciClientBasedMetadata);
   }

@@ -1,18 +1,17 @@
 package com.linkedin.venice.fastclient;
 
-import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.r2.transport.common.Client;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -20,7 +19,6 @@ import org.apache.avro.specific.SpecificRecord;
 
 
 public class ClientConfig<K, V, T extends SpecificRecord> {
-  private final MetricsRepository metricsRepository;
   private final Client r2Client;
   private final String statsPrefix;
   private final boolean speculativeQueryEnabled;
@@ -50,9 +48,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final String veniceZKAddress;
   private final String clusterName;
 
-  // For DaVinciClientBasedMetadata
-  private final VeniceProperties daVinciBackendConfig;
-  private final D2Client d2Client;
+  private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final long metadataRefreshInvervalInSeconds;
 
   private ClientConfig(String storeName,
@@ -72,8 +68,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       int routingPendingRequestCounterInstanceBlockThreshold,
       String veniceZKAddress,
       String clusterName,
-      VeniceProperties daVinciBackendConfig,
-      D2Client d2Client,
+      DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
       long metadataRefreshInvervalInSeconds) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
@@ -84,10 +79,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.r2Client = r2Client;
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
-    this.metricsRepository = (metricsRepository == null ? new MetricsRepository() : metricsRepository);
+    if (metricsRepository == null) {
+      metricsRepository = new MetricsRepository();
+    }
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with the same metricsRepository
     for (RequestType requestType : RequestType.values()) {
-      clientStatsMap.put(requestType, ClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
+      clientStatsMap.put(requestType, ClientStats.getClientStats(metricsRepository, this.statsPrefix, storeName, requestType));
     }
     this.clusterStats = new ClusterStats(metricsRepository, storeName);
     this.speculativeQueryEnabled = speculativeQueryEnabled;
@@ -114,28 +111,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.veniceZKAddress = veniceZKAddress;
     this.clusterName = clusterName;
-    if (daVinciBackendConfig != null) {
-      // User would like to use DaVinciClientBasedStoreMetadata, check the provided configs to fail fast if needed.
-      Map<String, String> metaSystemStoreVersionMap = daVinciBackendConfig.getMap(ConfigKeys.CLIENT_META_SYSTEM_STORE_VERSION_MAP, new HashMap<>());
-      if (metaSystemStoreVersionMap.isEmpty() || !metaSystemStoreVersionMap.containsKey(storeName)) {
-        throw new VeniceClientException("The current version for corresponding Meta store for store: " + storeName + " is required by the config: "
-            + ConfigKeys.CLIENT_META_SYSTEM_STORE_VERSION_MAP);
-      }
-      if (d2Client == null) {
-        throw new VeniceClientException("d2Client is required for DaVinciClientBasedStoreMetadata in fast client");
-      }
-    }
-    this.daVinciBackendConfig = daVinciBackendConfig;
-    this.d2Client = d2Client;
+    this.daVinciClientForMetaStore = daVinciClientForMetaStore;
     this.metadataRefreshInvervalInSeconds = metadataRefreshInvervalInSeconds;
   }
 
   public String getStoreName() {
     return storeName;
-  }
-
-  public MetricsRepository getMetricsRepository() {
-    return metricsRepository;
   }
 
   public Client getR2Client() {
@@ -202,12 +183,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return clusterName;
   }
 
-  public VeniceProperties getDaVinciBackendConfig() {
-    return daVinciBackendConfig;
-  }
-
-  public D2Client getD2Client() {
-    return d2Client;
+  public DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore() {
+    return daVinciClientForMetaStore;
   }
 
   public long getMetadataRefreshInvervalInSeconds() {
@@ -236,8 +213,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private String veniceZKAddress;
     private String clusterName;
 
-    private VeniceProperties daVinciBackendConfig;
-    private D2Client d2Client;
+    private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
+
     private long metadataRefreshInvervalInSeconds = -1;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
@@ -326,13 +303,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setDaVinciBackendConfig(VeniceProperties daVinciBackendConfig) {
-      this.daVinciBackendConfig = daVinciBackendConfig;
-      return this;
-    }
-
-    public ClientConfigBuilder<K, V, T> setD2Client(D2Client d2Client) {
-      this.d2Client = d2Client;
+    public ClientConfigBuilder<K, V, T> setDaVinciClientForMetaStore(DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore) {
+      this.daVinciClientForMetaStore = daVinciClientForMetaStore;
       return this;
     }
 
@@ -360,8 +332,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
           .setVeniceZKAddress(veniceZKAddress)
           .setClusterName(clusterName)
-          .setDaVinciBackendConfig(daVinciBackendConfig)
-          .setD2Client(d2Client)
+          .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
           .setMetadataRefreshInvervalInSeconds(metadataRefreshInvervalInSeconds);
     }
 
@@ -383,8 +354,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingPendingRequestCounterInstanceBlockThreshold,
           veniceZKAddress,
           clusterName,
-          daVinciBackendConfig,
-          d2Client,
+          daVinciClientForMetaStore,
           metadataRefreshInvervalInSeconds);
     }
   }

@@ -1,5 +1,9 @@
 package com.linkedin.venice.fastclient.meta;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -18,6 +22,8 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -54,11 +60,15 @@ public class DaVinciClientBasedMetadataTest {
   private DaVinciClientBasedMetadata daVinciClientBasedMetadata;
   private RecordSerializer<Object> keySerializer;
   private Client r2Client;
+  private D2Client d2Client;
+  private CachingDaVinciClientFactory daVinciClientFactory;
+  private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
 
   @BeforeClass
   public void setup() throws Exception {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false);
     r2Client = ClientTestUtils.getR2Client();
+    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
     storeName = veniceCluster.createStore(KEY_COUNT);
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     veniceCluster.useControllerClient(controllerClient -> {
@@ -75,6 +85,13 @@ public class DaVinciClientBasedMetadataTest {
           .put(CLIENT_META_SYSTEM_STORE_VERSION_MAP, storeName + ":" + metaSystemStoreVersionCreationResponse.getVersion())
           .build();
     });
+
+    daVinciClientFactory = new CachingDaVinciClientFactory(d2Client,
+        new MetricsRepository(), daVinciBackendConfig);
+    daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
+        VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+        new DaVinciConfig(),
+        StoreMetaValue.class);
     keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(parser.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
 
     // Populate required ClientConfig fields for initializing DaVinciClientBasedMetadata
@@ -85,8 +102,7 @@ public class DaVinciClientBasedMetadataTest {
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setVeniceZKAddress(veniceCluster.getZk().getAddress());
     clientConfigBuilder.setClusterName(veniceCluster.getClusterName());
-    clientConfigBuilder.setDaVinciBackendConfig(daVinciBackendConfig);
-    clientConfigBuilder.setD2Client(D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress()));
+    clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
     clientConfigBuilder.setMetadataRefreshInvervalInSeconds(1); // Faster refreshes for faster tests
     daVinciClientBasedMetadata = new DaVinciClientBasedMetadata(clientConfigBuilder.build());
     daVinciClientBasedMetadata.start();
@@ -150,6 +166,19 @@ public class DaVinciClientBasedMetadataTest {
     IOUtils.closeQuietly(veniceCluster);
     if (r2Client != null) {
       r2Client.shutdown(null);
+    }
+    if (d2Client != null) {
+      try {
+        d2Client.shutdown(null);
+      } catch (Exception e) {
+        // Not sure why d2 shutdown could throw exception
+      }
+    }
+    if (daVinciClientForMetaStore != null) {
+      daVinciClientForMetaStore.close();
+    }
+    if (daVinciClientFactory != null) {
+      daVinciClientFactory.close();
     }
   }
 
