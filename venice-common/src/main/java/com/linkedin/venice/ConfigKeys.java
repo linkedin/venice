@@ -1417,6 +1417,11 @@ public class ConfigKeys {
    */
   public static final String PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS = "push.status.store.heartbeat.expiration.seconds";
 
+  /**
+   * Derived schemaId for push status store write compute.
+   */
+  public static final String PUSH_STATUS_STORE_DERIVED_SCHEMA_ID = "push.status.store.derived.schema.id";
+
   /*
    * Temporary config to specify the version number of the corresponding metadata system store. This config will retire
    * once multi-versioned metadata system store is properly supported. Setting the config will enable DaVinci to

@@ -4539,11 +4539,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (isResourceStillAlive(clusterName, metadataVTName)) {
             logger.info("Metadata system store version: " + metadataVTName + " already exists will just rewrite metadata to RT");
         } else {
-            // Write null to the participant store for a clean slate in case this version was materialized previously.
-            ParticipantMessageKey key = new ParticipantMessageKey();
-            key.resourceName = metadataVTName;
-            key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
-            getParticipantStoreWriter(clusterName).delete(key, null);
+            if (participantMessageStoreRTTMap.containsKey(clusterName)) {
+                // Write null to the participant store for a clean slate in case this version was materialized previously.
+                ParticipantMessageKey key = new ParticipantMessageKey();
+                key.resourceName = metadataVTName;
+                key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
+                getParticipantStoreWriter(clusterName).delete(key, null);
+            }
             createSystemStoreResources(clusterName, storeName, metadataStoreVersionNumber, zkSharedStoreMetadata,
                 VeniceSystemStoreType.METADATA_STORE);
             writeEndOfPush(clusterName, metadataStoreName, metadataStoreVersionNumber, true);

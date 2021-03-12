@@ -528,6 +528,7 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
     store.setStoreMetadataSystemStoreEnabled(true);
     store.setStorageQuotaInByte(storeProperties.storageQuotaInByte);
     store.setWriteComputationEnabled(storeProperties.writeComputationEnabled);
+    store.setDaVinciPushStatusStoreEnabled(storeProperties.daVinciPushStatusStoreEnabled);
 
     return store;
   }
