@@ -162,7 +162,6 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
           accessor.unsubscribeStoreConfigDataChangedListener(deletedStore, storeConfigChangedListener);
         }
         storeConfigMap.set(map);
-        logger.info("Store configs map is updated.");
       }
     }
   }
@@ -177,13 +176,11 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
             "Invalid data from zk notification. Required: StoreConfig, but get: " + data.getClass().getName());
       }
       StoreConfig config = (StoreConfig) data;
-      logger.info("Store config is changed in ZK, store: "+config.getCluster());
       synchronized (storeConfigMap) {
         Map<String, StoreConfig> map = new HashMap<>(storeConfigMap.get());
         map.put(config.getStoreName(), config);
         storeConfigMap.set(map);
       }
-      logger.info("Updated store config locally, store: " + config.getStoreName());
     }
 
     @Override

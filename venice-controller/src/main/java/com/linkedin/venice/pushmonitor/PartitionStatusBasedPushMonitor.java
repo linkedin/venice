@@ -39,8 +39,6 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       }
 
       super.onPartitionStatusChange(offlinePushStatus);
-    } else {
-      logger.info("Received partition status changed notification for topic: " + kafkaTopic + " unknown to RoutingDataRepository");
     }
   }
 
