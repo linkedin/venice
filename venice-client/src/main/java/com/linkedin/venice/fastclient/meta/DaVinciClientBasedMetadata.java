@@ -1,17 +1,13 @@
 package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
@@ -29,7 +25,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -60,7 +55,6 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   private static final long INITIAL_UPDATE_CACHE_TIMEOUT_IN_SECONDS = 30;
   private static final long RETRY_WAIT_TIME_IN_MS = 1000;
 
-  private final CachingDaVinciClientFactory daVinciClientFactory;
   private final String clusterName;
   private final long refreshIntervalInSeconds;
   private final Map<String, StoreMetaKey> storeMetaKeyMap = new VeniceConcurrentHashMap<>();
@@ -82,26 +76,27 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
 
   public DaVinciClientBasedMetadata(ClientConfig clientConfig) {
     super(clientConfig);
-    daVinciClientFactory = new CachingDaVinciClientFactory(clientConfig.getD2Client(),
-        Optional.ofNullable(clientConfig.getMetricsRepository()).orElse(TehutiUtils.getMetricsRepository("davinci-client")),
-        clientConfig.getDaVinciBackendConfig());
-    clusterName = clientConfig.getClusterName();
-    refreshIntervalInSeconds = clientConfig.getMetadataRefreshInvervalInSeconds() > 0 ?
+    this.clusterName = clientConfig.getClusterName();
+    if (null == clientConfig.getDaVinciClientForMetaStore()) {
+      throw new VeniceClientException("'DaVinciClientForMetaStore' should not be null in 'ClientConfig' when DaVinciClientBasedMetadata is being used.");
+    }
+    this.daVinciClient = clientConfig.getDaVinciClientForMetaStore();
+    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshInvervalInSeconds() > 0 ?
         clientConfig.getMetadataRefreshInvervalInSeconds() : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
-    storeMetaKeyMap.put(
+    this.storeMetaKeyMap.put(
         STORE_PROPERTIES_KEY,
         MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
           put(KEY_STRING_STORE_NAME, storeName);
           put(KEY_STRING_CLUSTER_NAME, clusterName);
         }})
     );
-    storeMetaKeyMap.put(
+    this.storeMetaKeyMap.put(
         STORE_KEY_SCHEMAS_KEY,
         MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
           put(KEY_STRING_STORE_NAME, storeName);
         }})
     );
-    storeMetaKeyMap.put(
+    this.storeMetaKeyMap.put(
         STORE_VALUE_SCHEMAS_KEY,
         MetaStoreDataType.STORE_VALUE_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
           put(KEY_STRING_STORE_NAME, storeName);
@@ -131,10 +126,6 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public void start() {
-    daVinciClient = daVinciClientFactory.getAndStartSpecificAvroClient(
-        VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
-        new DaVinciConfig(),
-        StoreMetaValue.class);
     try {
       daVinciClient.subscribeAll().get();
     } catch (InterruptedException | ExecutionException e) {
@@ -301,7 +292,6 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
-    daVinciClientFactory.close();
     readyToServeInstancesMap.clear();
     versionPartitionerMap.clear();
     versionPartitionCountMap.clear();
