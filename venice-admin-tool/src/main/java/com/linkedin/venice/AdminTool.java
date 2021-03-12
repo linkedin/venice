@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
@@ -1551,13 +1552,27 @@ public class AdminTool {
   private static void verifyStoreExistence(String storename, boolean desiredExistence) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storename);
     String zkStoreName = storename;
+    ControllerClient queryingControllerClient = controllerClient;
     if (systemStoreType != null && systemStoreType.isStoreZkShared()) {
       if (!desiredExistence) {
         throw new UnsupportedOperationException("This method should not be used to verify if a zk shared system store doesn't exist");
       }
       zkStoreName = systemStoreType.getZkSharedStoreNameInCluster(controllerClient.getClusterName());
+      if (systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+        /**
+         * The ZK shared schema store only exists in system schema store cluster, which might be different
+         * from the customer's store.
+         */
+        D2ServiceDiscoveryResponse discoveryResponse = controllerClient.discoverCluster(zkStoreName);
+        if (discoveryResponse.isError()) {
+          throw new VeniceException("Failed to discover cluster for store: " + zkStoreName);
+        }
+        String systemStoreCluster = discoveryResponse.getCluster();
+        queryingControllerClient = new ControllerClient(systemStoreCluster,
+            controllerClient.getControllerDiscoveryUrls().iterator().next(), sslFactory);
+      }
     }
-    MultiStoreResponse storeResponse = controllerClient.queryStoreList(true);
+    MultiStoreResponse storeResponse = queryingControllerClient.queryStoreList(true);
     if (storeResponse.isError()){
       throw new VeniceException("Error verifying store exists: " + storeResponse.getError());
     }
