@@ -50,6 +50,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import io.netty.util.concurrent.SingleThreadEventExecutor;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Collections;
@@ -59,6 +60,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -85,6 +87,7 @@ public class DaVinciBackend implements Closeable {
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
   private final StorageMetadataService storageMetadataService;
   private final PushStatusStoreWriter pushStatusStoreWriter;
+  private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
 
   private IngestionRequestClient ingestionRequestClient;
   private IngestionReportListener ingestionReportListener;
@@ -319,6 +322,15 @@ public class DaVinciBackend implements Closeable {
       currentThread().interrupt();
     }
 
+    ingestionReportExecutor.shutdown();
+    try {
+      if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
+        executor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      currentThread().interrupt();
+    }
+
     try {
       if (ingestionReportListener != null) {
         ingestionReportListener.stopInner();
@@ -471,65 +483,81 @@ public class DaVinciBackend implements Closeable {
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset, String message) {
-      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-      if (versionBackend != null) {
-        versionBackend.completeSubPartition(partitionId);
-        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
-      }
+      ingestionReportExecutor.submit(() -> {
+        VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+        if (versionBackend != null) {
+          versionBackend.completeSubPartition(partitionId);
+          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
+        }
+      });
     }
 
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
-      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-      if (versionBackend != null) {
-        versionBackend.completeSubPartitionExceptionally(partitionId, e);
-        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
-      }
+      ingestionReportExecutor.submit(() -> {
+        VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+        if (versionBackend != null) {
+          versionBackend.completeSubPartitionExceptionally(partitionId, e);
+          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
+        }
+      });
     }
 
     @Override
     public void started(String kafkaTopic, int partitionId, String message) {
-      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-      if (versionBackend != null) {
-        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.STARTED, Optional.empty());
-        versionBackend.tryStartHeartbeat();
-      }
+      ingestionReportExecutor.submit(() -> {
+        VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+        if (versionBackend != null) {
+          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.STARTED, Optional.empty());
+          versionBackend.tryStartHeartbeat();
+        }
+      });
     }
 
     @Override
     public void restarted(String kafkaTopic, int partitionId, long offset, String message) {
-      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-      if (versionBackend != null) {
-        versionBackend.tryStartHeartbeat();
-      }
+      ingestionReportExecutor.submit(() -> {
+        VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+        if (versionBackend != null) {
+          versionBackend.tryStartHeartbeat();
+        }
+      });
     }
 
     @Override
     public void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED);
+      ingestionReportExecutor.submit(() -> {
+        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_PUSH_RECEIVED);
+      });
     }
 
     @Override
     public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED);
+      ingestionReportExecutor.submit(() -> {
+        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED);
+      });
     }
 
     @Override
     public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
-      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-      if (versionBackend != null) {
-        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(incrementalPushVersion));
-        versionBackend.tryStartHeartbeat();
-      }
+      ingestionReportExecutor.submit(() -> {
+        VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+        if (versionBackend != null) {
+          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(incrementalPushVersion));
+          versionBackend.tryStartHeartbeat();
+        }
+      });
     }
 
     @Override
     public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
-      VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-      if (versionBackend != null) {
-        versionBackend.tryStopHeartbeat();
-        reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(incrementalPushVersion));
-      }
+      ingestionReportExecutor.submit(() -> {
+        VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
+        if (versionBackend != null) {
+          versionBackend.tryStopHeartbeat();
+          reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(incrementalPushVersion));
+        }
+      });
     }
   };
 }
