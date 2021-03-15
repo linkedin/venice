@@ -61,6 +61,8 @@ CODE_GEN_PATH=(
   "venice-common/src/main/java"
   "venice-common/src/main/java"
   "venice-common/src/main/java"
+  "venice-common/src/main/java"
+  "venice-common/src/main/java"
 )
 FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[0]}/com/linkedin/venice/kafka/protocol/*.java"
@@ -86,6 +88,8 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[20]}/com/linkedin/venice/meta/systemstore/schemas/*.java"
   "${CODE_GEN_PATH[21]}/com/linkedin/venice/systemstore/schemas/*.java"
   "${CODE_GEN_PATH[22]}/com/linkedin/venice/systemstore/schemas/*.java"
+  "${CODE_GEN_PATH[23]}/com/linkedin/venice/pushstatus/*.java"
+  "${CODE_GEN_PATH[24]}/com/linkedin/venice/pushstatus/*.java"
 )
 
 if [[ $# < 1 ]]; then
