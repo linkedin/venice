@@ -31,9 +31,11 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/StreamingFooterRecord/*"
   "venice-common/src/main/resources/avro/PushJobDetails/v2/*"
   "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataKey/*"
-  "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataValue/v1/*"
+  "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataValue/v2/*"
   "venice-common/src/main/resources/avro/StoreMeta/StoreMetaKey/*"
   "venice-common/src/main/resources/avro/StoreMeta/StoreMetaValue/v1/*"
+  "venice-common/src/main/resources/avro/PushStatus/PushStatusKey/v1/*"
+  "venice-common/src/main/resources/avro/PushStatus/PushStatusValue/v1/*"
 )
 CODE_GEN_PATH=(
   "venice-common/src/main/java"
