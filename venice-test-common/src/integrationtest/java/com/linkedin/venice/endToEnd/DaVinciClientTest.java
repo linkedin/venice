@@ -77,6 +77,7 @@ public class DaVinciClientTest {
   private static final int TEST_TIMEOUT = 60_000; // ms
 
   private VeniceClusterWrapper cluster;
+  private D2Client d2Client;
 
   @BeforeClass
   public void setup() {
@@ -85,10 +86,19 @@ public class DaVinciClientTest {
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
         100, false, false, clusterConfig);
+    d2Client = new D2ClientBuilder()
+        .setZkHosts(cluster.getZk().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client);
   }
 
   @AfterClass
   public void cleanup() {
+    if (d2Client != null) {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
     IOUtils.closeQuietly(cluster);
   }
 
@@ -113,16 +123,10 @@ public class DaVinciClientTest {
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .build();
 
-    D2Client d2Client1 = new D2ClientBuilder()
-            .setZkHosts(cluster.getZk().getAddress())
-            .setZkSessionTimeout(3, TimeUnit.SECONDS)
-            .setZkStartupTimeout(3, TimeUnit.SECONDS)
-            .build();
-    D2ClientUtils.startClient(d2Client1);
     MetricsRepository metricsRepository = new MetricsRepository();
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client1, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
 
       // Test non-existent key access
@@ -181,15 +185,8 @@ public class DaVinciClientTest {
     }
 
     // Test managed clients & data cleanup
-    D2Client d2Client2 = new D2ClientBuilder()
-            .setZkHosts(cluster.getZk().getAddress())
-            .setZkSessionTimeout(3, TimeUnit.SECONDS)
-            .setZkStartupTimeout(3, TimeUnit.SECONDS)
-            .build();
-    D2ClientUtils.startClient(d2Client2);
-
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
-        d2Client2, new MetricsRepository(), backendConfig, Optional.of(Collections.singleton(storeName1)))) {
+        d2Client, new MetricsRepository(), backendConfig, Optional.of(Collections.singleton(storeName1)))) {
       assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
       client1.subscribeAll().get();
@@ -215,13 +212,6 @@ public class DaVinciClientTest {
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
-
-    D2Client d2Client = new D2ClientBuilder()
-        .setZkHosts(cluster.getZk().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
@@ -261,6 +251,8 @@ public class DaVinciClientTest {
         assertEquals(result, pushVersion);
       }
       client.unsubscribeAll();
+    } finally {
+      D2ClientUtils.shutdownClient(d2Client);
     }
   }
 
@@ -279,13 +271,6 @@ public class DaVinciClientTest {
                     Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
                 );
     setupHybridStore(storeName, paramsConsumer, 1000);
-
-    D2Client d2Client = new D2ClientBuilder()
-            .setZkHosts(cluster.getZk().getAddress())
-            .setZkSessionTimeout(3, TimeUnit.SECONDS)
-            .setZkStartupTimeout(3, TimeUnit.SECONDS)
-            .build();
-    D2ClientUtils.startClient(d2Client);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
@@ -321,12 +306,6 @@ public class DaVinciClientTest {
       });
     }
     // Restart Da Vinci client to test bootstrap logic.
-    d2Client = new D2ClientBuilder()
-        .setZkHosts(cluster.getZk().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
     metricsRepository = new MetricsRepository();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
@@ -373,12 +352,6 @@ public class DaVinciClientTest {
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .build();
 
-    D2Client d2Client = new D2ClientBuilder()
-            .setZkHosts(cluster.getZk().getAddress())
-            .setZkSessionTimeout(3, TimeUnit.SECONDS)
-            .setZkStartupTimeout(3, TimeUnit.SECONDS)
-            .build();
-    D2ClientUtils.startClient(d2Client);
     MetricsRepository metricsRepository = new MetricsRepository();
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
@@ -587,13 +560,6 @@ public class DaVinciClientTest {
             .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .build();
-
-    D2Client d2Client = new D2ClientBuilder()
-            .setZkHosts(cluster.getZk().getAddress())
-            .setZkSessionTimeout(3, TimeUnit.SECONDS)
-            .setZkStartupTimeout(3, TimeUnit.SECONDS)
-            .build();
-    D2ClientUtils.startClient(d2Client);
     MetricsRepository metricsRepository = new MetricsRepository();
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
@@ -614,7 +580,6 @@ public class DaVinciClientTest {
     // Enable ingestion isolation since it's more likely for the race condition to occur and make sure the future is
     // only completed when the main process's ingestion task is subscribed to avoid deadlock.
     String storeName = cluster.createStore(KEY_COUNT);
-    D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
     VeniceProperties backendConfig = new PropertyBuilder()
@@ -627,7 +592,7 @@ public class DaVinciClientTest {
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, new MetricsRepository(), backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       client.subscribeAll().get();
       client.unsubscribeAll();
@@ -639,7 +604,6 @@ public class DaVinciClientTest {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing and before the
     // the future is complete. The future should also return exceptionally.
     String storeName = cluster.createStore(10000); // A large amount of keys to give window for potential race conditions
-    D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
     int applicationListenerPort = Utils.getFreePort();
     int servicePort = Utils.getFreePort();
     VeniceProperties backendConfig = new PropertyBuilder()
@@ -652,7 +616,7 @@ public class DaVinciClientTest {
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024); // 1GB
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, new MetricsRepository(), backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       CompletableFuture future = client.subscribeAll();
       client.unsubscribeAll();
@@ -680,13 +644,6 @@ public class DaVinciClientTest {
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
-
-    D2Client d2Client = new D2ClientBuilder()
-        .setZkHosts(cluster.getZk().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
 
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     int applicationListenerPort = Utils.getFreePort();
@@ -761,13 +718,7 @@ public class DaVinciClientTest {
      *
      * da-vinci client restart is done by building a new factory and a new client
      */
-    D2Client d2Client2 = new D2ClientBuilder()
-        .setZkHosts(cluster.getZk().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client2);
-    CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(d2Client2, new MetricsRepository(), backendConfig);
+    CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig);
     DaVinciClient<Integer, Integer> client2 = factory2.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
     client2.subscribeAll().get();
     for (int i = 0; i < KEY_COUNT; i++) {

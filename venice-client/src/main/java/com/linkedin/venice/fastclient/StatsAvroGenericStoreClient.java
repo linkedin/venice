@@ -39,6 +39,11 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     CompletableFuture<V> statFuture = innerFuture.handle(
         (BiFunction<? super V, Throwable, ? extends V>) getStatCallback(clientStatsForSingleGet, startTimeInNS))
         .handle( (value, throwable) -> {
+          // Record additional metrics
+          if (requestContext.noAvailableReplica) {
+            clientStatsForSingleGet.recordNoAvailableReplicaRequest();
+          }
+
           if (throwable != null) {
             if (throwable instanceof VeniceClientException) {
               throw (VeniceClientException)throwable;
@@ -47,9 +52,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
             }
           }
           // Record additional metrics
-          if (requestContext.noAvailableReplica) {
-            clientStatsForSingleGet.recordNoAvailableReplicaRequest();
-          }
           if (requestContext.requestSerializationTime > 0) {
             clientStatsForSingleGet.recordRequestSerializationTime(requestContext.requestSerializationTime);
           }

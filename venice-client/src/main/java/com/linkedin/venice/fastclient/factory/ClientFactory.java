@@ -11,7 +11,6 @@ import com.linkedin.venice.fastclient.DualReadAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.DaVinciClientBasedMetadata;
-import com.linkedin.venice.fastclient.meta.HelixBasedStoreMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -40,21 +39,25 @@ public class ClientFactory {
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(StoreMetadata storeMetadata, ClientConfig clientConfig) {
     DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
     StatsAvroGenericStoreClient<K, V> statsStoreClient = new StatsAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig);
+
+    AvroGenericStoreClient<K, V> returningClient = statsStoreClient;
     if (clientConfig.isDualReadEnabled()) {
-      return new DualReadAvroGenericStoreClient<>(statsStoreClient, clientConfig);
+      returningClient = new DualReadAvroGenericStoreClient<>(statsStoreClient, clientConfig);
     }
-    statsStoreClient.start();
-    return statsStoreClient;
+    returningClient.start();
+    return returningClient;
   }
 
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(StoreMetadata storeMetadata,  ClientConfig clientConfig) {
     DispatchingAvroSpecificStoreClient<K, V> dispatchingStoreClient = new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
     StatsAvroSpecificStoreClient<K, V>
         statsStoreClient = new StatsAvroSpecificStoreClient<>(dispatchingStoreClient, clientConfig);
+
+    AvroSpecificStoreClient<K, V> returningClient = statsStoreClient;
     if (clientConfig.isDualReadEnabled()) {
-      return new DualReadAvroSpecificStoreClient<>(statsStoreClient, clientConfig);
+      returningClient = new DualReadAvroSpecificStoreClient<>(statsStoreClient, clientConfig);
     }
-    statsStoreClient.start();
-    return statsStoreClient;
+    returningClient.start();
+    return returningClient;
   }
 }

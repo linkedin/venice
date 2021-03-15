@@ -281,6 +281,8 @@ public class  TestPushJobWithNativeReplication {
               String actual = client.get(Integer.toString(i)).get().toString();
               Assert.assertEquals(actual, expected);
             }
+          } finally {
+            D2ClientUtils.shutdownClient(d2Client);
           }
         });
   }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -61,7 +62,7 @@ public class ClusterStats extends AbstractVeniceStats {
     private final Sensor pendingRequestCounterSensor;
 
     public RouteStats(MetricsRepository metricsRepository, String storeName, String instanceName) {
-      super(metricsRepository, storeName + "." + instanceName);
+      super(metricsRepository, storeName + "." + StatsUtils.convertHostnameToMetricName(instanceName));
 
       this.pendingRequestCounterSensor = registerSensor("pending_request_count", new Avg(), new Max());
     }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.AdminTool;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -100,6 +101,9 @@ public class DaVinciClusterAgnosticTest {
 
   @AfterClass
   public void cleanup() {
+    if (d2Client != null) {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
     parentController.close();
     multiClusterVenice.close();
     zkServer.close();
@@ -182,6 +186,8 @@ public class DaVinciClusterAgnosticTest {
           assertEquals(clients.get(migrateStoreIndex).get(k).get(), newMigratedStoreValue);
         }
       });
+    } finally {
+      D2ClientUtils.shutdownClient(daVinciD2);
     }
   }
 

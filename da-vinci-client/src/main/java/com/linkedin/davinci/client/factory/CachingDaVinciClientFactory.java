@@ -66,7 +66,6 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
         logger.error("Unable to close a client, storeName=" + client.getStoreName(), e);
       }
     }
-    D2ClientUtils.shutdownClient(d2Client);
     cachedClients.clear();
     isolatedClients.clear();
     configs.clear();
