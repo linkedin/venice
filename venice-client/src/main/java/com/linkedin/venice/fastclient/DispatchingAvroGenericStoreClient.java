@@ -102,20 +102,20 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     int currentVersion = requestContext.currentVersion;
     int partitionId = requestContext.partitionId;
 
+    CompletableFuture<V> valueFuture = new CompletableFuture<>();
     long timestampBeforeSendingRequest = System.nanoTime();
     List<String> replicas = metadata.getReplicas(requestContext.requestId, currentVersion, partitionId, requiredReplicaCount);
     if (replicas.isEmpty()) {
       requestContext.noAvailableReplica = true;
-      throw new VeniceClientException("No available replica for store: " + getStoreName() + ", version: "
-          + currentVersion + ", partition: " + partitionId);
+      valueFuture.completeExceptionally(new VeniceClientException("No available replica for store: " + getStoreName() + ", version: "
+          + currentVersion + ", partition: " + partitionId));
+      return valueFuture;
     }
 
     /**
      * This atomic variable is used to indicate whether a faster response has returned or not.
      */
     AtomicBoolean receivedSuccessfulResponse = new AtomicBoolean(false);
-    CompletableFuture<V> valueFuture = new CompletableFuture<>();
-
     List<CompletableFuture<TransportClientResponse>> transportFutures = new LinkedList<>();
     requestContext.requestSentTimestampNS = System.nanoTime();
     for (String replica : replicas) {

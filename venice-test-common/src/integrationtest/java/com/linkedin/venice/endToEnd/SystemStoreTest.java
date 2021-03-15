@@ -5,6 +5,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.repository.NativeMetadataRepository;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -92,6 +93,7 @@ public class SystemStoreTest {
   private String clusterName;
   private String zkSharedStoreName;
   private int metadataStoreVersionNumber;
+  private D2Client d2Client;
 
   @BeforeClass
   public void setup() {
@@ -108,7 +110,7 @@ public class SystemStoreTest {
         100000, false, false, controllerConfig);
     clusterName = venice.getClusterName();
     zkSharedStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName);
-    D2Client d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+    d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
     serverFeatureProperties.put(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
         .setD2Client(d2Client));
@@ -142,6 +144,9 @@ public class SystemStoreTest {
     IOUtils.closeQuietly(controllerClient);
     IOUtils.closeQuietly(parentControllerClient);
     IOUtils.closeQuietly(parentController);
+    if (d2Client != null) {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
     IOUtils.closeQuietly(venice);
   }
 
@@ -286,10 +291,9 @@ public class SystemStoreTest {
     venice.refreshAllRouterMetaData();
 
     // Create a base client config for metadata store repository.
-    D2Client testMetadataStoreD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
     ClientConfig<StoreMetadataValue> clientConfig = ClientConfig.defaultSpecificClientConfig(regularVeniceStoreName,
         StoreMetadataValue.class).setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
-        .setD2Client(testMetadataStoreD2Client).setVeniceURL(venice.getZk().getAddress());
+        .setD2Client(d2Client).setVeniceURL(venice.getZk().getAddress());
     // Create MetadataStoreBasedStoreRepository
     NativeMetadataRepository storeRepository = NativeMetadataRepository.getInstance(clientConfig, new VeniceProperties());
     // Create test listener to monitor store repository changes.
@@ -452,8 +456,7 @@ public class SystemStoreTest {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     long memoryLimit = 1024 * 1024 * 1024; // 1GB
     daVinciConfig.setMemoryLimit(memoryLimit);
-    D2Client daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
       assertEquals(client.get("testKey").get().toString(), expectedValueRecord.toString());
@@ -480,8 +483,7 @@ public class SystemStoreTest {
      *       {@link CachingDaVinciClientFactory} it was passed into. We also cannot reuse the factory, since it
      *       needs to be created with different properties.
      */
-    daVinciD2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2Client, metricsRepository, backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();
       assertEquals(client.get("testKey").get().toString(), expectedValueRecord.toString());
@@ -528,8 +530,7 @@ public class SystemStoreTest {
         .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(1024 * 1024 * 1024);
-    D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2, new MetricsRepository(), backendConfig)) {
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(regularVeniceStore, daVinciConfig);
       client.subscribeAll().get();
       for (int k = 0; k < keyCount; k++) {

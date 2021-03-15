@@ -5,6 +5,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.common.Client;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
@@ -163,16 +164,8 @@ public class DaVinciClientBasedMetadataTest {
   @AfterClass
   public void cleanUp() {
     IOUtils.closeQuietly(daVinciClientBasedMetadata);
-    IOUtils.closeQuietly(veniceCluster);
-    if (r2Client != null) {
-      r2Client.shutdown(null);
-    }
     if (d2Client != null) {
-      try {
-        d2Client.shutdown(null);
-      } catch (Exception e) {
-        // Not sure why d2 shutdown could throw exception
-      }
+      D2ClientUtils.shutdownClient(d2Client);
     }
     if (daVinciClientForMetaStore != null) {
       daVinciClientForMetaStore.close();
@@ -180,6 +173,10 @@ public class DaVinciClientBasedMetadataTest {
     if (daVinciClientFactory != null) {
       daVinciClientFactory.close();
     }
+    if (r2Client != null) {
+      r2Client.shutdown(null);
+    }
+    IOUtils.closeQuietly(veniceCluster);
   }
 
 }

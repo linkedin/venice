@@ -120,6 +120,7 @@ public abstract class HelixBaseRoutingRepository
     manager.removeListener(keyBuilder.idealStates(), this);
     if (routingTableProvider != null) {
       routingTableProvider.removeRoutingTableChangeListener(this);
+      routingTableProvider.shutdown();
     }
   }
 
