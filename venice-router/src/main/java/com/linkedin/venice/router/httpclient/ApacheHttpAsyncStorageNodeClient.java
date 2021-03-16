@@ -47,7 +47,6 @@ import org.apache.http.nio.protocol.BasicAsyncResponseConsumer;
 import org.apache.http.nio.protocol.HttpAsyncRequestProducer;
 import org.apache.http.nio.protocol.HttpAsyncResponseConsumer;
 import org.apache.http.pool.PoolStats;
-import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.log4j.Logger;
 
@@ -123,6 +122,18 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
         clientPool.add(createAndStartNewClient().getClient());
       }
     }
+  }
+
+  public CloseableHttpAsyncClient getHttpClientForHost(String host) {
+    if (perNodeClientEnabled) {
+      if (nodeIdToClientMap.containsKey(host)) {
+        return nodeIdToClientMap.get(host).getClient();
+      } else {
+        return null;
+      }
+    }
+    int selectedClientId = Math.abs(random.nextInt() % clientPool.size());
+    return clientPool.get(selectedClientId);
   }
 
   public long getPoolStatsPendingConnection(String hostname) {

@@ -5,17 +5,19 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.VeniceRouterConfig;
-import com.linkedin.venice.router.httpclient.HttpClientUtils;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.http.HttpResponse;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.log4j.Logger;
@@ -25,7 +27,6 @@ import static org.apache.http.HttpStatus.*;
 
 public class RouterHeartbeat extends AbstractVeniceService {
   private final Thread heartBeatThread;
-  private final CloseableHttpAsyncClient httpClient;
   private static final Logger logger = Logger.getLogger(RouterHeartbeat.class);
 
   /**
@@ -36,26 +37,18 @@ public class RouterHeartbeat extends AbstractVeniceService {
    * @param sslFactory if provided, the heartbeat will attempt to use ssl when checking the status of the storage nodes
    */
   public RouterHeartbeat(LiveInstanceMonitor monitor, VeniceHostHealth health,
-      VeniceRouterConfig routerConfig, Optional<SSLEngineComponentFactory> sslFactory){
-    int maxConnectionsPerRoute = 2;
-    int maxConnections = 100;
+      VeniceRouterConfig routerConfig, Optional<SSLEngineComponentFactory> sslFactory, StorageNodeClient storageNodeClient) {
+    boolean isPooled;
+    final Random random = new Random();
 
     // How long of a timeout we allow for a node to respond to a heartbeat request
-    double heartbeatTimeoutMillis = routerConfig.getHeartbeatTimeoutMs();
+    int heartbeatTimeoutMillis = (int)routerConfig.getHeartbeatTimeoutMs();
     long heartbeatCycleMillis = routerConfig.getHeartbeatCycleMs();
+    RequestConfig requestConfig = RequestConfig.custom()
+        .setConnectTimeout(heartbeatTimeoutMillis)
+        .setConnectionRequestTimeout(heartbeatTimeoutMillis)
+        .build();
 
-    /**
-     * Cached dns resolver is empty because we would like to the unhealthy node to be reported correctly
-     */
-    httpClient = HttpClientUtils.getMinimalHttpClient(1,
-                                                      maxConnectionsPerRoute,
-                                                      maxConnections,
-                                                      (int)heartbeatTimeoutMillis,
-                                                      (int)heartbeatTimeoutMillis,
-                                                      sslFactory,
-                                                      Optional.empty(),
-                                                      Optional.empty()
-                                                      );
     Runnable runnable = () -> {
       boolean running = true;
       List<Future<HttpResponse>> responseFutures = new ArrayList<>();
@@ -68,7 +61,14 @@ public class RouterHeartbeat extends AbstractVeniceService {
           for (Instance instance : monitor.getAllLiveInstances()) {
             String instanceUrl = instance.getUrl(sslFactory.isPresent());
             final HttpGet get = new HttpGet(instanceUrl + "/" + QueryAction.HEALTH.toString().toLowerCase());
-            responseFutures.add(httpClient.execute(get, null));
+            get.setConfig(requestConfig);
+            CloseableHttpAsyncClient httpAsyncClient = storageNodeClient.getHttpClientForHost(instance.getNodeId());
+            // during warmup up it might return null
+            if (httpAsyncClient == null) {
+              logger.warn("Could not yet find http client for instance " + instanceUrl);
+              continue;
+            }
+            responseFutures.add(httpAsyncClient.execute(get, null));
             instances.add(instance);
           }
 
@@ -121,8 +121,6 @@ public class RouterHeartbeat extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    httpClient.start();
-
     heartBeatThread.start();
     return true;
   }
@@ -130,6 +128,5 @@ public class RouterHeartbeat extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     heartBeatThread.interrupt();
-    httpClient.close();
   }
 }
