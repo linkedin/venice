@@ -1,4 +1,4 @@
-package com.linkedin.venice.pushstatus;
+package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
@@ -7,7 +7,8 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.pushstatus.PushStatusKey;
+import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Collections;
