@@ -21,24 +21,26 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.http.HttpHeaders;
+import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.mockito.Mockito;
-
-import static com.linkedin.venice.router.api.TestRouterHeartbeat.*;
-import static org.mockito.Mockito.*;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import static com.linkedin.venice.router.api.TestRouterHeartbeat.*;
+import static org.apache.commons.httpclient.HttpStatus.*;
+import static org.mockito.Mockito.*;
 
 public class TestHostFinder {
   public static final HostHealthMonitor NULL_HOST_HEALTH_MONITOR = (hostName, partitionName) -> true;
@@ -178,17 +180,22 @@ public class TestHostFinder {
       String uri = "/" + QueryAction.HEALTH.toString().toLowerCase();
       server.addResponseForUri(uri, goodHealthResponse);
       VeniceRouterConfig mockConfig = mockVeniceRouterConfig();
-      RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, mockConfig, Optional.empty());
+
+      // server response unhealthy for the heartbeat check
+      FullHttpResponse badHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      badHealthResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
+
+      server.addResponseForUri(uri, badHealthResponse);
+
+      StorageNodeClient storageNodeClient = mockStorageNodeClient(SC_OK);
+
+      RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, mockConfig, Optional.empty(), storageNodeClient);
       heartbeat.start();
 
       // the HostFinder should find host now
       TestUtils.waitForNonDeterministicAssertion(4, TimeUnit.SECONDS,
           () -> Assert.assertEquals(1, finder.findHosts("get", "store_v0", "store_v0_3", healthMon, null).size()));
 
-      // server response unhealthy for the heartbeat check
-      FullHttpResponse badHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
-      badHealthResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
-      server.addResponseForUri(uri, badHealthResponse);
 
       // the HostFinder should find nothing now because heartbeat marks host as unhealthy in the VeniceHostHealth
       TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS,
@@ -200,6 +207,30 @@ public class TestHostFinder {
       Thread.sleep(2 * (long) (mockConfig.getHeartbeatCycleMs() + mockConfig.getHeartbeatTimeoutMs()));
       verify(unhealthyHostsSet, times(0)).remove(any());
     }
+  }
+
+  private StorageNodeClient mockStorageNodeClient(int code) {
+    CloseableHttpAsyncClient httpAsyncClient = mock(CloseableHttpAsyncClient.class);
+    CompletableFuture<HttpResponse> goodFuture = new CompletableFuture();
+    CompletableFuture<HttpResponse> badFuture = new CompletableFuture();
+
+    HttpResponse response = mock(HttpResponse.class);
+    StatusLine statusLine = mock(StatusLine.class);
+    doReturn(SC_OK).when(statusLine).getStatusCode();
+    doReturn(statusLine).when(response).getStatusLine();
+    goodFuture.complete(response);
+
+    HttpResponse response1 = mock(HttpResponse.class);
+    StatusLine statusLine1 = mock(StatusLine.class);
+    doReturn(SC_BAD_REQUEST).when(statusLine1).getStatusCode();
+    doReturn(statusLine1).when(response1).getStatusLine();
+    badFuture.complete(response1);
+
+    when(httpAsyncClient.execute(any(), any())).thenReturn(goodFuture).thenReturn(badFuture);
+
+    StorageNodeClient storageNodeClient = mock(StorageNodeClient.class);
+    doReturn(httpAsyncClient).when(storageNodeClient).getHttpClientForHost(anyString());
+    return storageNodeClient;
   }
 
   private Set<String> getMockSetWithRealFunctionality() {

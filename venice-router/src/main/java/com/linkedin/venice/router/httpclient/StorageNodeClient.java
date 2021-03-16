@@ -6,6 +6,7 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import java.io.Closeable;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 
 
 public interface StorageNodeClient extends Closeable {
@@ -44,5 +45,9 @@ public interface StorageNodeClient extends Closeable {
 
   default long getPoolStatsPendingConnection(String insanceId) {
     return 0;
+  }
+
+  default CloseableHttpAsyncClient getHttpClientForHost(String host) {
+    return null;
   }
 }
