@@ -1,6 +1,7 @@
-package com.linkedin.venice.pushstatus;
+package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
+import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;

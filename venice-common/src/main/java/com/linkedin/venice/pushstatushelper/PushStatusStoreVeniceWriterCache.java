@@ -1,7 +1,9 @@
-package com.linkedin.venice.pushstatus;
+package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushstatus.PushStatusKey;
+import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.SystemTime;

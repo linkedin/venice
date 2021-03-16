@@ -3,7 +3,7 @@ package com.linkedin.davinci;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatus.PushStatusKey;
-import com.linkedin.venice.pushstatus.PushStatusStoreVeniceWriterCache;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreVeniceWriterCache;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -14,7 +14,7 @@ import java.util.Optional;
 import org.apache.avro.generic.GenericData;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.pushstatus.PushStatusStoreVeniceWriterCache.*;
+import static com.linkedin.venice.pushstatushelper.PushStatusStoreVeniceWriterCache.*;
 
 
 /**

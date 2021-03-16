@@ -10,7 +10,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.pushstatus.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 
