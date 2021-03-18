@@ -4,7 +4,6 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
-import com.linkedin.venice.controller.stats.AggStoreStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepositoryAdapter;
@@ -26,8 +25,8 @@ import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.utils.VeniceLock;
-import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
@@ -51,6 +50,7 @@ public class VeniceHelixResources implements VeniceResource {
 
   private final String clusterName;
   private final SafeHelixManager controller;
+  private final ClusterLockManager clusterLockManager;
   private final ReadWriteStoreRepository metadataRepository;
   private final HelixExternalViewRepository routingDataRepository;
   private final ReadWriteSchemaRepository schemaRepository;
@@ -60,10 +60,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final LeakedPushStatusCleanUpService leakedPushStatusCleanUpService;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
-  private final AggStoreStats aggStoreStats;
   private final ZkStoreConfigAccessor storeConfigAccessor;
-  private final VeniceLock veniceHelixResourceReadLock;
-  private final VeniceLock veniceHelixResourceWriteLock;
   private final Optional<DynamicAccessController> accessController;
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
 
@@ -82,26 +79,6 @@ public class VeniceHelixResources implements VeniceResource {
       Optional<DynamicAccessController> accessController,
       MetadataStoreWriter metadataStoreWriter,
       HelixAdminClient helixAdminClient) {
-    this(clusterName, zkClient, adapterSerializer, helixManager, config, admin, metricsRepository, new VeniceReentrantReadWriteLock(),
-        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, metadataStoreWriter, helixAdminClient);
-  }
-
-  /**
-   * Package-private on purpose. Used by tests only, to inject a different lock implementation.
-   */
-  protected VeniceHelixResources(String clusterName,
-                              ZkClient zkClient,
-                              HelixAdapterSerializer adapterSerializer,
-                              SafeHelixManager helixManager,
-                              VeniceControllerConfig config,
-                              VeniceHelixAdmin admin,
-                              MetricsRepository metricsRepository,
-                              VeniceReentrantReadWriteLock shutdownLock,
-                              Optional<TopicReplicator> onlineOfflineTopicReplicator,
-                              Optional<TopicReplicator> leaderFollowerTopicReplicator,
-                              Optional<DynamicAccessController> accessController,
-                              MetadataStoreWriter metadataStoreWriter,
-                              HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
     this.config = config;
     this.controller = helixManager;
@@ -113,8 +90,13 @@ public class VeniceHelixResources implements VeniceResource {
     } else {
       metaStoreWriter = Optional.empty();
     }
-    HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
-        config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs(), metaStoreWriter);
+    /**
+     * ClusterLockManager is created per cluster and shared between {@link VeniceHelixAdmin},
+     * {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} and {@link HelixReadWriteStoreRepository}.
+     */
+    this.clusterLockManager = new ClusterLockManager(clusterName);
+    HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer,
+        clusterName, metaStoreWriter, clusterLockManager);
     this.metadataRepository = new HelixReadWriteStoreRepositoryAdapter(
         admin.getReadOnlyZKSharedSystemStoreRepository(),
         readWriteStoreRepository
@@ -140,8 +122,8 @@ public class VeniceHelixResources implements VeniceResource {
         adapterSerializer, config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         offlinePushMonitorAccessor, admin, metadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
-        config.isSkipBufferRelayForHybrid(), onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metricsRepository,
-        metadataStoreWriter);
+        config.isSkipBufferRelayForHybrid(), onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
+        metadataStoreWriter, clusterLockManager);
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, metadataRepository,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository), this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
@@ -150,12 +132,7 @@ public class VeniceHelixResources implements VeniceResource {
             config.getRefreshIntervalForZkReconnectInMs());
     this.aggPartitionHealthStats =
         new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository, pushMonitor);
-    this.aggStoreStats = new AggStoreStats(metricsRepository, metadataRepository);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer, metaStoreWriter);
-    String readLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-readLock";
-    this.veniceHelixResourceReadLock = new VeniceLock(shutdownLock.readLock(), readLockDescription, metricsRepository);
-    String writeLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-writeLock";
-    this.veniceHelixResourceWriteLock = new VeniceLock(shutdownLock.writeLock(), writeLockDescription, metricsRepository);
     this.accessController = accessController;
     if (config.getErrorPartitionAutoResetLimit() > 0) {
       errorPartitionResetTask = new ErrorPartitionResetTask(clusterName, helixAdminClient, metadataRepository,
@@ -276,29 +253,18 @@ public class VeniceHelixResources implements VeniceResource {
     return storeConfigAccessor;
   }
 
-  /**
-   * Lock the resource for metadata operation. Different operations could be executed in parallel.
-   */
-  public void lockForMetadataOperation() {
-    veniceHelixResourceReadLock.lock();
-  }
-
-  public void unlockForMetadataOperation(){
-    veniceHelixResourceReadLock.unlock();
+  public ClusterLockManager getClusterLockManager() {
+    return clusterLockManager;
   }
 
   /**
    * Lock the resource for shutdown operation(mastership handle over and controller shutdown). Once
-   * acquired the lock, no metadata operation or shutdown operation could be executed.
+   * acquired the lock, no other thread could operate for this cluster.
    */
-  public void lockForShutdown() {
+  public AutoCloseableLock lockForShutdown() {
     LOGGER.info("lockForShutdown() called. Will log the current stacktrace and then attempt to acquire the lock.",
         new VeniceException("Not thrown, for logging purposes only."));
-    veniceHelixResourceWriteLock.lock();
-  }
-
-  public void unlockForShutdown() {
-    veniceHelixResourceWriteLock.unlock();
+    return clusterLockManager.createClusterWriteLock();
   }
 
   private SafeHelixManager getSpectatorManager(String clusterName, String zkAddress) {

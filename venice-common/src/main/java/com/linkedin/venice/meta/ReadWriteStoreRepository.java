@@ -10,23 +10,19 @@ public interface ReadWriteStoreRepository extends ReadOnlyStoreRepository {
    *
    * @param store store need to be udpated.
    */
-  public void updateStore(Store store);
+  void updateStore(Store store);
 
   /**
    * Delete store from repository.
    *
    * @param name name of wantted store.
    */
-  public void deleteStore(String name);
+  void deleteStore(String name);
 
   /**
    * Add store into repository.
    *
    * @param store store need to be added.
    */
-  public void addStore(Store store);
-
-  public void lock();
-
-  public void unLock();
+  void addStore(Store store);
 }

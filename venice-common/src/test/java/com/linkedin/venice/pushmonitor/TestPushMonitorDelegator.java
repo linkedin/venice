@@ -5,7 +5,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
-import io.tehuti.metrics.MetricsRepository;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Arrays;
 import java.util.Optional;
 import org.mockito.Mockito;
@@ -20,14 +20,14 @@ public class TestPushMonitorDelegator {
   private StoreCleaner storeCleaner = Mockito.mock(StoreCleaner.class);
   private ReadWriteStoreRepository metadataRepo = Mockito.mock(ReadWriteStoreRepository.class);
   private AggPushHealthStats aggPushHealthStats = Mockito.mock(AggPushHealthStats.class);
-  private MetricsRepository metricsRepository = new MetricsRepository();
   private MetadataStoreWriter metadataStoreWriter = Mockito.mock(MetadataStoreWriter.class);
+  private ClusterLockManager lock = Mockito.mock(ClusterLockManager.class);
 
   @Test
   public void testDelegatorCanCleanupLegacyStatus() {
     PushMonitorDelegator delegator = new PushMonitorDelegator(pushMonitorType, clusterName, routingDataRepository,
         offlinePushAccessor, storeCleaner, metadataRepo, aggPushHealthStats, false,
-        Optional.empty(), Optional.empty(), metricsRepository, metadataStoreWriter);
+        Optional.empty(), Optional.empty(), metadataStoreWriter, lock);
 
     OfflinePushStatus legacyStatus = new OfflinePushStatus("legacy_v1", 1, 1,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);

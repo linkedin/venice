@@ -251,9 +251,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
 
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
-        () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 1);
+        () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 2);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber() );
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber() - 1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(1).getNumber(), version.getNumber());
 
     Version deletedVersion = new VersionImpl(storeName, version.getNumber() - 2);
     // Ensure job and topic are deleted
@@ -460,7 +461,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
     // try to add same version again
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
 
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
 
@@ -579,9 +580,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
 
     store = veniceAdmin.getStore(clusterName, storeName);
-    // version 1 and version 2 are added to this store. version 1 is deleted since early delete backup is turned on.
+    // version 1 and version 2 are added to this store. v1 is not deleted because by the time early delete backup
+    // runs, v2 is not online and v1 is the only online version.
     Assert.assertTrue(store.isEnableWrites());
-    Assert.assertEquals(store.getVersions().size(), 1);
+    Assert.assertEquals(store.getVersions().size(), 2);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     PushMonitor monitor = veniceAdmin.getVeniceHelixResource(clusterName).getPushMonitor();
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
@@ -726,6 +728,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         if (i < versionCount - 1) {
           // Hang the state transition of the last version only. Otherwise, retiring would be triggered.
           stateModelFactory.makeTransitionCompleted(lastVersion.kafkaTopicName(), 0);
+          int versionNumber = lastVersion.getNumber();
+          TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
+              () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == versionNumber);
         }
       }
       Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
@@ -829,7 +834,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         });
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
     veniceAdmin.retireOldStoreVersions(clusterName, storeName, false);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2,
         " Versions should be deleted.");
   }
 

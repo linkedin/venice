@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 
 import io.tehuti.metrics.MetricsRepository;
 
@@ -157,12 +158,9 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       // We have to create a snapshot of resources here, as the resources will be set to null during the reset. So this
       // snapshot will let us unlock successfully.
       VeniceHelixResources snapshot = resources;
-      snapshot.lockForShutdown(); // Lock to prevent the partial result of admin operation.
-      try {
+      // Lock to prevent the partial result of admin operation.
+      try (AutoCloseableLock ignore = snapshot.lockForShutdown()) {
         reset();
-      } finally {
-        // After reset everything, unlock then hand-off the mastership.
-        snapshot.unlockForShutdown();
       }
     });
   }

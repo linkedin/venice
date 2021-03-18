@@ -13,8 +13,9 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -35,8 +36,8 @@ public class PushMonitorDelegator implements PushMonitor {
   private final PushMonitorType pushMonitorType;
   private final ReadWriteStoreRepository metadataRepository;
   private final OfflinePushAccessor offlinePushAccessor;
-  private final Object lock;
   private final String clusterName;
+  private final ClusterLockManager clusterLockManager;
 
   private OfflinePushMonitor offlinePushMonitor;
   private PartitionStatusBasedPushMonitor partitionStatusBasedPushStatusMonitor;
@@ -49,20 +50,20 @@ public class PushMonitorDelegator implements PushMonitor {
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid,
       Optional<TopicReplicator> onlineOfflineTopicReplicator, Optional<TopicReplicator> leaderFollowerTopicReplicator,
-      MetricsRepository metricsRepository, MetadataStoreWriter metadataStoreWriter) {
+      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager) {
 
     this.clusterName = clusterName;
     this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
-    this.lock = storeCleaner;
 
     this.offlinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
         storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid, onlineOfflineTopicReplicator,
-        metricsRepository, metadataStoreWriter);
+        metadataStoreWriter, clusterLockManager);
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
         storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats, skipBufferReplayForHybrid,
-        leaderFollowerTopicReplicator, metricsRepository, metadataStoreWriter);
+        leaderFollowerTopicReplicator, metadataStoreWriter, clusterLockManager);
+    this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
   }
@@ -110,8 +111,7 @@ public class PushMonitorDelegator implements PushMonitor {
   @Override
   public void loadAllPushes() {
     logger.info("Load all pushes started for cluster " + clusterName + "'s " + getClass().getSimpleName());
-    lockAllPushMonitors();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       List<OfflinePushStatus> offlinePushMonitorStatuses = new ArrayList<>();
       List<OfflinePushStatus> partitionStatusBasedPushMonitorStatuses = new ArrayList<>();
 
@@ -136,19 +136,7 @@ public class PushMonitorDelegator implements PushMonitor {
 
       legacyPushStatuses.forEach(pushStatus -> offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus.getKafkaTopic()));
       logger.info("Load all pushes finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
-    } finally {
-      unlockAllPushMonitors();
     }
-  }
-
-  private void lockAllPushMonitors() {
-    offlinePushMonitor.acquirePushMonitorWriteLock();
-    partitionStatusBasedPushStatusMonitor.acquirePushMonitorWriteLock();
-  }
-
-  private void unlockAllPushMonitors() {
-    partitionStatusBasedPushStatusMonitor.unlockPushMonitorWriteLock();
-    offlinePushMonitor.unlockPushMonitorWriteLock();
   }
 
   @Override
@@ -164,15 +152,12 @@ public class PushMonitorDelegator implements PushMonitor {
   @Override
   public void stopAllMonitoring() {
     logger.info("Stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
-    lockAllPushMonitors();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       partitionStatusBasedPushStatusMonitor.stopAllMonitoring();
       offlinePushMonitor.stopAllMonitoring();
       logger.info("Successfully stopped all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } catch (Exception e) {
       logger.error("Error when stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
-    } finally {
-      unlockAllPushMonitors();
     }
   }
 

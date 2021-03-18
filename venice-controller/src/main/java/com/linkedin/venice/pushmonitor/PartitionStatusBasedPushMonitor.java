@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
-import io.tehuti.metrics.MetricsRepository;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,9 +20,9 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   public PartitionStatusBasedPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
-      MetricsRepository metricsRepository, MetadataStoreWriter metadataStoreWriter) {
+      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        skipBufferReplayForHybrid, topicReplicator, metricsRepository, metadataStoreWriter);
+        skipBufferReplayForHybrid, topicReplicator, metadataStoreWriter, clusterLockManager);
   }
 
   @Override
