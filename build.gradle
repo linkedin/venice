@@ -8,6 +8,7 @@ buildscript {
 plugins {
   id 'java'
   id 'idea'
+  id 'org.gradle.test-retry' version '1.2.0'
 }
 
 try {
@@ -147,6 +148,7 @@ subprojects {
   apply plugin: 'java-library'
   apply plugin: 'idea'
   apply plugin: 'jacoco'
+  apply plugin: 'org.gradle.test-retry'
 
   sourceCompatibility = 1.8
   if (!project.hasProperty('overrideBuildEnvironment') || !project.overrideBuildEnvironment) {
