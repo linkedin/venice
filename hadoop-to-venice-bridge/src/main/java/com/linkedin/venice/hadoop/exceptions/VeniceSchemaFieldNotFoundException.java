@@ -1,10 +1,12 @@
 package com.linkedin.venice.hadoop.exceptions;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
+
 
 /**
  * Customized exception for non-existing key/value field error in Avro schema
- * in {@link com.linkedin.venice.hadoop.KafkaPushJob}
+ * in {@link VenicePushJob}
  */
 public class VeniceSchemaFieldNotFoundException extends VeniceException {
     private String fieldName;

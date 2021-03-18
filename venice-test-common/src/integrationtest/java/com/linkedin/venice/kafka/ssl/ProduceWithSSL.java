@@ -5,7 +5,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -33,7 +33,6 @@ import org.apache.kafka.common.config.SslConfigs;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
@@ -118,10 +117,10 @@ public class ProduceWithSSL {
       String keyStorePwdPropertyName = "ssl.identity.keystore.password";
       String keyPwdPropertyName="ssl.identity.key.password";
 
-      props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, keyStorePropertyName);
-      props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,trustStorePropertyName);
-      props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,keyStorePwdPropertyName);
-      props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,keyPwdPropertyName);
+      props.setProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, keyStorePropertyName);
+      props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME,trustStorePropertyName);
+      props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,keyStorePwdPropertyName);
+      props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,keyPwdPropertyName);
 
       // put cert into hadoop user credentials.
       Properties sslProps = KafkaSSLUtils.getLocalCommonKafkaSSLConfig();

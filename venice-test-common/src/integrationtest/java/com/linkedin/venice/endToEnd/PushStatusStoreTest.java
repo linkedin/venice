@@ -8,7 +8,7 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -32,7 +32,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
@@ -195,9 +195,9 @@ public class PushStatusStoreTest {
   private static void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long h2vStart = System.currentTimeMillis();
     String jobName = TestUtils.getUniqueString("batch-job-" + expectedVersionNumber);
-    try (KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
-      String storeName = (String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP);
+      String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
       cluster.waitVersion(storeName, expectedVersionNumber);
       logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
     }

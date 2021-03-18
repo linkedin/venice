@@ -32,11 +32,11 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
-public class TestKafkaPushJob {
+public class TestVenicePushJob {
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
   private VeniceClusterWrapper veniceCluster;
@@ -276,7 +276,7 @@ public class TestKafkaPushJob {
     FileSystem fs = FileSystem.get(new Configuration());
     Path sourcePath = getLatestPathOfInputDirectory(inputDirPath, fs);
     Assert.assertEquals(sourcePath.toString(), "file:" + newFolder.getAbsolutePath(),
-        "KafkaPushJob should parse /#LATEST to latest directory");
+        "VenicePushJob should parse /#LATEST to latest directory");
   }
 
   /**

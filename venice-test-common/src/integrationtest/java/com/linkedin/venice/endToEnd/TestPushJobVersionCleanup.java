@@ -1,7 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -23,12 +23,10 @@ import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
@@ -80,8 +78,8 @@ public class TestPushJobVersionCleanup {
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
 
     UpdateStoreQueryParams updateStoreParams =
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(2);
@@ -93,7 +91,7 @@ public class TestPushJobVersionCleanup {
     /**
      * Run 3 push jobs sequentially and at the end verify the first version is cleaned up properly without any ingestion_failure metrics being reported.
      */
-    try (KafkaPushJob job = new KafkaPushJob("Test push job 1", props)) {
+    try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
       job.run();
     }
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -105,7 +103,7 @@ public class TestPushJobVersionCleanup {
       }
     });
 
-    try (KafkaPushJob job = new KafkaPushJob("Test push job 2", props)) {
+    try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
       job.run();
     }
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -117,7 +115,7 @@ public class TestPushJobVersionCleanup {
       }
     });
 
-    try (KafkaPushJob job = new KafkaPushJob("Test push job 3", props)) {
+    try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
       job.run();
     }
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {

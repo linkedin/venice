@@ -57,16 +57,16 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    */
   public static final long INPUT_DATA_SIZE_FACTOR = 2;
 
-  protected final KafkaPushJob.StoreSetting storeSetting;
-  protected final KafkaPushJob.PushJobSetting pushJobSetting;
-  protected KafkaPushJob.ZstdConfig zstdConfig;
+  protected final VenicePushJob.StoreSetting storeSetting;
+  protected final VenicePushJob.PushJobSetting pushJobSetting;
+  protected VenicePushJob.ZstdConfig zstdConfig;
   protected final VeniceProperties props;
   // Thread pool for Hadoop File System operations.
   protected final ExecutorService hdfsExecutorService;
 
   DefaultInputDataInfoProvider(
-      KafkaPushJob.StoreSetting storeSetting,
-      KafkaPushJob.PushJobSetting pushJobSetting,
+      VenicePushJob.StoreSetting storeSetting,
+      VenicePushJob.PushJobSetting pushJobSetting,
       VeniceProperties props
   ) {
     this.storeSetting = storeSetting;
@@ -101,7 +101,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       initZstdConfig(fileStatuses.length);
     }
 
-    KafkaPushJob.SchemaInfo schemaInfo = new KafkaPushJob.SchemaInfo();
+    VenicePushJob.SchemaInfo schemaInfo = new VenicePushJob.SchemaInfo();
     //try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
     Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath(), false);
     if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
@@ -156,7 +156,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     if (zstdConfig != null) {
       return;
     }
-    zstdConfig = new KafkaPushJob.ZstdConfig();
+    zstdConfig = new VenicePushJob.ZstdConfig();
     zstdConfig.dictSize = props.getInt(COMPRESSION_DICTIONARY_SIZE_LIMIT, VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     zstdConfig.sampleSize = props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, 200 * 1024 * 1024); // 200 MB samples
     zstdConfig.maxBytesPerFile = zstdConfig.sampleSize / numFiles;

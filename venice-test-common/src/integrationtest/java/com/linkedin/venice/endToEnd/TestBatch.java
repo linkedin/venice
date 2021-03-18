@@ -9,7 +9,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -49,7 +49,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 //TODO: write a H2VWrapper that can handle the whole flow
@@ -973,11 +973,11 @@ public abstract class TestBatch {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    props.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
-    props.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
+    props.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
+    props.setProperty(VenicePushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
     createStoreForJob(veniceCluster, recordSchema, props).close();
 
-    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
       job.run();
       // Verify job properties
       Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));

@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.ssl;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -32,14 +32,14 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
       try {
         // Setup keystore certification
         byte[] keyStoreCert = getCertification(userCredentials,
-            new Text(properties.getProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME)));
+            new Text(properties.getProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME)));
         logger.info("Found key store cert from credentials.");
         String keyStoreLocation = writeToTempFile(keyStoreCert);
         logger.info("Write key store cert to file: " + keyStoreLocation);
         properties.put(SSL_KEYSTORE_LOCATION, keyStoreLocation);
         // Setup truststore certification
         byte[] truestStoreCert = getCertification(userCredentials,
-            new Text(properties.getProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME)));
+            new Text(properties.getProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME)));
         logger.info("Found trust store cert from credentials.");
         String trustStoreLocation = writeToTempFile(truestStoreCert);
         logger.info("Write trust store cert to file: " + trustStoreLocation);
@@ -47,12 +47,12 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
 
         // Setup keystore password.
         String keyStorePassword = getPassword(userCredentials,
-            new Text(properties.getProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME)));
+            new Text(properties.getProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME)));
         properties.put(SSL_KEYSTORE_PASSWORD, keyStorePassword);
 
         // Setup key password.
         String keyPassword =
-            getPassword(userCredentials, new Text(properties.getProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME)));
+            getPassword(userCredentials, new Text(properties.getProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME)));
         properties.put(SSL_KEY_PASSWORD, keyPassword);
         if(!properties.containsKey(SSL_KEYSTORE_TYPE)) {
           properties.put(SSL_KEYSTORE_TYPE, "pkcs12");

@@ -20,13 +20,12 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestPushUtils;
@@ -56,7 +55,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
@@ -119,7 +118,7 @@ public class TestMultiDataCenterPush {
     Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
-    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
       job.run();
       // Verify job properties
       Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
@@ -166,7 +165,7 @@ public class TestMultiDataCenterPush {
      * and {@link com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE} to reduce job run times.
      */
     for (int i = 2; i <= 3; i++) {
-      try (KafkaPushJob job = new KafkaPushJob("Test push job " + i, props)) {
+      try (VenicePushJob job = new VenicePushJob("Test push job " + i, props)) {
         job.run();
       }
     }
@@ -298,8 +297,8 @@ public class TestMultiDataCenterPush {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
     Properties props = defaultH2VProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
-    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, CompressionStrategy.NO_OP, false, true).close();
 
@@ -309,7 +308,7 @@ public class TestMultiDataCenterPush {
     writeSimpleAvroFileWithUserSchema2(inputDir);
     props.setProperty(INCREMENTAL_PUSH, "true");
 
-    try (KafkaPushJob incrementalPushJob = new KafkaPushJob("Test incremental push job", props)) {
+    try (VenicePushJob incrementalPushJob = new VenicePushJob("Test incremental push job", props)) {
       incrementalPushJob.run();
 
       Admin.OfflinePushStatusInfo offlinePushStatusInfo = parentControllers.get(0)

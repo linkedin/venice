@@ -5,7 +5,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
@@ -70,12 +70,12 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
     logger.info(this.getClass().getSimpleName() + " to be constructed with props: " + props.toString(true));
 
     // Set up config
-    this.failFast = props.getBoolean(KafkaPushJob.PBNJ_FAIL_FAST);
-    this.async = props.getBoolean(KafkaPushJob.PBNJ_ASYNC);
-    this.samplingRatio = props.getDouble(KafkaPushJob.PBNJ_SAMPLING_RATIO_PROP);
-    this.keyField = props.getString(KafkaPushJob.KEY_FIELD_PROP);
-    this.valueField = props.getString(KafkaPushJob.VALUE_FIELD_PROP);
-    String schemaStr = props.getString(KafkaPushJob.SCHEMA_STRING_PROP);
+    this.failFast = props.getBoolean(VenicePushJob.PBNJ_FAIL_FAST);
+    this.async = props.getBoolean(VenicePushJob.PBNJ_ASYNC);
+    this.samplingRatio = props.getDouble(VenicePushJob.PBNJ_SAMPLING_RATIO_PROP);
+    this.keyField = props.getString(VenicePushJob.KEY_FIELD_PROP);
+    this.valueField = props.getString(VenicePushJob.VALUE_FIELD_PROP);
+    String schemaStr = props.getString(VenicePushJob.SCHEMA_STRING_PROP);
     this.keyFieldPos = getFieldPos(schemaStr, keyField);
     this.valueFieldPos = getFieldPos(schemaStr, valueField);
 
@@ -89,8 +89,8 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
     }
 
     this.veniceClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(
-        props.getString(KafkaPushJob.VENICE_STORE_NAME_PROP))
-        .setVeniceURL(props.getString(KafkaPushJob.PBNJ_ROUTER_URL_PROP)));
+        props.getString(VenicePushJob.VENICE_STORE_NAME_PROP))
+        .setVeniceURL(props.getString(VenicePushJob.PBNJ_ROUTER_URL_PROP)));
 
     this.sampler = new Sampler(samplingRatio);
 

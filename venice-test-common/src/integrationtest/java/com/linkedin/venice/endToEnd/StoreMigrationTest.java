@@ -17,7 +17,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -486,7 +486,7 @@ public class StoreMigrationTest {
     SystemProducer veniceProducer0 = null;
     SystemProducer veniceProducer1 = null;
 
-    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
       writeSimpleAvroFileWithUserSchema(inputDir);
       job.run();
 

@@ -13,15 +13,15 @@ public interface InputDataInfoProvider extends AutoCloseable {
    * A POJO that contains input data information (schema information and input data file size)
    */
   class InputDataInfo {
-    private final KafkaPushJob.SchemaInfo schemaInfo;
+    private final VenicePushJob.SchemaInfo schemaInfo;
     private final long inputFileDataSizeInBytes;
 
-    InputDataInfo(KafkaPushJob.SchemaInfo schemaInfo, long inputFileDataSizeInBytes) {
+    InputDataInfo(VenicePushJob.SchemaInfo schemaInfo, long inputFileDataSizeInBytes) {
       this.schemaInfo = schemaInfo;
       this.inputFileDataSizeInBytes = inputFileDataSizeInBytes;
     }
 
-    public KafkaPushJob.SchemaInfo getSchemaInfo() {
+    public VenicePushJob.SchemaInfo getSchemaInfo() {
       return schemaInfo;
     }
 

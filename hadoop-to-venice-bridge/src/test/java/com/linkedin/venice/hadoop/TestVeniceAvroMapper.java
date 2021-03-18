@@ -2,9 +2,6 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.Arrays;
-import java.util.List;
-import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.IndexedRecord;
@@ -13,21 +10,15 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.hadoop.mapred.TaskAttemptContextImpl;
-import org.apache.hadoop.mapred.TaskAttemptID;
-import org.apache.hadoop.mapred.TaskID;
-import org.apache.hadoop.mapreduce.TaskType;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import java.io.IOException;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static org.mockito.Mockito.*;
 
 public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMapper> {
@@ -50,7 +41,7 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
   @Test (expectedExceptions = UndefinedPropertyException.class)
   public void testConfigureWithMissingProps() {
     JobConf job = setupJobConf();
-    job.unset(KafkaPushJob.TOPIC_PROP);
+    job.unset(VenicePushJob.TOPIC_PROP);
     VeniceAvroMapper mapper = new VeniceAvroMapper();
     mapper.configure(job);
   }

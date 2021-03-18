@@ -12,7 +12,7 @@ import org.apache.hadoop.mapred.JobConf;
 import javax.xml.bind.DatatypeConverter;
 import org.testng.annotations.DataProvider;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 public class AbstractTestVeniceMR {
   protected static final String SCHEMA_STR = "{\n" +
