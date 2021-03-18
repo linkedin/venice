@@ -1,7 +1,8 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Store;
-
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
@@ -23,40 +24,37 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
       String clusterName,
       int refreshAttemptsForZkReconnect,
       long refreshIntervalForZkReconnectInMs) {
-    super(zkClient, clusterName, compositeSerializer);
+    /**
+     * HelixReadOnlyStoreRepository is used in router, server, fast-client, da-vinci and system store.
+     * Its centralized locking should NOT be shared with other classes. Create a new instance.
+     */
+    super(zkClient, clusterName, compositeSerializer, new ClusterLockManager(clusterName));
   }
 
   @Override
   public void refresh() {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       zkClient.subscribeStateChanges(zkStateListener);
       zkDataAccessor.subscribeChildChanges(clusterStoreRepositoryPath, zkStoreRepositoryListener);
       super.refresh();
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   public void clear() {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       zkClient.unsubscribeStateChanges(zkStateListener);
       zkDataAccessor.unsubscribeChildChanges(clusterStoreRepositoryPath, zkStoreRepositoryListener);
       for (String storeName : storeMap.values().stream().map(Store::getName).collect(Collectors.toSet())) {
         zkDataAccessor.unsubscribeDataChanges(getStoreZkPath(storeName), zkStoreListener);
       }
       super.clear();
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   protected Store putStore(Store newStore) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(newStore.getName())) {
       Store oldStore = super.putStore(newStore);
       if (oldStore == null) {
         zkDataAccessor.subscribeDataChanges(getStoreZkPath(newStore.getName()), zkStoreListener);
@@ -68,22 +66,17 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
         refreshOneStore(newStore.getName());
       }
       return oldStore;
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   protected Store removeStore(String storeName) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       Store oldStore = super.removeStore(storeName);
       if (oldStore != null) {
         zkDataAccessor.unsubscribeDataChanges(getStoreZkPath(storeName), zkStoreListener);
       }
       return oldStore;
-    } finally {
-      updateLock.unlock();
     }
   }
 
@@ -102,8 +95,7 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
    * @param newZkStoreNames
    */
   protected void onRepositoryChanged(Collection<String> newZkStoreNames) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       Set<String> addedZkStoreNames = new HashSet<>(newZkStoreNames);
       List<String> deletedZkStoreNames = new ArrayList<>();
       for (String zkStoreName : storeMap.keySet()) {
@@ -120,8 +112,6 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
       for (String zkStoreName : deletedZkStoreNames) {
         removeStore(storeMap.get(zkStoreName).getName());
       }
-    } finally {
-      updateLock.unlock();
     }
   }
 

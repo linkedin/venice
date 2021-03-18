@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.HashSet;
 import java.util.Set;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -21,43 +22,34 @@ public class SubscriptionBasedStoreRepository extends HelixReadOnlyStoreReposito
 
   @Override
   public void subscribe(String storeName) throws InterruptedException {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       subscription.add(storeName);
       Store store = refreshOneStore(storeName);
       if (store == null) {
         subscription.remove(storeName);
         throw new VeniceNoStoreException(storeName, clusterName);
       }
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   public void unsubscribe(String storeName) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       if (!subscription.remove(storeName)) {
         throw new VeniceException("Cannot unsubscribe from not-subscribed store, storeName=" + storeName);
       }
       removeStore(storeName);
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   protected Store putStore(Store newStore) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(newStore.getName())) {
       if (subscription.contains(newStore.getName()) || VeniceSystemStoreUtils.isSystemStore(newStore.getName())) {
         return super.putStore(newStore);
       }
       logger.info("Ignoring not-subscribed store, storeName=" + newStore.getName());
       return null;
-    } finally {
-      updateLock.unlock();
     }
   }
 }

@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 
 import java.util.Optional;
 import org.apache.avro.Schema;
@@ -48,7 +49,8 @@ public class TestHelixReadOnlySchemaRepository {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    storeRWRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0, Optional.empty());
+    storeRWRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, Optional.empty(),
+        new ClusterLockManager(cluster));
     storeRWRepo.refresh();
     storeRORepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
     storeRORepo.refresh();

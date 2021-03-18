@@ -5,9 +5,9 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SystemStoreAttributes;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -46,8 +46,8 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
 
     HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, cluster);
     zkSharedSystemStoreRepository.refresh();
-    HelixReadWriteStoreRepository writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000,
-        Optional.empty());
+    HelixReadWriteStoreRepository writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster,
+        Optional.empty(), new ClusterLockManager(cluster));
     writeRepo.refresh();
 
     writeRepoAdapter = new HelixReadWriteStoreRepositoryAdapter(zkSharedSystemStoreRepository, writeRepo);

@@ -2,11 +2,12 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
-import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -29,32 +30,27 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
       ZkClient zkClient,
       HelixAdapterSerializer compositeSerializer,
       String clusterName,
-      int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs,
-      Optional<MetaStoreWriter> metaStoreWriter) {
-    super(zkClient, clusterName, compositeSerializer);
+      Optional<MetaStoreWriter> metaStoreWriter,
+      ClusterLockManager storeLock) {
+    super(zkClient, clusterName, compositeSerializer, storeLock);
     this.clusterName = clusterName;
     this.metaStoreWriter = metaStoreWriter;
   }
 
   @Override
   public void addStore(Store store) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(store.getName())) {
       if (hasStore(store.getName())) {
         throw new VeniceStoreAlreadyExistsException(store.getName(), clusterName);
       }
       HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
       putStore(store);
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   public void updateStore(Store store) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(store.getName())) {
       if (!hasStore(store.getName())) {
         throw new VeniceNoStoreException(store.getName(), clusterName);
       }
@@ -66,22 +62,17 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
          */
         metaStoreWriter.get().writeStoreProperties(clusterName, store);
       }
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   public void deleteStore(String storeName) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       if (!hasStore(storeName)) {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
       HelixUtils.remove(zkDataAccessor, getStoreZkPath(storeName));
       removeStore(storeName);
-    } finally {
-      updateLock.unlock();
     }
   }
 
@@ -110,15 +101,5 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
   @Override
   public Store refreshOneStore(String storeName) {
     return getStore(storeName);
-  }
-
-  @Override
-  public void lock() {
-    updateLock.lock();
-  }
-
-  @Override
-  public void unLock() {
-    updateLock.unlock();
   }
 }

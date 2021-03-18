@@ -94,6 +94,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.LinkedList;
@@ -609,10 +610,9 @@ public class VeniceParentHelixAdmin implements Admin {
    * the store version creation history.
    */
   protected void cleanupHistoricalVersions(String clusterName, String storeName) {
-    ReadWriteStoreRepository storeRepo = veniceHelixAdmin.getVeniceHelixResource(clusterName)
-        .getMetadataRepository();
-    storeRepo.lock();
-    try {
+    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      ReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
       Store store = storeRepo.getStore(storeName);
       if (null == store) {
         logger.info("The store to clean up: " + storeName + " doesn't exist");
@@ -633,8 +633,6 @@ public class VeniceParentHelixAdmin implements Admin {
         veniceHelixAdmin.getMetadataStoreWriter().writeStoreAttributes(clusterName, storeName, store);
         veniceHelixAdmin.getMetadataStoreWriter().writeTargetVersionStates(clusterName, storeName, store.getVersions());
       }
-    } finally {
-      storeRepo.unLock();
     }
   }
 
@@ -2592,40 +2590,32 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void updateAclForStore(String clusterName, String storeName, String accessPermissions) {
-    // TODO replace the cluster level store repository lock in ACL APIs with the store level lock once it's implemented.
-    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
-    repository.lock();
-    try {
+    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       logger.info("ACLProvisioning: UpdateAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("updateAclForStore is not supported yet!");
       }
       Store store = veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
       provisionAclsForStore(storeName, Optional.of(accessPermissions), VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-    } finally {
-      repository.unLock();
     }
   }
 
   public void updateSystemStoreAclForStore(String clusterName, String regularStoreName, AclBinding systemStoreAclBinding) {
-    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
-    repository.lock();
-    try {
+    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(regularStoreName)) {
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("updateAclForStore is not supported yet!");
       }
       veniceHelixAdmin.checkPreConditionForAclOp(clusterName, regularStoreName);
       authorizerService.get().setAcls(systemStoreAclBinding);
-    } finally {
-      repository.unLock();
     }
   }
 
   @Override
   public String getAclForStore(String clusterName, String storeName) {
-    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
-    repository.lock();
-    try {
+    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
       logger.info("ACLProvisioning: GetAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("getAclForStore is not supported yet!");
@@ -2633,16 +2623,13 @@ public class VeniceParentHelixAdmin implements Admin {
       veniceHelixAdmin.checkPreConditionForAclOp(clusterName, storeName);
       String accessPerms = fetchAclsForStore(storeName);
       return accessPerms;
-    } finally {
-      repository.unLock();
     }
   }
 
   @Override
   public void deleteAclForStore(String clusterName, String storeName) {
-    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
-    repository.lock();
-    try {
+    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       logger.info("ACLProvisioning: DeleteAcl:" + storeName + " in cluster: " + clusterName);
       if (!authorizerService.isPresent()) {
         throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported yet!");
@@ -2653,8 +2640,6 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         logger.info("Store " + storeName + " is migrating! Skipping acl deletion!");
       }
-    } finally {
-      repository.unLock();
     }
   }
 

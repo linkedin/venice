@@ -17,10 +17,10 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
-
-import com.linkedin.venice.utils.VeniceLock;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 import org.apache.log4j.Logger;
@@ -51,8 +50,6 @@ public abstract class AbstractPushMonitor
   public static final int MAX_PUSH_TO_KEEP = 5;
 
   protected final Logger logger = Logger.getLogger(getClass().getSimpleName());
-  private final VeniceLock pushMonitorReadLock;
-  private final VeniceLock pushMonitorWriteLock;
 
   private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
@@ -64,11 +61,12 @@ public abstract class AbstractPushMonitor
   private Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
   private Optional<TopicReplicator> topicReplicator;
   private final MetadataStoreWriter metadataStoreWriter;
+  private final ClusterLockManager clusterLockManager;
 
-  public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor,
-      StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
+  public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner,
+      ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
-      MetricsRepository metricsRepository, MetadataStoreWriter metadataStoreWriter) {
+      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -78,30 +76,21 @@ public abstract class AbstractPushMonitor
     this.skipBufferReplayForHybrid = skipBufferReplayForHybrid;
     this.topicReplicator = topicReplicator;
     this.metadataStoreWriter = metadataStoreWriter;
-
-    ReentrantReadWriteLock pushMonitorReadWriteLock = new ReentrantReadWriteLock(true);
-    String readLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-readLock";
-    pushMonitorReadLock = new VeniceLock(pushMonitorReadWriteLock.readLock(), readLockDescription, metricsRepository);
-    String writeLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-writeLock";
-    pushMonitorWriteLock = new VeniceLock(pushMonitorReadWriteLock.writeLock(), writeLockDescription, metricsRepository);
+    this.clusterLockManager = clusterLockManager;
   }
 
   @Override
   public void loadAllPushes() {
     // Only invoked in test at the moment. Once we move to L/F mode only we can use this instead of
     // loadAllPushes(List<OfflinePushStatus> offlinePushStatusList) and not fetch the statuses in the delegator.
-    pushMonitorWriteLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       List<OfflinePushStatus> offlinePushStatuses = offlinePushAccessor.loadOfflinePushStatusesAndPartitionStatuses();
       loadAllPushes(offlinePushStatuses);
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
   public void loadAllPushes(List<OfflinePushStatus> offlinePushStatusList) {
-    pushMonitorWriteLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       logger.info("Load all pushes started for cluster " + clusterName + "'s " + getClass().getSimpleName());
       // Subscribe to changes first
       List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
@@ -163,15 +152,13 @@ public abstract class AbstractPushMonitor
       });
 
       logger.info("Load all pushes finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
   @Override
   public void startMonitorOfflinePush(String kafkaTopic, int numberOfPartition, int replicaFactor, OfflinePushStrategy strategy) {
-    pushMonitorWriteLock.lock();
-    try {
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       if (topicToPushMap.containsKey(kafkaTopic)) {
         ExecutionStatus existingStatus = getPushStatus(kafkaTopic);
         if (existingStatus.equals(ExecutionStatus.ERROR)) {
@@ -189,16 +176,14 @@ public abstract class AbstractPushMonitor
       offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
       routingDataRepository.subscribeRoutingDataChange(kafkaTopic, this);
       logger.info("Start monitoring push on topic:" + kafkaTopic);
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
   @Override
   public void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus) {
     logger.info("Stopping monitoring push on topic:" + kafkaTopic);
-    pushMonitorWriteLock.lock();
-    try {
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       if (!topicToPushMap.containsKey(kafkaTopic)) {
         logger.warn("Push status does not exist for topic:" + kafkaTopic + " in cluster:" + clusterName);
         return;
@@ -207,22 +192,18 @@ public abstract class AbstractPushMonitor
       offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatus, this);
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
       if (pushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR)) {
-        String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
         retireOldErrorPushes(storeName);
       } else {
         cleanupPushStatus(pushStatus, deletePushStatus);
       }
       logger.info("Stopped monitoring push on topic:" + kafkaTopic);
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
   @Override
   public void stopAllMonitoring() {
     logger.info("Stopping monitoring push for all topics.");
-    pushMonitorWriteLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       for (Map.Entry<String, OfflinePushStatus> entry : topicToPushMap.entrySet()) {
         String kafkaTopic = entry.getKey();
         stopMonitorOfflinePush(kafkaTopic, false);
@@ -230,45 +211,36 @@ public abstract class AbstractPushMonitor
       logger.info("Successfully stopped monitoring push for all topics.");
     } catch (Exception e) {
       logger.error("Error when stopping monitoring push for all topics", e);
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
   @Override
   public void cleanupStoreStatus(String storeName) {
-    pushMonitorWriteLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       List<String> topicList = topicToPushMap.keySet().stream()
           .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName))
           .collect(Collectors.toList());
 
       topicList.forEach(topic -> cleanupPushStatus(getOfflinePush(topic), true));
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
   @Override
   public OfflinePushStatus getOfflinePushOrThrow(String topic) {
-    pushMonitorReadLock.lock();
-    try {
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
       if (topicToPushMap.containsKey(topic)) {
         return topicToPushMap.get(topic);
       } else {
         throw new VeniceException("Can not find offline push status for topic:" + topic);
       }
-    } finally {
-      pushMonitorReadLock.unlock();
     }
   }
 
   protected OfflinePushStatus getOfflinePush(String topic) {
-    pushMonitorReadLock.lock();
-    try {
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
       return topicToPushMap.get(topic);
-    } finally {
-      pushMonitorReadLock.unlock();
     }
   }
 
@@ -296,15 +268,12 @@ public abstract class AbstractPushMonitor
   @Override
   public List<String> getTopicsOfOngoingOfflinePushes() {
     List<String> result = new ArrayList<>();
-    pushMonitorReadLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       result.addAll(topicToPushMap.values()
           .stream()
           .filter(status -> !status.getCurrentStatus().isTerminal())
           .map(OfflinePushStatus::getKafkaTopic)
           .collect(Collectors.toList()));
-    } finally {
-      pushMonitorReadLock.unlock();
     }
     return result;
   }
@@ -337,16 +306,14 @@ public abstract class AbstractPushMonitor
    * this is to clear legacy push statuses
    */
   private void cleanupPushStatus(OfflinePushStatus offlinePushStatus, boolean deletePushStatus) {
-    pushMonitorWriteLock.lock();
-    try {
+    String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       topicToPushMap.remove(offlinePushStatus.getKafkaTopic());
       if (deletePushStatus) {
         offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic());
       }
     } catch (Exception e) {
       logger.warn("Could not delete legacy push status: " + offlinePushStatus.getKafkaTopic(), e);
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
@@ -384,8 +351,8 @@ public abstract class AbstractPushMonitor
   }
 
   public boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving) {
-    pushMonitorReadLock.lock();
-    try {
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
       if (!topicToPushMap.containsKey(topic)) {
         //the offline push has been terminated and archived.
         return false;
@@ -395,8 +362,6 @@ public abstract class AbstractPushMonitor
             .checkPushStatusAndDetails(offlinePush, partitionAssignmentAfterRemoving);
         return status.getFirst().equals(ExecutionStatus.ERROR);
       }
-    } finally {
-      pushMonitorReadLock.unlock();
     }
   }
 
@@ -420,16 +385,14 @@ public abstract class AbstractPushMonitor
    * handleErrorPush and perform relevant operations to handle the ERROR status update properly.
    */
   protected void updatePushStatus(OfflinePushStatus pushStatus, ExecutionStatus newStatus, Optional<String> newStatusDetails){
-    pushMonitorWriteLock.lock();
-    try {
+    String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
       clonedPushStatus.updateStatus(newStatus, newStatusDetails);
       // Update remote storage
       offlinePushAccessor.updateOfflinePushStatus(clonedPushStatus);
       // Update local copy
       topicToPushMap.put(pushStatus.getKafkaTopic(), clonedPushStatus);
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
@@ -452,9 +415,8 @@ public abstract class AbstractPushMonitor
 
   @Override
   public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
-    pushMonitorWriteLock.lock();
-    try {
-      // TODO more fine-grained concurrency control here, might lock on push level instead of lock the whole map.
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       OfflinePushStatus pushStatus = getOfflinePush(topic);
       if (pushStatus == null) {
         logger.error("Can not find Offline push for topic:" + topic + ", ignore the partition status change notification.");
@@ -467,8 +429,6 @@ public abstract class AbstractPushMonitor
       this.topicToPushMap.put(pushStatus.getKafkaTopic(), pushStatus);
 
       onPartitionStatusChange(pushStatus);
-    } finally {
-      pushMonitorWriteLock.unlock();
     }
   }
 
@@ -479,28 +439,31 @@ public abstract class AbstractPushMonitor
   @Override
   public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     logger.info("Received the routing data changed notification for topic:" + partitionAssignment.getTopic());
-    String kafkaTopic = partitionAssignment.getTopic();
-    OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
+    String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+      String kafkaTopic = partitionAssignment.getTopic();
+      OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
 
-    if (pushStatus != null) {
-      ExecutionStatus previousStatus = pushStatus.getCurrentStatus();
-      if (previousStatus.equals(ExecutionStatus.COMPLETED) || previousStatus.equals(ExecutionStatus.ERROR)) {
-        logger.warn("Skip updating push status: " + kafkaTopic + " since it is already in: " + previousStatus);
-        return;
-      }
-
-      Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(pushStatus, partitionAssignment);
-      if (!status.getFirst().equals(pushStatus.getCurrentStatus())) {
-        if (status.getFirst().isTerminal()) {
-          logger.info("Offline push status will be changed to " + status.toString() + " for topic: " + kafkaTopic + " from status: " + pushStatus.getCurrentStatus());
-          handleOfflinePushUpdate(pushStatus, status.getFirst(), status.getSecond());
-        } else if (status.getFirst().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
-          // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
-          checkWhetherToStartBufferReplayForHybrid(pushStatus);
+      if (pushStatus != null) {
+        ExecutionStatus previousStatus = pushStatus.getCurrentStatus();
+        if (previousStatus.equals(ExecutionStatus.COMPLETED) || previousStatus.equals(ExecutionStatus.ERROR)) {
+          logger.warn("Skip updating push status: " + kafkaTopic + " since it is already in: " + previousStatus);
+          return;
         }
+
+        Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(pushStatus, partitionAssignment);
+        if (!status.getFirst().equals(pushStatus.getCurrentStatus())) {
+          if (status.getFirst().isTerminal()) {
+            logger.info("Offline push status will be changed to " + status.toString() + " for topic: " + kafkaTopic + " from status: " + pushStatus.getCurrentStatus());
+            handleOfflinePushUpdate(pushStatus, status.getFirst(), status.getSecond());
+          } else if (status.getFirst().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
+            // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
+            checkWhetherToStartBufferReplayForHybrid(pushStatus);
+          }
+        }
+      } else {
+        logger.info("Can not find a running offline push for topic:" + partitionAssignment.getTopic() + ", ignore the routing data changed notification. OfflinePushStatus: " + pushStatus);
       }
-    } else {
-      logger.info("Can not find a running offline push for topic:" + partitionAssignment.getTopic() + ", ignore the routing data changed notification. OfflinePushStatus: " + pushStatus);
     }
   }
 
@@ -651,8 +614,7 @@ public abstract class AbstractPushMonitor
       return;
     }
     VersionStatus newStatus = status;
-    try {
-      metadataRepository.lock();
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       Store store = metadataRepository.getStore(storeName);
       if (store == null) {
         throw new VeniceNoStoreException(storeName);
@@ -679,21 +641,16 @@ public abstract class AbstractPushMonitor
         metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
             store.getCurrentVersion());
       }
-    } finally {
-      metadataRepository.unLock();
     }
   }
 
   private Integer getStoreCurrentVersion(String storeName) {
-    try {
-      metadataRepository.lock();
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
       Store store = metadataRepository.getStoreOrThrow(storeName);
       if (store == null) {
         return null;
       }
       return store.getCurrentVersion();
-    } finally {
-      metadataRepository.unLock();
     }
   }
 
@@ -713,8 +670,4 @@ public abstract class AbstractPushMonitor
   public Optional<TopicReplicator> getTopicReplicator() {
     return topicReplicator;
   }
-
-  protected void acquirePushMonitorWriteLock() { pushMonitorWriteLock.lock(); }
-
-  protected void unlockPushMonitorWriteLock() { pushMonitorWriteLock.unlock(); }
 }

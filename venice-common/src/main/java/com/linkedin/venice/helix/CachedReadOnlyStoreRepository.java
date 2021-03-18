@@ -7,6 +7,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
 import org.apache.helix.AccessOption;
@@ -15,7 +17,6 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +24,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
@@ -40,14 +40,14 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   protected final ZkClient zkClient;
   protected final ZkBaseDataAccessor<Store> zkDataAccessor;
 
-  // A lock to make sure that all updates are serialized and events are delivered in the correct order
-  protected final ReentrantLock updateLock = new ReentrantLock();
+  protected final ClusterLockManager clusterLockManager;
   protected final Map<String, Store> storeMap = new VeniceConcurrentHashMap<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
 
 
-  public CachedReadOnlyStoreRepository(ZkClient zkClient, String clusterName, HelixAdapterSerializer compositeSerializer) {
+  public CachedReadOnlyStoreRepository(ZkClient zkClient, String clusterName, HelixAdapterSerializer compositeSerializer,
+      ClusterLockManager clusterLockManager) {
     this.zkClient = zkClient;
     this.zkDataAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.clusterName = clusterName;
@@ -55,6 +55,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     compositeSerializer.registerSerializer(clusterStoreRepositoryPath, new VeniceJsonSerializer<>(Integer.TYPE));
     compositeSerializer.registerSerializer(getStoreZkPath(PathResourceRegistry.WILDCARD_MATCH_ANY),  new StoreJSONSerializer());
     zkClient.setZkSerializer(compositeSerializer);
+    this.clusterLockManager = clusterLockManager;
   }
 
   @Override
@@ -102,8 +103,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   @Override
   public void refresh() {
     logger.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       List<Store> newStores = getStoresFromZk();
       logger.info("Got " + newStores.size() + " stores from cluster " + clusterName + " during refresh in repo: " + getClass().getSimpleName());
       Set<String> deletedStoreNames = storeMap.values().stream().map(Store::getName).collect(Collectors.toSet());
@@ -116,15 +116,12 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
         removeStore(storeName);
       }
       logger.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   public Store refreshOneStore(String storeName) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       Store newStore = getStoreFromZk(storeName);
       if (newStore != null) {
         putStore(newStore);
@@ -132,19 +129,15 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
         removeStore(storeName);
       }
       return newStore;
-    } finally {
-      updateLock.unlock();
     }
   }
 
   @Override
   public void clear() {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       storeMap.clear();
       totalStoreReadQuota.set(0);
-    } finally {
-      updateLock.unlock();
+      clusterLockManager.clear();
     }
   }
 
@@ -159,8 +152,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   protected Store putStore(Store newStore) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(newStore.getName())) {
       // Workaround to make old metadata compatible with new fields
       newStore.fixMissingFields();
 
@@ -173,22 +165,17 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
         notifyStoreChanged(newStore);
       }
       return oldStore;
-    } finally {
-      updateLock.unlock();
     }
   }
 
   protected Store removeStore(String storeName) {
-    updateLock.lock();
-    try {
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       Store oldStore = storeMap.remove(getZkStoreName(storeName));
       if (oldStore != null) {
         totalStoreReadQuota.addAndGet(-oldStore.getReadQuotaInCU());
         notifyStoreDeleted(storeName);
       }
       return oldStore;
-    } finally {
-      updateLock.unlock();
     }
   }
 

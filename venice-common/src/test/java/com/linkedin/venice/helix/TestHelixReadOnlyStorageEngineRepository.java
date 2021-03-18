@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -46,7 +47,7 @@ public class TestHelixReadOnlyStorageEngineRepository {
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
     repo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
-    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000, Optional.empty());
+    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, Optional.empty(), new ClusterLockManager(cluster));
     repo.refresh();
     writeRepo.refresh();
   }

@@ -22,14 +22,14 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
   protected AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner) {
     return new OfflinePushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), storeCleaner,
         getMockStoreRepo(), getMockPushHealthStats(), false, Optional.of(mock(TopicReplicator.class)),
-        getMetricsRepository(), getMockMetadataStoreWriter());
+        getMockMetadataStoreWriter(), getClusterLockManager());
   }
 
   @Override
   protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator) {
     return new OfflinePushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), getMockStoreCleaner(),
         getMockStoreRepo(), getMockPushHealthStats(), skipBufferReplayForHybrid, Optional.of(mockReplicator),
-        getMetricsRepository(), getMockMetadataStoreWriter());
+        getMockMetadataStoreWriter(), getClusterLockManager());
   }
 
   @Test

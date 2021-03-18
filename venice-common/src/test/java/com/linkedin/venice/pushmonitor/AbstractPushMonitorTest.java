@@ -18,7 +18,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,6 +47,7 @@ public abstract class AbstractPushMonitorTest {
   private AggPushHealthStats mockPushHealthStats;
   private MetricsRepository metricsRepository;
   private MetadataStoreWriter metadataStoreWriter;
+  private ClusterLockManager clusterLockManager;
 
   private String clusterName =TestUtils.getUniqueString("test_cluster");
   private String storeName;
@@ -73,8 +75,9 @@ public abstract class AbstractPushMonitorTest {
     mockRoutingDataRepo = mock(RoutingDataRepository.class);
     mockPushHealthStats = mock(AggPushHealthStats.class);
     metricsRepository = new MetricsRepository();
-    monitor = getPushMonitor();
     metadataStoreWriter = mock(MetadataStoreWriter.class);
+    clusterLockManager = new ClusterLockManager(clusterName);
+    monitor = getPushMonitor();
   }
 
   @Test
@@ -481,23 +484,32 @@ public abstract class AbstractPushMonitorTest {
   }
 
   private class MockStoreCleaner implements StoreCleaner {
-    private final VeniceReentrantReadWriteLock mockVeniceHelixResourceLock;
+    private final ClusterLockManager clusterLockManager;
 
-    public MockStoreCleaner(VeniceReentrantReadWriteLock lock) {
-      this.mockVeniceHelixResourceLock = lock;
+    public MockStoreCleaner(ClusterLockManager clusterLockManager) {
+      this.clusterLockManager = clusterLockManager;
     }
 
     @Override
     public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
-      mockVeniceHelixResourceLock.readLock().lock();
-      mockVeniceHelixResourceLock.readLock().unlock();
+      try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+        try {
+          Thread.sleep(1000);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+      }
     }
 
     @Override
     public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush) {
-      System.out.println("T2 taking lock 1");
-      mockVeniceHelixResourceLock.readLock().lock();
-      mockVeniceHelixResourceLock.readLock().unlock();
+      try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+        try {
+          Thread.sleep(1000);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+      }
     }
 
     @Override
@@ -509,8 +521,7 @@ public abstract class AbstractPushMonitorTest {
   @Test(timeOut = 30 * Time.MS_PER_SECOND)
   public void testOnExternalViewChangeDeadlock() throws InterruptedException {
     ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
-    final VeniceReentrantReadWriteLock lock = new VeniceReentrantReadWriteLock();
-    final StoreCleaner mockStoreCleanerWithLock = new MockStoreCleaner(lock);
+    final StoreCleaner mockStoreCleanerWithLock = new MockStoreCleaner(clusterLockManager);
     final AbstractPushMonitor pushMonitor = getPushMonitor(mockStoreCleanerWithLock);
     final String topic = "test-lock_v1";
     final String instanceId = "test_instance";
@@ -525,29 +536,67 @@ public abstract class AbstractPushMonitorTest {
     ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
     pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
-    // The async thread will take some time before calling stopMonitorOfflinePush, take the pushMonitorWriteLock lock and
-    // finally release the shutdown lock.
+
     asyncExecutor.submit(() -> {
-      // Simulate the start of LEADER -> STANDBY controller transition where the write (shutdown) lock is taken.
-      System.out.println("T1 taking lock 1");
-      lock.writeLock().lock();
-      try {
-        Thread.sleep(5000);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
+      // LEADER -> STANDBY transition thread: onBecomeStandbyFromLeader->stopAllMonitoring
+      System.out.println("T1 will acquire cluster level write lock");
+      try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
+        try {
+          Thread.sleep(5000);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+        pushMonitor.stopAllMonitoring();
       }
-      System.out.println("T1 taking lock 2");
-      pushMonitor.stopAllMonitoring();
-      lock.writeLock().unlock();
+      System.out.println("T1 released cluster level write lock");
     });
-    // Give some time for the other thread to take the write lock.
+    // Give some time for the other thread to take cluster level write lock.
     Thread.sleep(1000);
+    // Controller thread: onExternalViewChange
     // If there is a deadlock then it should hang here
-    System.out.println("T2 taking lock 2");
+    System.out.println("T2 will acquire cluster level read lock and store level write lock");
     pushMonitor.onExternalViewChange(completedPartitionAssignment);
+    System.out.println("T2 released cluster level read lock and store level write lock");
     asyncExecutor.shutdownNow();
   }
 
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
+  public void testOnPartitionStatusChangeDeadLock() throws InterruptedException {
+    final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
+    final StoreCleaner mockStoreCleanerWithLock = new MockStoreCleaner(clusterLockManager);
+    final AbstractPushMonitor pushMonitor = getPushMonitor(mockStoreCleanerWithLock);
+    final String topic = "test-lock_v1";
+    final String instanceId = "test_instance";
+
+    prepareMockStore(topic);
+    Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
+    onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+    PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
+    completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
+    doReturn(completedPartitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
+
+    ReplicaStatus status = new ReplicaStatus(instanceId);
+    status.updateStatus(ExecutionStatus.COMPLETED);
+    ReadOnlyPartitionStatus completedPartitionStatus = new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
+    pushMonitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+
+    asyncExecutor.submit(() -> {
+      // Controller thread: onPartitionStatusChange->updatePushStatusByPartitionStatus->handleCompletedPush->retireOldStoreVersions
+      System.out.println("T1 will acquire cluster level read lock and store level write lock");
+      pushMonitor.onPartitionStatusChange(topic, completedPartitionStatus);
+      System.out.println("T1 released cluster level read lock and store level write lock");
+    });
+    // Give some time for controller thread
+    Thread.sleep(1000);
+    // LEADER -> STANDBY transition thread: onBecomeStandbyFromLeader->stopAllMonitoring
+    System.out.println("T2 will acquire cluster level write lock");
+    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
+      pushMonitor.stopAllMonitoring();
+    }
+    System.out.println("T2 released cluster level write lock");
+    asyncExecutor.shutdownNow();
+  }
 
   protected Store prepareMockStore(String topic) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -584,8 +633,6 @@ public abstract class AbstractPushMonitorTest {
     return mockPushHealthStats;
   }
 
-  protected MetricsRepository getMetricsRepository() { return metricsRepository; }
-
   protected String getStoreName() {
     return storeName;
   }
@@ -607,5 +654,9 @@ public abstract class AbstractPushMonitorTest {
 
   protected MetadataStoreWriter getMockMetadataStoreWriter() {
     return metadataStoreWriter;
+  }
+
+  protected ClusterLockManager getClusterLockManager() {
+    return clusterLockManager;
   }
 }

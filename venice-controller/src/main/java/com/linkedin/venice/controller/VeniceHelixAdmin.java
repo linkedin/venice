@@ -126,6 +126,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
@@ -146,7 +147,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -285,15 +285,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, Long> topicToCreationTime = new VeniceConcurrentHashMap<>();
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
-
-    /**
-     * This map is used to guard concurrent modification to the same store, so far it is only being used
-     * by function: {@link #deleteOneStoreVersion} since it could be invoked in different threads:
-     * 1. Invocation from {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask} for version deletion/store deletion.
-     * 2. Invocation from {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} to clean up error/historical versions.
-     * 3. Invocation from {@link StoreBackupVersionCleanupService} to clean up backup version based on retention policy.
-     */
-    private final Map<String, ReentrantLock> perStoreLockMap = new ConcurrentHashMap<>();
 
     public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
         this(multiClusterConfigs, metricsRepository, false, Optional.empty(), Optional.empty(), Optional.empty());
@@ -574,8 +565,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         String valueSchema, boolean isSystemStore, Optional<String> accessPermissions) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         logger.info("Start creating store: " + storeName);
-        resources.lockForMetadataOperation();
-        try{
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             Store newStore = new ZKStore(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
@@ -593,29 +583,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             ReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
-            storeRepo.lock();
-            try {
-                Store existingStore = storeRepo.getStore(storeName);
-                if (existingStore != null) {
-                    // We already check the pre-condition before, so if we could find a store with the same name,
-                    // it means the store is a legacy store which is left by a failed deletion. So we should delete it.
-                    deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber(), true);
-                }
-                // Now there is not store exists in the store repository, we will try to retrieve the info from the graveyard.
-                // Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
-                int largestUsedVersionNumber = storeGraveyard.getLargestUsedVersionNumber(storeName);
-                newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-                storeRepo.addStore(newStore);
-                // Create global config for that store.
-                ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(clusterName).getStoreConfigAccessor();
-                if (!storeConfigAccessor.containsConfig(storeName)) {
-                    storeConfigAccessor.createConfig(storeName, clusterName);
-                }
-                logger.info("Store: " + storeName +
-                    " has been created with largestUsedVersionNumber: " + newStore.getLargestUsedVersionNumber());
-            } finally {
-                storeRepo.unLock();
+            Store existingStore = storeRepo.getStore(storeName);
+            if (existingStore != null) {
+                // We already check the pre-condition before, so if we could find a store with the same name,
+                // it means the store is a legacy store which is left by a failed deletion. So we should delete it.
+                deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber(), true);
             }
+            // Now there is not store exists in the store repository, we will try to retrieve the info from the graveyard.
+            // Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
+            int largestUsedVersionNumber = storeGraveyard.getLargestUsedVersionNumber(storeName);
+            newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+            storeRepo.addStore(newStore);
+            // Create global config for that store.
+            ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(clusterName).getStoreConfigAccessor();
+            if (!storeConfigAccessor.containsConfig(storeName)) {
+                storeConfigAccessor.createConfig(storeName, clusterName);
+            }
+            logger.info("Store: " + storeName +
+                " has been created with largestUsedVersionNumber: " + newStore.getLargestUsedVersionNumber());
+
             // Add schema
             ReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
             schemaRepo.initKeySchema(storeName, keySchema);
@@ -628,8 +614,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 metadataStoreWriter.writeStoreValueSchemas(clusterName, storeName, schemaRepo.getValueSchemas(storeName));
             }
             logger.info("Completed creating Store: " + storeName);
-        }finally {
-            resources.unlockForMetadataOperation();
         }
     }
 
@@ -644,58 +628,52 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerMastership(clusterName);
         logger.info("Start deleting store: " + storeName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        resources.lockForMetadataOperation();
-        try{
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
-            storeRepository.lock();
-            Store store = null;
             ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(clusterName).getStoreConfigAccessor();
             StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
-            try {
-                store = storeRepository.getStore(storeName);
-                checkPreConditionForDeletion(clusterName, storeName, store);
-                if (largestUsedVersionNumber == Store.IGNORE_VERSION) {
-                    // ignore and use the local largest used version number.
-                    logger.info("Give largest used version number is: " + largestUsedVersionNumber
-                        + " will skip overwriting the local store.");
-                } else if (largestUsedVersionNumber < store.getLargestUsedVersionNumber()) {
-                    throw new VeniceException("Given largest used version number: " + largestUsedVersionNumber
-                        + " is smaller than the largest used version number: " + store.getLargestUsedVersionNumber() +
-                        " found in repository. Cluster: " + clusterName + ", store: " + storeName);
-                } else {
-                    store.setLargestUsedVersionNumber(largestUsedVersionNumber);
-                }
-
-                String currentlyDiscoveredClusterName = storeConfig.getCluster(); // This is for store migration
-                // TODO: and ismigration flag is false, only then delete storeConfig
-                if (!currentlyDiscoveredClusterName.equals(clusterName)) {
-                    // This is most likely the deletion after a store migration operation.
-                    // In this case the storeConfig should not be deleted,
-                    // because it is still being used to discover the cloned store
-                    logger.warn("storeConfig for this store " + storeName + " in cluster " + clusterName
-                        + " will not be deleted because it is currently pointing to another cluster: "
-                        + currentlyDiscoveredClusterName);
-                } else if (store.isMigrating()) {
-                    // Cluster discovery is correct but store migration flag has not been reset.
-                    // This is most likely a direct deletion command from admin-tool sent to the wrong cluster.
-                    // i.e. instead of using the proper --end-migration command, a --delete-store command was issued AND sent to the wrong cluster
-                    String errMsg = "Abort storeConfig deletion for store " + storeName + " in cluster " + clusterName
-                        + " because this is either the cloned store after a successful migration"
-                        + " or the original store after a failed migration.";
-                    logger.warn(errMsg);
-                } else {
-                    // Update deletion flag in Store to start deleting. In case of any failures during the deletion, the store
-                    // could be deleted later after controller is recovered.
-                    // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
-                    // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
-                    // delete this legacy store if isDeleting is true for this store.
-                    storeConfig.setDeleting(true);
-                    storeConfigAccessor.updateConfig(storeConfig, store.isStoreMetaSystemStoreEnabled());
-                }
-                storeRepository.updateStore(store);
-            } finally {
-                storeRepository.unLock();
+            Store store = storeRepository.getStore(storeName);
+            checkPreConditionForDeletion(clusterName, storeName, store);
+            if (largestUsedVersionNumber == Store.IGNORE_VERSION) {
+                // ignore and use the local largest used version number.
+                logger.info("Give largest used version number is: " + largestUsedVersionNumber
+                    + " will skip overwriting the local store.");
+            } else if (largestUsedVersionNumber < store.getLargestUsedVersionNumber()) {
+                throw new VeniceException("Given largest used version number: " + largestUsedVersionNumber
+                    + " is smaller than the largest used version number: " + store.getLargestUsedVersionNumber() +
+                    " found in repository. Cluster: " + clusterName + ", store: " + storeName);
+            } else {
+                store.setLargestUsedVersionNumber(largestUsedVersionNumber);
             }
+
+            String currentlyDiscoveredClusterName = storeConfig.getCluster(); // This is for store migration
+            // TODO: and ismigration flag is false, only then delete storeConfig
+            if (!currentlyDiscoveredClusterName.equals(clusterName)) {
+                // This is most likely the deletion after a store migration operation.
+                // In this case the storeConfig should not be deleted,
+                // because it is still being used to discover the cloned store
+                logger.warn("storeConfig for this store " + storeName + " in cluster " + clusterName
+                    + " will not be deleted because it is currently pointing to another cluster: "
+                    + currentlyDiscoveredClusterName);
+            } else if (store.isMigrating()) {
+                // Cluster discovery is correct but store migration flag has not been reset.
+                // This is most likely a direct deletion command from admin-tool sent to the wrong cluster.
+                // i.e. instead of using the proper --end-migration command, a --delete-store command was issued AND sent to the wrong cluster
+                String errMsg = "Abort storeConfig deletion for store " + storeName + " in cluster " + clusterName
+                    + " because this is either the cloned store after a successful migration"
+                    + " or the original store after a failed migration.";
+                logger.warn(errMsg);
+            } else {
+                // Update deletion flag in Store to start deleting. In case of any failures during the deletion, the store
+                // could be deleted later after controller is recovered.
+                // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
+                // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
+                // delete this legacy store if isDeleting is true for this store.
+                storeConfig.setDeleting(true);
+                storeConfigAccessor.updateConfig(storeConfig, store.isStoreMetaSystemStoreEnabled());
+            }
+            storeRepository.updateStore(store);
+
             if (store.isStoreMetadataSystemStoreEnabled()) {
                 // Attempt to dematerialize all possible versions, no-op if a version doesn't actually exist.
                 for (Version version : storeRepository.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix()).getVersions()) {
@@ -724,12 +702,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     // Don't need to block on deletion for metadata system store RT topic because it's handled in materializeMetadataStoreVersion.
                 }
             }
-            if (store != null) {
-                truncateOldTopics(clusterName, store, true);
-            } else {
-                // Defensive coding: This should never happen, unless someone adds a catch block to the above try/finally clause...
-                logger.error("Unexpected null store instance...!");
-            }
+            truncateOldTopics(clusterName, store, true);
+
             // Cleanup meta system store if necessary
             if (store.isStoreMetaSystemStoreEnabled()) {
                 String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
@@ -763,8 +737,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 storeConfigAccessor.deleteConfig(storeName);
             }
             logger.info("Store " + storeName + " in cluster " + clusterName + " has been deleted.");
-        } finally {
-            resources.unlockForMetadataOperation();
         }
     }
 
@@ -1321,41 +1293,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " is less than the largestUsedVersionNumber of " + store.getLargestUsedVersionNumber()
                 + " for store " + storeName + " in cluster " + clusterName);
         } else {
-            resources.lockForMetadataOperation();
-            try {
-                repository.lock();
-                try {
-                    version.setPushType(pushType);
-                    store.addVersion(version);
-                    // Apply cluster-level native replication configs
-                    VeniceControllerClusterConfig clusterConfig = resources.getConfig();
-                    if (version.isLeaderFollowerModelEnabled()) {
-                        boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
-                        if (store.isHybrid()) {
-                            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+            try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+                version.setPushType(pushType);
+                store.addVersion(version);
+                // Apply cluster-level native replication configs
+                VeniceControllerClusterConfig clusterConfig = resources.getConfig();
+                if (version.isLeaderFollowerModelEnabled()) {
+                    boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
+                    if (store.isHybrid()) {
+                        nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+                    } else {
+                        if (store.isIncrementalPushEnabled()) {
+                            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
                         } else {
-                            if (store.isIncrementalPushEnabled()) {
-                                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
-                            } else {
-                                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
-                            }
-                        }
-                        version.setNativeReplicationEnabled(nativeReplicationEnabled);
-                    }
-                    if (version.isNativeReplicationEnabled()) {
-                        if (remoteKafkaBootstrapServers != null) {
-                            version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
-                        } else {
-                            version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
+                            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
                         }
                     }
-                    repository.updateStore(store);
-                    logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
-                } finally {
-                    repository.unLock();
+                    version.setNativeReplicationEnabled(nativeReplicationEnabled);
                 }
-            } finally {
-                resources.unlockForMetadataOperation();
+                if (version.isNativeReplicationEnabled()) {
+                    if (remoteKafkaBootstrapServers != null) {
+                        version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
+                    } else {
+                        version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
+                    }
+                }
+                repository.updateStore(store);
+                logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
             }
             if (store.isStoreMetadataSystemStoreEnabled()) {
                 metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
@@ -1389,48 +1353,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         BackupStrategy backupStrategy;
 
         try {
-            resources.lockForMetadataOperation();
-            try {
-                repository.lock();
-                int amplificationFactor;
-                try {
-                    /**
-                     * For meta system store, Controller will produce a snapshot to RT topic before creating a new version, so that
-                     * it will guarantee the rewind will recover the state for both store properties and replica statuses.
-                     */
-                    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-                    if (null != systemStoreType && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
-                        produceSnapshotToMetaStoreRT(clusterName, systemStoreType.extractRegularStoreName(storeName));
-                    }
+            try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+                /**
+                 * For meta system store, Controller will produce a snapshot to RT topic before creating a new version, so that
+                 * it will guarantee the rewind will recover the state for both store properties and replica statuses.
+                 */
+                VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+                if (null != systemStoreType && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+                    produceSnapshotToMetaStoreRT(clusterName, systemStoreType.extractRegularStoreName(storeName));
+                }
 
-                    Store store = repository.getStore(storeName);
-                    if (store == null) {
-                        throwStoreDoesNotExist(clusterName, storeName);
+                Store store = repository.getStore(storeName);
+                if (store == null) {
+                    throwStoreDoesNotExist(clusterName, storeName);
+                }
+                // Dest child controllers skip the version whose kafka topic is truncated
+                if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
+                    if (versionNumber > store.getLargestUsedVersionNumber()) {
+                        store.setLargestUsedVersionNumber(versionNumber);
+                        repository.updateStore(store);
                     }
-                    // Dest child controllers skip the version whose kafka topic is truncated
-                    if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
-                        if (versionNumber > store.getLargestUsedVersionNumber()) {
-                            store.setLargestUsedVersionNumber(versionNumber);
-                            repository.updateStore(store);
-                        }
-                        logger.warn("Skip adding version: " + versionNumber + " for store: " + storeName
-                            + " in cluster: " + clusterName + " because the version topic is truncated");
-                        return null;
+                    logger.warn("Skip adding version: " + versionNumber + " for store: " + storeName
+                        + " in cluster: " + clusterName + " because the version topic is truncated");
+                    return null;
+                }
+                backupStrategy = store.getBackupStrategy();
+                int amplificationFactor = store.getPartitionerConfig().getAmplificationFactor();
+                if (versionNumber == VERSION_ID_UNSET) {
+                    // No version supplied, generate a new version. This could happen either in the parent
+                    // controller or local Samza jobs.
+                    version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
+                } else {
+                    if (store.containsVersion(versionNumber)) {
+                        throwVersionAlreadyExists(storeName, versionNumber);
                     }
-                    backupStrategy = store.getBackupStrategy();
-                    amplificationFactor = store.getPartitionerConfig().getAmplificationFactor();
-                    if (versionNumber == VERSION_ID_UNSET) {
-                        // No version supplied, generate a new version. This could happen either in the parent
-                        // controller or local Samza jobs.
-                        version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
-                    } else {
-                        if (store.containsVersion(versionNumber)) {
-                            throwVersionAlreadyExists(storeName, versionNumber);
-                        }
-                        version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
-                    }
-                } finally {
-                    repository.unLock();
+                    version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
                 }
 
                 topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
@@ -1464,89 +1421,84 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
                 Pair<String, String> sourceKafkaBootstrapServersAndZk = null;
 
-                repository.lock();
-                try {
-                    Store store = repository.getStore(storeName);
-                    strategy = store.getOffLinePushStrategy();
-                    if (!store.containsVersion(version.getNumber())) {
-                        version.setPushType(pushType);
-                        store.addVersion(version);
-                    }
-                    //We set the version level LF config to true if this LF dependency check is disabled.
-                    //This should be applicable for parent controllers only.
-                    if (clusterConfig.isLfModelDependencyCheckDisabled()) {
-                        version.setLeaderFollowerModelEnabled(true);
-                    }
-
-                    if (version.isLeaderFollowerModelEnabled()) {
-                        isLeaderFollowerStateModel = true;
-                    }
-                    // Disable buffer replay for hybrid according to cluster config
-                    if (store.isHybrid() && clusterConfig.isSkipBufferRelayForHybrid()) {
-                      store.setBufferReplayForHybridForVersion(version.getNumber(), false);
-                      logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
-                          version.getNumber() + " in cluster: " + clusterName);
-                    }
-                    // Apply cluster-level native replication configs
-                    if (version.isLeaderFollowerModelEnabled()) {
-                        boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
-                        if (store.isHybrid()) {
-                            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
-                        } else {
-                            if (store.isIncrementalPushEnabled()) {
-                                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
-                            } else {
-                                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
-                            }
-                        }
-                        version.setNativeReplicationEnabled(nativeReplicationEnabled);
-                    }
-
-                    // Check whether native replication is enabled
-                    if (version.isNativeReplicationEnabled()) {
-                        if (remoteKafkaBootstrapServers != null) {
-                            /**
-                             * AddVersion is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask}
-                             * which is processing an AddVersion message that contains remote Kafka bootstrap servers url.
-                             */
-                            version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
-                        } else {
-                            /**
-                             * AddVersion is invoked by directly querying controllers; there are 3 different configs that
-                             * can determine where the source fabric is:
-                             * 1. Cluster level config
-                             * 2. Push job config which can identify where the push starts from, which has a higher
-                             *    priority than cluster level config
-                             * 3. Store level config which has the highest priority; by default, it's not used unless
-                             *    specified. Store level config has the highest priority because it can be used to fail
-                             *    over a push.
-                             */
-                            String sourceFabric = getNativeReplicationSourceFabric(clusterName, store, batchStartingFabric);
-                            sourceKafkaBootstrapServersAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
-                            String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
-                            if (sourceKafkaBootstrapServers == null) {
-                                sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
-                            }
-                            version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
-                            version.setNativeReplicationSourceFabric(sourceFabric);
-                        }
-                    }
-                    store.setPersistenceType(PersistenceType.ROCKS_DB);
-                    repository.updateStore(store);
-                    if (store.isStoreMetadataSystemStoreEnabled()) {
-                        if (multiClusterConfigs.isParent()) {
-                            metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
-                            metadataStoreWriter.writeTargetVersionStates(clusterName, storeName, store.getVersions());
-                        } else {
-                            metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
-                            metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
-                                store.getCurrentVersion());
-                        }
-                    }
-                    logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
-                } finally {
-                    repository.unLock();
+                store = repository.getStore(storeName);
+                strategy = store.getOffLinePushStrategy();
+                if (!store.containsVersion(version.getNumber())) {
+                    version.setPushType(pushType);
+                    store.addVersion(version);
                 }
+                //We set the version level LF config to true if this LF dependency check is disabled.
+                //This should be applicable for parent controllers only.
+                if (clusterConfig.isLfModelDependencyCheckDisabled()) {
+                    version.setLeaderFollowerModelEnabled(true);
+                }
+
+                if (version.isLeaderFollowerModelEnabled()) {
+                    isLeaderFollowerStateModel = true;
+                }
+                // Disable buffer replay for hybrid according to cluster config
+                if (store.isHybrid() && clusterConfig.isSkipBufferRelayForHybrid()) {
+                    store.setBufferReplayForHybridForVersion(version.getNumber(), false);
+                    logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
+                        version.getNumber() + " in cluster: " + clusterName);
+                }
+                // Apply cluster-level native replication configs
+                if (version.isLeaderFollowerModelEnabled()) {
+                    boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
+                    if (store.isHybrid()) {
+                        nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+                    } else {
+                        if (store.isIncrementalPushEnabled()) {
+                            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
+                        } else {
+                            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
+                        }
+                    }
+                    version.setNativeReplicationEnabled(nativeReplicationEnabled);
+                }
+
+                // Check whether native replication is enabled
+                if (version.isNativeReplicationEnabled()) {
+                    if (remoteKafkaBootstrapServers != null) {
+                        /**
+                         * AddVersion is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask}
+                         * which is processing an AddVersion message that contains remote Kafka bootstrap servers url.
+                         */
+                        version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
+                    } else {
+                        /**
+                         * AddVersion is invoked by directly querying controllers; there are 3 different configs that
+                         * can determine where the source fabric is:
+                         * 1. Cluster level config
+                         * 2. Push job config which can identify where the push starts from, which has a higher
+                         *    priority than cluster level config
+                         * 3. Store level config which has the highest priority; by default, it's not used unless
+                         *    specified. Store level config has the highest priority because it can be used to fail
+                         *    over a push.
+                         */
+                        String sourceFabric = getNativeReplicationSourceFabric(clusterName, store, batchStartingFabric);
+                        sourceKafkaBootstrapServersAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
+                        String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
+                        if (sourceKafkaBootstrapServers == null) {
+                            sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
+                        }
+                        version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
+                        version.setNativeReplicationSourceFabric(sourceFabric);
+                    }
+                }
+                store.setPersistenceType(PersistenceType.ROCKS_DB);
+                repository.updateStore(store);
+                if (store.isStoreMetadataSystemStoreEnabled()) {
+                    if (multiClusterConfigs.isParent()) {
+                        metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
+                        metadataStoreWriter.writeTargetVersionStates(clusterName, storeName, store.getVersions());
+                    } else {
+                        metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
+                        metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
+                            store.getCurrentVersion());
+                    }
+                }
+                logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
 
                 /**
                  *  When native replication is enabled and it's in parent controller, directly create the topic in
@@ -1641,8 +1593,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         }
                     }
                 }
-            } finally {
-                resources.unlockForMetadataOperation();
             }
             return version;
 
@@ -1798,9 +1748,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (currentTopics.contains(realTimeTopic)){
             return realTimeTopic;
         } else {
-            ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-            repository.lock();
-            try {
+            VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+            try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+                ReadWriteStoreRepository repository = resources.getMetadataRepository();
                 Store store = repository.getStore(storeName);
                 if (store == null) {
                     throwStoreDoesNotExist(clusterName, storeName);
@@ -1840,8 +1790,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // replicating to it.  A new version must be created.
                 logger.warn("Creating real time topic per topic request for store " + storeName + ".  "
                   + "Buffer replay wont start for any existing versions");
-            } finally {
-                repository.unLock();
             }
             return realTimeTopic;
         }
@@ -1850,10 +1798,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized Version getIncrementalPushVersion(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            Store store = repository.getStore(storeName);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+            Store store = resources.getMetadataRepository().getStore(storeName);
             if (store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
@@ -1889,8 +1836,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   + clusterName + " because the topic: " + kafkaTopic + " is either absent or being truncated");
             }
             return version;
-        } finally {
-            repository.unLock();
         }
     }
 
@@ -1938,25 +1883,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        resources.lockForMetadataOperation();
-        try {
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             ReadWriteStoreRepository repository = resources.getMetadataRepository();
-            List<Version> deletingVersionSnapshot = new ArrayList<>();
-            repository.lock();
-            try {
-                Store store = repository.getStore(storeName);
-                checkPreConditionForDeletion(clusterName, storeName, store);
-                logger.info("Deleting all versions in store: " + store + " in cluster: " + clusterName);
-                // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
-                // version were deleted, router will get a current version which does not exist actually.
-                store.setEnableWrites(true);
-                store.setCurrentVersion(Store.NON_EXISTING_VERSION);
-                store.setEnableWrites(false);
-                repository.updateStore(store);
-                deletingVersionSnapshot = new ArrayList<>(store.getVersions());
-            } finally {
-                repository.unLock();
-            }
+            Store store = repository.getStore(storeName);
+            checkPreConditionForDeletion(clusterName, storeName, store);
+            logger.info("Deleting all versions in store: " + store + " in cluster: " + clusterName);
+            // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
+            // version were deleted, router will get a current version which does not exist actually.
+            store.setEnableWrites(true);
+            store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+            store.setEnableWrites(false);
+            repository.updateStore(store);
+            List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
+
             // Do not lock the entire deleting block, because during the deleting, controller would acquire repository lock
             // to query store when received the status update from storage node.
             for (Version version : deletingVersionSnapshot) {
@@ -1964,8 +1903,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             logger.info("Deleted all versions in store: " + storeName + " in cluster: " + clusterName);
             return deletingVersionSnapshot;
-        }finally {
-            resources.unlockForMetadataOperation();
         }
     }
 
@@ -1973,8 +1910,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void deleteOldVersionInStore(String clusterName, String storeName, int versionNum) {
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        resources.lockForMetadataOperation();
-        try {
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             ReadWriteStoreRepository repository = resources.getMetadataRepository();
             Store store = repository.getStore(storeName);
             // Here we do not require the store be disabled. So it might impact reads
@@ -1992,8 +1928,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Deleting version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
             deleteOneStoreVersion(clusterName, storeName, versionNum);
             logger.info("Deleted version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
-        } finally {
-            resources.unlockForMetadataOperation();
         }
     }
 
@@ -2007,21 +1941,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return;
         }
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        /**
-         * TODO: Right now, this store-level lock is causing a deadlock issue, and we will need to find another way
-         * to make it work also in the future, we need to make the locking inside Controller less error-prone
-         * and easy to follow.
-         */
-        //ReentrantLock storeLock = perStoreLockMap.computeIfAbsent(storeName, (s) -> new ReentrantLock());
-        resources.lockForMetadataOperation();
-        //storeLock.lock();
-        try {
-            Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+            Store store = resources.getMetadataRepository().getStore(storeName);
             Store storeToCheckOngoingMigration =
                 VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE ?
-                    getVeniceHelixResource(clusterName).getMetadataRepository()
-                        .getStore(VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName)) :
-                    store;
+                    resources.getMetadataRepository()
+                        .getStore(VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName)) : store;
             if (!store.containsVersion(versionNumber)) {
                 logger.info("Version: " + versionNumber + " doesn't exist in store: " + storeName + ", will skip `deleteOneStoreVersion`");
                 return;
@@ -2057,19 +1982,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     pushStatusStoreDeleter.get().deletePushStatus(storeName, deletedVersion.get().getNumber(), Optional.empty(), deletedVersion.get().getPartitionCount());
                 }
             }
-        } finally {
-            //storeLock.unlock();
-            resources.unlockForMetadataOperation();
         }
     }
 
     @Override
     public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        resources.lockForMetadataOperation();
-        try {
-            ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
-            Store store = storeRepository.getStore(storeName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+            Store store = resources.getMetadataRepository().getStore(storeName);
 
             //  if deleteBackupOnStartPush is true decrement minNumberOfStoreVersionsToPreserve by one
             // as newly started push is considered as another version. the code in retrieveVersionsToDelete
@@ -2101,8 +2021,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
 
             truncateOldTopics(clusterName, store, false);
-        } finally {
-            resources.unlockForMetadataOperation();
         }
     }
 
@@ -2141,11 +2059,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * version to be deleted (if it exists) and not actually removing it from the {@link Store} object.
      */
     protected Optional<Version> deleteVersionFromStoreRepository(String clusterName, String storeName, int versionNumber) {
-        ReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         logger.info("Deleting version " + versionNumber + " in Store: " + storeName + " in cluster: " + clusterName);
         Optional<Version> deletedVersion;
-        storeRepository.lock();
-        try {
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+            ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
             Store store = storeRepository.getStore(storeName);
             if (store == null) {
                 throw new VeniceNoStoreException(storeName);
@@ -2175,8 +2093,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
                     store.getCurrentVersion());
             }
-        } finally {
-            storeRepository.unLock();
         }
         logger.info("Deleted version " + versionNumber + " in Store: " + storeName + " in cluster: " + clusterName);
         return deletedVersion;
@@ -2354,33 +2270,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     private Store getStoreForReadOnly(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            Store store = repository.getStore(storeName);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+            Store store = resources.getMetadataRepository().getStore(storeName);
             if(store == null){
                 throw new VeniceNoStoreException(storeName);
             }
             return store; /* is a clone */
-        } finally {
-            repository.unLock();
         }
     }
 
     @Override
     public List<Version> versionsForStore(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         List<Version> versions;
-        repository.lock();
-        try {
-            Store store = repository.getStore(storeName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+            Store store = resources.getMetadataRepository().getStore(storeName);
             if(store == null){
                 throw new VeniceNoStoreException(storeName);
             }
             versions = store.getVersions();
-        } finally {
-            repository.unLock();
         }
         return versions;
     }
@@ -2388,41 +2298,32 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public List<Store> getAllStores(String clusterName){
         checkControllerMastership(clusterName);
-        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            return repository.getAllStores();
-        } finally {
-            repository.unLock();
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
+            return resources.getMetadataRepository().getAllStores();
         }
     }
 
     @Override
     public Map<String, String> getAllStoreStatuses(String clusterName) {
         checkControllerMastership(clusterName);
-        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            List<Store> storeList = repository.getAllStores();
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
+            List<Store> storeList = resources.getMetadataRepository().getAllStores();
             RoutingDataRepository routingDataRepository =
                 getVeniceHelixResource(clusterName).getRoutingDataRepository();
             ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
             return StoreStatusDecider.getStoreStatues(storeList, resourceAssignment,
                 getVeniceHelixResource(clusterName).getPushMonitor());
-        } finally {
-            repository.unLock();
         }
     }
 
     @Override
     public boolean hasStore(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            return repository.hasStore(storeName);
-        } finally {
-            repository.unLock();
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+            return resources.getMetadataRepository().hasStore(storeName);
         }
     }
 
@@ -3175,9 +3076,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
         checkPreConditionForUpdateStore(clusterName, storeName);
-        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+            ReadWriteStoreRepository repository = resources.getMetadataRepository();
             Store store = repository.getStore(storeName);
             Store updatedStore = operation.update(store);
             repository.updateStore(updatedStore);
@@ -3191,8 +3092,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } catch (Exception e) {
             logger.error("Failed to execute StoreMetadataOperation.", e);
             throw e;
-        } finally {
-            repository.unLock();
         }
     }
 
@@ -4526,31 +4425,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         newVersion.setPushType(pushType);
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        ReadWriteStoreRepository repository = resources.getMetadataRepository();
         try {
-            resources.lockForMetadataOperation();
-            try {
-                repository.lock();
-                try {
-                    Store zkSharedStore = repository.getStore(zkSharedStoreName);
-                    zkSharedStore.addVersion(newVersion);
-                    zkSharedStore.setCurrentVersion(newVersion.getNumber());
-                    zkSharedStore.updateVersionStatus(versionNum, ONLINE);
-                    if (newVersion.isNativeReplicationEnabled()) {
-                        if (remoteKafkaBootstrapServers != null) {
-                            newVersion.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
-                        } else {
-                            newVersion.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
-                        }
+            try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(zkSharedStoreName)) {
+                ReadWriteStoreRepository repository = resources.getMetadataRepository();
+                Store zkSharedStore = repository.getStore(zkSharedStoreName);
+                zkSharedStore.addVersion(newVersion);
+                zkSharedStore.setCurrentVersion(newVersion.getNumber());
+                zkSharedStore.updateVersionStatus(versionNum, ONLINE);
+                if (newVersion.isNativeReplicationEnabled()) {
+                    if (remoteKafkaBootstrapServers != null) {
+                        newVersion.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
+                    } else {
+                        newVersion.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
                     }
-                    repository.updateStore(zkSharedStore);
-                    logger.info("New version: " + newVersion.getNumber() + " created for Zk shared store: "
-                        + zkSharedStoreName);
-                } finally {
-                    repository.unLock();
                 }
-            } finally {
-                resources.unlockForMetadataOperation();
+                repository.updateStore(zkSharedStore);
+                logger.info("New version: " + newVersion.getNumber() + " created for Zk shared store: "
+                    + zkSharedStoreName);
             }
         } catch (Exception e) {
             throw new VeniceException("Failed to set new version: " + newVersion.getNumber() + " for Zk shared store: "
@@ -4665,8 +4556,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         int replicationFactor = resources.getMetadataRepository().getStore(storeName).getReplicationFactor();
-        resources.lockForMetadataOperation();
-        try {
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             getTopicManager().createTopic(
                 topicName,
                 version.getPartitionCount(),
@@ -4694,8 +4584,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     "Error when materializing store version:\n" + stackTrace);
                 throw new VeniceException(errorMessage + ". Stack trace: " + stackTrace);
             }
-        } finally {
-            resources.unlockForMetadataOperation();
         }
     }
 
@@ -4719,26 +4607,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        resources.lockForMetadataOperation();
-        try {
+        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
             ReadWriteStoreRepository repository = resources.getMetadataRepository();
-            List<Version> deletingVersionSnapshot;
-            repository.lock();
-            try {
-                Store store = repository.getStore(pushStatusStoreName);
-                logger.info("Deleting all versions in store: " + pushStatusStoreName + " in cluster: " + clusterName);
-                deletingVersionSnapshot = new ArrayList<>(store.getVersions());
-            } finally {
-                repository.unLock();
-            }
-            // Do not lock the entire deleting block, because during the deleting, controller would acquire repository lock
-            // to query store when received the status update from storage node.
+            Store store = repository.getStore(pushStatusStoreName);
+            logger.info("Deleting all versions in store: " + pushStatusStoreName + " in cluster: " + clusterName);
+            List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
             for (Version version : deletingVersionSnapshot) {
               deleteOneStoreVersion(clusterName, pushStatusStoreName, version.getNumber());
             }
             logger.info("Deleted all versions in store: " + pushStatusStoreName + " in cluster: " + clusterName);
-        } finally {
-            resources.unlockForMetadataOperation();
         }
         // Clean up venice writer before truncating RT topic
         pushStatusStoreDeleter.ifPresent(deleter -> deleter.removePushStatusStoreVeniceWriter(storeName));

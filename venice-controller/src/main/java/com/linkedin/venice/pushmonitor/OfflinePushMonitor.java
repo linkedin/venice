@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
-import io.tehuti.metrics.MetricsRepository;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,9 +24,9 @@ public class OfflinePushMonitor extends AbstractPushMonitor implements RoutingDa
   public OfflinePushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
       OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
-      MetricsRepository metricsRepository, MetadataStoreWriter metadataStoreWriter) {
+      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        skipBufferReplayForHybrid, topicReplicator, metricsRepository, metadataStoreWriter);
+        skipBufferReplayForHybrid, topicReplicator, metadataStoreWriter, clusterLockManager);
   }
   /**
    * Checking push status based on Helix external view (RoutingData)

@@ -78,14 +78,4 @@ public class HelixReadWriteStoreRepositoryAdapter extends HelixReadOnlyStoreRepo
       throw new VeniceException("System store: " + storeName + " can't be added directly");
     }
   }
-
-  @Override
-  public void lock() {
-    regularStoreRepository.lock();
-  }
-
-  @Override
-  public void unLock() {
-    regularStoreRepository.unLock();
-  }
 }

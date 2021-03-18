@@ -13,9 +13,9 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
 import java.util.Collections;
@@ -105,6 +105,8 @@ public class AbstractTestVeniceParentHelixAdmin {
     ZkRoutersClusterManager manager = mock(ZkRoutersClusterManager.class);
     doReturn(manager).when(resources).getRoutersClusterManager();
     doReturn(10).when(manager).getLiveRoutersCount();
+    ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
+    doReturn(clusterLockManager).when(resources).getClusterLockManager();
 
     accessor = mock(ParentHelixOfflinePushAccessor.class);
 
