@@ -9,11 +9,10 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.TaskAttemptID;
 import org.apache.hadoop.mapred.TaskID;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 
 /**

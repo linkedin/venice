@@ -32,8 +32,6 @@ dependencies {
     implementation libraries.xerces
     implementation libraries.xalan
 
-    implementation libraries.azkaban
-
     implementation libraries.zstd
 
     runtime libraries.commonsConfiguration

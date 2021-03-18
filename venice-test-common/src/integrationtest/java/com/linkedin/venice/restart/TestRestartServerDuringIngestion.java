@@ -6,7 +6,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -43,8 +43,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 @Test(singleThreaded = true)
@@ -113,8 +111,8 @@ public abstract class TestRestartServerDuringIngestion {
     String storeName = TestUtils.getUniqueString("test_store");
     String veniceUrl = cluster.getMasterVeniceController().getControllerUrl();
     Properties properties = new Properties();
-    properties.put(KafkaPushJob.VENICE_URL_PROP, veniceUrl);
-    properties.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
+    properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
+    properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
     TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
     if (leaderFollowerEnabled) {
       TestPushUtils.makeStoreLF(cluster, storeName);

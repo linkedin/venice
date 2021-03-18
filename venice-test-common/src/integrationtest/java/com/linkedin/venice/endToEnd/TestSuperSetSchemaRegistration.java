@@ -2,7 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
@@ -22,7 +22,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
@@ -125,7 +125,7 @@ public class TestSuperSetSchemaRegistration {
 
       props.setProperty(VALUE_FIELD_PROP, "value");
 
-      try (KafkaPushJob job = new KafkaPushJob("Test Batch push job # 1", props)) {
+      try (VenicePushJob job = new VenicePushJob("Test Batch push job # 1", props)) {
         job.run();
       }
 
@@ -133,7 +133,7 @@ public class TestSuperSetSchemaRegistration {
       props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
       props.setProperty(VALUE_FIELD_PROP, "value");
 
-      try (KafkaPushJob job = new KafkaPushJob("Test Batch push job # 2", props)) {
+      try (VenicePushJob job = new VenicePushJob("Test Batch push job # 2", props)) {
         job.run();
       }
     }

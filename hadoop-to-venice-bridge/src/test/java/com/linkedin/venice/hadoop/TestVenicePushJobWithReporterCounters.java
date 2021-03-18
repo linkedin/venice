@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 
-public class TestKafkaPushJobWithReporterCounters {
+public class TestVenicePushJobWithReporterCounters {
 
   private static final int PARTITION_COUNT = 10;
   private static final String SCHEMA_STR = "{" +
@@ -56,9 +56,9 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
         ),
         Arrays.asList(
-            KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            KafkaPushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            KafkaPushJob.PushJobCheckpoints.QUOTA_EXCEEDED)
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED)
     );
   }
 
@@ -72,9 +72,9 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
         ),
         Arrays.asList(
-            KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            KafkaPushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            KafkaPushJob.PushJobCheckpoints.WRITE_ACL_FAILED)
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.WRITE_ACL_FAILED)
     );
   }
 
@@ -88,9 +88,9 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
         ),
         Arrays.asList(
-            KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            KafkaPushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            KafkaPushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE)
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE)
     );
   }
 
@@ -104,9 +104,9 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all closed
         ),
         Arrays.asList(
-            KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            KafkaPushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            KafkaPushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE),
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE),
         10L // Non-empty input data file
     );
   }
@@ -121,10 +121,10 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1) // Some but not all reducers closed
         ),
         Arrays.asList(
-            KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            KafkaPushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            KafkaPushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
-            KafkaPushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED
         )
     );
   }
@@ -139,36 +139,36 @@ public class TestKafkaPushJobWithReporterCounters {
             new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT) // All reducers closed
         ),
         Arrays.asList(
-            KafkaPushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            KafkaPushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            KafkaPushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
-            KafkaPushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED
         )
     );
   }
 
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
-      List<KafkaPushJob.PushJobCheckpoints> expectedReportedCheckpoints
+      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints
   ) throws Exception {
     testHandleErrorsInCounter(mockCounterInfos, expectedReportedCheckpoints, 10L);
   }
 
   private void testHandleErrorsInCounter(
       List<MockCounterInfo> mockCounterInfos,
-      List<KafkaPushJob.PushJobCheckpoints> expectedReportedCheckpoints,
+      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
       long inputFileDataSizeInBytes
   ) throws Exception {
-    KafkaPushJob kafkaPushJob = new KafkaPushJob("job-id", getH2VProps());
-    kafkaPushJob.setControllerClient(createControllerClientMock());
-    kafkaPushJob.setJobClientWrapper(createJobClientWrapperMock(mockCounterInfos));
-    kafkaPushJob.setClusterDiscoveryControllerClient(createClusterDiscoveryControllerClientMock());
-    kafkaPushJob.setInputDataInfoProvider(getInputDataInfoProviderMock(inputFileDataSizeInBytes));
-    kafkaPushJob.setVeniceWriter(createVeniceWriterMock());
+    VenicePushJob venicePushJob = new VenicePushJob("job-id", getH2VProps());
+    venicePushJob.setControllerClient(createControllerClientMock());
+    venicePushJob.setJobClientWrapper(createJobClientWrapperMock(mockCounterInfos));
+    venicePushJob.setClusterDiscoveryControllerClient(createClusterDiscoveryControllerClientMock());
+    venicePushJob.setInputDataInfoProvider(getInputDataInfoProviderMock(inputFileDataSizeInBytes));
+    venicePushJob.setVeniceWriter(createVeniceWriterMock());
 
     SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
-    kafkaPushJob.setSentPushJobDetailsTracker(pushJobDetailsTracker);
-    kafkaPushJob.run();
+    venicePushJob.setSentPushJobDetailsTracker(pushJobDetailsTracker);
+    venicePushJob.run();
     List<Integer> actualReportedCheckpointValues =
         new ArrayList<>(pushJobDetailsTracker.getRecordedPushJobDetails().size());
 
@@ -176,32 +176,32 @@ public class TestKafkaPushJobWithReporterCounters {
       actualReportedCheckpointValues.add(pushJobDetails.pushJobLatestCheckpoint);
     }
     List<Integer> expectedCheckpointValues =
-        expectedReportedCheckpoints.stream().map(KafkaPushJob.PushJobCheckpoints::getValue).collect(Collectors.toList());
+        expectedReportedCheckpoints.stream().map(VenicePushJob.PushJobCheckpoints::getValue).collect(Collectors.toList());
 
     Assert.assertEquals(actualReportedCheckpointValues, expectedCheckpointValues);
   }
 
   private Properties getH2VProps() {
     Properties props = new Properties();
-    props.put(KafkaPushJob.VENICE_URL_PROP, "venice-urls");
-    props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, "store-name");
-    props.put(KafkaPushJob.INPUT_PATH_PROP, "input-path");
-    props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
-    props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
+    props.put(VenicePushJob.VENICE_URL_PROP, "venice-urls");
+    props.put(VenicePushJob.VENICE_STORE_NAME_PROP, "store-name");
+    props.put(VenicePushJob.INPUT_PATH_PROP, "input-path");
+    props.put(VenicePushJob.KEY_FIELD_PROP, "id");
+    props.put(VenicePushJob.VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
-    props.put(KafkaPushJob.POLL_JOB_STATUS_INTERVAL_MS, 1000);
-    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
-    props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
-    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
-    props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
-    props.setProperty(KafkaPushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
+    props.put(VenicePushJob.POLL_JOB_STATUS_INTERVAL_MS, 1000);
+    props.setProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
+    props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     return props;
   }
 
   private InputDataInfoProvider getInputDataInfoProviderMock(long inputFileDataSizeInBytes) throws Exception {
     InputDataInfoProvider inputDataInfoProvider = mock(InputDataInfoProvider.class);
-    KafkaPushJob.SchemaInfo schemaInfo = new KafkaPushJob.SchemaInfo();
+    VenicePushJob.SchemaInfo schemaInfo = new VenicePushJob.SchemaInfo();
     schemaInfo.keySchemaString = SCHEMA_STR;
     schemaInfo.valueSchemaString = SCHEMA_STR;
     schemaInfo.keyField = "key-field";

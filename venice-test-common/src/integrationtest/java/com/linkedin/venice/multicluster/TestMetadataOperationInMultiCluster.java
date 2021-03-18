@@ -5,7 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -24,7 +24,7 @@ import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
@@ -109,9 +109,9 @@ public class TestMetadataOperationInMultiCluster {
         // Use th first cluster in config, and test could h2v find the correct cluster.
         Properties h2vProperties = defaultH2VProps(multiClusterWrapper.getRandomController().getControllerUrl(), inputDirPath, storeName);
         propertiesMap.put(clusterName, h2vProperties);
-        Schema keySchema = recordSchema.getField(h2vProperties.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema();
+        Schema keySchema = recordSchema.getField(h2vProperties.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema();
         Schema valueSchema =
-            recordSchema.getField(h2vProperties.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema();
+            recordSchema.getField(h2vProperties.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema();
 
         try (ControllerClient controllerClient =
             new ControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl())) {
@@ -126,8 +126,8 @@ public class TestMetadataOperationInMultiCluster {
 
       for (String clusterName : clusterNames) {
         Properties properties = propertiesMap.get(clusterName);
-        properties.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
-        properties.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, multiClusterWrapper.getClusters().get(clusterName).getRandomRouterURL());
+        properties.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
+        properties.setProperty(VenicePushJob.PBNJ_ROUTER_URL_PROP, multiClusterWrapper.getClusters().get(clusterName).getRandomRouterURL());
         runH2V(properties, 1,
             new ControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl()));
       }
@@ -140,10 +140,10 @@ public class TestMetadataOperationInMultiCluster {
     long h2vStart = System.currentTimeMillis();
     String jobName = TestUtils.getUniqueString("job-" + expectedVersionNumber);
     // job will talk to any controller to do cluster discover then do the push.
-    try (KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () ->
-          controllerClient.getStore((String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP))
+          controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
       logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));

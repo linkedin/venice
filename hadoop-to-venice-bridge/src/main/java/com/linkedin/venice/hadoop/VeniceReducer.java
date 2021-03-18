@@ -46,7 +46,7 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 
 /**
@@ -397,7 +397,7 @@ public class VeniceReducer
   private void maybePropagateCallbackException() {
     if (null != sendException) {
       throw new VeniceException(
-          "KafkaPushJob failed with exception. Internal producer metrics: " + getProducerMetricsPrettyPrint(),
+          "VenicePushJob failed with exception. Internal producer metrics: " + getProducerMetricsPrettyPrint(),
           sendException);
     }
   }

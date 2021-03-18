@@ -38,7 +38,6 @@ import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import azkaban.jobExecutor.AbstractJob;
 import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdDictTrainer;
 import java.time.Duration;
@@ -86,7 +85,7 @@ import static org.apache.hadoop.security.UserGroupInformation.*;
  * The job reads the input data off HDFS. It supports 2 kinds of
  * input -- Avro / Binary Json (Vson).
  */
-public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneable {
+public class VenicePushJob implements AutoCloseable, Cloneable {
   //Avro input configs
   public static final String LEGACY_AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String LEGACY_AVRO_VALUE_FIELD_PROP = "avro.value.field";
@@ -168,7 +167,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public static final String SSL_TRUST_STORE_PROPERTY_NAME = "ssl.trust.store.property.name";
   public static final String SSL_KEY_STORE_PASSWORD_PROPERTY_NAME = "ssl.key.store.password.property.name";
   public static final String SSL_KEY_PASSWORD_PROPERTY_NAME= "ssl.key.password.property.name";
-  public static final String AZK_JOB_EXEC_URL = "azkaban.link.attempt.url";
+  public static final String JOB_EXEC_URL = "job.execution.url";
 
   /**
    * Config to enable the service that uploads push job statuses to the controller using
@@ -206,7 +205,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
   public static final int DEFAULT_BATCH_BYTES_SIZE = 1000000;
   public static final boolean SORTED = true;
-  private static final Logger LOGGER = Logger.getLogger(KafkaPushJob.class);
+  private static final Logger LOGGER = Logger.getLogger(VenicePushJob.class);
 
   /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
@@ -367,17 +366,13 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   /**
-   * Do not change this method argument type
-   * Constructor used by Azkaban for creating the job.
-   * http://azkaban.github.io/azkaban/docs/latest/#hadoopjava-type
    * @param jobId  id of the job
    * @param vanillaProps  Property bag for the job
    */
-  public KafkaPushJob(String jobId, Properties vanillaProps) {
-    super(jobId, LOGGER);
+  public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
     props = getVenicePropsFromVanillaProps(vanillaProps);
-    LOGGER.info("Constructing " + KafkaPushJob.class.getSimpleName() + ": " + props.toString(true));
+    LOGGER.info("Constructing " + VenicePushJob.class.getSimpleName() + ": " + props.toString(true));
     // Optional configs:
     pushJobSetting = getPushJobSetting(props);
   }
@@ -501,17 +496,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   /**
-   * Do not change this method argument type.
-   * Used by Azkaban
-   *
-   * http://azkaban.github.io/azkaban/docs/latest/#hadoopjava-type
-   *
-   * The run method is invoked by Azkaban dynamically for running
-   * the job.
-   *
    * @throws VeniceException
    */
-  @Override
   public void run() {
     try {
       initPushJobDetails();
@@ -552,7 +538,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       } else {
         Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
         long pushStartTimeMs = System.currentTimeMillis();
-        String pushId = pushStartTimeMs + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
+        String pushId = pushStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
         // Create new store version, topic and fetch Kafka url from backend
         createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props, optionalCompressionDictionary);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
@@ -735,7 +721,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private void deleteOutdatedIncrementalPushStatusIfNeeded() {
     // delete outdated incremental push status
-    // TODO(xnma): if KafkaPushJob might hang forever, incremental push status wont get purged.
+    // TODO(xnma): if VenicePushJob might hang forever, incremental push status wont get purged.
     // Design and implement a better scenario when Da Vinci have incremental push use cases.
     if (pushJobSetting.isIncrementalPush && kafkaTopicInfo.daVinciPushStatusStoreEnabled) {
       try (PushStatusStoreRecordDeleter pushStatusStoreDeleter =
@@ -1080,7 +1066,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       /*
         If write compute is enabled, we would perform a topic switch from the controller and have the
         controller be in charge of broadcasting start and end messages. We will disable
-        sendControlMessagesDirectly to prevent races between the messages sent by the KafkaPushJob and
+        sendControlMessagesDirectly to prevent races between the messages sent by the VenicePushJob and
         by the controller for topic switch.
        */
       setting.sendControlMessagesDirectly = false;
@@ -1217,7 +1203,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         Properties sslWriterProperties = sslConfigurator.setupSSLConfig(sslProperties,
             UserCredentialsFactory.getUserCredentialsFromTokenFile());
         sslProperties.putAll(sslWriterProperties);
-        // Get the certs from Azkaban executor's file system.
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential for kafka push job for topic" + kafkaTopicInfo.topic);
       }
@@ -1554,7 +1539,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       final long inputFileDataSize
   ) {
     List<String> propKeyValuePairs = new ArrayList<>();
-    propKeyValuePairs.add("Job ID: " + getId());
+    propKeyValuePairs.add("Job ID: " + this.jobId);
     propKeyValuePairs.add("Kafka URL: " + versionTopicInfo.kafkaUrl);
     propKeyValuePairs.add("Kafka Topic: " + versionTopicInfo.topic);
     propKeyValuePairs.add("Kafka topic partition count: " + versionTopicInfo.partitionCount);
@@ -1576,16 +1561,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   /**
-   * Do not change this method argument type.
-   * Used by Azkaban
-   * http://azkaban.github.io/azkaban/docs/latest/#hadoopjava-type
-   *
-   * The cancel method is invoked dynamically by Azkaban for graceful
-   * cancelling of the Job.
+   * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions.
    *
    * @throws Exception
    */
-  @Override
   public void cancel() {
     killJobAndCleanup(pushJobSetting, controllerClient, kafkaTopicInfo);
     if (kafkaTopicInfo != null && Utils.isNullOrEmpty(kafkaTopicInfo.topic)) {

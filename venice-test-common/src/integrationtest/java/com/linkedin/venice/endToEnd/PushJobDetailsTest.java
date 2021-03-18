@@ -8,7 +8,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -42,7 +42,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
@@ -113,7 +113,7 @@ public class PushJobDetailsTest {
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
-    try (KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps)) {
+    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
       testPushJob.run();
     }
 
@@ -190,7 +190,7 @@ public class PushJobDetailsTest {
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
-    try (KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps)) {
+    try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
       assertThrows(VeniceException.class, testPushJob::run);
     }
     try (AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client =

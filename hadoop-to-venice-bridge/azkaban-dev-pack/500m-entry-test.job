@@ -1,5 +1,5 @@
 type=hadoopJava
-job.class=com.linkedin.venice.hadoop.KafkaPushJob
+job.class=com.linkedin.venice.hadoop.VenicePushJob
 classpath=libs/*
 azkaban.should.proxy=true
 user.to.proxy=voldteei

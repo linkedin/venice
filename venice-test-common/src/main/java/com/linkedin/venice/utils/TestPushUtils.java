@@ -8,8 +8,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
-import com.linkedin.venice.hadoop.VeniceReducer;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -52,7 +51,7 @@ import org.testng.Assert;
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.meta.Version.PushType;
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 
@@ -852,19 +851,19 @@ public class TestPushUtils {
 
   public static Properties defaultH2VProps(String veniceUrl, String inputDirPath, String storeName) {
     Properties props = new Properties();
-    props.put(KafkaPushJob.VENICE_URL_PROP, veniceUrl);
-    props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
-    props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
-    props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
-    props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
+    props.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
+    props.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
+    props.put(VenicePushJob.INPUT_PATH_PROP, inputDirPath);
+    props.put(VenicePushJob.KEY_FIELD_PROP, "id");
+    props.put(VenicePushJob.VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
-    props.put(KafkaPushJob.POLL_JOB_STATUS_INTERVAL_MS, 1000);
-    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
-    props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
-    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
-    props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
-    props.setProperty(KafkaPushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE, "false");
+    props.put(VenicePushJob.POLL_JOB_STATUS_INTERVAL_MS, 1000);
+    props.setProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
+    props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE, "false");
     return props;
   }
 
@@ -886,18 +885,18 @@ public class TestPushUtils {
   public static Properties multiClusterH2VProps(VeniceMultiClusterWrapper veniceMultiClusterWrapper, String clusterName, String inputDirPath, String storeName) {
     Properties props = new Properties();
     // Let h2v talk to multiple controllers.
-    props.put(KafkaPushJob.VENICE_URL_PROP, veniceMultiClusterWrapper.getControllerConnectString());
-    props.put(KafkaPushJob.KAFKA_URL_PROP, veniceMultiClusterWrapper.getKafkaBrokerWrapper().getAddress());
-    props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, clusterName);
-    props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
-    props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
-    props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
-    props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
+    props.put(VenicePushJob.VENICE_URL_PROP, veniceMultiClusterWrapper.getControllerConnectString());
+    props.put(VenicePushJob.KAFKA_URL_PROP, veniceMultiClusterWrapper.getKafkaBrokerWrapper().getAddress());
+    props.put(VenicePushJob.VENICE_CLUSTER_NAME_PROP, clusterName);
+    props.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
+    props.put(VenicePushJob.INPUT_PATH_PROP, inputDirPath);
+    props.put(VenicePushJob.KEY_FIELD_PROP, "id");
+    props.put(VenicePushJob.VALUE_FIELD_PROP, "name");
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
-    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
-    props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
-    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
-    props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
+    props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
 
 
     return props;
@@ -908,8 +907,8 @@ public class TestPushUtils {
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
-    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
 
     return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, CompressionStrategy.NO_OP, false, false);
   }
@@ -959,7 +958,8 @@ public class TestPushUtils {
 
     ControllerClient controllerClient =
         new ControllerClient(veniceClusterName, veniceUrl);
-    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(5, c -> c.createNewStore(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
+    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(5, c -> c.createNewStore(props.getProperty(
+        VenicePushJob.VENICE_STORE_NAME_PROP),
         "test@linkedin.com", keySchemaStr, valueSchemaStr));
 
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
@@ -968,7 +968,7 @@ public class TestPushUtils {
       // Generate write compute schema
       Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(valueSchemaStr);
       SchemaResponse derivedValueSchemaResponse = controllerClient.retryableRequest(5,
-          c -> c.addDerivedSchema(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), +1,
+          c -> c.addDerivedSchema(props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP), +1,
               writeComputeSchema.toString()));
 
       Assert.assertFalse(derivedValueSchemaResponse.isError(),
@@ -976,7 +976,7 @@ public class TestPushUtils {
     }
 
     ControllerResponse controllerResponse = controllerClient.retryableRequest(5, c -> c.updateStore(
-        props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
+        props.getProperty(VenicePushJob.VENICE_STORE_NAME_PROP), storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 
@@ -1132,8 +1132,8 @@ public class TestPushUtils {
     runPushJob(jobId, props, noOp -> {});
   }
 
-  public static void runPushJob(String jobId, Properties props, Consumer<KafkaPushJob> jobTransformer) {
-    try (KafkaPushJob job = new KafkaPushJob(jobId, props)) {
+  public static void runPushJob(String jobId, Properties props, Consumer<VenicePushJob> jobTransformer) {
+    try (VenicePushJob job = new VenicePushJob(jobId, props)) {
       jobTransformer.accept(job);
       job.run();
     }

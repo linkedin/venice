@@ -7,7 +7,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -265,10 +265,10 @@ public class TestWriteCompute {
    */
   private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) throws Exception {
     String jobName = TestUtils.getUniqueString("write-compute-job-" + expectedVersionNumber);
-    try (KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP))
+          () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore().getCurrentVersion() == expectedVersionNumber);
     }
   }

@@ -6,7 +6,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -34,7 +34,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 
@@ -225,7 +225,7 @@ public class TestVsonStoreBatch {
           /**
            * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
            */
-          properties.setProperty(KafkaPushJob.KEY_FIELD_PROP, "");
+          properties.setProperty(VenicePushJob.KEY_FIELD_PROP, "");
           properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
           properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
         },

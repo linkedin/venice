@@ -30,7 +30,7 @@ import java.io.IOException;
 import java.util.concurrent.Future;
 import java.util.ArrayList;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.hadoop.MRJobCounterHelper.*;
 import static org.mockito.Mockito.*;
 

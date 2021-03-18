@@ -2,7 +2,7 @@ package com.linkedin.venice.hadoop.ssl;
 
 import com.linkedin.venice.CommonConfigKeys;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -53,10 +53,10 @@ public class TestTempFileSSLConfigurator {
   public void testSetupSSLConfig()
       throws IOException {
     Properties properties = new Properties();
-    properties.put(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, "linkedin.keystore");
-    properties.put(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME, "linkedin.truststore");
-    properties.put(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "linkedin.keystorepassword");
-    properties.put(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME, "linkedin.keypassword");
+    properties.put(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, "linkedin.keystore");
+    properties.put(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME, "linkedin.truststore");
+    properties.put(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "linkedin.keystorepassword");
+    properties.put(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME, "linkedin.keypassword");
     properties.put(ConfigKeys.KAFKA_SECURITY_PROTOCOL, "ssl");
 
     String testCertStr = "test123";

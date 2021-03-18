@@ -2,10 +2,12 @@ package com.linkedin.venice.hadoop.exceptions;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
+
 
 /**
  * Customized exception for receiving invalid {@link VersionCreationResponse}
- * in {@link com.linkedin.venice.hadoop.KafkaPushJob}
+ * in {@link VenicePushJob}
  */
 public class VeniceStoreCreationException extends VeniceException {
     private String storeName;

@@ -13,7 +13,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -1369,10 +1369,10 @@ public class TestHybrid {
   public static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) throws Exception {
     long h2vStart = System.currentTimeMillis();
     String jobName = TestUtils.getUniqueString("hybrid-job-" + expectedVersionNumber);
-    try (KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties)) {
+    try (VenicePushJob job = new VenicePushJob(jobName, h2vProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP))
+          () -> controllerClient.getStore((String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore().getCurrentVersion() == expectedVersionNumber);
       logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
     }

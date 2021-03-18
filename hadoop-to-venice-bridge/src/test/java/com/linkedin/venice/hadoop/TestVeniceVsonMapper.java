@@ -19,7 +19,7 @@ import java.util.HashMap;
 
 import static org.mockito.Mockito.*;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 
 public class TestVeniceVsonMapper extends AbstractTestVeniceMapper<VeniceVsonMapper> {
   private String fileKeySchemaStr = "\"int32\"";
@@ -66,7 +66,7 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMapper<VeniceVsonMap
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
   public void testMapWithSelectedField(int numReducers, int taskId) throws IOException {
-    VeniceVsonMapper mapper = getMapper(numReducers, taskId, conf -> conf.set(KafkaPushJob.VALUE_FIELD_PROP, "userId"));
+    VeniceVsonMapper mapper = getMapper(numReducers, taskId, conf -> conf.set(VenicePushJob.VALUE_FIELD_PROP, "userId"));
 
     OutputCollector<BytesWritable, BytesWritable> collector = mock(OutputCollector.class);
     ArgumentCaptor<BytesWritable> keyCaptor = ArgumentCaptor.forClass(BytesWritable.class);

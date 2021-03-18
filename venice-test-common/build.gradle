@@ -58,7 +58,6 @@ dependencies {
   implementation project(':venice-server')
   implementation project(':venice-thin-client')
 
-  implementation libraries.azkaban
   implementation libraries.brooklinKafka
   implementation libraries.brooklinKafkaTransport
   implementation (libraries.d2) {
