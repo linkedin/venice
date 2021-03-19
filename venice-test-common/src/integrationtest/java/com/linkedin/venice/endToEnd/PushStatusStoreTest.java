@@ -121,7 +121,7 @@ public class PushStatusStoreTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testKafkaPushJob(boolean isIsolated) throws Exception {
+  public void testVenicePushJob(boolean isIsolated) throws Exception {
     // setup initial version
     runH2V(h2vProperties, 1, cluster);
     int applicationListenerPort = Utils.getFreePort();

@@ -99,7 +99,7 @@ public class ProduceWithSSL {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 60 * Time.MS_PER_SECOND)
-  public void testKafkaPushJobSupportSSL(boolean isOpenSSLEnabled)
+  public void testVenicePushJobSupportSSL(boolean isOpenSSLEnabled)
       throws Exception {
     VeniceClusterWrapper cluster = this.cluster;
     try {

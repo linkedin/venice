@@ -1238,7 +1238,7 @@ public class ConfigKeys {
   public static final String VENICE_STORAGE_CLUSTER_LEADER_HAAS = "venice.cluster.leader.haas.enabled";
 
   /**
-   * A config specifies which partitioning scheme should be used by KafkaPushJob.
+   * A config specifies which partitioning scheme should be used by VenicePushJob.
    */
   public static final String PARTITIONER_CLASS = "partitioner.class";
   /**

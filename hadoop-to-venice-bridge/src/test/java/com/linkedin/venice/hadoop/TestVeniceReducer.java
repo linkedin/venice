@@ -371,7 +371,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     Assert.assertEquals(callbackCaptor.getValue().getProgressable(), newMockReporter);
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "KafkaPushJob failed with exception.*")
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "VenicePushJob failed with exception.*")
   public void testReduceWithWriterException() {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override
@@ -420,7 +420,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "KafkaPushJob failed with exception.*")
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "VenicePushJob failed with exception.*")
   public void testClosingReducerWithWriterException() throws IOException {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override

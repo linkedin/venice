@@ -61,7 +61,7 @@ public class JobRoutes extends AbstractRoute {
     String kafkaTopicName = version.kafkaTopicName();
 
     /**
-     * Offset progress is not being used by KafkaPushJob, and sometimes, it will timeout because of Kafka operation timeout
+     * Offset progress is not being used by VenicePushJob, and sometimes, it will timeout because of Kafka operation timeout
      * while retrieving the latest offset.
      * So we decided to disable this feature, TODO: might remove it completely in the future.
      */
