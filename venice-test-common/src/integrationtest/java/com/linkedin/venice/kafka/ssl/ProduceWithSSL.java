@@ -113,10 +113,10 @@ public class ProduceWithSSL {
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Properties props = sslH2VProps(cluster, inputDirPath, storeName);
 
-      String keyStorePropertyName = "li.datavault.identity";
-      String trustStorePropertyName = "li.datavault.truststore";
-      String keyStorePwdPropertyName = "li.datavault.identity.keystore.password";
-      String keyPwdPropertyName="li.datavault.identity.key.password";
+      String keyStorePropertyName = "ssl.identity";
+      String trustStorePropertyName = "ssl.truststore";
+      String keyStorePwdPropertyName = "ssl.identity.keystore.password";
+      String keyPwdPropertyName="ssl.identity.key.password";
 
       props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, keyStorePropertyName);
       props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,trustStorePropertyName);
