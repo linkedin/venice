@@ -655,13 +655,17 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       }
       return result;
     } catch (Exception e) {
-      throw new VeniceException("verifyChecksum: failure. Exception:", e);
+      throw new VeniceChecksumException("verifyChecksum: failure. Exception in rocksdb:", e);
     } finally {
-      if (sstFileReader != null) {
-        sstFileReader.close();
-      }
+      /**
+       * close the iterator first before closing the reader, otherwise iterator is not closed at all, based on implementation
+       * here {@link AbstractRocksIterator#disposeInternal()}
+       */
       if (sstFileReaderIterator != null) {
         sstFileReaderIterator.close();
+      }
+      if (sstFileReader != null) {
+        sstFileReader.close();
       }
     }
   }
