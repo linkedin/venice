@@ -62,9 +62,8 @@ public class AbstractTestVeniceMR {
     config.setBoolean(ALLOW_DUPLICATE_KEY, false);
     config.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
     config.set(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName());
-    // TODO: Remove LI-specific configs
-    config.set(SSL_KEY_STORE_PROPERTY_NAME, "li.datavault.identity");
-    config.set(SSL_TRUST_STORE_PROPERTY_NAME, "li.datavault.truststore");
+    config.set(SSL_KEY_STORE_PROPERTY_NAME, "ssl.identity");
+    config.set(SSL_TRUST_STORE_PROPERTY_NAME, "ssl.truststore");
     config.set(VeniceReducer.MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
     config.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, "180000");
     return new JobConf(config);
