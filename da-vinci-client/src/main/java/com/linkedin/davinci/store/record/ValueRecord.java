@@ -15,7 +15,7 @@ import java.nio.ByteBuffer;
  * Right now, the concatenation part will allocate a new byte array and copy over schema id and data,
  * which might cause some GC issue since this operation will be triggered for every 'PUT'.
  * If this issue happens, we need to consider other ways to improve it:
- * 1. Maybe we can do the concatenation in VeniceWriter, which is being used by KafkaPushJob;
+ * 1. Maybe we can do the concatenation in VeniceWriter, which is being used by VenicePushJob;
  * 2. Investigate whether DB can accept multiple binary arrays for 'PUT' operation;
  * 3. ...
  *
