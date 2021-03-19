@@ -23,7 +23,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class RouterExceptionAndTrackingUtils {
   public enum FailureType {
-    REGULAR, SMART_RETRY_ABORTED_BY_SLOW_ROUTE, SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT
+    REGULAR, SMART_RETRY_ABORTED_BY_SLOW_ROUTE, SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT, RESOURCE_NOT_FOUND
   }
 
   private static final StackTraceElement[] emptyStackTrace = new StackTraceElement[0];
@@ -43,7 +43,7 @@ public class RouterExceptionAndTrackingUtils {
     metricTracking(storeName, requestType, responseStatus, failureType);
     RouterException e = new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
     // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
-    if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE)) {
+    if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE) || failureType == FailureType.RESOURCE_NOT_FOUND) {
       e.setStackTrace(emptyStackTrace);
     }
     String name = storeName.isPresent() ? storeName.get() : "";
@@ -60,6 +60,11 @@ public class RouterExceptionAndTrackingUtils {
   public static RouterException newRouterExceptionAndTracking(Optional<String> storeName,
       Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
     return newRouterExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.REGULAR);
+  }
+
+  public static RouterException newRouterExceptionAndTrackingResourceNotFound(Optional<String> storeName,
+      Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
+    return newRouterExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.RESOURCE_NOT_FOUND);
   }
 
   @Deprecated

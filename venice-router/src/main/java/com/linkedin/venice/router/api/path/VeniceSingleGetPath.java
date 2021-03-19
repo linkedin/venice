@@ -69,7 +69,7 @@ public class VeniceSingleGetPath extends VenicePath {
       setPartitionKeys(Collections.singleton(routerKey));
       this.partition = partition;
     } catch (VeniceNoHelixResourceException e) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTrackingResourceNotFound(
           Optional.of(getStoreName()),
           Optional.of(RequestType.SINGLE_GET),
           e.getHttpResponseStatus(),
