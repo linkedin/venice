@@ -164,8 +164,9 @@ public class ProducerTracker {
 
   protected Segment validateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
                                     boolean endOfPushReceived, boolean tolerateMissingMsgs) throws DataValidationException {
+    boolean hasPreviousSegment = segments.containsKey(consumerRecord.partition());
     Segment segment = trackSegment(consumerRecord, endOfPushReceived);
-    trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+    trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
     segment.setLastSuccessfulOffset(consumerRecord.offset());
@@ -307,12 +308,13 @@ public class ProducerTracker {
    * @param consumerRecord
    * @param endOfPushReceived whether endOfPush is received
    * @param tolerateMissingMsgs whether log compaction could potentially happen to this record
+   * @param hasPreviousSegment whether previous segment exists
    * @throws MissingDataException if the incoming sequence number is greater than the previous sequence number + 1
    * @throws DuplicateDataException if the incoming sequence number is equal to or smaller than the previous sequence number
    */
   protected void trackSequenceNumber(
       Segment segment, ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived, boolean tolerateMissingMsgs)
+      boolean endOfPushReceived, boolean tolerateMissingMsgs, boolean hasPreviousSegment)
       throws MissingDataException, DuplicateDataException {
 
     int previousSequenceNumber = segment.getSequenceNumber();
@@ -329,6 +331,12 @@ public class ProducerTracker {
       // Expected case, in steady state
       segment.getAndIncrementSequenceNumber();
     } else if (incomingSequenceNumber <= previousSequenceNumber) {
+      if (!hasPreviousSegment) {
+        // This is the case when SN meets a producer for the first time. For hybrid + L/F case, a follower may never
+        // see the record coming from samza producer before it is promoted to leader. This check prevents the first
+        //message to be considered as "duplicated" and skipped.
+        return;
+      }
       // This is a duplicate message, which we can safely ignore.
 
       // Although data duplication is a benign fault, we need to bubble up for two reasons:
