@@ -70,7 +70,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
     try {
       partitionNum = partitionFinder.getNumPartitions(resourceName);
     } catch (VeniceNoHelixResourceException e){
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTrackingResourceNotFound(
           Optional.of(getStoreName()),
           Optional.of(RequestType.COMPUTE),
           e.getHttpResponseStatus(),
