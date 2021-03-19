@@ -56,6 +56,13 @@ public class RocksDBServerConfig {
    * number of bits to count cache shards, total shard count would be 2 to the power of this number.
    */
   public static final String ROCKSDB_BLOCK_CACHE_SHARD_BITS = "rocksdb.block.cache.shard.bits";
+
+  /**
+   * the implementation of block cache that the venice server should use.  For supported implementations @see {@link RocksDBBlockCacheImplementations}
+   * Defaults to LRU
+   */
+  public static final String ROCKSDB_BLOCK_CACHE_IMPLEMENTATION = "rocksdb.block.cache.implementation";
+
   /**
    * if set to True, Cache size will strictly stay within set bounds, by
    * allocating space for indexes and metadata within cache size.
@@ -193,6 +200,7 @@ public class RocksDBServerConfig {
   private final long rocksDBBlockCacheCompressedSizeInBytes;
   private final boolean rocksDBBlockCacheStrictCapacityLimit;
   private final int rocksDBBlockCacheShardBits;
+  private final RocksDBBlockCacheImplementations rocksDBBlockCacheImplementation;
 
   private final long rocksDBSSTFileBlockSizeInBytes;
 
@@ -260,6 +268,7 @@ public class RocksDBServerConfig {
     this.rocksDBBlockCacheSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024l); // 16GB
     this.rocksDBBlockCacheCompressedSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0l); // disable compressed cache
 
+    this.rocksDBBlockCacheImplementation = RocksDBBlockCacheImplementations.valueOf(props.getString(ROCKSDB_BLOCK_CACHE_IMPLEMENTATION, RocksDBBlockCacheImplementations.LRU.toString()));
     this.rocksDBBlockCacheStrictCapacityLimit = props.getBoolean(ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT, true); // make sure indexes stay within cache size limits.
     this.rocksDBBlockCacheShardBits = props.getInt(ROCKSDB_BLOCK_CACHE_SHARD_BITS, 4); // 16 shards
     // TODO : add and tune high_pri_pool_ratio to make sure most indexes stay in memory.
@@ -379,6 +388,10 @@ public class RocksDBServerConfig {
 
   public long getRocksDBBlockCacheSizeInBytes() {
     return rocksDBBlockCacheSizeInBytes;
+  }
+
+  public RocksDBBlockCacheImplementations getRocksDBBlockCacheImplementation() {
+    return rocksDBBlockCacheImplementation;
   }
 
   public boolean getRocksDBBlockCacheStrictCapacityLimit() {

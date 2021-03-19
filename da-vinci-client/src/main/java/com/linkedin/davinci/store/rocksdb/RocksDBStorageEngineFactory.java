@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.apache.log4j.Logger;
 import org.rocksdb.Cache;
+import org.rocksdb.ClockCache;
 import org.rocksdb.Env;
 import org.rocksdb.HistogramType;
 import org.rocksdb.LRUCache;
@@ -113,9 +114,17 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), Priority.LOW);
 
     // Shared cache across all the RocksDB databases
-    this.sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
-                               rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
-                               rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+    if (RocksDBBlockCacheImplementations.CLOCK.equals(rocksDBServerConfig.getRocksDBBlockCacheImplementation())) {
+      this.sharedCache = new ClockCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+              rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+              rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+    } else {
+      // Default to LRUCache
+      this.sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+              rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+              rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+    }
+
 
     if (rocksDBServerConfig.isRocksDBStatisticsEnabled()) {
       // Ignore all the histogram types for performance concern.
