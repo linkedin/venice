@@ -250,8 +250,6 @@ public class DaVinciClientTest {
         assertEquals(result, pushVersion);
       }
       client.unsubscribeAll();
-    } finally {
-      D2ClientUtils.shutdownClient(d2Client);
     }
   }
 
