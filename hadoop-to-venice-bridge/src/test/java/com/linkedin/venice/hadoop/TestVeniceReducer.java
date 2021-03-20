@@ -8,6 +8,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.BytesWritable;
@@ -92,7 +93,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     BytesWritable keyWritable = new BytesWritable(keyFieldValue.getBytes());
     List<BytesWritable> values = new ArrayList<>();
     OutputCollector mockCollector = mock(OutputCollector.class);
-    Reporter mockReporter = mock(Reporter.class);
+    Reporter mockReporter = createZeroCountReporterMock();
 
     reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
   }
@@ -302,16 +303,27 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     );
   }
 
-  @Test
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Expect reporter to be set by this point")
   public void testCloseReducerWithNoReduce() throws IOException {
-    // One key and one value
-    Reporter mockReporter = createZeroCountReporterMock();
     VeniceReducer reducer = new VeniceReducer();
     reducer.configure(setupJobConf());
-    reducer.close();
+    reducer.close(); // Expect exception due to no reporter set
+  }
 
-    // No reducer close recorded in the counter since the reduce method is not invoked
-    verify(mockReporter, never()).incrCounter(
+  @Test
+  public void testReduceWithExceedQuotaStillIncreaseCloseCounter() throws IOException {
+    OutputCollector mockCollector = mock(OutputCollector.class);
+    Reporter mockReporter = createZeroCountReporterMock();
+    VeniceReducer reducer = new VeniceReducer();
+    reducer.setExceedQuota(true);
+    reducer.reduce(
+            new BytesWritable("test_key".getBytes()),
+            Collections.singleton(new BytesWritable("test_value".getBytes())).iterator(),
+            mockCollector,
+            mockReporter
+    );
+    reducer.close();
+    verify(mockReporter, times(1)).incrCounter(
         eq(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME.getCounterName()),
         anyLong()

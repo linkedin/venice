@@ -113,18 +113,15 @@ public class VeniceReducer
       OutputCollector<NullWritable, NullWritable> output,
       Reporter reporter
   ) {
-    if (exceedQuota) {
-      return;
+    if (updatePreviousReporter(reporter)) {
+      callback = new KafkaMessageCallback(reporter);
     }
     final long timeOfLastReduceFunctionStartInNS = System.nanoTime();
     if (timeOfLastReduceFunctionEndInNS > 0) {
       // Will only be true starting from the 2nd invocation.
       aggregateTimeOfInBetweenReduceInvocationsInNS += (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
     }
-    if (updatePreviousReporter(reporter)) {
-      callback = new KafkaMessageCallback(reporter);
-    }
-    if (key.getLength() > VeniceMRPartitioner.EMPTY_KEY_LENGTH) {
+    if (key.getLength() > VeniceMRPartitioner.EMPTY_KEY_LENGTH && (!hasReportedFailure(reporter, this.isDuplicateKeyAllowed))) {
       /**
        * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
        */
@@ -134,11 +131,6 @@ public class VeniceReducer
             ByteUtils.toHexString(keyBytes));
       }
       byte[] valueBytes = values.next().copyBytes();
-
-      if (hasReportedFailure(reporter, this.isDuplicateKeyAllowed)) {
-        updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
-        return;
-      }
       try {
         sendMessageToKafka(keyBytes, valueBytes, reporter);
       } catch (VeniceException e) {
@@ -155,8 +147,8 @@ public class VeniceReducer
   }
 
   protected boolean hasReportedFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
-    return hasWriteAclFailure(reporter)
-        || exceedQuota(reporter)
+    return exceedQuota(reporter)
+        || hasWriteAclFailure(reporter)
         || hasDuplicatedKeyWithDistinctValueFailure(reporter, isDuplicateKeyAllowed);
   }
 
@@ -220,9 +212,6 @@ public class VeniceReducer
     maybePropagateCallbackException();
     if (null == veniceWriter) {
       veniceWriter = createBasicVeniceWriter();
-    }
-    if (updatePreviousReporter(reporter)) {
-      callback = new KafkaMessageCallback(reporter);
     }
     if (enableWriteCompute && derivedValueSchemaId > 0) {
       veniceWriter.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
@@ -309,6 +298,9 @@ public class VeniceReducer
     logMessageProgress();
     if (messageSent != messageCompleted.get()) {
       throw new VeniceException("Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
+    }
+    if (previousReporter == null) {
+      throw new VeniceException("Expect reporter to be set by this point");
     }
     MRJobCounterHelper.incrReducerClosedCount(previousReporter, 1);
   }
@@ -415,6 +407,11 @@ public class VeniceReducer
   // Visible for testing
   protected void setHadoopJobClientProvider(HadoopJobClientProvider hadoopJobClientProvider) {
     this.hadoopJobClientProvider = hadoopJobClientProvider;
+  }
+
+  // Visible for testing
+  protected void setExceedQuota(boolean exceedQuota) {
+    this.exceedQuota = exceedQuota;
   }
 
   protected class KafkaMessageCallback implements Callback {
