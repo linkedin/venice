@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -19,6 +20,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.server.factory.D2Server;
 
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
@@ -29,6 +31,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.integration.utils.D2TestUtils.*;
 
 
 /**
@@ -48,6 +51,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final int securePort;
   private final String zkAddress;
   private final List<D2Server> d2ServerList;
+  private final MetricsRepository metricsRepository;
 
   private VeniceControllerWrapper(
       String serviceName,
@@ -57,7 +61,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       int securePort,
       List<VeniceProperties> configs,
       List<D2Server> d2ServerList,
-      String zkAddress) {
+      String zkAddress,
+      MetricsRepository metricsRepository) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.configs = configs;
@@ -65,6 +70,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.securePort = securePort;
     this.zkAddress = zkAddress;
     this.d2ServerList = d2ServerList;
+    this.metricsRepository = metricsRepository;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(
@@ -204,8 +210,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       }
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
-      VeniceController veniceController = new VeniceController(propertiesList, d2ServerList, authorizerService, Optional.of(d2Client));
-      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress);
+      MetricsRepository metricsRepository =  TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
+      VeniceController veniceController = new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService, Optional.of(d2Client));
+      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress, metricsRepository);
     };
   }
 
@@ -344,5 +351,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   // for test purpose
   public AdminConsumerService getAdminConsumerServiceByCluster(String cluster) {
     return service.getVeniceControllerService().getAdminConsumerServiceByCluster(cluster);
+  }
+
+  public MetricsRepository getMetricRepository() {
+    return metricsRepository;
   }
 }

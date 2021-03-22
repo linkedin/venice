@@ -5,14 +5,18 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.HashMap;
@@ -24,7 +28,7 @@ public class TestRestartController {
   private static final int OPERATION_TIMEOUT_MS = 3000;
   private VeniceClusterWrapper cluster;
 
-  @BeforeClass
+  @BeforeMethod
   public void setup() {
     int numberOfController = 2;
     int numberOfServer = 1;
@@ -33,7 +37,7 @@ public class TestRestartController {
     cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter);
   }
 
-  @AfterClass
+  @AfterMethod
   public void cleanup() {
     cluster.close();
   }
@@ -103,6 +107,57 @@ public class TestRestartController {
     veniceWriter = cluster.getVeniceWriter(topicNameV3);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
     TestUtils.waitForNonDeterministicPushCompletion(topicNameV3, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
+
+  }
+
+  /**
+   * Objective of the test is to verify on controller restart the new master controller is able to update the
+   * successful_push_duration_sec_gauge metrics with the last successful push duration for the store.
+   */
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testControllerRestartFetchesLastSuccessfulPushDuration() {
+    String storeName = TestUtils.getUniqueString("testControllerRestartFetchesLastSuccessfulPushDuration");
+    int dataSize = 1000;
+    cluster.getNewStore(storeName);
+    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    Assert.assertFalse(response.isError());
+    String topicName = response.getKafkaTopic();
+
+    VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
+    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    Assert.assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
+    // push some data
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.put("1", "1", 1);
+    // Push rest of data.
+    veniceWriter.put("2", "2", 1);
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    // After stopping origin master, the new master could handle the push status report correctly.
+    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
+    VeniceControllerWrapper controllerWrapper = cluster.getMasterVeniceController();
+    double duration = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
+
+    int oldMasterPort = cluster.getMasterVeniceController().getPort();
+    int newMasterPort = 0;
+    for (VeniceControllerWrapper cw : cluster.getVeniceControllers()) {
+      if (cw.getPort() != oldMasterPort) {
+        newMasterPort = cw.getPort();
+        break;
+      }
+    }
+    cluster.stopMasterVeniceControler();
+    controllerWrapper = cluster.getMasterVeniceController();
+    Assert.assertEquals(controllerWrapper.getPort(), newMasterPort);
+    double duration1 = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
+    Assert.assertEquals(duration, duration1);
+
+    cluster.restartVeniceController(oldMasterPort);
+    controllerWrapper = cluster.getMasterVeniceController();
+    Assert.assertEquals(controllerWrapper.getPort(), newMasterPort);
+    duration1 = controllerWrapper.getMetricRepository().getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge").value();
+    Assert.assertEquals(duration, duration1);
+
   }
 
   private VersionCreationResponse createNewVersionWithRetry(String storeName, int dataSize) {
