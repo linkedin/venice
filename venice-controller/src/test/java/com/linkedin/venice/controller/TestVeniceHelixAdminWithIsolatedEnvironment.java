@@ -105,7 +105,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     getMaster(allAdmins, clusterName).addStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
   }
 
-  @Test
+  @Test(groups = {"flaky"})
   public void testIsInstanceRemovable() throws Exception {
     // Create another participant so we will get two running instances.
     String newNodeId = "localhost_9900";
@@ -157,7 +157,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, false).isRemovable(), "Instance is shutdown.");
   }
 
-  @Test
+  @Test(groups = {"flaky"})
   public void testIsInstanceRemovableOnOldVersion() throws Exception {
     int partitionCount = 2;
     int replicaCount = 1;

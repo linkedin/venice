@@ -119,7 +119,7 @@ public class TestHAASController {
     }
   }
 
-  @Test
+  @Test(groups = {"flaky"})
   public void testTransitionToHAASControllerAsStorageClusterLeader() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
