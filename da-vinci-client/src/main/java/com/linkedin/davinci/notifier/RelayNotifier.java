@@ -55,4 +55,19 @@ public class RelayNotifier implements VeniceNotifier {
   public void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {
     targetNotifier.topicSwitchReceived(kafkaTopic, partitionId, offset, message);
   }
+
+  @Override
+  public void stopped(String kafkaTopic, int partitionId, long offset) {
+    targetNotifier.stopped(kafkaTopic, partitionId, offset);
+  }
+
+  @Override
+  public void quotaViolated(String kafkaTopic, int partitionId, long offset, String message) {
+    targetNotifier.quotaViolated(kafkaTopic, partitionId, offset, message);
+  }
+
+  @Override
+  public void quotaNotViolated(String kafkaTopic, int partitionId, long offset, String message) {
+    targetNotifier.quotaNotViolated(kafkaTopic, partitionId, offset, message);
+  }
 }

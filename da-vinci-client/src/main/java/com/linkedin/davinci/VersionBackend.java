@@ -13,6 +13,7 @@ import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.log4j.Logger;
 
@@ -25,7 +26,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -70,6 +70,7 @@ public class VersionBackend {
     this.subPartitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
     this.suppressLiveUpdates = this.config.freezeIngestionIfReadyToServeOrLocalDataExists();
     this.storageEngine.set(backend.getStorageService().getStorageEngine(version.kafkaTopicName()));
+    this.backend.getIngestionBackend().setStorageEngineReference(version.kafkaTopicName(), storageEngine);
     Store store = backend.getStoreRepository().getStoreOrThrow(version.getStoreName());
     // push status store must be enabled both in Da Vinci and the store
     this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled() &&
@@ -89,23 +90,13 @@ public class VersionBackend {
     for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
       entry.getValue().cancel(true);
     }
-
-    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      backend.getIngestionRequestClient().killConsumptionTask(version.kafkaTopicName());
-    }
-    backend.getIngestionService().killConsumptionTask(version.kafkaTopicName());
+    backend.getIngestionBackend().killConsumptionTask(version.kafkaTopicName());
   }
 
   synchronized void delete() {
     logger.info("Deleting local version " + this);
     close();
-
-    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      logger.info("Sending REMOVE_STORAGE_ENGINE request to child process to drop metadata for "  + this);
-      backend.getIngestionReportListener().removedSubscribedTopicName(version.kafkaTopicName());
-      backend.getIngestionRequestClient().removeStorageEngine(version.kafkaTopicName());
-    }
-    backend.getStorageService().removeStorageEngine(version.kafkaTopicName());
+    backend.getIngestionBackend().removeStorageEngine(version.kafkaTopicName());
   }
 
   @Override
@@ -117,7 +108,7 @@ public class VersionBackend {
     return version;
   }
 
-  private AbstractStorageEngine getStorageEngine() {
+  private AbstractStorageEngine getStorageEngineOrThrow() {
     AbstractStorageEngine engine = storageEngine.get();
     if (engine == null) {
       throw new VeniceException("Storage engine is not ready, version=" + this);
@@ -161,7 +152,7 @@ public class VersionBackend {
       V reusableValue) {
     return chunkingAdaptor.get(
         version.getStoreName(),
-        getStorageEngine(),
+        getStorageEngineOrThrow(),
         subPartition,
         keyBytes,
         reusableRawValue,
@@ -243,26 +234,10 @@ public class VersionBackend {
     if (suppressLiveUpdates && engine != null && engine.containsPartition(subPartition)) {
       return subPartitionFutures.computeIfAbsent(subPartition, k -> CompletableFuture.completedFuture(null));
     }
-
-    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      backend.getIngestionReportListener().addVersionPartitionToIngestionMap(version.kafkaTopicName(), subPartition);
-      backend.getIngestionRequestClient().startConsumption(version.kafkaTopicName(), subPartition);
-    } else {
-      // Create partition in storage engine for ingestion.
-      storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
-      backend.getIngestionService().startConsumption(config, subPartition);
-    }
+    // AtomicReference of storage engine will be updated internally.
+    backend.getIngestionBackend().startConsumption(config, subPartition);
     tryStartHeartbeat();
     return subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture());
-  }
-
-  synchronized void completeSubPartitionSubscription(int subPartition) {
-    logger.info("Isolated ingestion of sub-partition " + subPartition + " of " + this + " has been completed.");
-    // Re-open the storage engine partition in backend.
-    storageEngine.set(backend.getStorageService().openStoreForNewPartition(config, subPartition));
-    // The consumption task should be re-started on DaVinci side to receive future updates for hybrid stores and consumer
-    // action messages for all stores. The partition and its corresponding future will be completed by the main ingestion task.
-    backend.getIngestionService().startConsumption(config, subPartition);
   }
 
   private synchronized void unsubscribeSubPartition(int subPartition) {
@@ -272,16 +247,9 @@ public class VersionBackend {
     }
     completeSubPartition(subPartition);
 
-    if (config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      // Will stop ingestion and remove the partition in the IngestionService if the partition is being ingested by Ingestion Service.
-      backend.getIngestionRequestClient().unsubscribeTopicPartition(version.kafkaTopicName(), subPartition);
-    }
-
-    backend.getIngestionService().stopConsumptionAndWait(config, subPartition, 1, 30);
+    backend.getIngestionBackend().unsubscribeTopicPartition(config, subPartition, 30);
     subPartitionFutures.remove(subPartition);
     tryStopHeartbeat();
-
-    backend.getStorageService().dropStorePartition(config, subPartition);
   }
 
   void completeSubPartition(int subPartition) {

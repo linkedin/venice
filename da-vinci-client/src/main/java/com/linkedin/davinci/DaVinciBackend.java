@@ -3,9 +3,11 @@ package com.linkedin.davinci;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.ingestion.IngestionReportListener;
 import com.linkedin.davinci.ingestion.IngestionRequestClient;
 import com.linkedin.davinci.ingestion.IngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.RelayNotifier;
@@ -28,7 +30,6 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -50,7 +51,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import io.netty.util.concurrent.SingleThreadEventExecutor;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Collections;
@@ -89,10 +89,7 @@ public class DaVinciBackend implements Closeable {
   private final PushStatusStoreWriter pushStatusStoreWriter;
   private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
 
-  private IngestionRequestClient ingestionRequestClient;
-  private IngestionReportListener ingestionReportListener;
-  private VeniceNotifier isolatedIngestionListener;
-  private Process isolatedIngestionService;
+  private final IngestionBackend ingestionBackend;
 
   public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, Optional<Set<String>> managedClients) {
     VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -172,15 +169,20 @@ public class DaVinciBackend implements Closeable {
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
 
+
     /**
      * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
      * record all store versions that are up-to-date and close all storage engines. This will make sure child process
      * can open RocksDB stores.
      */
     Map<Version, List<Integer>> bootstrapVersions = new HashMap<>();
-    bootstrap(managedClients, bootstrapVersions);
 
-    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
+    if (configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.BUILT_IN)) {
+      ingestionBackend = new DefaultIngestionBackend(storageMetadataService, ingestionService, storageService);
+      ingestionBackend.addIngestionNotifier(ingestionListener);
+      bootstrap(managedClients, bootstrapVersions);
+    } else {
+      bootstrap(managedClients, bootstrapVersions);
       // We will close all storage engines only when live update suppression is NOT turned on.
       if (!configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists()) {
         // Close all opened store engines so child process can open them.
@@ -192,35 +194,8 @@ public class DaVinciBackend implements Closeable {
         logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
       }
 
-      // Initialize isolated ingestion service.
-      int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
-      int ingestionListenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
-      long ingestionIsolationHeartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(60));
-      ingestionRequestClient = new IngestionRequestClient(ingestionServicePort);
-      isolatedIngestionService = ingestionRequestClient.startForkedIngestionProcess(configLoader);
-
-      // Isolated ingestion listener handles status report from isolated ingestion service.
-      isolatedIngestionListener = new RelayNotifier(ingestionListener) {
-        @Override
-        public void completed(String kafkaTopic, int partitionId, long offset, String message) {
-          VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
-          if (versionBackend != null) {
-            versionBackend.completeSubPartitionSubscription(partitionId);
-          }
-        }
-      };
-
-      try {
-        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort);
-        ingestionReportListener.setIngestionNotifier(isolatedIngestionListener);
-        ingestionReportListener.setMetricsRepository(metricsRepository);
-        ingestionReportListener.setStorageMetadataService((IngestionStorageMetadataService) storageMetadataService);
-        ingestionReportListener.setConfigLoader(configLoader);
-        ingestionReportListener.startInner();
-      } catch (Exception e) {
-        throw new VeniceException("Unable to start ingestion report listener.", e);
-      }
-
+      ingestionBackend = new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService);
+      ingestionBackend.addIngestionNotifier(ingestionListener);
       // Send out subscribe requests to child process to complete bootstrap process.
       completeBootstrapRemotely(bootstrapVersions);
     }
@@ -297,9 +272,6 @@ public class DaVinciBackend implements Closeable {
     bootstrapVersions.forEach((version, partitions) -> {
       logger.info("Bootstrapping partitions " + partitions + " of " + version.kafkaTopicName() + " via isolated ingestion service.");
       StoreBackend storeBackend = getStoreOrThrow(version.getStoreName());
-      for (Integer partition : partitions) {
-        ingestionReportListener.addVersionPartitionToIngestionMap(version.kafkaTopicName(), partition);
-      }
       storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
     });
   }
@@ -332,20 +304,8 @@ public class DaVinciBackend implements Closeable {
     }
 
     try {
-      if (ingestionReportListener != null) {
-        ingestionReportListener.stopInner();
-      }
-      if (isolatedIngestionService != null) {
-        ingestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.KAFKA_INGESTION_SERVICE);
-        ingestionService.stop();
-        ingestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.STORAGE_SERVICE);
-        isolatedIngestionService.destroy();
-        if (ingestionRequestClient != null) {
-          ingestionRequestClient.close();
-        }
-      } else {
-        ingestionService.stop();
-      }
+      ingestionBackend.close();
+      ingestionService.stop();
       storageService.stop();
       if (zkClient != null) {
         zkClient.close();
@@ -392,12 +352,12 @@ public class DaVinciBackend implements Closeable {
     return storageService;
   }
 
-  IngestionReportListener getIngestionReportListener() {
-    return ingestionReportListener;
-  }
-
   StoreIngestionService getIngestionService() {
     return ingestionService;
+  }
+
+  public IngestionBackend getIngestionBackend() {
+    return ingestionBackend;
   }
 
   Map<String, VersionBackend> getVersionByTopicMap() {
@@ -408,10 +368,6 @@ public class DaVinciBackend implements Closeable {
     if (rocksDBMemoryStats != null) {
       rocksDBMemoryStats.registerStore(storeName, memoryLimit);
     }
-  }
-
-  IngestionRequestClient getIngestionRequestClient() {
-    return ingestionRequestClient;
   }
 
   PushStatusStoreWriter getPushStatusStoreWriter() {

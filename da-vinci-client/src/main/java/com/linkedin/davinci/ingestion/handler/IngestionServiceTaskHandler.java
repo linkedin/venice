@@ -34,6 +34,7 @@ import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -95,6 +96,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) throws Exception {
     try {
       IngestionAction action = getIngestionActionFromRequest(msg);
+      byte[] result = getDummyContent();
       switch (action) {
         case INIT:
           if (logger.isDebugEnabled()) {
@@ -102,7 +104,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           }
           InitializationConfigs initializationConfigs = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           handleIngestionInitialization(initializationConfigs);
-          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
           break;
         case COMMAND:
           if (logger.isDebugEnabled()) {
@@ -110,23 +111,20 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           }
           IngestionTaskCommand ingestionTaskCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport report = handleIngestionTaskCommand(ingestionTaskCommand);
-          byte[] serializedReport = serializeIngestionActionResponse(action, report);
-          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedReport));
+          result = serializeIngestionActionResponse(action, report);
           break;
         case METRIC:
           if (logger.isDebugEnabled()) {
             logger.debug("Received METRIC message.");
           }
           IngestionMetricsReport metricsReport = handleMetricsRequest();
-          byte[] serializedMetricsReport = serializeIngestionActionResponse(action, metricsReport);
-          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetricsReport));
+          result = serializeIngestionActionResponse(action, metricsReport);
           break;
         case HEARTBEAT:
           if (logger.isDebugEnabled()) {
             logger.debug("Received HEARTBEAT message.");
           }
           ingestionService.updateHeartbeatTime();
-          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
           break;
         case UPDATE_METADATA:
           if (logger.isDebugEnabled()) {
@@ -134,19 +132,18 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           }
           IngestionStorageMetadata ingestionStorageMetadata = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport metadataUpdateReport = handleIngestionStorageMetadataUpdate(ingestionStorageMetadata);
-          byte[] serializedMetadataUpdateReport = serializeIngestionActionResponse(action, metadataUpdateReport);
-          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedMetadataUpdateReport));
+          result = serializeIngestionActionResponse(action, metadataUpdateReport);
           break;
         case SHUTDOWN_COMPONENT:
           logger.info("Received SHUTDOWN_COMPONENT message.");
           ProcessShutdownCommand processShutdownCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport shutdownTaskReport = handleProcessShutdownCommand(processShutdownCommand);
-          byte[] serializedShutdownTaskReport = serializeIngestionActionResponse(action, shutdownTaskReport);
-          ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, serializedShutdownTaskReport));
+          result = serializeIngestionActionResponse(action, shutdownTaskReport);
           break;
         default:
           throw new UnsupportedOperationException("Unrecognized ingestion action: " + action);
       }
+      ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, result));
     } catch (UnsupportedOperationException e) {
       // Here we only handles the bad requests exception. Other errors are handled in exceptionCaught() method.
       logger.error("Caught unrecognized request action:", e);
@@ -358,13 +355,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         case IS_PARTITION_CONSUMING:
           report.isPositive = storeIngestionService.isPartitionConsuming(storeConfig, partitionId);
           break;
-        case OPEN_STORAGE_ENGINE:
-          // Open metadata partition of the store engine.
-          storeConfig.setRestoreDataPartitions(false);
-          storeConfig.setRestoreMetadataPartition(true);
-          ingestionService.getStorageService().openStore(storeConfig);
-          logger.info("Metadata partition of topic: " + ingestionTaskCommand.topicName.toString() + " restored.");
-          break;
         case REMOVE_STORAGE_ENGINE:
           ingestionService.getStorageService().removeStorageEngine(ingestionTaskCommand.topicName.toString());
           logger.info("Remaining storage engines after dropping: " + ingestionService.getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().toString());
@@ -377,13 +367,36 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           ingestionService.getStorageService().dropStorePartition(storeConfig, partitionId);
           logger.info("Partition: " + partitionId + " of topic: " + topicName + " has been removed.");
           break;
+        case OPEN_STORAGE_ENGINE:
+          // Open metadata partition of the store engine.
+          storeConfig.setRestoreDataPartitions(false);
+          storeConfig.setRestoreMetadataPartition(true);
+          ingestionService.getStorageService().openStore(storeConfig);
+          logger.info("Metadata partition of topic: " + ingestionTaskCommand.topicName.toString() + " restored.");
+          break;
+        case PROMOTE_TO_LEADER:
+          // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the action queue, but instead fail the command fast.
+          if (ingestionService.isPartitionBeingUnsubscribed(topicName, partitionId)) {
+            report.isPositive = false;
+          } else {
+            storeIngestionService.promoteToLeader(storeConfig, partitionId, ingestionService.getLeaderSectionIdChecker(topicName, partitionId));
+            logger.info("Promoting partition: " + partitionId + " of topic: " + topicName + " to leader.");
+          }
+          break;
+        case DEMOTE_TO_STANDBY:
+          if (ingestionService.isPartitionBeingUnsubscribed(topicName, partitionId)) {
+            report.isPositive = false;
+          } else {
+            storeIngestionService.demoteToStandby(storeConfig, partitionId, ingestionService.getLeaderSectionIdChecker(topicName, partitionId));
+            logger.info("Demoting partition: " + partitionId + " of topic: " + topicName + " to standby.");
+          }
+          break;
         default:
           break;
       }
     } catch (Exception e) {
       logger.error("Encounter exception while handling ingestion command", e);
       report.isPositive = false;
-      report.isError = true;
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
@@ -424,7 +437,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         String errorMessage = "IngestionService has not been initiated.";
         logger.error(errorMessage);
         report.isPositive = false;
-        report.isError = true;
         report.message = errorMessage;
         return report;
       }
@@ -447,7 +459,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     } catch (Exception e) {
       logger.error("Encounter exception while updating storage metadata", e);
       report.isPositive = false;
-      report.isError = true;
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
@@ -475,7 +486,6 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     } catch (Exception e) {
       logger.error("Encounter exception while shutting down ingestion components in forked process", e);
       report.isPositive = false;
-      report.isError = true;
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
     return report;
@@ -501,7 +511,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isCompleted = true;
+      report.reportType = IngestionReportType.COMPLETED.getValue();
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -513,7 +523,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isError = true;
+      report.reportType = IngestionReportType.ERROR.getValue();
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -523,7 +533,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void started(String kafkaTopic, int partitionId, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isStarted = true;
+      report.reportType = IngestionReportType.STARTED.getValue();
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -533,7 +543,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void restarted(String kafkaTopic, int partitionId, long offset, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isRestarted = true;
+      report.reportType = IngestionReportType.RESTARTED.getValue();
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -544,7 +554,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isEndOfPushReceived = true;
+      report.reportType = IngestionReportType.END_OF_PUSH_RECEIVED.getValue();
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -555,7 +565,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isStartOfBufferReplayReceived = true;
+      report.reportType = IngestionReportType.START_OF_BUFFER_REPLAY_RECEIVED.getValue();
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -566,7 +576,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isStartOfIncrementalPushReceived = true;
+      report.reportType = IngestionReportType.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue();
       report.message = incrementalPushVersion;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -577,7 +587,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isEndOfIncrementalPushReceived = true;
+      report.reportType = IngestionReportType.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue();
       report.message = incrementalPushVersion;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -588,7 +598,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isTopicSwitchReceived = true;
+      report.reportType = IngestionReportType.TOPIC_SWITCH_RECEIVED.getValue();
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
@@ -599,7 +609,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     @Override
     public void progress(String kafkaTopic, int partitionId, long offset, String message) {
       IngestionTaskReport report = new IngestionTaskReport();
-      report.isProgress = true;
+      report.reportType = IngestionReportType.PROGRESS.getValue();
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;

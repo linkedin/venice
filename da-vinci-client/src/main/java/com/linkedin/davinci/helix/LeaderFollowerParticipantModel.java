@@ -126,7 +126,7 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   public static class LeaderSessionIdChecker {
     private long assignedSessionId;
     private AtomicLong latestSessionIdHandle;
-    LeaderSessionIdChecker(long assignedSessionId, AtomicLong latestSessionIdHandle) {
+    public LeaderSessionIdChecker(long assignedSessionId, AtomicLong latestSessionIdHandle) {
       this.assignedSessionId = assignedSessionId;
       this.latestSessionIdHandle = latestSessionIdHandle;
     }

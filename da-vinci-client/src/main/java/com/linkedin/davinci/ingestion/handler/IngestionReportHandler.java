@@ -1,11 +1,12 @@
 package com.linkedin.davinci.ingestion.handler;
 
-import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.davinci.ingestion.IngestionReportListener;
 import com.linkedin.davinci.ingestion.IngestionUtils;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -15,6 +16,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.util.function.Consumer;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.IngestionUtils.*;
@@ -59,33 +61,42 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
     }
 
     // Relay the notification to parent service's listener.
-    if (ingestionReportListener.getIngestionNotifier() != null) {
-      VeniceNotifier notifier = ingestionReportListener.getIngestionNotifier();
-      if (report.isCompleted) {
-        notifier.completed(topicName, partitionId, report.offset);
+    switch (IngestionReportType.valueOf(report.reportType)) {
+      case COMPLETED:
+        // TODO: Set leader state in local KafkaStoreIngestionService during server integration.
         ingestionReportListener.removeVersionPartitionFromIngestionMap(topicName, partitionId);
-      } else if (report.isError) {
-        notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString()));
+        notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset));
+        break;
+      case ERROR:
         ingestionReportListener.removeVersionPartitionFromIngestionMap(topicName, partitionId);
-      } else if (report.isStarted) {
-        notifier.started(topicName, partitionId);
-      } else if (report.isRestarted) {
-        notifier.restarted(topicName, partitionId, offset);
-      } else if (report.isEndOfPushReceived) {
-        notifier.endOfPushReceived(topicName, partitionId, offset);
-      } else if (report.isStartOfBufferReplayReceived) {
-        notifier.startOfBufferReplayReceived(topicName, partitionId, offset);
-      } else if (report.isStartOfIncrementalPushReceived) {
-        notifier.startOfIncrementalPushReceived(topicName, partitionId, offset);
-      } else if (report.isEndOfIncrementalPushReceived) {
-        notifier.endOfIncrementalPushReceived(topicName, partitionId, offset);
-      } else if (report.isTopicSwitchReceived) {
-        notifier.topicSwitchReceived(topicName, partitionId, offset);
-      } else if (report.isProgress) {
-        notifier.progress(topicName, partitionId, offset);
-      } else {
+        notifierHelper(notifier -> notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString())));
+        break;
+      case STARTED:
+        notifierHelper(notifier -> notifier.started(topicName, partitionId));
+        break;
+      case RESTARTED:
+        notifierHelper(notifier -> notifier.restarted(topicName, partitionId, offset));
+        break;
+      case PROGRESS:
+        notifierHelper(notifier -> notifier.progress(topicName, partitionId, offset));
+        break;
+      case END_OF_PUSH_RECEIVED:
+        notifierHelper(notifier -> notifier.endOfPushReceived(topicName, partitionId, offset));
+        break;
+      case START_OF_BUFFER_REPLAY_RECEIVED:
+        notifierHelper(notifier -> notifier.startOfBufferReplayReceived(topicName, partitionId, offset));
+        break;
+      case START_OF_INCREMENTAL_PUSH_RECEIVED:
+        notifierHelper(notifier -> notifier.startOfIncrementalPushReceived(topicName, partitionId, offset));
+        break;
+      case END_OF_INCREMENTAL_PUSH_RECEIVED:
+        notifierHelper(notifier -> notifier.endOfIncrementalPushReceived(topicName, partitionId, offset));
+        break;
+      case TOPIC_SWITCH_RECEIVED:
+        notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
+        break;
+      default:
         logger.warn("Received unsupported ingestion report:\n" + report.toString() + "\n it will be ignored for now.");
-      }
     }
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
   }
@@ -95,6 +106,11 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
     logger.error("Encounter exception during ingestion task report handling.", cause);
     ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.INTERNAL_SERVER_ERROR, cause.getClass().getSimpleName() + "_" + cause.getMessage()));
     ctx.close();
+  }
+
+  private void notifierHelper(Consumer<VeniceNotifier> lambda) {
+    ingestionReportListener.getPushStatusNotifierList().forEach(lambda);
+    ingestionReportListener.getIngestionNotifierList().forEach(lambda);
   }
 }
 

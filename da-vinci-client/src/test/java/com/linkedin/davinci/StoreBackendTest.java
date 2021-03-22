@@ -1,5 +1,7 @@
 package com.linkedin.davinci;
 
+import com.linkedin.davinci.ingestion.IngestionBackend;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -53,6 +55,8 @@ public class StoreBackendTest {
   StoreBackend storeBackend;
   Map<String, VersionBackend> versionMap;
   MetricsRepository metricsRepository;
+  StorageService storageService;
+  IngestionBackend ingestionBackend;
 
   @BeforeMethod
   void setup() {
@@ -70,16 +74,20 @@ public class StoreBackendTest {
 
     versionMap = new HashMap<>();
     metricsRepository = new MetricsRepository();
+    storageService = mock(StorageService.class);
+    ingestionBackend = mock(IngestionBackend.class);
+    when(ingestionBackend.getStorageService()).thenReturn(storageService);
     backend = mock(DaVinciBackend.class);
     when(backend.getExecutor()).thenReturn(executor);
     when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(backendConfig));
     when(backend.getMetricsRepository()).thenReturn(metricsRepository);
     when(backend.getStoreRepository()).thenReturn(mock(SubscriptionBasedReadOnlyStoreRepository.class));
-    when(backend.getStorageService()).thenReturn(mock(StorageService.class));
+    when(backend.getStorageService()).thenReturn(storageService);
     when(backend.getIngestionService()).thenReturn(mock(StoreIngestionService.class));
     when(backend.getVersionByTopicMap()).thenReturn(versionMap);
     when(backend.getLatestVersion(anyString(), anySet())).thenCallRealMethod();
     when(backend.getCurrentVersion(anyString(), anySet())).thenCallRealMethod();
+    when(backend.getIngestionBackend()).thenReturn(ingestionBackend);
 
     store = new ZKStore("test-store", null, 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
@@ -217,7 +225,7 @@ public class StoreBackendTest {
     storeBackend.deleteOldVersions();
     // Verify that corresponding Version Backend is deleted exactly once.
     assertFalse(versionMap.containsKey(version2.kafkaTopicName()));
-    verify(backend.getStorageService(), times(1)).removeStorageEngine(eq(version2.kafkaTopicName()));
+    verify(ingestionBackend, times(1)).removeStorageEngine(eq(version2.kafkaTopicName()));
 
     // Simulate new version push and subsequent ingestion failure.
     Version version3 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
@@ -248,7 +256,7 @@ public class StoreBackendTest {
     versionMap.get(version5.kafkaTopicName()).completeSubPartitionExceptionally(partition, new Exception());
     // Verify that corresponding Version Backend is deleted exactly once.
     assertFalse(versionMap.containsKey(version5.kafkaTopicName()));
-    verify(backend.getStorageService(), times(1)).removeStorageEngine(eq(version5.kafkaTopicName()));
+    verify(ingestionBackend, times(1)).removeStorageEngine(eq(version5.kafkaTopicName()));
 
     // Verify that faulty version will not be tried again.
     storeBackend.trySubscribeFutureVersion();
@@ -276,7 +284,7 @@ public class StoreBackendTest {
     // Verify that all versions were deleted because subscription set became empty.
     assertTrue(versionMap.isEmpty());
     assertEquals(FileUtils.sizeOfDirectory(baseDataPath), 0);
-    verify(backend.getStorageService(), times(store.getVersions().size())).removeStorageEngine(any());
+    verify(ingestionBackend, times(store.getVersions().size())).removeStorageEngine(any());
   }
 
   @Test
@@ -298,6 +306,6 @@ public class StoreBackendTest {
     assertThrows(CompletionException.class, () -> subscribeResult.getNow(null));
     assertTrue(versionMap.isEmpty());
     assertEquals(FileUtils.sizeOfDirectory(baseDataPath), 0);
-    verify(backend.getStorageService(), times(store.getVersions().size())).removeStorageEngine(any());
+    verify(ingestionBackend, times(store.getVersions().size())).removeStorageEngine(any());
   }
 }

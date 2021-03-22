@@ -16,12 +16,14 @@ public enum IngestionCommandType {
   IS_PARTITION_CONSUMING(4),
   REMOVE_STORAGE_ENGINE(5),
   REMOVE_PARTITION(6),
-  OPEN_STORAGE_ENGINE(7);
+  OPEN_STORAGE_ENGINE(7),
+  PROMOTE_TO_LEADER(8),
+  DEMOTE_TO_STANDBY(9);
 
   private final int value;
   private static final Map<Integer, IngestionCommandType> INGESTION_COMMAND_TYPE_MAP = getIngestionCommandTypeMap();
 
-  private IngestionCommandType(int value) {
+  IngestionCommandType(int value) {
     this.value = value;
   }
 
