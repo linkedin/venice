@@ -300,9 +300,10 @@ public class VeniceReducer
       throw new VeniceException("Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
     }
     if (previousReporter == null) {
-      throw new VeniceException("Expect reporter to be set by this point");
+      LOGGER.warn("No MapReduce reporter set");
+    } else {
+      MRJobCounterHelper.incrReducerClosedCount(previousReporter, 1);
     }
-    MRJobCounterHelper.incrReducerClosedCount(previousReporter, 1);
   }
 
   @Override
@@ -353,10 +354,6 @@ public class VeniceReducer
         }
       }
     }
-  }
-
-  private long estimatedVeniceDiskUsage(long inputFileSize, double storageEngineOverheadRatio) {
-    return (long) (inputFileSize / storageEngineOverheadRatio);
   }
 
   private void printKafkaProducerMetrics(Map<String, Double> producerMetrics) {
