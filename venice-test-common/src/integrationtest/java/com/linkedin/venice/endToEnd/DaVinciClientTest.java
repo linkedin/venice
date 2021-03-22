@@ -440,7 +440,7 @@ public class DaVinciClientTest {
     try (DaVinciClient<Integer, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, baseDataPath)) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         try {
-          Map<Integer, Integer> keyValueMap = new HashMap();
+          Map<Integer, Integer> keyValueMap = new HashMap<>();
           for (int k = 0; k < KEY_COUNT; ++k) {
             assertEquals(client.get(k).get(), 1);
             keyValueMap.put(k, 1);

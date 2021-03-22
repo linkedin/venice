@@ -1,15 +1,16 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collections;
 import org.apache.helix.HelixManager;
@@ -25,8 +26,9 @@ import static org.mockito.ArgumentMatchers.*;
 
 public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractParticipantModel,
     NOTIFIER_TYPE extends StateModelNotifier> {
-  protected StoreIngestionService mockStoreIngestionService;
+  protected KafkaStoreIngestionService mockStoreIngestionService;
   protected StorageService mockStorageService;
+  protected VeniceIngestionBackend mockIngestionBackend;
   protected VeniceStoreConfig mockStoreConfig;
   protected int testPartition = 0;
 
@@ -56,8 +58,11 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     this.resourceName = Version.composeKafkaTopic(storeName, version);
     this.instanceName = "testInstance";
 
-    mockStoreIngestionService = Mockito.mock(StoreIngestionService.class);
+    mockStoreIngestionService = Mockito.mock(KafkaStoreIngestionService.class);
     mockStorageService = Mockito.mock(StorageService.class);
+    mockIngestionBackend = Mockito.mock(VeniceIngestionBackend.class);
+    Mockito.when(mockIngestionBackend.getStorageService()).thenReturn(mockStorageService);
+    Mockito.when(mockIngestionBackend.getStoreIngestionService()).thenReturn(mockStoreIngestionService);
     mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
 
     mockMessage = Mockito.mock(Message.class);

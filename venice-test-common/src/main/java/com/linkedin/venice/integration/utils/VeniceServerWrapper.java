@@ -149,6 +149,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate server.properties in config directory
       int listenPort = Utils.getFreePort();
+      int ingestionIsolationApplicationPort = Utils.getFreePort();
+      int ingestionIsolationServicePort = Utils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder()
           .put(LISTENER_PORT, listenPort)
           .put(ADMIN_PORT, Utils.getFreePort())
@@ -165,6 +167,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
           .put(SERVER_DISK_FULL_THRESHOLD, 0.99) // Minimum free space is required in tests
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
+          .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, ingestionIsolationApplicationPort)
+          .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, ingestionIsolationServicePort)
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);

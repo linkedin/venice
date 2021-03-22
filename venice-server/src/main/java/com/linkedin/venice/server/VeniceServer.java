@@ -5,9 +5,11 @@ import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
@@ -15,6 +17,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -32,6 +35,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -177,15 +181,21 @@ public class VeniceServer {
     RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled) : null;
 
-    // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats,
-        storeVersionStateSerializer, partitionStateSerializer, metadataRepo);
-
-    logger.info("Server will start with RocksDB offset store enabled");
-    storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
-    services.add(storageEngineMetadataService);
-    storageMetadataService = storageEngineMetadataService;
-
+    // Create and add StorageService. storeRepository will be populated by StorageService
+    if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
+      storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats,
+          storeVersionStateSerializer, partitionStateSerializer, metadataRepo, false);
+      logger.info("Create " + MainIngestionStorageMetadataService.class.getName() + " for ingestion isolation.");
+      MainIngestionStorageMetadataService ingestionStorageMetadataService = new MainIngestionStorageMetadataService(veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository));
+      services.add(ingestionStorageMetadataService);
+      storageMetadataService = ingestionStorageMetadataService;
+    } else {
+      storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats,
+          storeVersionStateSerializer, partitionStateSerializer, metadataRepo);
+      storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+      services.add(storageEngineMetadataService);
+      storageMetadataService = storageEngineMetadataService;
+    }
     services.add(storageService);
 
     // Create stats for RocksDB
@@ -253,7 +263,7 @@ public class VeniceServer {
      * read requests if it claims to be available in Helix.
      */
     this.helixParticipationService =
-        new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader, metadataRepo,
+        new HelixParticipationService(kafkaStoreIngestionService, storageService, storageMetadataService, veniceConfigLoader, metadataRepo,
             metricsRepository, clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
             veniceConfigLoader.getVeniceServerConfig().getListenerPort(), managerFuture);
     services.add(helixParticipationService);

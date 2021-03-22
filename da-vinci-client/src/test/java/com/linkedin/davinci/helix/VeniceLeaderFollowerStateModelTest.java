@@ -11,7 +11,7 @@ public class VeniceLeaderFollowerStateModelTest
     extends AbstractVenicePartitionStateModelTest<LeaderFollowerParticipantModel, LeaderFollowerStateModelNotifier> {
   @Override
   protected LeaderFollowerParticipantModel getParticipantStateModel() {
-    return new LeaderFollowerParticipantModel(mockStoreIngestionService, mockStorageService, mockStoreConfig,
+    return new LeaderFollowerParticipantModel(mockIngestionBackend, mockStoreConfig,
         testPartition, mockNotifier, mockReadOnlyStoreRepository, Optional.empty(), null);
   }
 

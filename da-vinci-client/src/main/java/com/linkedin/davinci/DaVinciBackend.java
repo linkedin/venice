@@ -185,7 +185,7 @@ public class DaVinciBackend implements Closeable {
         logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
       }
 
-      ingestionBackend = new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService, storeRepository);
+      ingestionBackend = new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService);
       ingestionBackend.addIngestionNotifier(ingestionListener);
       // Send out subscribe requests to child process to complete bootstrap process.
       completeBootstrapRemotely(bootstrapVersions);

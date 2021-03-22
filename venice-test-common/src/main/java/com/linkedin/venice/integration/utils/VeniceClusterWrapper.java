@@ -204,7 +204,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           serverName = coloName + ":" + clusterName + ":sn-" + i;
         }
         VeniceServerWrapper veniceServerWrapper =
-            ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, extraProperties, forkServer, serverName);
+            ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, zkAddress, featureProperties, extraProperties, forkServer, serverName);
         veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
       }
 
@@ -514,7 +514,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableWhitelist));
     featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinWhiteList));
     VeniceServerWrapper veniceServerWrapper =
-        ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, new Properties());
+        ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, getKafka().getZkAddress(), featureProperties, new Properties());
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -528,7 +528,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @return
    */
   public VeniceServerWrapper addVeniceServer(Properties properties) {
-    VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, new Properties(), properties);
+    VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, getKafka().getZkAddress(), new Properties(), properties);
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -536,7 +536,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
-    VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, configProperties);
+    VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, getKafka().getZkAddress(), featureProperties, configProperties);
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }

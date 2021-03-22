@@ -29,5 +29,13 @@ public class DataProviderUtils {
     };
   }
 
-
+  @DataProvider(name = "Two-True-and-False", parallel = false)
+  public static Object[][] twoTrueAndFalseProvider() {
+    return new Object[][]{
+        {false, false},
+        {false, true},
+        {true, false},
+        {true, true}
+    };
+  }
 }

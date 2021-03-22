@@ -21,6 +21,11 @@ public class RelayNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void completed(String kafkaTopic, int partitionId, long offset, String message) {
+    targetNotifier.completed(kafkaTopic, partitionId, offset, message);
+  }
+
+  @Override
   public void error(String kafkaTopic, int partitionId, String message, Exception e) {
     targetNotifier.error(kafkaTopic, partitionId, message, e);
   }

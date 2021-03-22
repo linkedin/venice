@@ -1,15 +1,13 @@
 package com.linkedin.davinci.helix;
 
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.utils.SystemTime;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
@@ -50,16 +48,15 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
    * should compare the session ID inside the consumer action and compare it with the latest session ID in the state
    * model, skip the action if it's invalid.
    */
-  private AtomicLong leaderSessionId = new AtomicLong(0l);
+  private final AtomicLong leaderSessionId = new AtomicLong(0L);
 
   private final LeaderFollowerStateModelNotifier notifier;
 
-  public LeaderFollowerParticipantModel(StoreIngestionService storeIngestionService, StorageService storageService,
+  public LeaderFollowerParticipantModel(VeniceIngestionBackend ingestionBackend,
       VeniceStoreConfig storeConfig, int partition, LeaderFollowerStateModelNotifier notifier,
       ReadOnlyStoreRepository metadataRepo,
       Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
-    super(storeIngestionService, metadataRepo, storageService, storeConfig, partition, new SystemTime(),
-        partitionPushStatusAccessorFuture, instanceName);
+    super(ingestionBackend, metadataRepo, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
     this.notifier = notifier;
   }
 
@@ -84,25 +81,23 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    executeStateTransition(message, context, () ->
-      getStoreIngestionService().promoteToLeader(getStoreConfig(), getPartition(), checker));
+    executeStateTransition(message, context, () -> getIngestionBackend().promoteToLeader(getStoreConfig(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    executeStateTransition(message, context, () ->
-      getStoreIngestionService().demoteToStandby(getStoreConfig(), getPartition(), checker));
+    executeStateTransition(message, context, () -> getIngestionBackend().demoteToStandby(getStoreConfig(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    executeStateTransition(message, context, () -> stopConsumption());
+    executeStateTransition(message, context, this::stopConsumption);
   }
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
-    executeStateTransition(message, context, () -> removePartitionFromStoreGracefully());
+    executeStateTransition(message, context, this::removePartitionFromStoreGracefully);
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.DROPPED_STATE)
@@ -123,8 +118,8 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
    * the consumer action.
    */
   public static class LeaderSessionIdChecker {
-    private long assignedSessionId;
-    private AtomicLong latestSessionIdHandle;
+    private final long assignedSessionId;
+    private final AtomicLong latestSessionIdHandle;
     public LeaderSessionIdChecker(long assignedSessionId, AtomicLong latestSessionIdHandle) {
       this.assignedSessionId = assignedSessionId;
       this.latestSessionIdHandle = latestSessionIdHandle;

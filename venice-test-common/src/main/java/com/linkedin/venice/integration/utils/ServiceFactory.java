@@ -304,14 +304,15 @@ public class ServiceFactory {
     });
   }
 
-  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, Properties featureProperties,
+  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, String zkAddress, Properties featureProperties,
       Properties configProperties) {
-    return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties));
+    return getVeniceServer(clusterName, kafkaBrokerWrapper, zkAddress, featureProperties, configProperties, false, "");
   }
 
-  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, Properties featureProperties,
+  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, String zkAddress, Properties featureProperties,
       Properties configProperties, boolean forkServer, String serverName) {
+    // Set ZK host needed for D2 client creation ingestion isolation ingestion.
+    configProperties.setProperty(D2_CLIENT_ZK_HOSTS_ADDRESS, zkAddress);
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties, forkServer, serverName));
   }

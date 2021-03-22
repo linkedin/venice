@@ -3,6 +3,7 @@ package com.linkedin.davinci.ingestion.isolated;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
@@ -17,11 +18,9 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -34,10 +33,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -86,14 +82,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
   private final ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
   // Leader section Id map helps to verify if the PROMOTE_TO_LEADER/DEMOTE_TO_STANDBY is valid or not when processing the message in the queue.
-  private final Map<String, Map<Integer, AtomicLong>> leaderSessionIdMap = new HashMap<>();
+  private final Map<String, Map<Integer, AtomicLong>> leaderSessionIdMap = new VeniceConcurrentHashMap<>();
   /**
    * The boolean value of this map indicates whether we have added UNSUBSCRIBE message to the processing queue.
    * We should not add leader change message into the queue if we have added UNSUBSCRIBE message to the queue, otherwise
    * it won't get processed and the request may be missed. This will help leader promo/demote request from parent process
    * fail out early and avoid race condition.
    */
-  private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap = new HashMap<>();
+  private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap = new VeniceConcurrentHashMap<>();
   private final long heartbeatTimeoutMs;
 
   private ChannelFuture serverFuture;
@@ -110,6 +106,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private IsolatedIngestionRequestClient reportClient;
   private long heartbeatTimeInMs = -1;
   private int stopConsumptionWaitRetriesNum;
+  private DefaultIngestionBackend ingestionBackend;
 
   public IsolatedIngestionServer(int servicePort, long heartbeatTimeoutMs) {
     this.servicePort = servicePort;
@@ -238,6 +235,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     this.stopConsumptionWaitRetriesNum = numRetries;
   }
 
+  public void setIngestionBackend(DefaultIngestionBackend ingestionBackend) {
+    this.ingestionBackend = ingestionBackend;
+  }
+
   public IsolatedIngestionRequestClient getReportClient() {
     return reportClient;
   }
@@ -272,6 +273,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
+  }
+
+  public DefaultIngestionBackend getIngestionBackend() {
+    return ingestionBackend;
   }
 
   public InternalAvroSpecificSerializer<PartitionState> getPartitionStateSerializer() {
@@ -363,7 +368,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   // Set the topic partition state to be unsubscribed(false)
   public void setPartitionToBeUnsubscribed(String topicName, int partition) {
-    topicPartitionSubscriptionMap.putIfAbsent(topicName, new HashMap<>());
+    topicPartitionSubscriptionMap.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
     topicPartitionSubscriptionMap.get(topicName).putIfAbsent(partition, new AtomicBoolean(false));
     topicPartitionSubscriptionMap.get(topicName).get(partition).set(false);
   }
