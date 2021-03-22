@@ -1,11 +1,11 @@
 package com.linkedin.davinci.helix;
 
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -13,12 +13,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.utils.PartitionUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.NotificationContext;
@@ -55,29 +51,22 @@ public abstract class AbstractParticipantModel extends StateModel {
   private static final int RETRY_DURATION_MS = 1000;
   private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = 300000;
 
-  private final StoreIngestionService storeIngestionService;
+  private final VeniceIngestionBackend ingestionBackend;
   private final ReadOnlyStoreRepository metaDataRepo;
-  private final StorageService storageService;
   private final VeniceStoreConfig storeConfig;
   private final int partition;
-  private final Time time;
-
   private final String storePartitionDescription;
-  private Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionStatusAccessorFuture;
-  private HelixPartitionStatusAccessor partitionPushStatusAccessor;
+  private final Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionStatusAccessorFuture;
   private final String instanceName;
-  private int amplificationFactor;
 
-  public AbstractParticipantModel(StoreIngestionService storeIngestionService, ReadOnlyStoreRepository metaDataRepo,
-      StorageService storageService, VeniceStoreConfig storeConfig, int partition, Time time,
-      Optional<CompletableFuture<HelixPartitionStatusAccessor>> accessorFuture, String instanceName) {
-    this.storeIngestionService = storeIngestionService;
+  private HelixPartitionStatusAccessor partitionPushStatusAccessor;
+
+  public AbstractParticipantModel(VeniceIngestionBackend ingestionBackend, ReadOnlyStoreRepository metaDataRepo,
+      VeniceStoreConfig storeConfig, int partition, Optional<CompletableFuture<HelixPartitionStatusAccessor>> accessorFuture, String instanceName) {
+    this.ingestionBackend = ingestionBackend;
     this.metaDataRepo = metaDataRepo;
-    this.storageService = storageService;
     this.storeConfig = storeConfig;
     this.partition = partition;
-    this.time = time;
-
     this.storePartitionDescription =
         String.format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
     /**
@@ -86,16 +75,6 @@ public abstract class AbstractParticipantModel extends StateModel {
      */
     partitionStatusAccessorFuture = accessorFuture;
     this.instanceName = instanceName;
-    if (storeConfig == null) {
-      this.amplificationFactor = 1;
-    } else {
-      try {
-        this.amplificationFactor = PartitionUtils.getAmplificationFactor(metaDataRepo, storeConfig.getStoreName());
-      } catch (Exception e) {
-        logger.error("Caught exception " + e + " during aquisition of amplificationFactor.");
-        this.amplificationFactor = 1;
-      }
-    }
   }
 
   protected void executeStateTransition(Message message, NotificationContext context,
@@ -211,57 +190,22 @@ public abstract class AbstractParticipantModel extends StateModel {
      * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
      * will not create them again.
      */
-    storageService.openStoreForNewPartition(storeConfig, partition);
-    storeIngestionService.startConsumption(storeConfig, partition);
+    ingestionBackend.startConsumption(storeConfig, partition);
   }
 
   protected void removePartitionFromStoreGracefully() {
-    try {
-      // Gracefully drop partition to drain the requests to this partition
-      // This method is called during OFFLINE->DROPPED state transition. Due to Zk or other transient issues a store
-      // version could miss ONLINE->OFFLINE transition and newer version could come online triggering this transition.
-      // Since this removes the storageEngine from the map not doing a un-subscribe and dropping a partition could
-      // lead to NPE and other issues.
-      // Adding a topic unsubscribe call for those race conditions as a safe-guard before dropping the partition.
-      stopConsumption();
-      getTime().sleep(TimeUnit.SECONDS.toMillis(getStoreConfig().getPartitionGracefulDropDelaySeconds()));
-    } catch (InterruptedException e) {
-      throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
-    }
-    removePartitionFromStore();
+    // Gracefully drop partition to drain the requests to this partition
+    // This method is called during OFFLINE->DROPPED state transition. Due to Zk or other transient issues a store
+    // version could miss ONLINE->OFFLINE transition and newer version could come online triggering this transition.
+    // Since this removes the storageEngine from the map not doing a un-subscribe and dropping a partition could
+    // lead to NPE and other issues.
+    // Adding a topic unsubscribe call for those race conditions as a safe-guard before dropping the partition.
+    ingestionBackend.dropStoragePartitionGracefully(storeConfig, partition, getStoreConfig().getPartitionGracefulDropDelaySeconds());
     removeCustomizedState();
     // Delete this replica from meta system store if necessary
-    Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier = storeIngestionService.getMetaSystemStoreReplicaStatusNotifier();
+    Optional<MetaSystemStoreReplicaStatusNotifier> metaSystemStoreReplicaStatusNotifier = ingestionBackend.getStoreIngestionService().getMetaSystemStoreReplicaStatusNotifier();
     if (metaSystemStoreReplicaStatusNotifier.isPresent()) {
       metaSystemStoreReplicaStatusNotifier.get().drop(storeConfig.getStoreName(), partition);
-    }
-  }
-
-  protected void removePartitionFromStore() {
-    try {
-      /**
-       * Since un-subscription is an asynchronous process, so we would like to make sure current partition is not
-       * being consuming before dropping store partition.
-       *
-       * Otherwise, a {@link com.linkedin.venice.exceptions.PersistenceFailureException} could be thrown here:
-       * {@link AbstractStorageEngine#put(Integer, byte[], byte[])}.
-       */
-      makeSurePartitionIsNotConsuming();
-    } catch (Exception e) {
-      logger.error("Error waiting for partition to stop consuming", e);
-    }
-    /**
-     * RESET_OFFSET only happens when we want to drop the corresponding database, and this is independent
-     * from the topic partition unsubscription.
-     */
-    getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), partition);
-
-    // Catch exception separately to ensure reset consumption offset would be executed for sure.
-    try {
-      getStorageService().dropStorePartition(getStoreConfig(), partition);
-    } catch (Exception e) {
-      logger.error(
-          "Error dropping the partition:" + partition + " in store:" + getStoreConfig().getStoreName());
     }
   }
 
@@ -293,8 +237,7 @@ public abstract class AbstractParticipantModel extends StateModel {
           isSuccess = true;
         } catch (Exception e) {
           logger.error(String.format("Error in removing customized state for store: %s, partition: %s, on instance: %s",
-              storeName, partition, instanceName, e));
-          continue;
+              storeName, partition, instanceName), e);
         }
       }
       if (!isSuccess) {
@@ -305,23 +248,6 @@ public abstract class AbstractParticipantModel extends StateModel {
         throw new VeniceException(errorMsg);
       }
     }
-  }
-
-  /**
-   * This function is trying to wait for current partition of store stop consuming.
-   */
-  private void makeSurePartitionIsNotConsuming() throws InterruptedException {
-    final int SLEEP_SECONDS = 3;
-    final int RETRY_NUM = 100; // 5 mins
-    int current = 0;
-    while (current++ < RETRY_NUM) {
-      if (!getStoreIngestionService().isPartitionConsuming(getStoreConfig(), partition)) {
-        return;
-      }
-      getTime().sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
-    }
-    throw new VeniceException("Partition: " + partition + " of store: " + getStoreConfig().getStoreName() +
-        " is still consuming after waiting for it to stop for " + RETRY_NUM * SLEEP_SECONDS + " seconds.");
   }
 
   protected void waitConsumptionCompleted(String resourceName, StateModelNotifier notifier) {
@@ -337,7 +263,7 @@ public abstract class AbstractParticipantModel extends StateModel {
             + Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS + " hours instead");
         bootstrapToOnlineTimeoutInHours = Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
       }
-      notifier.waitConsumptionCompleted(resourceName, partition, bootstrapToOnlineTimeoutInHours, storeIngestionService);
+      notifier.waitConsumptionCompleted(resourceName, partition, bootstrapToOnlineTimeoutInHours, getStoreIngestionService());
     } catch (InterruptedException e) {
       String errorMsg =
           "Can not complete consumption for resource:" + resourceName + " partition:" + partition;
@@ -355,36 +281,35 @@ public abstract class AbstractParticipantModel extends StateModel {
   }
 
   protected void stopConsumption() {
-    storeIngestionService.stopConsumption(storeConfig, partition);
+    ingestionBackend.stopConsumption(storeConfig, partition);
   }
 
   protected void stopConsumptionAndDropPartitionOnError() {
-    stopConsumption();
-    removePartitionFromStore();
+    ingestionBackend.dropStoragePartitionGracefully(storeConfig, partition, 30);
   }
 
-  public StoreIngestionService getStoreIngestionService() {
-    return storeIngestionService;
+  protected VeniceIngestionBackend getIngestionBackend() {
+    return ingestionBackend;
   }
 
-  public ReadOnlyStoreRepository getMetaDataRepo() {
+  protected StoreIngestionService getStoreIngestionService() {
+    return ingestionBackend.getStoreIngestionService();
+  }
+
+  protected ReadOnlyStoreRepository getMetaDataRepo() {
     return metaDataRepo;
   }
 
-  public StorageService getStorageService() {
-    return storageService;
+  protected StorageService getStorageService() {
+    return ingestionBackend.getStorageService();
   }
 
-  public VeniceStoreConfig getStoreConfig() {
+  protected VeniceStoreConfig getStoreConfig() {
     return storeConfig;
   }
 
-  public int getPartition() {
+  protected int getPartition() {
     return partition;
-  }
-
-  public Time getTime() {
-    return time;
   }
 
   public String getStorePartitionDescription() {

@@ -32,6 +32,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.PersistenceType;
@@ -62,6 +63,7 @@ import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -102,7 +104,6 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
-//TODO: try to share the cluster across all test cases.
 public class TestHybrid {
   private static final Logger logger = Logger.getLogger(TestHybrid.class);
   public static final int STREAMING_RECORD_SIZE = 1024;
@@ -114,6 +115,7 @@ public class TestHybrid {
    *                 the middle of the test, please restart them at the end of your test.
    */
   private VeniceClusterWrapper sharedVenice;
+  private VeniceClusterWrapper ingestionIsolationEnabledSharedVenice;
 
   /**
    * This cluster is re-used by some of the tests, in order to speed up the suite. Some other tests require
@@ -122,25 +124,14 @@ public class TestHybrid {
    */
   @BeforeClass(alwaysRun=true)
   public void setUp() {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
-    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-
-    sharedVenice = ServiceFactory.getVeniceCluster(1,1,1, 2, 1000000, false, false, extraProperties);
-
-    Properties serverPropertiesWithSharedConsumer = new Properties();
-    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
-    extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
-    extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
-    sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+    sharedVenice = setUpCluster(false);
+    ingestionIsolationEnabledSharedVenice = setUpCluster(true);
   }
 
   @AfterClass(alwaysRun=true)
   public void tearDown() {
     IOUtils.closeQuietly(sharedVenice);
+    IOUtils.closeQuietly(ingestionIsolationEnabledSharedVenice);
   }
 
   @DataProvider(name = "isLeaderFollowerModelEnabled", parallel = false)
@@ -767,7 +758,7 @@ public class TestHybrid {
           if (!isLeaderFollowerModelEnabled) {
             List<Long> bufferReplyOffsets = new ArrayList<>();
             for (int i = 0; i < partitionCnt; ++i) {
-              bufferReplyOffsets.add(1l);
+              bufferReplyOffsets.add(1L);
             }
             writer.broadcastStartOfBufferReplay(bufferReplyOffsets, "", "", new HashMap<>());
           }
@@ -888,8 +879,8 @@ public class TestHybrid {
           ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
           VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils.getVeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(Version.composeRealTimeTopic(storeName));) {
         // Build a producer to produce 2 TS messages into RT
-        realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic1, -1L, null);
-        realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic2, -1L, null);
+        realTimeTopicWriter.broadcastTopicSwitch(Collections.singletonList(venice.getKafka().getAddress()), tmpTopic1, -1L, null);
+        realTimeTopicWriter.broadcastTopicSwitch(Collections.singletonList(venice.getKafka().getAddress()), tmpTopic2, -1L, null);
 
         TestUtils.waitForNonDeterministicAssertion(30 * 1000, TimeUnit.MILLISECONDS, () -> {
           // All messages from tmpTopic2 should exist
@@ -918,9 +909,9 @@ public class TestHybrid {
     }
   }
 
-  @Test
-  public void testLeaderCanReleaseLatch() throws InterruptedException, ExecutionException {
-    VeniceClusterWrapper veniceClusterWrapper = sharedVenice;
+  @Test(timeOut = 180 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testLeaderCanReleaseLatch(boolean isIngestionIsolationEnabled) throws InterruptedException, ExecutionException {
+    VeniceClusterWrapper veniceClusterWrapper = isIngestionIsolationEnabled ? ingestionIsolationEnabledSharedVenice : sharedVenice;
     Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
     String clusterName = veniceClusterWrapper.getClusterName();
     String storeName = TestUtils.getUniqueString("test-store");
@@ -1153,8 +1144,8 @@ public class TestHybrid {
     }
   }
 
-  @Test(dataProvider = "isLeaderFollowerModelEnabled", timeOut = 180 * Time.MS_PER_SECOND)
-  public void testDuplicatedMessagesWontBePersisted(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180 * Time.MS_PER_SECOND)
+  public void testDuplicatedMessagesWontBePersisted(boolean isLeaderFollowerModelEnabled, boolean isIngestionIsolationEnabled) throws Exception {
     Properties extraProperties = new Properties();
     if (isLeaderFollowerModelEnabled) {
       extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
@@ -1162,7 +1153,7 @@ public class TestHybrid {
 
     SystemProducer veniceProducer = null;
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
-    VeniceClusterWrapper venice = sharedVenice;
+    VeniceClusterWrapper venice = isIngestionIsolationEnabled? ingestionIsolationEnabledSharedVenice : sharedVenice;
     try {
       logger.info("Finished creating VeniceClusterWrapper");
 
@@ -1361,8 +1352,8 @@ public class TestHybrid {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 60 * Time.MS_PER_SECOND)
-  public void testHybridWithAmplificationFactor(boolean useCustomizedView) throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 120 * Time.MS_PER_SECOND)
+  public void testHybridWithAmplificationFactor(boolean useCustomizedView, boolean useIngestionIsolation) throws Exception {
     final Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     final int partitionCount = 2;
@@ -1378,6 +1369,9 @@ public class TestHybrid {
       Properties serverProperties = new Properties();
       serverProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
       serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+      if (useIngestionIsolation) {
+        serverProperties.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED.toString());
+      }
       // add two servers for enough SNs
       cluster.addVeniceServer(new Properties(), serverProperties);
       cluster.addVeniceServer(new Properties(), serverProperties);
@@ -1391,7 +1385,7 @@ public class TestHybrid {
       admin.addCustomizedStateConfig(cluster.getClusterName(), customizedStateConfig);
     } else {
       usedSharedCluster = true;
-      cluster = sharedVenice;
+      cluster = useIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
     }
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams()
@@ -1434,7 +1428,7 @@ public class TestHybrid {
       }
       producer.stop();
 
-      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         for (int i = 0; i < keyCount; i++) {
           checkLargeRecord(client, i);
         }
@@ -1479,5 +1473,25 @@ public class TestHybrid {
               .getStore().getCurrentVersion() == expectedVersionNumber);
       logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
     }
+  }
+
+  private static VeniceClusterWrapper setUpCluster(boolean enabledIngestionIsolation) {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    extraProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
+    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    if (enabledIngestionIsolation) {
+      extraProperties.setProperty(SERVER_INGESTION_MODE, IngestionMode.ISOLATED.toString());
+    }
+    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1,1,1, 2, 1000000, false, false, extraProperties);
+    Properties serverPropertiesWithSharedConsumer = new Properties();
+    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
+    extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
+    extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+    cluster.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+
+    return cluster;
   }
 }

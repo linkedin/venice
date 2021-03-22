@@ -1,15 +1,13 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-
+import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Optional;
@@ -32,8 +30,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceStateModelFactoryTest {
-  private StoreIngestionService mockStoreIngestionService;
-  private StorageService mockStorageService;
+  private VeniceIngestionBackend mockIngestionBackend;
   private VeniceConfigLoader mockConfigLoader;
   private VeniceServerConfig mockServerConfig;
   private VeniceStoreConfig mockStoreConfig;
@@ -61,8 +58,7 @@ public class VeniceStateModelFactoryTest {
 
   @BeforeMethod
   public void setupTestCase() {
-    mockStoreIngestionService = Mockito.mock(StoreIngestionService.class);
-    mockStorageService = Mockito.mock(StorageService.class);
+    mockIngestionBackend = Mockito.mock(VeniceIngestionBackend.class);
     mockConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     mockServerConfig = Mockito.mock(VeniceServerConfig.class);
     mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
@@ -80,8 +76,7 @@ public class VeniceStateModelFactoryTest {
     mockContext = Mockito.mock(NotificationContext.class);
 
     factory = new VeniceStateModelFactory(
-        mockStoreIngestionService,
-        mockStorageService,
+        mockIngestionBackend,
         mockConfigLoader,
         this.executorService,
         mockReadOnlyStoreRepository, Optional.empty(), null);
@@ -154,7 +149,7 @@ public class VeniceStateModelFactoryTest {
     ThreadPoolExecutor executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 2L, TimeUnit.SECONDS, queue,
         new DaemonThreadFactory("venice-state-transition"));
     executor.allowCoreThreadTimeOut(true);
-    factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader, executor,
+    factory = new VeniceStateModelFactory(mockIngestionBackend, mockConfigLoader, executor,
         mockReadOnlyStoreRepository, Optional.empty(), null);
     ExecutorService testExecutor = factory.getExecutorService("");
     Assert.assertEquals(testExecutor, executor);

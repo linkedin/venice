@@ -55,7 +55,8 @@ public class StorageService extends AbstractVeniceService {
   public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats,
       RocksDBMemoryStats rocksDBMemoryStats,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, ReadOnlyStoreRepository storeRepository) {
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, ReadOnlyStoreRepository storeRepository,
+      boolean restoreLocalStores) {
 
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
@@ -80,7 +81,16 @@ public class StorageService extends AbstractVeniceService {
     this.partitionStateSerializer = partitionStateSerializer;
     this.storeRepository = storeRepository;
     initInternalStorageEngineFactories();
-    restoreAllStores(configLoader);
+    if (restoreLocalStores) {
+      restoreAllStores(configLoader);
+    }
+  }
+
+  public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, ReadOnlyStoreRepository storeRepository) {
+    this(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository, true);
   }
 
   /**

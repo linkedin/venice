@@ -1,10 +1,11 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.storage.StorageService;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -20,8 +21,7 @@ import org.apache.log4j.Logger;
  */
 public abstract class AbstractParticipantModelFactory extends StateModelFactory<StateModel> {
   protected final Logger logger = Logger.getLogger(getClass().getSimpleName());
-  private final StoreIngestionService storeIngestionService;
-  private final StorageService storageService;
+  private final VeniceIngestionBackend ingestionBackend;
   private final VeniceConfigLoader configService;
   private final ReadOnlyStoreRepository metadataRepo;
 
@@ -31,12 +31,11 @@ public abstract class AbstractParticipantModelFactory extends StateModelFactory<
   protected Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture;
   protected final String instanceName;
 
-  public AbstractParticipantModelFactory(StoreIngestionService storeIngestionService, StorageService storageService,
+  public AbstractParticipantModelFactory(VeniceIngestionBackend ingestionBackend,
       VeniceConfigLoader configService, ExecutorService executorService, ReadOnlyStoreRepository metadataRepo,
       Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
 
-    this.storeIngestionService = storeIngestionService;
-    this.storageService = storageService;
+    this.ingestionBackend = ingestionBackend;
     this.configService = configService;
     this.executorService = executorService;
     this.metadataRepo = metadataRepo;
@@ -59,11 +58,11 @@ public abstract class AbstractParticipantModelFactory extends StateModelFactory<
   public abstract StateModel createNewStateModel(String resourceName, String partitionName);
 
   public StoreIngestionService getStoreIngestionService() {
-    return storeIngestionService;
+    return ingestionBackend.getStoreIngestionService();
   }
 
   public StorageService getStorageService() {
-    return storageService;
+    return ingestionBackend.getStorageService();
   }
 
   public VeniceConfigLoader getConfigService() {
@@ -76,6 +75,10 @@ public abstract class AbstractParticipantModelFactory extends StateModelFactory<
 
   public ReadOnlyStoreRepository getMetadataRepo() {
     return metadataRepo;
+  }
+
+  public VeniceIngestionBackend getIngestionBackend() {
+    return ingestionBackend;
   }
 
   public static String getStateModelIdentification(String resourceName, int partitionId) {

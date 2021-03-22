@@ -18,7 +18,7 @@ public class VenicePartitionStateModelTest
 
   @Override
   protected VenicePartitionStateModel getParticipantStateModel() {
-    return new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig, testPartition,
+    return new VenicePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
         mockNotifier, mockReadOnlyStoreRepository, Optional.of(CompletableFuture.completedFuture(mockPushStatusAccessor)),
         instanceName);
   }
@@ -38,9 +38,8 @@ public class VenicePartitionStateModelTest
   @Test
   public void testOnBecomeBootstrapFromOffline() {
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
-    verify(mockStoreIngestionService, times(1))
+    verify(mockIngestionBackend, times(1))
         .startConsumption(mockStoreConfig, testPartition);
-    verify(mockStorageService, times(1)).openStoreForNewPartition(mockStoreConfig, testPartition);
     verify(mockNotifier, times(1)).startConsumption(mockMessage.getResourceName(), testPartition);
   }
 
@@ -64,14 +63,14 @@ public class VenicePartitionStateModelTest
   public void testOfflineToBootstrapToOnline() {
     OnlineOfflineStateModelNotifier notifier = new OnlineOfflineStateModelNotifier();
     testStateModel =
-        new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig, testPartition,
+        new VenicePartitionStateModel(mockIngestionBackend, mockStoreConfig, testPartition,
             notifier, mockReadOnlyStoreRepository, Optional.empty(), null);
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     CountDownLatch latch = notifier.getLatch(mockMessage.getResourceName(), testPartition);
     Assert.assertEquals(latch.getCount(), 1);
     new Thread(() -> {
       try {
-        Thread.sleep(1000l);
+        Thread.sleep(1000L);
         // Notify that consumption is completed.
         notifier.completed(mockMessage.getResourceName(), testPartition, 0);
       } catch (InterruptedException e) {
@@ -91,7 +90,7 @@ public class VenicePartitionStateModelTest
   @Test
   public void testOnBecomeOfflineFromOnline() {
     testStateModel.onBecomeOfflineFromOnline(mockMessage, mockContext);
-    verify(mockStoreIngestionService, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    verify(mockIngestionBackend, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 
   /**
@@ -101,7 +100,7 @@ public class VenicePartitionStateModelTest
   @Test
   public void testOnBecomeOfflineFromBootstrap() {
     testStateModel.onBecomeOfflineFromBootstrap(mockMessage, mockContext);
-    verify(mockStoreIngestionService, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    verify(mockIngestionBackend, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 
   /**
@@ -111,10 +110,9 @@ public class VenicePartitionStateModelTest
   @Test
   public void testOnBecomeDroppedFromOffline() {
     testStateModel.setupNewStorePartition();
-    doAnswer(invocation -> {return null;}).when(mockPushStatusAccessor).deleteReplicaStatus(any(), anyInt());
+    doAnswer(invocation -> null).when(mockPushStatusAccessor).deleteReplicaStatus(any(), anyInt());
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
-    verify(mockStorageService, atLeastOnce()).dropStorePartition(mockStoreConfig , testPartition);
-    verify(mockStoreIngestionService, atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
+    verify(mockIngestionBackend, atLeastOnce()).dropStoragePartitionGracefully(eq(mockStoreConfig) , eq(testPartition), anyInt());
     verify(mockPushStatusAccessor, atLeastOnce()).deleteReplicaStatus(any(), anyInt());
   }
 
@@ -125,7 +123,7 @@ public class VenicePartitionStateModelTest
   @Test
   public void testOnBecomeOfflineFromError(){
     testStateModel.onBecomeOfflineFromError(mockMessage, mockContext);
-    verify(mockStoreIngestionService, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    verify(mockIngestionBackend, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 
   /**
@@ -136,15 +134,13 @@ public class VenicePartitionStateModelTest
   @Test
   public void testOnBecomeDroppedFromError() {
     testStateModel.onBecomeDroppedFromError(mockMessage, mockContext);
-    verify(mockStoreIngestionService, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
-    verify(mockStorageService, atLeastOnce()).dropStorePartition(mockStoreConfig, testPartition);
-    verify(mockStoreIngestionService, atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
+    verify(mockIngestionBackend, atLeastOnce()).dropStoragePartitionGracefully(eq(mockStoreConfig), eq(testPartition), anyInt());
   }
 
   @Test
   public void testRollbackOnError() {
     StateTransitionError mockError = mock(StateTransitionError.class);
     testStateModel.rollbackOnError(mockMessage, mockContext, mockError);
-    verify(mockStoreIngestionService, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    verify(mockIngestionBackend, atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 }

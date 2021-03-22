@@ -1,14 +1,13 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.Optional;
@@ -24,8 +23,7 @@ import org.testng.annotations.Test;
 
 
 public class LeaderFollowerParticipantModelFactoryTest {
-  private StoreIngestionService mockStoreIngestionService;
-  private StorageService mockStorageService;
+  private VeniceIngestionBackend mockIngestionBackend;
   private VeniceConfigLoader mockConfigLoader;
   private VeniceServerConfig mockServerConfig;
   private VeniceStoreConfig mockStoreConfig;
@@ -51,8 +49,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
 
   @BeforeMethod
   public void setupTestCase() {
-    mockStoreIngestionService = Mockito.mock(StoreIngestionService.class);
-    mockStorageService = Mockito.mock(StorageService.class);
+    mockIngestionBackend = Mockito.mock(VeniceIngestionBackend.class);
     mockConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     mockServerConfig = Mockito.mock(VeniceServerConfig.class);
     mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
@@ -69,8 +66,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
     Mockito.when(mockMessage.getResourceName()).thenReturn(resourceName);
 
     factory = new LeaderFollowerParticipantModelFactory(
-        mockStoreIngestionService,
-        mockStorageService,
+        mockIngestionBackend,
         mockConfigLoader,
         this.executorService,
         mockReadOnlyStoreRepository, Optional.empty(), null);

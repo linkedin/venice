@@ -191,7 +191,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
               metadataUpdateQueue.remove();
               metadataUpdateStats.recordMetadataUpdateQueueLength(metadataUpdateQueue.size());
             } else {
-              Thread.sleep(100);
+              Thread.sleep(1000);
             }
           }
           Thread.sleep(1000);

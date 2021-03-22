@@ -283,7 +283,6 @@ public class StoreIngestionTaskTest {
     mockStoreIngestionStats = mock(AggStoreIngestionStats.class);
     mockVersionedDIVStats = mock(AggVersionedDIVStats.class);
     mockVersionedStorageIngestionStats = mock(AggVersionedStorageIngestionStats.class);
-
     isCurrentVersion = () -> false;
     hybridStoreConfig = Optional.<HybridStoreConfig>empty();
     databaseChecksumVerificationEnabled = false;
@@ -451,8 +450,6 @@ public class StoreIngestionTaskTest {
 
     AggKafkaConsumerService aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
     doReturn(inMemoryKafkaConsumer).when(aggKafkaConsumerService).getConsumer(any(), any());
-    //doReturn(LeaderFollowerStateType.STANDBY).when(mockKafkaStoreIngestionService).loadLeaderStateFromIsolatedIngestionService(anyString(), anyInt());
-
     EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
     EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);
     StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()

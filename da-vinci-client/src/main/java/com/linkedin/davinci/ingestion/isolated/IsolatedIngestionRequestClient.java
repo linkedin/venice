@@ -22,7 +22,9 @@ public class IsolatedIngestionRequestClient implements Closeable {
   public void reportIngestionStatus(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
-    logger.info("Sending ingestion report: " + IngestionReportType.valueOf(report.reportType) + " for topic: " + report.topicName + ", partition: " + report.partitionId);
+    // Avoid sending binary data in OffsetRecord and pollute logs.
+    logger.info(String.format("Sending ingestion report %s, isPositive: %b, message: %s for partition: %d of topic: %s at offset: %d",
+        IngestionReportType.valueOf(report.reportType), report.isPositive, report.message, partitionId, topicName, report.offset));
     try {
       ingestionRequestTransport.sendRequest(IngestionAction.REPORT, report);
     } catch (Exception e) {

@@ -5,6 +5,7 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -35,7 +36,6 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
@@ -46,8 +46,6 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -235,8 +233,9 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
     isolatedIngestionServer.setStoreVersionStateSerializer(storeVersionStateSerializer);
 
-    // Create RocksDBMemoryStats
-    RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
+    // Create RocksDBMemoryStats. For now RocksDBMemoryStats cannot work with SharedConsumerPool.
+    RocksDBMemoryStats rocksDBMemoryStats = ((configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled())
+        && (!configLoader.getVeniceServerConfig().isSharedConsumerPoolEnabled()))?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
 
     /**
@@ -293,6 +292,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);
     isolatedIngestionServer.setStoreIngestionService(storeIngestionService);
+    isolatedIngestionServer.setIngestionBackend(new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService));
 
     logger.info("Starting report client with target application port: " + configLoader.getVeniceServerConfig().getIngestionApplicationPort());
     // Create Netty client to report status back to application.
@@ -319,10 +319,6 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
 
       switch (IngestionCommandType.valueOf(ingestionTaskCommand.commandType)) {
         case START_CONSUMPTION:
-          IngestionMode ingestionMode = isolatedIngestionServer.getConfigLoader().getVeniceServerConfig().getIngestionMode();
-          if (!ingestionMode.equals(IngestionMode.ISOLATED)) {
-            throw new VeniceException("Ingestion isolation is not enabled.");
-          }
           ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
           // For subscription based store repository, we will need to subscribe to the store explicitly.
           if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
@@ -330,14 +326,13 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
             ((SubscriptionBasedReadOnlyStoreRepository)storeRepository).subscribe(storeName);
           }
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
-          storageService.openStoreForNewPartition(storeConfig, partitionId);
-          storeIngestionService.startConsumption(storeConfig, partitionId);
+          isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
           break;
         case STOP_CONSUMPTION:
-          storeIngestionService.stopConsumption(storeConfig, partitionId);
+          isolatedIngestionServer.getIngestionBackend().stopConsumption(storeConfig, partitionId);
           break;
         case KILL_CONSUMPTION:
-          storeIngestionService.killConsumptionTask(topicName);
+          isolatedIngestionServer.getIngestionBackend().killConsumptionTask(topicName);
           break;
         case RESET_CONSUMPTION:
           storeIngestionService.resetConsumptionOffset(storeConfig, partitionId);
@@ -346,18 +341,10 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           report.isPositive = storeIngestionService.isPartitionConsuming(storeConfig, partitionId);
           break;
         case REMOVE_STORAGE_ENGINE:
-          isolatedIngestionServer.getStorageService().removeStorageEngine(ingestionTaskCommand.topicName.toString());
-          logger.info("Remaining storage engines after dropping: " + isolatedIngestionServer.getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().toString());
+          isolatedIngestionServer.getIngestionBackend().removeStorageEngine(topicName);
           break;
         case REMOVE_PARTITION:
-          if (storeIngestionService.isPartitionConsuming(storeConfig, partitionId)) {
-            long startTimeInMs = System.currentTimeMillis();
-            storeIngestionService.stopConsumptionAndWait(storeConfig, partitionId, 1, isolatedIngestionServer.getStopConsumptionWaitRetriesNum());
-            logger.info("Partition: " + partitionId + " of topic: " + topicName + " has stopped consumption in " + LatencyUtils.getElapsedTimeInMs(startTimeInMs)
-                + " ms.");
-          }
-          isolatedIngestionServer.getStorageService().dropStorePartition(storeConfig, partitionId);
-          logger.info("Partition: " + partitionId + " of topic: " + topicName + " has been removed.");
+          isolatedIngestionServer.getIngestionBackend().dropStoragePartitionGracefully(storeConfig, partitionId, isolatedIngestionServer.getStopConsumptionWaitRetriesNum());
           break;
         case OPEN_STORAGE_ENGINE:
           // Open metadata partition of the store engine.
@@ -371,16 +358,14 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           if (isolatedIngestionServer.isPartitionBeingUnsubscribed(topicName, partitionId)) {
             report.isPositive = false;
           } else {
-            storeIngestionService.promoteToLeader(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
-            logger.info("Promoting partition: " + partitionId + " of topic: " + topicName + " to leader.");
+            isolatedIngestionServer.getIngestionBackend().promoteToLeader(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           }
           break;
         case DEMOTE_TO_STANDBY:
           if (isolatedIngestionServer.isPartitionBeingUnsubscribed(topicName, partitionId)) {
             report.isPositive = false;
           } else {
-            storeIngestionService.demoteToStandby(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
-            logger.info("Demoting partition: " + partitionId + " of topic: " + topicName + " to standby.");
+            isolatedIngestionServer.getIngestionBackend().demoteToStandby(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           }
           break;
         default:

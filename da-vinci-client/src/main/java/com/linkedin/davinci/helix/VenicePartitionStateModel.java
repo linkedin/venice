@@ -1,13 +1,10 @@
 package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.utils.Time;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -43,21 +40,10 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     private final static AtomicInteger partitionNumberFromOfflineToBootstrap = new AtomicInteger(0);
     private final static AtomicInteger partitionNumberFromBootstrapToOnline = new AtomicInteger(0);
 
-    public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
-        VeniceStoreConfig storeConfig, int partition, OnlineOfflineStateModelNotifier notifier,
-        ReadOnlyStoreRepository readOnlyStoreRepository,
-        Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorCompletableFuture,
-        String instanceName) {
-        this(storeIngestionService, storageService, storeConfig, partition, notifier, new SystemTime(),
-            readOnlyStoreRepository, partitionPushStatusAccessorCompletableFuture, instanceName);
-    }
-
-    public VenicePartitionStateModel(StoreIngestionService storeIngestionService, StorageService storageService,
-        VeniceStoreConfig storeConfig, int partition, OnlineOfflineStateModelNotifier notifier, Time time,
-        ReadOnlyStoreRepository readOnlyStoreRepository,
+    public VenicePartitionStateModel(VeniceIngestionBackend ingestionBackend, VeniceStoreConfig storeConfig, int partition,
+        OnlineOfflineStateModelNotifier notifier, ReadOnlyStoreRepository readOnlyStoreRepository,
         Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture, String instanceName) {
-        super(storeIngestionService, readOnlyStoreRepository, storageService, storeConfig, partition, time,
-            partitionPushStatusAccessorFuture, instanceName);
+        super(ingestionBackend, readOnlyStoreRepository, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
         this.notifier = notifier;
     }
 
@@ -84,7 +70,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
      */
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ONLINE_STATE)
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
-        executeStateTransition(message, context, ()-> stopConsumption());
+        executeStateTransition(message, context, this::stopConsumption);
     }
 
     /**

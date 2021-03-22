@@ -105,7 +105,7 @@ public class PartitionConsumptionState {
    * all the records in it to in order to compare with incoming status string. Without explicit locking, this iteration
    * might throw {@link java.util.ConcurrentModificationException} in multi-thread environments.
    */
-  private final Set<String> previousStatusSet = VeniceConcurrentHashMap.newKeySet();
+  private final Set<SubPartitionStatus> previousStatusSet = VeniceConcurrentHashMap.newKeySet();
 
   /**
    * This field is used to track whether the last queued record has been fully processed or not.
@@ -141,7 +141,7 @@ public class PartitionConsumptionState {
 
     // Restore previous status from offset record.
     for (CharSequence status : offsetRecord.getSubPartitionStatus().keySet()) {
-      previousStatusSet.add(status.toString());
+      previousStatusSet.add(SubPartitionStatus.valueOf(status.toString()));
     }
   }
 
@@ -244,17 +244,21 @@ public class PartitionConsumptionState {
 
   @Override
   public String toString() {
-    return "PartitionConsumptionState{" +
-        "partition=" + partition +
-        ", hybrid=" + hybrid +
-        ", offsetRecord=" + offsetRecord +
-        ", errorReported=" + errorReported +
-        ", started=" + isStarted() +
-        ", lagCaughtUp=" + lagCaughtUp +
-        ", processedRecordNum=" + processedRecordNum +
-        ", processedRecordSize=" + processedRecordSize +
-        ", processedRecordSizeSinceLastSync=" + processedRecordSizeSinceLastSync +
-        '}';
+    return new StringBuilder()
+        .append("PartitionConsumptionState{")
+        .append("partition=").append(partition)
+        .append(", hybrid=").append(hybrid)
+        .append(", offsetRecord=" ).append(offsetRecord)
+        .append(", errorReported=").append(errorReported)
+        .append(", started=").append(isStarted())
+        .append(", lagCaughtUp=").append(lagCaughtUp)
+        .append(", processedRecordNum=").append(processedRecordNum)
+        .append(", processedRecordSize=").append(processedRecordSize)
+        .append(", processedRecordSizeSinceLastSync=").append(processedRecordSizeSinceLastSync)
+        .append(", leaderFollowerState=").append(leaderState)
+        .append(", isIncrementalPushEnabled=").append(isIncrementalPushEnabled)
+        .append(", incrementalPushPolicy=").append(incrementalPushPolicy)
+        .append("}").toString();
   }
 
   public long getProcessedRecordSizeSinceLastSync() {
@@ -403,14 +407,14 @@ public class PartitionConsumptionState {
   }
 
   public boolean hasSubPartitionStatus(SubPartitionStatus subPartitionStatus) {
-    return previousStatusSet.contains(subPartitionStatus.name());
+    return previousStatusSet.contains(subPartitionStatus);
   }
 
   public void recordSubPartitionStatus(SubPartitionStatus subPartitionStatus) {
     if (this.getOffsetRecord() != null) {
       this.getOffsetRecord().recordSubPartitionStatus(subPartitionStatus);
     }
-    previousStatusSet.add(subPartitionStatus.name());
+    previousStatusSet.add(subPartitionStatus);
   }
 
   /**

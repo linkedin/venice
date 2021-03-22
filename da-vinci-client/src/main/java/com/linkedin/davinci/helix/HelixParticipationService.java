@@ -1,8 +1,19 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
+import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
+import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
+import com.linkedin.davinci.notifier.PushMonitorNotifier;
 import com.linkedin.davinci.stats.ParticipantStateStats;
 import com.linkedin.davinci.stats.ThreadPoolStats;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -10,23 +21,21 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
-import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.davinci.notifier.PushMonitorNotifier;
-import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -38,7 +47,6 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
-import java.util.concurrent.CompletableFuture;
 
 
 /**
@@ -62,26 +70,20 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final VeniceConfigLoader veniceConfigLoader;
   private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;
   private final MetricsRepository metricsRepository;
+  private final VeniceIngestionBackend ingestionBackend;
+  private final CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
+  private final Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture;
 
   private ZkClient zkClient;
   private SafeHelixManager manager;
-  private CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
-  private HelixStatusMessageChannel messageChannel;
   private AbstractParticipantModelFactory onlineOfflineParticipantModelFactory;
   private AbstractParticipantModelFactory leaderFollowerParticipantModelFactory;
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
-  private Optional<CompletableFuture<HelixPartitionStatusAccessor>> partitionPushStatusAccessorFuture;
 
-  public HelixParticipationService(
-      StoreIngestionService storeIngestionService,
-      StorageService storageService,
-      VeniceConfigLoader veniceConfigLoader,
-      ReadOnlyStoreRepository helixReadOnlyStoreRepository,
-      MetricsRepository metricsRepository,
-      String zkAddress,
-      String clusterName,
-      int port,
-      CompletableFuture<SafeHelixManager> managerFuture) {
+  public HelixParticipationService(StoreIngestionService storeIngestionService, StorageService storageService,
+      StorageMetadataService storageMetadataService, VeniceConfigLoader veniceConfigLoader,
+      ReadOnlyStoreRepository helixReadOnlyStoreRepository, MetricsRepository metricsRepository, String zkAddress,
+      String clusterName, int port, CompletableFuture<SafeHelixManager> managerFuture) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;
@@ -97,6 +99,14 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       this.partitionPushStatusAccessorFuture = Optional.of(new CompletableFuture<>());
     } else {
       this.partitionPushStatusAccessorFuture = Optional.empty();
+    }
+    if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {
+      throw new VeniceException("Expecting " + KafkaStoreIngestionService.class.getName() + " for ingestion backend!");
+    }
+    if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
+      this.ingestionBackend = new IsolatedIngestionBackend(veniceConfigLoader, metricsRepository, storageMetadataService, (KafkaStoreIngestionService) storeIngestionService, storageService);
+    } else {
+      this.ingestionBackend = new DefaultIngestionBackend(storageMetadataService, (KafkaStoreIngestionService) storeIngestionService, storageService);
     }
     new ParticipantStateStats(metricsRepository, "venice_O/O_partition_state");
   }
@@ -126,8 +136,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     //other for leader follower (L/F) model) Since L/F transition is not blocked by ingestion, it should run much faster
     //than O/O's. Thus, the size is supposed to be smaller.
     onlineOfflineParticipantModelFactory = new VeniceStateModelFactory(
-        ingestionService,
-        storageService,
+        ingestionBackend,
         veniceConfigLoader,
         initHelixStateTransitionThreadPool(
             veniceConfigLoader.getVeniceServerConfig().getMaxOnlineOfflineStateTransitionThreadNumber(),
@@ -137,8 +146,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         helixReadOnlyStoreRepository, partitionPushStatusAccessorFuture, instance.getNodeId());
 
     leaderFollowerParticipantModelFactory = new LeaderFollowerParticipantModelFactory(
-        ingestionService,
-        storageService,
+        ingestionBackend,
         veniceConfigLoader,
         initHelixStateTransitionThreadPool(
             veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
@@ -160,7 +168,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     manager.setLiveInstanceInfoProvider(liveInstanceInfoProvider);
 
     // Create a message channel to receive messagte from controller.
-    messageChannel = new HelixStatusMessageChannel(manager, new HelixMessageChannelStats(metricsRepository, clusterName));
+    HelixStatusMessageChannel messageChannel =
+        new HelixStatusMessageChannel(manager, new HelixMessageChannelStats(metricsRepository, clusterName));
     messageChannel.registerHandler(KillOfflinePushMessage.class, this);
 
     //TODO Venice Listener should not be started, until the HelixService is started.
@@ -171,7 +180,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   }
 
   @Override
-  public void stopInner() {
+  public void stopInner() throws IOException {
     if (manager != null) {
       try {
         manager.disconnect();
@@ -179,7 +188,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         logger.error("Swallowed an exception while trying to disconnect the " + manager.getClass().getSimpleName(), e);
       }
     }
-
+    ingestionBackend.close();
     onlineOfflineParticipantModelFactory.getExecutorService().shutdownNow();
     leaderFollowerParticipantModelFactory.getExecutorService().shutdownNow();
     try {
@@ -232,7 +241,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
         instance.getNodeId());
 
-    ingestionService.addCommonNotifier(pushMonitorNotifier);
+    ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);
 
     CompletableFuture.runAsync(() -> {
       try {
@@ -259,7 +268,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
                 veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
         PartitionPushStatusNotifier partitionPushStatusNotifier =
             new PartitionPushStatusNotifier(partitionPushStatusAccessor);
-        ingestionService.addCommonNotifier(partitionPushStatusNotifier);
+        ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
         /**
          * Complete the accessor future after the accessor is created && the notifier is added.
          * This is for blocking the {@link AbstractParticipantModel #setupNewStorePartition()} until
