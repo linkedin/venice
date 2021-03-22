@@ -13,7 +13,7 @@
     },
     {
       "name": "commandType",
-      "doc": "0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming, 5 => RemoveStorageEngine, 6 => RemovePartition, 7 => OpenStorageEngine",
+      "doc": "0 => StartConsumption, 1 => StopConsumption, 2 => KillConsumption, 3 => ResetConsumption, 4 => IsPartitionConsuming, 5 => RemoveStorageEngine, 6 => RemovePartition, 7 => OpenStorageEngine, 8 => PromoteToLeader, 9 => DemoteToStandby",
       "type": "int"
     }
   ]

@@ -17,60 +17,14 @@
       "type": "long"
     },
     {
-      "name": "isCompleted",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isError",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isStarted",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isRestarted",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isEndOfPushReceived",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isStartOfBufferReplayReceived",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isStartOfIncrementalPushReceived",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isEndOfIncrementalPushReceived",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isProgress",
-      "type": "boolean",
-      "default": false
-    },
-    {
-      "name": "isTopicSwitchReceived",
-      "type": "boolean",
-      "default": false
-    },
-    {
       "name": "isPositive",
-      "doc": "A true/false flag to respond whether a partition is consuming",
       "type": "boolean",
-      "default": false
+      "default": true
+    },
+    {
+      "name": "reportType",
+      "doc": "0 => Completed, 1=> Errored, 2 => Started, 3 => Restarted, 4 => Progress, 5 => EndOfPushReceived, 6 => StartOfBufferReplayReceived, 7 => StartOfIncrementalPushReceived, 8 => EndOfIncrementalPushReceived, 9 => TopicSwitchReceived",
+      "type": "int"
     },
     {
       "name": "message",
@@ -86,6 +40,10 @@
       "name": "storeVersionState",
       "type": ["null", "bytes"],
       "default": null
+    },
+    {
+      "name": "leaderFollowerState",
+      "type": "int"
     }
   ]
 }

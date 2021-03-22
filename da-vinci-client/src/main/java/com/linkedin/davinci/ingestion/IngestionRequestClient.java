@@ -152,7 +152,7 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
     try {
       ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
     } catch (Exception e) {
-      throw new VeniceException("Encounter exception during unsubscribeTopicPartition of topic: " + topicName, e);
+      throw new VeniceException("Encounter exception during unsubscribeTopicPartition of topic: " + topicName + ", partition: " + partitionId, e);
     }
   }
 
@@ -181,6 +181,34 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
       ingestionRequestTransport.sendRequest(IngestionAction.SHUTDOWN_COMPONENT, processShutdownCommand);
     } catch (Exception e) {
       throw new VeniceException("Received exception in component shutdown", e);
+    }
+  }
+
+  public boolean promoteToLeader(String topicName, int partition) {
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.PROMOTE_TO_LEADER.getValue();
+    ingestionTaskCommand.topicName = topicName;
+    ingestionTaskCommand.partitionId = partition;
+    logger.info("Sending PROMOTE_TO_LEADER request to child process: "  + ingestionTaskCommand);
+    try {
+      IngestionTaskReport report = ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      return report.isPositive;
+    } catch (Exception e) {
+      throw new VeniceException("Exception caught during promoteToLeader of topic: " + topicName, e);
+    }
+  }
+
+  public boolean demoteToStandby(String topicName, int partition) {
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.DEMOTE_TO_STANDBY.getValue();
+    ingestionTaskCommand.topicName = topicName;
+    ingestionTaskCommand.partitionId = partition;
+    logger.info("Sending DEMOTE_TO_STANDBY request to child process: "  + ingestionTaskCommand);
+    try {
+      IngestionTaskReport report = ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      return report.isPositive;
+    } catch (Exception e) {
+      throw new VeniceException("Exception caught during demoteToStandby of topic: " + topicName, e);
     }
   }
 

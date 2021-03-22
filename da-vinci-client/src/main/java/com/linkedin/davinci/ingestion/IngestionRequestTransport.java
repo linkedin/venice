@@ -94,7 +94,9 @@ public class IngestionRequestTransport implements Closeable {
       }
     } finally {
       // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
-      response.release();
+      if (response != null) {
+        response.release();
+      }
     }
   }
 
