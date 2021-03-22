@@ -760,7 +760,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   private void throwVeniceException(Throwable e) throws VeniceException {
     if (!(e instanceof VeniceException)) {
-      e = new VeniceException("Exception or error caught during Hadoop to Venice Bridge!", e);
+      e = new VeniceException("Exception or error caught during Hadoop to Venice Bridge: " + e.getMessage(), e);
     }
     throw (VeniceException) e;
   }
