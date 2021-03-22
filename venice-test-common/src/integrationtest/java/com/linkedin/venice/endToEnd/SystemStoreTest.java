@@ -518,7 +518,7 @@ public class SystemStoreTest {
     });
   }
 
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND, groups = {"flaky"})
   public void testReMaterializeMetadataSystemStore() throws ExecutionException {
     // Create a new Venice store with metadata system store materialized.
     String regularVeniceStoreName = TestUtils.getUniqueString("regular_store_to_re_materialize");
