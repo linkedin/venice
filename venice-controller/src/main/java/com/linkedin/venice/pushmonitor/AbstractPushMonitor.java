@@ -147,6 +147,21 @@ public abstract class AbstractPushMonitor
               storeName -> new ArrayList<>()).add(Version.parseVersionFromKafkaTopicName(topic)));
 
       storeToVersionNumsMap.forEach(this::retireOldErrorPushes);
+
+      //Update the last successful push duration time for each store.
+      storeToVersionNumsMap.keySet().forEach(storeName -> {
+        Integer currentVersion = getStoreCurrentVersion(storeName);
+        if (currentVersion != null) {
+          OfflinePushStatus currentVersionPushStatus = topicToPushMap.get(Version.composeKafkaTopic(storeName, currentVersion));
+          if (currentVersionPushStatus != null) {
+            long durationSecs = currentVersionPushStatus.getSuccessfulPushDurationInSecs();
+            if (durationSecs != 0) {
+              aggPushHealthStats.recordSuccessfulPushGauge(storeName, durationSecs);
+            }
+          }
+        }
+      });
+
       logger.info("Load all pushes finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } finally {
       pushMonitorWriteLock.unlock();
@@ -585,11 +600,14 @@ public abstract class AbstractPushMonitor
         + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.COMPLETED);
 
     String topic = pushStatus.getKafkaTopic();
+    long durationSecs = getDurationInSec(pushStatus);
+    pushStatus.setSuccessfulPushDurationInSecs(durationSecs);
     updatePushStatus(pushStatus, ExecutionStatus.COMPLETED, Optional.empty());
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
-    aggPushHealthStats.recordSuccessfulPush(storeName, getDurationInSec(pushStatus));
+    aggPushHealthStats.recordSuccessfulPush(storeName, durationSecs);
+    aggPushHealthStats.recordSuccessfulPushGauge(storeName, durationSecs);
     // If we met some error to retire the old version, we should not throw the exception out to fail this operation,
     // because it will be collected once a new push is completed for this store.
     try {
@@ -661,6 +679,19 @@ public abstract class AbstractPushMonitor
         metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
             store.getCurrentVersion());
       }
+    } finally {
+      metadataRepository.unLock();
+    }
+  }
+
+  private Integer getStoreCurrentVersion(String storeName) {
+    try {
+      metadataRepository.lock();
+      Store store = metadataRepository.getStoreOrThrow(storeName);
+      if (store == null) {
+        return null;
+      }
+      return store.getCurrentVersion();
     } finally {
       metadataRepository.unLock();
     }

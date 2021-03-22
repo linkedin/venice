@@ -46,6 +46,8 @@ public class OfflinePushStatus {
 
   private Map<String, String> pushProperties;
 
+  private int successfulPushDurationInSecs = 0;
+
   public OfflinePushStatus(String kafkaTopic, int numberOfPartition, int replicationFactor,
       OfflinePushStrategy strategy) {
     this.kafkaTopic = kafkaTopic;
@@ -286,6 +288,14 @@ public class OfflinePushStatus {
     this.incrementalPushVersion = incrementalPushVersion;
   }
 
+  public long getSuccessfulPushDurationInSecs() {
+    return successfulPushDurationInSecs;
+  }
+
+  public void setSuccessfulPushDurationInSecs(long successfulPushDurationInSecs) {
+    this.successfulPushDurationInSecs = (int)successfulPushDurationInSecs;
+  }
+
   public OfflinePushStatus clonePushStatus() {
     OfflinePushStatus clonePushStatus = new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     clonePushStatus.setCurrentStatus(currentStatus);
@@ -298,6 +308,7 @@ public class OfflinePushStatus {
     clonePushStatus.setPartitionStatuses(new ArrayList<>(partitionIdToStatus.values()));
     clonePushStatus.setPushProperties(new HashMap<>(pushProperties));
     clonePushStatus.setIncrementalPushVersion(incrementalPushVersion);
+    clonePushStatus.setSuccessfulPushDurationInSecs((successfulPushDurationInSecs));
     return clonePushStatus;
   }
 
@@ -428,6 +439,10 @@ public class OfflinePushStatus {
     if (!incrementalPushVersion.equals(that.incrementalPushVersion)) {
       return false;
     }
+
+    if (successfulPushDurationInSecs != that.successfulPushDurationInSecs) {
+      return false;
+    }
     return partitionIdToStatus.equals(that.partitionIdToStatus);
   }
 
@@ -443,6 +458,7 @@ public class OfflinePushStatus {
     result = 31 * result + partitionIdToStatus.hashCode();
     result = 31 * result + pushProperties.hashCode();
     result = 31 * result + incrementalPushVersion.hashCode();
+    result = 31 * result + (int) successfulPushDurationInSecs;
     return result;
   }
 
@@ -456,6 +472,7 @@ public class OfflinePushStatus {
         ", currentStatus=" + currentStatus +
         ", statusDetails=" + statusDetails +
         ", incrementalPushVersion=" + incrementalPushVersion +
+        ", lastSuccessfulPushDurationSecs=" + successfulPushDurationInSecs +
         '}';
   }
 }
