@@ -5,20 +5,20 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 import org.apache.log4j.Logger;
 
 
@@ -36,19 +36,22 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
   private final ClientConfig<ParticipantMessageValue> clientConfig;
   private final Map<String, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientMap =
       new VeniceConcurrentHashMap<>();
+  private final ICProvider icProvider;
 
   public ParticipantStoreConsumptionTask(
       StoreIngestionService storeIngestionService,
       ClusterInfoProvider clusterInfoProvider,
       ParticipantStoreConsumptionStats stats,
       ClientConfig<ParticipantMessageValue> clientConfig,
-      long participantMessageConsumptionDelayMs) {
+      long participantMessageConsumptionDelayMs,
+      ICProvider icProvider) {
 
     this.stats =  stats;
     this.storeIngestionService = storeIngestionService;
     this.clusterInfoProvider = clusterInfoProvider;
-    this.participantMessageConsumptionDelayMs = participantMessageConsumptionDelayMs;
     this.clientConfig = clientConfig;
+    this.participantMessageConsumptionDelayMs = participantMessageConsumptionDelayMs;
+    this.icProvider = icProvider;
   }
 
   @Override
@@ -64,18 +67,23 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
         key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
 
         for (String topic : storeIngestionService.getIngestingTopicsWithVersionStatusNotOnline()) {
-          try {
-            key.resourceName = topic;
-            String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
-            if (clusterName != null) {
-              ParticipantMessageValue value = getParticipantStoreClient(clusterName).get(key).get();
-              if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
-                KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
-                if (storeIngestionService.killConsumptionTask(topic)) {
-                  // emit metrics only when a confirmed kill is made
-                  stats.recordKilledPushJobs();
-                  stats.recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
-                }
+          key.resourceName = topic;
+          String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
+          if (clusterName != null) {
+            ParticipantMessageValue value;
+            if (icProvider != null) {
+              CompletableFuture<ParticipantMessageValue> future =
+                  icProvider.call(this.getClass().getCanonicalName(), () -> getParticipantStoreClient(clusterName).get(key));
+              value = future.get();
+            } else {
+              value = getParticipantStoreClient(clusterName).get(key).get();
+            }
+            if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
+              KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+              if (storeIngestionService.killConsumptionTask(topic)) {
+                // emit metrics only when a confirmed kill is made
+                stats.recordKilledPushJobs();
+                stats.recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
               }
             }
           } catch (Exception e) {

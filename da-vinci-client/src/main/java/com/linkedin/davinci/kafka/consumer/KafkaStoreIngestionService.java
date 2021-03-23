@@ -1,6 +1,22 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.notifier.LogNotifier;
+import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.stats.StoreBufferServiceStats;
+import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -25,6 +41,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
@@ -35,31 +52,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
-import com.linkedin.davinci.notifier.LogNotifier;
-import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
-import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
-import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
-import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.stats.StoreBufferServiceStats;
-import com.linkedin.davinci.storage.MetadataRetriever;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.storage.StorageMetadataService;
-
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.commons.io.IOUtils;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.log4j.Logger;
-
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.HashSet;
@@ -74,8 +67,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import org.apache.commons.io.IOUtils;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static java.lang.Thread.*;
@@ -149,7 +145,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this(storageEngineRepository, veniceConfigLoader, storageMetadataService, clusterInfoProvider, metadataRepo, schemaRepo,
         metricsRepository, rocksDBMemoryStats, kafkaMessageEnvelopeSchemaReader, clientConfig, partitionStateSerializer,
-        Optional.empty());
+        Optional.empty(), null);
   }
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
@@ -163,7 +159,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
                                     Optional<ClientConfig> clientConfig,
                                     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-                                    Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository) {
+                                    Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository,
+                                    ICProvider icProvider) {
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -253,7 +250,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           clusterInfoProvider,
           new ParticipantStoreConsumptionStats(metricsRepository, clusterName),
           ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
-          serverConfig.getParticipantMessageConsumptionDelayMs());
+          serverConfig.getParticipantMessageConsumptionDelayMs(), icProvider);
     } else {
       logger.info("Unable to start participant store consumption task because client config is not provided, jobs "
           + "may not be killed if admin helix messaging channel is disabled");
