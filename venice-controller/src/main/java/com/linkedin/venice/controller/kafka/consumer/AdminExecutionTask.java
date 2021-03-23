@@ -429,8 +429,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBackupVersionRetentionMs(message.backupVersionRetentionMs);
 
     params.setNativeReplicationSourceFabric(message.nativeReplicationSourceFabric == null ? null : message.nativeReplicationSourceFabric.toString());
-
     params.setActiveActiveReplicationEnabled(message.activeActiveReplicationEnabled);
+    params.setRegionsFilter(message.regionsFilter == null ? null : message.regionsFilter.toString());
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {
@@ -445,6 +445,11 @@ public class AdminExecutionTask implements Callable<Void> {
         finalParams.cloneConfig(updatedConfigName.toString(), params);
       }
     }
+    /**
+     * Pass the fabric filter to the final update store params
+     */
+    params.getRegionsFilter().ifPresent(finalParams::setRegionsFilter);
+
     if (checkPreConditionForReplicateUpdateStore(clusterName, storeName,
         message.isMigrating, message.enableReads, message.enableWrites, message.migrationDuplicateStore)) {
       admin.replicateUpdateStore(clusterName, storeName, finalParams);

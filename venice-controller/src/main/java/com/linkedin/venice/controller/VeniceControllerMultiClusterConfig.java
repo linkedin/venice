@@ -217,4 +217,8 @@ public class VeniceControllerMultiClusterConfig {
   public long getSystemStoreAclSynchronizationDelayMs() {
     return getCommonConfig().getSystemStoreAclSynchronizationDelayMs();
   }
+
+  public String getRegionName() {
+    return getCommonConfig().getRegionName();
+  }
 }

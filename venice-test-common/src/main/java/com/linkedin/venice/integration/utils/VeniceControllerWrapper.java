@@ -225,24 +225,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         Optional.empty());
   }
 
-  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
-      long rebalanceDelayMs, int minActiveReplica, VeniceControllerWrapper[] childControllers,
-      VeniceProperties extraProps, boolean sslToKafka) {
-
-    return generateService(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, isParent, replicaFactor,
-        partitionSize, rebalanceDelayMs, minActiveReplica, childControllers, extraProps, null, sslToKafka, false);
-  }
-
-  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
-      long rebalanceDelayMs, int minActiveReplica, VeniceControllerWrapper[] childControllers,
-      VeniceProperties extraProps, boolean sslToKafka, Optional<AuthorizerService> authorizerService) {
-
-    return generateService(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, isParent, replicaFactor,
-        partitionSize, rebalanceDelayMs, minActiveReplica, childControllers, extraProps, null, sslToKafka, false, authorizerService);
-  }
-
   @Override
   public String getHost() {
     return DEFAULT_HOST_NAME;

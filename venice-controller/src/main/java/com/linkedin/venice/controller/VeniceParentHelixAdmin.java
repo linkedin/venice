@@ -1267,6 +1267,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> migrationDuplicateStore = params.getMigrationDuplicateStore();
       Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
       Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
+      Optional<String> regionsFilter = params.getRegionsFilter();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -1536,6 +1537,12 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         setStore.updatedConfigsList = Collections.emptyList();
       }
+
+      /**
+       * Fabrics filter is not a store config, so we don't need to add it into {@link UpdateStore#updatedConfigsList}
+       */
+      setStore.regionsFilter = regionsFilter.orElse(null);
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;

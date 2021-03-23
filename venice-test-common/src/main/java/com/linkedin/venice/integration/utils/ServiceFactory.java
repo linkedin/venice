@@ -40,6 +40,9 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
+
 /**
  * A factory for generating Venice services and external service instances
  * used in integration tests.
@@ -219,10 +222,7 @@ public class ServiceFactory {
       KafkaBrokerWrapper kafkaBrokerWrapper,
       VeniceControllerWrapper[] childControllers,
       boolean sslToKafka) {
-    return getStatefulService(
-        VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, EMPTY_VENICE_PROPS, sslToKafka));
+    return getVeniceParentController(clusterName, zkAddress, kafkaBrokerWrapper, childControllers, EMPTY_VENICE_PROPS, sslToKafka);
   }
 
   public static VeniceControllerWrapper getVeniceParentController(
@@ -232,26 +232,13 @@ public class ServiceFactory {
       VeniceControllerWrapper[] childControllers,
       VeniceProperties properties,
       boolean sslToKafka) {
-    return getStatefulService(
-        VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, properties, sslToKafka));
+    return getVeniceParentController(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, childControllers,
+        null, sslToKafka, DEFAULT_REPLICATION_FACTOR, properties, Optional.empty());
   }
 
-  public static VeniceControllerWrapper getVeniceParentController(
-      String[] clusterNames,
-      String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
-      VeniceControllerWrapper[] childControllers,
-      String clusterToD2,
-      boolean sslToKafka,
-      int replicationFactor) {
-    return getStatefulService(
-        VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterNames, zkAddress, kafkaBrokerWrapper, true, replicationFactor,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, childControllers, EMPTY_VENICE_PROPS, clusterToD2, sslToKafka, true));
-  }
-
+  /**
+   * All function overloads of "getVeniceParentController" should end up calling the below function.
+   */
   public static VeniceControllerWrapper getVeniceParentController(
       String[] clusterNames,
       String zkAddress,
@@ -260,11 +247,19 @@ public class ServiceFactory {
       String clusterToD2,
       boolean sslToKafka,
       int replicationFactor,
-      VeniceProperties properties) {
+      VeniceProperties properties,
+      Optional<AuthorizerService> authorizerService) {
+    /**
+     * Add parent fabric name into the controller config.
+     */
+    Properties props = properties.toProperties();
+    props.setProperty(LOCAL_REGION_NAME, "parent");
+    final VeniceProperties finalProperties = new VeniceProperties(props);
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, zkAddress, kafkaBrokerWrapper, true, replicationFactor,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, childControllers, properties, clusterToD2, sslToKafka, true));
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor > 1 ? replicationFactor - 1: replicationFactor,
+            childControllers, finalProperties, clusterToD2, sslToKafka, (clusterToD2 != null), authorizerService));
   }
 
   /**
@@ -278,10 +273,8 @@ public class ServiceFactory {
       VeniceControllerWrapper[] childControllers,
       boolean sslToKafka,
       Optional<AuthorizerService> authorizerService) {
-    return getStatefulService(
-        VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, EMPTY_VENICE_PROPS, sslToKafka, authorizerService));
+    return getVeniceParentController(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, childControllers,
+        null, sslToKafka, DEFAULT_REPLICATION_FACTOR, EMPTY_VENICE_PROPS, authorizerService);
   }
 
   /**

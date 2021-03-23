@@ -688,6 +688,7 @@ public class AdminTool {
     integerParam(cmd, Arg.REPLICATION_FACTOR, p -> params.setReplicationFactor(p), argSet);
     genericParam(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC, s -> s, p -> params.setNativeReplicationSourceFabric(p), argSet);
     booleanParam(cmd, Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED, p -> params.setActiveActiveReplicationEnabled(p), argSet);
+    genericParam(cmd, Arg.REGIONS_FILTER, s -> s, p -> params.setRegionsFilter(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.

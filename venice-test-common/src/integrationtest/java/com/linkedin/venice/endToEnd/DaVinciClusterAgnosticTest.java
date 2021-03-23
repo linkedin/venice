@@ -81,7 +81,7 @@ public class DaVinciClusterAgnosticTest {
     // for the metadata system store.
     parentController = ServiceFactory.getVeniceParentController(clusterNames, zkServer.getAddress(),
         multiClusterVenice.getKafkaBrokerWrapper(), childControllers.toArray(new VeniceControllerWrapper[0]),
-        multiClusterVenice.getClusterToD2(), false, 3, new VeniceProperties(testProperties));
+        multiClusterVenice.getClusterToD2(), false, 3, new VeniceProperties(testProperties), Optional.empty());
     for (String cluster : clusterNames) {
       try (ControllerClient parentControllerClient = new ControllerClient(cluster, parentController.getControllerUrl())) {
         // Set up and configure the Zk shared store for METADATA_STORE in both clusters.

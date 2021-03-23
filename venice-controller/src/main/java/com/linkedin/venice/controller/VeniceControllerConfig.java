@@ -93,6 +93,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long pushStatusStoreHeartbeatExpirationTimeInSeconds;
   private final long systemStoreAclSynchronizationDelayMs;
 
+  /**
+   * Region name from the controller config, which might not be the same region name inside LI. The region name can
+   * be used by controller admin commands.
+   */
+  private final String regionName;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -197,6 +203,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
+    this.regionName = props.getString(LOCAL_REGION_NAME, "");
   }
 
   public int getAdminPort() {
@@ -405,6 +412,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getSystemStoreAclSynchronizationDelayMs() {
     return systemStoreAclSynchronizationDelayMs;
+  }
+
+  public String getRegionName() {
+    return regionName;
   }
 
   /**

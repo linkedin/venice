@@ -82,6 +82,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
         controllerProperties.put(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
       }
+      if (coloName != null) {
+        controllerProperties.setProperty(LOCAL_REGION_NAME, coloName);
+      }
       // Setup D2 for controller
       String zkAddress = zkServerWrapper.getAddress();
       D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
