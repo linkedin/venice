@@ -303,11 +303,11 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     );
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Expect reporter to be set by this point")
+  @Test
   public void testCloseReducerWithNoReduce() throws IOException {
     VeniceReducer reducer = new VeniceReducer();
     reducer.configure(setupJobConf());
-    reducer.close(); // Expect exception due to no reporter set
+    reducer.close(); // Expect no exception
   }
 
   @Test

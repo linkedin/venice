@@ -13,7 +13,7 @@ public class BatchJobHeartbeatValue extends org.apache.avro.specific.SpecificRec
   public long timestamp;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
-  public Object get(int field$) {
+  public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return timestamp;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
@@ -21,9 +21,9 @@ public class BatchJobHeartbeatValue extends org.apache.avro.specific.SpecificRec
   }
   // Used by DatumReader.  Applications should not call. 
   @SuppressWarnings(value="unchecked")
-  public void put(int field$, Object value$) {
+  public void put(int field$, java.lang.Object value$) {
     switch (field$) {
-    case 0: timestamp = (Long)value$; break;
+    case 0: timestamp = (java.lang.Long)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
