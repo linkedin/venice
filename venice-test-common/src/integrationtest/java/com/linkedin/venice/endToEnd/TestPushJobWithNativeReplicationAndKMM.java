@@ -169,10 +169,15 @@ public class TestPushJobWithNativeReplicationAndKMM {
   }
 
   public static void verifyDCConfigNativeRepl(ControllerClient controllerClient, String storeName, boolean enabled) {
+    verifyDCConfigNativeRepl(controllerClient, storeName, enabled, Optional.empty());
+  }
+
+  public static void verifyDCConfigNativeRepl(ControllerClient controllerClient, String storeName, boolean enabled, Optional<String> nativeReplicationSource) {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertFalse(storeResponse.isError());
       Assert.assertEquals(storeResponse.getStore().isNativeReplicationEnabled(), enabled, "The native replication config does not match.");
+      nativeReplicationSource.ifPresent(s -> Assert.assertEquals(storeResponse.getStore().getNativeReplicationSourceFabric(), s, "Native replication source doesn't match"));
     });
   }
 }

@@ -5,7 +5,7 @@
   "fields": [
     {
       "name": "operationType",
-      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore, 13=> DeleteOldVersion, 14=> MigrateStore, 15=> AbortMigration, 16=>AddVersion, 17=> DerivedSchemaCreation, 18=>SupersetSchemaCreation",
+      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore, 13=> DeleteOldVersion, 14=> MigrateStore, 15=> AbortMigration, 16=>AddVersion, 17=> DerivedSchemaCreation, 18=>SupersetSchemaCreation, 19=>EnableNativeReplicationForCluster",
       "type": "int"
     }, {
       "name": "executionId",
@@ -668,6 +668,35 @@
             {
               "name": "supersetSchemaId",
               "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "ConfigureNativeReplicationForCluster",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeType",
+              "type": "string"
+            },
+            {
+              "name": "enabled",
+              "type": "boolean"
+            },
+            {
+              "name": "nativeReplicationSourceRegion",
+              "doc": "The source region to be used when the store is running in Native Replication mode.",
+              "type": ["null", "string"],
+              "default": null
+            },
+            {
+              "name": "regionsFilter",
+              "type": ["null", "string"],
+              "default": null
             }
           ]
         }

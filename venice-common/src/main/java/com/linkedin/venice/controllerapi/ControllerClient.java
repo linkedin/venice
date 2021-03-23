@@ -7,6 +7,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatus.PushStatusValue;
@@ -773,6 +774,18 @@ public class ControllerClient implements Closeable {
   public AclResponse deleteAclForStore(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.DELETE_ACL, params, AclResponse.class);
+  }
+
+  public ControllerResponse configureNativeReplicationForCluster(boolean enableNativeReplication, String storeType,
+      Optional<String> sourceFabric, Optional<String> regionsFilter) {
+    // Verify the input storeType is valid
+    VeniceUserStoreType.valueOf(storeType.toUpperCase());
+    QueryParams params = newParams()
+        .add(STATUS, enableNativeReplication)
+        .add(STORE_TYPE, storeType);
+    sourceFabric.ifPresent(s -> params.add(NATIVE_REPLICATION_SOURCE_FABRIC, s));
+    regionsFilter.ifPresent(f -> params.add(REGIONS_FILTER, f));
+    return request(ControllerRoute.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
   }
 
   protected static QueryParams getQueryParamsToDiscoverCluster(String storeName) {

@@ -62,6 +62,7 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -176,6 +177,9 @@ import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static com.linkedin.venice.meta.VersionStatus.*;
+import static com.linkedin.venice.meta.VersionStatus.ERROR;
+
+
 /**
  * Helix Admin based on 0.8.4.215 APIs.
  *
@@ -4194,7 +4198,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Long getLastSucceedExecutionId(String clusterName) {
         if (adminConsumerServices.containsKey(clusterName)) {
-            return adminConsumerServices.get(clusterName).getLastSucceedExecutionId(clusterName);
+            return adminConsumerServices.get(clusterName).getLastSucceededExecutionIdInCluster(clusterName);
         } else {
             throw new VeniceException(
                 "Cannot get the last succeed execution Id, must first setAdminConsumerService for cluster "
@@ -4203,15 +4207,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * Get last succeeded execution id for a given store.
+     * Get last succeeded execution id for a given store; if storeName is null, return the last succeeded execution id
+     * for the cluster
      * @param clusterName
      * @param storeName
      * @return the last succeeded execution id or null if the cluster/store is invalid or the admin consumer service
      *         for the given cluster is not up and running yet.
      */
     public Long getLastSucceededExecutionId(String clusterName, String storeName) {
-        return adminConsumerServices.containsKey(clusterName)
-            ? adminConsumerServices.get(clusterName).getLastSucceededExecutionId(storeName) : null;
+        if (storeName == null) {
+            return getLastSucceedExecutionId(clusterName);
+        } else {
+            return adminConsumerServices.containsKey(clusterName)
+                ? adminConsumerServices.get(clusterName).getLastSucceededExecutionId(storeName) : null;
+        }
     }
 
     public Exception getLastExceptionForStore(String clusterName, String storeName) {
@@ -4693,6 +4702,111 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void deleteAclForStore(String clusterName, String storeName) {
         throw new VeniceUnsupportedOperationException("deleteAclForStore is not supported!");
+    }
+
+    @Override
+    public void configureNativeReplication(String clusterName, VeniceUserStoreType storeType, Optional<String> storeName,
+        boolean enableNativeReplicationForCluster, Optional<String> newSourceFabric, Optional<String> regionsFilter) {
+        /**
+         * Check whether the command affects this fabric.
+         */
+        if (regionsFilter.isPresent()) {
+            Set<String> fabrics = parseRegionsFilterList(regionsFilter.get());
+            if (!fabrics.contains(multiClusterConfigs.getRegionName())) {
+                logger.info("EnableNativeReplicationForCluster command will be skipped for cluster " + clusterName
+                    + ", because the fabrics filter is " + fabrics.toString() + " which doesn't include the "
+                    + "current fabric: " + multiClusterConfigs.getRegionName());
+                return;
+            }
+        }
+
+        if (storeName.isPresent()) {
+            /**
+             * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
+             * storeName is present.
+             */
+            Store originalStore = getStore(clusterName, storeName.get());
+            if (null == originalStore) {
+                throw new VeniceException("The store '" + storeName.get() + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
+            }
+            boolean shouldUpdateNativeReplication = false;
+            switch (storeType) {
+                case BATCH_ONLY:
+                    shouldUpdateNativeReplication = !originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled();
+                    break;
+                case HYBRID_ONLY:
+                    shouldUpdateNativeReplication = originalStore.isHybrid() && !originalStore.isIncrementalPushEnabled();
+                    break;
+                case INCREMENTAL_PUSH:
+                    shouldUpdateNativeReplication = originalStore.isIncrementalPushEnabled();
+                    break;
+                case HYBRID_OR_INCREMENTAL:
+                    shouldUpdateNativeReplication = originalStore.isHybrid() || originalStore.isIncrementalPushEnabled();
+                    break;
+                case ALL:
+                    shouldUpdateNativeReplication = true;
+                    break;
+                default:
+                    break;
+            }
+            /**
+             * If the command is trying to enable native replication, the store must have Leader/Follower state model enabled.
+             */
+            if (enableNativeReplicationForCluster) {
+                shouldUpdateNativeReplication &= originalStore.isLeaderFollowerModelEnabled();
+            }
+            if (shouldUpdateNativeReplication) {
+                setNativeReplicationEnabled(clusterName, storeName.get(), enableNativeReplicationForCluster);
+                newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
+            } else {
+                logger.info("Will not enable native replication for store " + storeName.get());
+            }
+        } else {
+            /**
+             * The batch update command hits child controller directly; all stores in the cluster will be updated
+             */
+            List<Store> storeCandidates;
+            switch (storeType) {
+                case BATCH_ONLY:
+                    storeCandidates = getAllStores(clusterName).stream()
+                        .filter(s -> (!s.isHybrid() && !s.isIncrementalPushEnabled()))
+                        .collect(Collectors.toList());
+                    break;
+                case HYBRID_ONLY:
+                    storeCandidates = getAllStores(clusterName).stream()
+                        .filter(s -> (s.isHybrid() && !s.isIncrementalPushEnabled()))
+                        .collect(Collectors.toList());
+                    break;
+                case INCREMENTAL_PUSH:
+                    storeCandidates = getAllStores(clusterName).stream()
+                        .filter(Store::isIncrementalPushEnabled)
+                        .collect(Collectors.toList());
+                    break;
+                case HYBRID_OR_INCREMENTAL:
+                    storeCandidates = getAllStores(clusterName).stream()
+                        .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
+                        .collect(Collectors.toList());
+                    break;
+                case ALL:
+                    storeCandidates = getAllStores(clusterName);
+                    break;
+                default:
+                    throw new VeniceException("Unsupported store type." + storeType);
+            }
+
+            // filter out all the system stores
+            storeCandidates = storeCandidates.stream().filter(store -> !store.isSystemStore()).collect(Collectors.toList());
+
+            storeCandidates.forEach(store -> {
+                if (enableNativeReplicationForCluster && !store.isLeaderFollowerModelEnabled()) {
+                    logger.info("Will not enable native replication for store " + store.getName()
+                        + " since it doesn't have Leader/Follower state model enabled.");
+                } else {
+                    setNativeReplicationEnabled(clusterName, store.getName(), enableNativeReplicationForCluster);
+                    newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
+                }
+            });
+        }
     }
 
     protected Store checkPreConditionForAclOp(String clusterName, String storeName) {

@@ -19,6 +19,7 @@ import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFac
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -65,6 +66,7 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
@@ -478,11 +480,10 @@ public class VeniceParentHelixAdmin implements Admin {
       // Check whether timeout
       long currentTime = SystemTime.INSTANCE.getMilliseconds();
       if (currentTime - startTime > waitingTimeForConsumptionMs) {
-        Exception lastException = veniceHelixAdmin.getLastExceptionForStore(clusterName, storeName);
-        String exceptionMsg = null == lastException ? "null" : lastException.getMessage();
+        Exception lastException = (null == storeName) ? null : veniceHelixAdmin.getLastExceptionForStore(clusterName, storeName);
         String errMsg = "Timed out after waiting for " + waitingTimeForConsumptionMs + "ms for admin consumption to catch up.";
         errMsg += " Consumed execution id: " + consumedExecutionId + ", waiting to be consumed id: " + executionId;
-        errMsg += " Last exception: " + exceptionMsg;
+        errMsg += (null == lastException) ? "" : " Last exception: " + lastException.getMessage();
         throw new VeniceException(errMsg, lastException);
       }
 
@@ -498,11 +499,13 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   private void acquireAdminMessageLock(String clusterName, String storeName) {
     try {
-      // First check whether an exception already exist in the admin channel for the given store
-      Exception lastException = veniceHelixAdmin.getLastExceptionForStore(clusterName, storeName);
-      if (lastException != null) {
-        throw new VeniceException("Unable to start new admin operations for store: " + storeName + " in cluster: "
-            + clusterName + " due to existing exception: " + lastException.getMessage(), lastException);
+      if (storeName != null) {
+        // First check whether an exception already exist in the admin channel for the given store
+        Exception lastException = veniceHelixAdmin.getLastExceptionForStore(clusterName, storeName);
+        if (lastException != null) {
+          throw new VeniceException(
+              "Unable to start new admin operations for store: " + storeName + " in cluster: " + clusterName + " due to existing exception: " + lastException.getMessage(), lastException);
+        }
       }
       boolean acquired = perClusterAdminLocks.get(clusterName).tryLock(waitingTimeForConsumptionMs, TimeUnit.MILLISECONDS);
       if (!acquired) {
@@ -2647,6 +2650,29 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         logger.info("Store " + storeName + " is migrating! Skipping acl deletion!");
       }
+    }
+  }
+
+  @Override
+  public void configureNativeReplication(String clusterName, VeniceUserStoreType storeType, Optional<String> storeName,
+      boolean enableNativeReplicationForCluster, Optional<String> newSourceRegion, Optional<String> regionsFilter) {
+    acquireAdminMessageLock(clusterName, null);
+
+    try {
+      ConfigureNativeReplicationForCluster migrateClusterToNativeReplication
+          = (ConfigureNativeReplicationForCluster) AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getNewInstance();
+      migrateClusterToNativeReplication.clusterName = clusterName;
+      migrateClusterToNativeReplication.storeType = storeType.toString();
+      migrateClusterToNativeReplication.enabled = enableNativeReplicationForCluster;
+      migrateClusterToNativeReplication.nativeReplicationSourceRegion = newSourceRegion.orElse(null);
+      migrateClusterToNativeReplication.regionsFilter = regionsFilter.orElse(null);
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getValue();
+      message.payloadUnion = migrateClusterToNativeReplication;
+      sendAdminMessageAndWaitForConsumed(clusterName, null, message);
+    } finally {
+      releaseAdminMessageLock(clusterName);
     }
   }
 
