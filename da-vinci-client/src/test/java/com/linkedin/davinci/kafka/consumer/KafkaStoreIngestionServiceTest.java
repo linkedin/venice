@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -193,7 +194,7 @@ public class KafkaStoreIngestionServiceTest {
     doReturn(new Pair<>(mockStore, mockStore.getVersion(2).get())).when(mockmetadataRepo).waitVersion(eq(storeName), eq(2), any());
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic2, veniceProperties), 0);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(invalidTopic, veniceProperties), 0);
-    doReturn(null).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);
+    doThrow(new VeniceNoStoreException(deletedStoreName)).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);
     doReturn(null).when(mockmetadataRepo).getStore(deletedStoreName);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 2,
         "Invalid and in flight ingesting topics should be included in the returned set");

@@ -750,11 +750,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public Set<String> getIngestingTopicsWithVersionStatusNotOnline() {
     Set<String> result = new HashSet<>();
     for (String topic : topicNameToIngestionTaskMap.keySet()) {
-      Store store = metadataRepo.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(topic));
-      int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
-      if (store == null || !store.getVersion(versionNumber).isPresent()
-          || store.getVersion(versionNumber).get().getStatus() != VersionStatus.ONLINE) {
+      try {
+        Store store = metadataRepo.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(topic));
+        int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
+        if (store == null || !store.getVersion(versionNumber).isPresent() || store.getVersion(versionNumber).get().getStatus() != VersionStatus.ONLINE) {
+          result.add(topic);
+        }
+      } catch (VeniceNoStoreException e) {
+        // Include topics that may have their corresponding store deleted already
         result.add(topic);
+      } catch (Exception e) {
+        logger.error("Unexpected exception while fetching ongoing ingestion topics, topic: " + topic, e);
       }
     }
     return result;
