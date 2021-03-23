@@ -55,7 +55,6 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   private static final long INITIAL_UPDATE_CACHE_TIMEOUT_IN_SECONDS = 30;
   private static final long RETRY_WAIT_TIME_IN_MS = 1000;
 
-  private final String clusterName;
   private final long refreshIntervalInSeconds;
   private final Map<String, StoreMetaKey> storeMetaKeyMap = new VeniceConcurrentHashMap<>();
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
@@ -68,40 +67,30 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   // Map of version number to a pair which contains the corresponding partitioner and number of partitions. This is
   // cached since a version's partitioner and partition number are immutable.
   private final Map<Integer, Pair<VenicePartitioner, Integer>> versionPartitionerMap = new VeniceConcurrentHashMap<>();
-
+  private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClient;
   // Only used in updateCache for evicting purposes.
   private Map<Integer, Integer> versionPartitionCountMap = new HashMap<>();
 
-  private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClient;
+  private String clusterName;
 
   public DaVinciClientBasedMetadata(ClientConfig clientConfig) {
     super(clientConfig);
-    this.clusterName = clientConfig.getClusterName();
     if (null == clientConfig.getDaVinciClientForMetaStore()) {
-      throw new VeniceClientException("'DaVinciClientForMetaStore' should not be null in 'ClientConfig' when DaVinciClientBasedMetadata is being used.");
+      throw new VeniceClientException(
+          "'DaVinciClientForMetaStore' should not be null in 'ClientConfig' when DaVinciClientBasedMetadata is being used.");
     }
     this.daVinciClient = clientConfig.getDaVinciClientForMetaStore();
-    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshInvervalInSeconds() > 0 ?
-        clientConfig.getMetadataRefreshInvervalInSeconds() : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
-    this.storeMetaKeyMap.put(
-        STORE_PROPERTIES_KEY,
-        MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
-          put(KEY_STRING_STORE_NAME, storeName);
-          put(KEY_STRING_CLUSTER_NAME, clusterName);
-        }})
-    );
-    this.storeMetaKeyMap.put(
-        STORE_KEY_SCHEMAS_KEY,
+    this.refreshIntervalInSeconds =
+        clientConfig.getMetadataRefreshInvervalInSeconds() > 0 ? clientConfig.getMetadataRefreshInvervalInSeconds()
+            : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
+    this.storeMetaKeyMap.put(STORE_KEY_SCHEMAS_KEY,
         MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
           put(KEY_STRING_STORE_NAME, storeName);
-        }})
-    );
-    this.storeMetaKeyMap.put(
-        STORE_VALUE_SCHEMAS_KEY,
+        }}));
+    this.storeMetaKeyMap.put(STORE_VALUE_SCHEMAS_KEY,
         MetaStoreDataType.STORE_VALUE_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {{
           put(KEY_STRING_STORE_NAME, storeName);
-        }})
-    );
+        }}));
   }
 
   @Override
@@ -129,11 +118,11 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     try {
       daVinciClient.subscribeAll().get();
     } catch (InterruptedException | ExecutionException e) {
-      throw new VeniceClientException("Failed to start the " + DaVinciClientBasedMetadata.class.getSimpleName()
-          + " for store: " + storeName, e);
+      throw new VeniceClientException(
+          "Failed to start the " + DaVinciClientBasedMetadata.class.getSimpleName() + " for store: " + storeName, e);
     }
     long timeoutTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(INITIAL_UPDATE_CACHE_TIMEOUT_IN_SECONDS);
-    while(true) {
+    while (true) {
       try {
         // Ensure the cache can be updated at least once before starting the periodic refresh.
         updateCache();
@@ -190,7 +179,8 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
       }
       return value;
     } catch (InterruptedException | ExecutionException e) {
-      throw new VeniceClientException("Failed to get data from DaVinci client backed meta store for store: " + storeName);
+      throw new VeniceClientException(
+          "Failed to get data from DaVinci client backed meta store for store: " + storeName);
     }
   }
 
@@ -200,6 +190,14 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
    * from the readyToServeInstanceMap but that's very unlikely since we always keep at least two versions before evicting.
    */
   private synchronized void updateCache() {
+    // Re-discover the venice cluster in case it's moved via store migration.
+    clusterName = getStoreMetaValue(MetaStoreDataType.STORE_CLUSTER_CONFIG.getStoreMetaKey(
+        Collections.singletonMap(KEY_STRING_STORE_NAME, storeName))).storeClusterConfig.cluster.toString();
+    storeMetaKeyMap.put(STORE_PROPERTIES_KEY,
+        MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {{
+          put(KEY_STRING_STORE_NAME, storeName);
+          put(KEY_STRING_CLUSTER_NAME, clusterName);
+        }}));
     StoreProperties storeProperties = getStoreMetaValue(storeMetaKeyMap.get(STORE_PROPERTIES_KEY)).storeProperties;
     Map<Integer, Integer> newVersionPartitionCountMap = new HashMap<>();
     // Update partitioner pair map
@@ -210,7 +208,8 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
         Properties params = new Properties();
         params.putAll(partitionerConfig.partitionerParams);
         VenicePartitioner partitioner =
-            PartitionUtils.getVenicePartitioner(partitionerConfig.partitionerClass.toString(), partitionerConfig.amplificationFactor, new VeniceProperties(params));
+            PartitionUtils.getVenicePartitioner(partitionerConfig.partitionerClass.toString(),
+                partitionerConfig.amplificationFactor, new VeniceProperties(params));
         return new Pair<>(partitioner, v.partitionCount);
       });
     }
@@ -225,12 +224,16 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     }
     // Update schemas TODO consider update in place with additional checks to skip existing schemas for better performance if it's thread safe.
     Map.Entry<CharSequence, CharSequence> keySchemaEntry =
-        getStoreMetaValue(storeMetaKeyMap.get(STORE_KEY_SCHEMAS_KEY)).storeKeySchemas.keySchemaMap.entrySet().iterator().next();
+        getStoreMetaValue(storeMetaKeyMap.get(STORE_KEY_SCHEMAS_KEY)).storeKeySchemas.keySchemaMap.entrySet()
+            .iterator()
+            .next();
     SchemaData schemaData = new SchemaData(storeName);
-    schemaData.setKeySchema(new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
+    schemaData.setKeySchema(
+        new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
     Map<CharSequence, CharSequence> valueSchemaMap =
         getStoreMetaValue(storeMetaKeyMap.get(STORE_VALUE_SCHEMAS_KEY)).storeValueSchemas.valueSchemaMap;
-    valueSchemaMap.forEach((k, v) -> schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(k.toString()), v.toString())));
+    valueSchemaMap.forEach(
+        (k, v) -> schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(k.toString()), v.toString())));
     schemas.set(schemaData);
     // Update current version
     currentVersion.set(storeProperties.currentVersion);
@@ -262,8 +265,8 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   }
 
   private List<String> getReadyToServeReplicas(int version, int partitionId) {
-    StoreMetaKey replicaStatusesKey = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(
-        new HashMap<String, String>() {{
+    StoreMetaKey replicaStatusesKey =
+        MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {{
           put(KEY_STRING_STORE_NAME, storeName);
           put(KEY_STRING_CLUSTER_NAME, clusterName);
           put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));

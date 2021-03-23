@@ -1416,4 +1416,10 @@ public class ConfigKeys {
    * This config defines the sleep interval in leaked push status clean up service.
    */
   public static final String LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS = "leaked.push.status.clean.up.service.interval.ms";
+
+  /**
+   * This config controls whether to use da-vinci based implementation of the system store repository when
+   * CLIENT_USE_SYSTEM_STORE_REPOSITORY is set to true. By default the thin-client based implementation will be used.
+   */
+  public static final String CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY = "client.use.da.vinci.based.system.store.repository";
 }

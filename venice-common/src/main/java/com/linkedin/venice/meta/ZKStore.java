@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.apache.avro.util.Utf8;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 
@@ -659,13 +660,13 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setSystemStores(Map<String, SystemStoreAttributes> systemStores) {
     systemStores.forEach( (k, v) -> {
-      this.storeProperties.systemStores.put(k, v.dataModel());
+      this.storeProperties.systemStores.put(new Utf8(k), v.dataModel());
     });
   }
 
   @Override
   public void putSystemStore(VeniceSystemStoreType systemStoreType, SystemStoreAttributes systemStoreAttributes) {
-    this.storeProperties.systemStores.put(systemStoreType.getPrefix(), systemStoreAttributes.dataModel());
+    this.storeProperties.systemStores.put(new Utf8(systemStoreType.getPrefix()), systemStoreAttributes.dataModel());
   }
 
   @Override

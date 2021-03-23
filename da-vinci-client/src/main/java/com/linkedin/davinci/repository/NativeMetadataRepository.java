@@ -72,10 +72,11 @@ import static java.lang.Thread.*;
  * stores' metadata. Callers are served by the cache and the cache is refreshed periodically by updating it with methods
  * provided by the implementers.
  */
-public abstract class NativeMetadataRepository implements SubscriptionBasedReadOnlyStoreRepository,
-                                                          ReadOnlySchemaRepository, ClusterInfoProvider {
+public abstract class NativeMetadataRepository
+    implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository, ClusterInfoProvider {
   protected static final int SUBSCRIBE_TIMEOUT_IN_SECONDS = 30;
   protected static final int KEY_SCHEMA_ID = 1;
+  protected static final int DEFAULT_SYSTEM_STORE_CURRENT_VERSION = 1;
 
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final Logger logger = Logger.getLogger(NativeMetadataRepository.class);
@@ -100,21 +101,15 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
     this.clientConfig = clientConfig;
   }
 
-  public static NativeMetadataRepository getInstance(ClientConfig<StoreMetadataValue> clientConfig,
-      VeniceProperties backendConfig) {
-    // If all feature configs are available then:
-    // DaVinciClientMetaStoreBasedRepository >  DaVinciClientMetadataStoreBasedRepository > ThinClientMetadataStoreBasedRepository
-    Map<String, String> metadataSystemStoreVersion = backendConfig.getMap(CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP,
-        new HashMap<>());
+  public static NativeMetadataRepository getInstance(ClientConfig clientConfig, VeniceProperties backendConfig) {
+    // Not using a factory pattern here because the different implementations are temporary. Eventually we will only use DaVinciClientMetaStoreBasedRepository.
+    // If all feature configs are enabled then:
+    // DaVinciClientMetaStoreBasedRepository > ThinClientMetadataStoreBasedRepository.
     Map<String, String> metaStoreVersions = backendConfig.getMap(CLIENT_META_SYSTEM_STORE_VERSION_MAP, new HashMap<>());
-    if (!metaStoreVersions.isEmpty()) {
+    if (backendConfig.getBoolean(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)) {
       logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
           + DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
       return new DaVinciClientMetaStoreBasedRepository(clientConfig, backendConfig, metaStoreVersions);
-    } else if (!metadataSystemStoreVersion.isEmpty()) {
-      logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
-          + DaVinciClientMetadataStoreBasedRepository.class.getSimpleName());
-      return new DaVinciClientMetadataStoreBasedRepository(clientConfig, backendConfig, metadataSystemStoreVersion);
     } else {
       logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
           + ThinClientMetadataStoreBasedRepository.class.getSimpleName());
@@ -182,6 +177,7 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
     // isDeleting check to detect deleted store is only supported by meta system store based implementation.
     if (newStore != null && !storeConfig.isDeleting()) {
       putStore(newStore);
+      putStoreSchema(storeName);
     } else {
       removeStore(storeName);
     }
@@ -370,7 +366,7 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
-    subscribedStoreMap.forEach((k,v) -> removeStore(k));
+    subscribedStoreMap.forEach((k, v) -> removeStore(k));
     subscribedStoreMap.clear();
     storeConfigMap.clear();
     schemaMap.clear();
@@ -415,19 +411,22 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
   // Helper function with common code for retrieving Store data from metadata system store based implementations
   protected Store getStoreFromMetadataSystemStore(String storeName, String clusterName) {
     StoreMetadataKey storeCurrentStatesKey = MetadataStoreUtils.getCurrentStoreStatesKey(storeName, clusterName);
-    StoreMetadataKey storeCurrentVersionStatesKey = MetadataStoreUtils.getCurrentVersionStatesKey(storeName, clusterName);
+    StoreMetadataKey storeCurrentVersionStatesKey =
+        MetadataStoreUtils.getCurrentVersionStatesKey(storeName, clusterName);
 
     StoreMetadataValue storeMetadataValue;
     try {
       storeMetadataValue = getStoreMetadata(storeName, storeCurrentStatesKey);
       if (storeMetadataValue == null) {
-        throw new MissingKeyInStoreMetadataException(storeCurrentStatesKey.toString(), CurrentStoreStates.class.getName());
+        throw new MissingKeyInStoreMetadataException(storeCurrentStatesKey.toString(),
+            CurrentStoreStates.class.getName());
       }
       CurrentStoreStates currentStoreStates = (CurrentStoreStates) storeMetadataValue.metadataUnion;
 
       storeMetadataValue = getStoreMetadata(storeName, storeCurrentVersionStatesKey);
       if (storeMetadataValue == null) {
-        throw new MissingKeyInStoreMetadataException(storeCurrentVersionStatesKey.toString(), CurrentVersionStates.class.getName());
+        throw new MissingKeyInStoreMetadataException(storeCurrentVersionStatesKey.toString(),
+            CurrentVersionStates.class.getName());
       }
       CurrentVersionStates currentVersionStates = (CurrentVersionStates) storeMetadataValue.metadataUnion;
 
@@ -438,16 +437,17 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
   }
 
   // Helper functions to parse version data retrieved from metadata system store based implementations
-  protected List<Version> getVersionsFromCurrentVersionStates(String storeName, CurrentVersionStates currentVersionStates) {
+  protected List<Version> getVersionsFromCurrentVersionStates(String storeName,
+      CurrentVersionStates currentVersionStates) {
     List<Version> versionList = new ArrayList<>();
     for (StoreVersionState storeVersionState : currentVersionStates.currentVersionStates) {
-      PartitionerConfig partitionerConfig = new PartitionerConfigImpl(
-          storeVersionState.partitionerConfig.partitionerClass.toString(),
-          Utils.getStringMapFromCharSequenceMap(storeVersionState.partitionerConfig.partitionerParams),
-          storeVersionState.partitionerConfig.amplificationFactor
-      );
+      PartitionerConfig partitionerConfig =
+          new PartitionerConfigImpl(storeVersionState.partitionerConfig.partitionerClass.toString(),
+              Utils.getStringMapFromCharSequenceMap(storeVersionState.partitionerConfig.partitionerParams),
+              storeVersionState.partitionerConfig.amplificationFactor);
 
-      Version version = new VersionImpl(storeName, storeVersionState.versionNumber, storeVersionState.creationTime, storeVersionState.pushJobId.toString(), storeVersionState.partitionCount, partitionerConfig);
+      Version version = new VersionImpl(storeName, storeVersionState.versionNumber, storeVersionState.creationTime,
+          storeVersionState.pushJobId.toString(), storeVersionState.partitionCount, partitionerConfig);
       version.setChunkingEnabled(storeVersionState.chunkingEnabled);
       version.setCompressionStrategy(CompressionStrategy.valueOf(storeVersionState.compressionStrategy.toString()));
       version.setLeaderFollowerModelEnabled(storeVersionState.leaderFollowerModelEnabled);
@@ -462,39 +462,33 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
   }
 
   // Helper functions to parse Store data retrieved from metadata system store based implementations
-  protected Store getStoreFromStoreMetadata(CurrentStoreStates currentStoreStates, CurrentVersionStates currentVersionStates) {
+  protected Store getStoreFromStoreMetadata(CurrentStoreStates currentStoreStates,
+      CurrentVersionStates currentVersionStates) {
     StoreProperties storeProperties = currentStoreStates.states;
 
     HybridStoreConfig hybridStoreConfig = null;
     if (storeProperties.hybrid) {
       hybridStoreConfig = new HybridStoreConfigImpl(storeProperties.hybridStoreConfig.rewindTimeInSeconds,
-                                                storeProperties.hybridStoreConfig.offsetLagThresholdToGoOnline,
-                                                storeProperties.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds);
+          storeProperties.hybridStoreConfig.offsetLagThresholdToGoOnline,
+          storeProperties.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds);
     }
 
     PartitionerConfig partitionerConfig = null;
     if (storeProperties.partitionerConfig != null) {
-      partitionerConfig = new PartitionerConfigImpl(
-          storeProperties.partitionerConfig.partitionerClass.toString(),
+      partitionerConfig = new PartitionerConfigImpl(storeProperties.partitionerConfig.partitionerClass.toString(),
           Utils.getStringMapFromCharSequenceMap(storeProperties.partitionerConfig.partitionerParams),
-          storeProperties.partitionerConfig.amplificationFactor
-      );
+          storeProperties.partitionerConfig.amplificationFactor);
     }
 
-    Store store = new ZKStore(storeProperties.name.toString(),
-        storeProperties.owner.toString(),
-        storeProperties.createdTime,
-        PersistenceType.valueOf(storeProperties.persistenceType.toString()),
-        RoutingStrategy.valueOf(storeProperties.routingStrategy.toString()),
-        ReadStrategy.valueOf(storeProperties.readStrategy.toString()),
-        OfflinePushStrategy.valueOf(storeProperties.offLinePushStrategy.toString()),
-        currentVersionStates.currentVersion,
-        storeProperties.storageQuotaInByte,
-        storeProperties.readQuotaInCU,
-        hybridStoreConfig,
-        partitionerConfig,
-        1 // TODO: figure out how to get hold of a sensible RF value here
-    );
+    Store store =
+        new ZKStore(storeProperties.name.toString(), storeProperties.owner.toString(), storeProperties.createdTime,
+            PersistenceType.valueOf(storeProperties.persistenceType.toString()),
+            RoutingStrategy.valueOf(storeProperties.routingStrategy.toString()),
+            ReadStrategy.valueOf(storeProperties.readStrategy.toString()),
+            OfflinePushStrategy.valueOf(storeProperties.offLinePushStrategy.toString()),
+            currentVersionStates.currentVersion, storeProperties.storageQuotaInByte, storeProperties.readQuotaInCU,
+            hybridStoreConfig, partitionerConfig, 1 // TODO: figure out how to get hold of a sensible RF value here
+        );
     store.setVersions(getVersionsFromCurrentVersionStates(storeProperties.name.toString(), currentVersionStates));
     store.setBackupStrategy(BackupStrategy.valueOf(storeProperties.backupStrategy.toString()));
     store.setBatchGetLimit(storeProperties.batchGetLimit);
@@ -508,8 +502,7 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
     if (storeProperties.etlStoreConfig != null) {
       etlStoreConfig = new ETLStoreConfigImpl(storeProperties.etlStoreConfig.etledUserProxyAccount.toString(),
           storeProperties.etlStoreConfig.regularVersionETLEnabled,
-          storeProperties.etlStoreConfig.futureVersionETLEnabled
-      );
+          storeProperties.etlStoreConfig.futureVersionETLEnabled);
     }
     store.setEtlStoreConfig(etlStoreConfig);
     store.setHybridStoreDiskQuotaEnabled(storeProperties.hybridStoreDiskQuotaEnabled);
@@ -549,7 +542,8 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
 
       storeMetadataValue = getStoreMetadata(storeName, storeValueSchemasKey);
       if (storeMetadataValue == null) {
-        throw new MissingKeyInStoreMetadataException(storeValueSchemasKey.toString(), StoreValueSchemas.class.getName());
+        throw new MissingKeyInStoreMetadataException(storeValueSchemasKey.toString(),
+            StoreValueSchemas.class.getName());
       }
       storeValueSchemas = (StoreValueSchemas) storeMetadataValue.metadataUnion;
     } catch (ExecutionException | InterruptedException e) {
@@ -564,7 +558,8 @@ public abstract class NativeMetadataRepository implements SubscriptionBasedReadO
     // Since key schema are not mutated (not even the child zk path) there is no need to set watches
     schemaData.setKeySchema(new SchemaEntry(KEY_SCHEMA_ID, keySchemaString));
     // Fetch value schema
-    storeValueSchemas.valueSchemaMap.forEach((key, val) -> schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(key.toString()), val.toString())));
+    storeValueSchemas.valueSchemaMap.forEach(
+        (key, val) -> schemaData.addValueSchema(new SchemaEntry(Integer.parseInt(key.toString()), val.toString())));
 
     return schemaData;
   }
