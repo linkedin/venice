@@ -103,7 +103,9 @@ public enum ControllerRoute {
   SET_TOPIC_COMPACTION("/set_topic_compaction", HttpMethod.POST, Arrays.asList(TOPIC, TOPIC_COMPACTION_POLICY)),
   UPDATE_ACL("/update_acl", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, ACCESS_PERMISSION)),
   GET_ACL("/get_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
-  DELETE_ACL("/delete_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
+  DELETE_ACL("/delete_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+
+  CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER("/configure_native_replication_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, STORE_TYPE, STATUS));
 
 
   private final String path;

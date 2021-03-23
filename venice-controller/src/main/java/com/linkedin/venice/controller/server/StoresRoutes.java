@@ -19,6 +19,7 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -33,7 +34,7 @@ import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
-import static com.linkedin.venice.meta.LeaderFollowerEnabled.*;
+import static com.linkedin.venice.meta.VeniceUserStoreType.*;
 
 
 public class StoresRoutes extends AbstractRoute {
@@ -523,6 +524,37 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(cluster);
 
         veniceResponse.setStores(storeCandidates.stream().map(Store::getName).toArray(String[]::new));
+      }
+    };
+  }
+
+  public Route enableNativeReplicationForCluster(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
+
+        AdminSparkServer.validateParams(request, CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getParams(), admin);
+
+        VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(request.queryParams(STORE_TYPE).toUpperCase());
+
+        String cluster = request.queryParams(CLUSTER);
+        boolean enableNativeReplicationForCluster = Utils.parseBooleanFromString(request.queryParams(STATUS), STATUS);
+        String sourceRegionParams = request.queryParamOrDefault(NATIVE_REPLICATION_SOURCE_FABRIC, null);
+        String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
+
+        admin.configureNativeReplication(cluster,
+                                         storeType,
+                                         Optional.empty(),
+                                         enableNativeReplicationForCluster,
+                                         (null == sourceRegionParams) ? Optional.empty() : Optional.of(sourceRegionParams),
+                                         (null == regionsFilterParams) ? Optional.empty() : Optional.of(regionsFilterParams));
+
+        veniceResponse.setCluster(cluster);
       }
     };
   }

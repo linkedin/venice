@@ -4,6 +4,8 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -12,39 +14,30 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
-import org.apache.samza.config.MapConfig;
-import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 /**
@@ -390,6 +383,160 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
         String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * 2);
         String actual = client.get(Integer.toString(i)).get().toString();
         Assert.assertEquals(actual, expected);
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testClusterLevelAdminCommandForNativeReplication() throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    String batchOnlyStoreName = TestUtils.getUniqueString("batch-store");
+    String keySchemaStr = STRING_SCHEMA;
+    String valueSchemaStr = STRING_SCHEMA;
+
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+      NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(batchOnlyStoreName, "", keySchemaStr, valueSchemaStr);
+      Assert.assertFalse(newStoreResponse.isError());
+
+      /**
+       * Enable L/F in dc-0 and parent controller
+       */
+      UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
+          .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+          .setLeaderFollowerModel(true)
+          .setRegionsFilter("parent,dc-0");
+      ControllerResponse controllerResponse = parentControllerClient.updateStore(batchOnlyStoreName, updateStoreParams);
+      Assert.assertFalse(controllerResponse.isError());
+
+      /**
+       * Create a hybrid store
+       */
+      String hybridStoreName = TestUtils.getUniqueString("hybrid-store");
+      newStoreResponse = parentControllerClient.createNewStore(hybridStoreName, "", keySchemaStr, valueSchemaStr);
+      Assert.assertFalse(newStoreResponse.isError());
+      updateStoreParams = new UpdateStoreQueryParams()
+          .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+          .setLeaderFollowerModel(true)
+          .setRegionsFilter("parent,dc-0");
+      controllerResponse = parentControllerClient.updateStore(hybridStoreName, updateStoreParams);
+      Assert.assertFalse(controllerResponse.isError());
+      updateStoreParams = new UpdateStoreQueryParams()
+          .setHybridRewindSeconds(10)
+          .setHybridOffsetLagThreshold(2);
+      controllerResponse = parentControllerClient.updateStore(hybridStoreName, updateStoreParams);
+      Assert.assertFalse(controllerResponse.isError());
+
+      /**
+       * Create an incremental push enabled store
+       */
+      String incrementPushStoreName = TestUtils.getUniqueString("incremental-push-store");
+      newStoreResponse = parentControllerClient.createNewStore(incrementPushStoreName, "", keySchemaStr, valueSchemaStr);
+      Assert.assertFalse(newStoreResponse.isError());
+      updateStoreParams = new UpdateStoreQueryParams()
+          .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+          .setLeaderFollowerModel(true)
+          .setRegionsFilter("parent,dc-0");
+      controllerResponse = parentControllerClient.updateStore(incrementPushStoreName, updateStoreParams);
+      Assert.assertFalse(controllerResponse.isError());
+      updateStoreParams = new UpdateStoreQueryParams().setIncrementalPushEnabled(true);
+      controllerResponse = parentControllerClient.updateStore(incrementPushStoreName, updateStoreParams);
+      Assert.assertFalse(controllerResponse.isError());
+
+      final Optional<String> newNativeReplicationSource = Optional.of("new-nr-source");
+      try (ControllerClient dc0Client = new ControllerClient(clusterName,
+          childDatacenters.get(0).getControllerConnectString()); ControllerClient dc1Client = new ControllerClient(clusterName,
+          childDatacenters.get(1).getControllerConnectString()); ControllerClient dc2Client = new ControllerClient(clusterName,
+          childDatacenters.get(2).getControllerConnectString())) {
+
+        /**
+         * Run admin command to convert all batch-only stores in the cluster to native replication
+         */
+        controllerResponse = parentControllerClient.configureNativeReplicationForCluster(true,
+            VeniceUserStoreType.BATCH_ONLY.toString(), newNativeReplicationSource, Optional.of("parent,dc-0"));
+        Assert.assertFalse(controllerResponse.isError());
+
+        /**
+         * Batch-only stores should have native replication enabled in dc-0 but not in dc-1 or dc-2; hybrid stores or
+         * incremental push stores shouldn't have native replication enabled in any region.
+         */
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, batchOnlyStoreName, true, newNativeReplicationSource);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, batchOnlyStoreName, true, newNativeReplicationSource);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, batchOnlyStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, batchOnlyStoreName, false);
+
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, hybridStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, hybridStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, hybridStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, hybridStoreName, false);
+
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, incrementPushStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, incrementPushStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, incrementPushStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, incrementPushStoreName, false);
+
+        /**
+         * Second test:
+         * 1. Revert the cluster to previous state
+         * 2. Test the cluster level command that converts all hybrid stores to native replication
+         */
+        controllerResponse = parentControllerClient.configureNativeReplicationForCluster(false,
+            VeniceUserStoreType.BATCH_ONLY.toString(), Optional.empty(), Optional.empty());
+        Assert.assertFalse(controllerResponse.isError());
+        controllerResponse = parentControllerClient.configureNativeReplicationForCluster(true,
+            VeniceUserStoreType.HYBRID_ONLY.toString(), newNativeReplicationSource, Optional.of("parent,dc-0"));
+        Assert.assertFalse(controllerResponse.isError());
+
+        /**
+         * Hybrid stores should have native replication enabled in dc-0 but not in dc-1 or dc-2; batch-only stores or
+         * incremental push stores shouldn't have native replication enabled in any region.
+         */
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, batchOnlyStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, batchOnlyStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, batchOnlyStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, batchOnlyStoreName, false);
+
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, hybridStoreName, true, newNativeReplicationSource);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, hybridStoreName, true, newNativeReplicationSource);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, hybridStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, hybridStoreName, false);
+
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, incrementPushStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, incrementPushStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, incrementPushStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, incrementPushStoreName, false);
+
+        /**
+         * Third test:
+         * 1. Revert the cluster to previous state
+         * 2. Test the cluster level command that converts all incremental push stores to native replication
+         */
+        controllerResponse = parentControllerClient.configureNativeReplicationForCluster(false,
+            VeniceUserStoreType.HYBRID_ONLY.toString(), Optional.empty(), Optional.empty());
+        Assert.assertFalse(controllerResponse.isError());
+        controllerResponse = parentControllerClient.configureNativeReplicationForCluster(true,
+            VeniceUserStoreType.INCREMENTAL_PUSH.toString(), newNativeReplicationSource, Optional.of("parent,dc-0"));
+        Assert.assertFalse(controllerResponse.isError());
+
+        /**
+         * Incremental push stores should have native replication enabled in dc-0 but not in dc-1 or dc-2; batch-only stores or
+         * hybrid stores shouldn't have native replication enabled in any region.
+         */
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, batchOnlyStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, batchOnlyStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, batchOnlyStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, batchOnlyStoreName, false);
+
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, hybridStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, hybridStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, hybridStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, hybridStoreName, false);
+
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, incrementPushStoreName, true, newNativeReplicationSource);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, incrementPushStoreName, true, newNativeReplicationSource);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, incrementPushStoreName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, incrementPushStoreName, false);
       }
     }
   }

@@ -398,6 +398,12 @@ public class AdminTool {
         case REMOVE_FROM_STORE_ACL:
           removeFromStoreAcl(cmd);
           break;
+        case ENABLE_NATIVE_REPLICATION_FOR_CLUSTER:
+          enableNativeReplicationForCluster(cmd);
+          break;
+        case DISABLE_NATIVE_REPLICATION_FOR_CLUSTER:
+          disableNativeReplicationForCluster(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -1819,6 +1825,32 @@ public class AdminTool {
     } else {
       System.out.println("No change in ACLs");
     }
+  }
+
+  private static void enableNativeReplicationForCluster(CommandLine cmd) {
+    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
+    String sourceRegionParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
+    Optional<String> sourceRegion =
+        Utils.isNullOrEmpty(sourceRegionParam) ? Optional.empty() : Optional.of(sourceRegionParam);
+    String fabricsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> fabricsFilter =
+        Utils.isNullOrEmpty(fabricsFilterParam) ? Optional.empty() : Optional.of(fabricsFilterParam);
+
+    ControllerResponse response = controllerClient.configureNativeReplicationForCluster(true, storeType, sourceRegion, fabricsFilter);
+    printObject(response);
+  }
+
+  private static void disableNativeReplicationForCluster(CommandLine cmd) {
+    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
+    String sourceFabricParam = getOptionalArgument(cmd, Arg.NATIVE_REPLICATION_SOURCE_FABRIC);
+    Optional<String> sourceFabric =
+        Utils.isNullOrEmpty(sourceFabricParam) ? Optional.empty() : Optional.of(sourceFabricParam);
+    String fabricsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
+    Optional<String> fabricsFilter =
+        Utils.isNullOrEmpty(fabricsFilterParam) ? Optional.empty() : Optional.of(fabricsFilterParam);
+
+    ControllerResponse response = controllerClient.configureNativeReplicationForCluster(false, storeType, sourceFabric, fabricsFilter);
+    printObject(response);
   }
 
   private static void printErrAndExit(String err) {

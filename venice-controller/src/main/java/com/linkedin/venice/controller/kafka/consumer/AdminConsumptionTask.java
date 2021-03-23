@@ -514,17 +514,33 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       logger.info(e.getMessage());
       return executionId;
     }
-    String storeName = extractStoreName(adminOperation);
-    storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
-    long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
-    long brokerTimestamp = record.timestamp();
-    AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(adminOperation, record.offset(),
-        producerTimestamp, brokerTimestamp, System.currentTimeMillis());
-    storeAdminOperationsMapWithOffset.get(storeName).add(adminOperationWrapper);
-    stats.recordAdminMessageMMLatency(Math.max(0,
-        adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
-    stats.recordAdminMessageDelegateLatency(Math.max(0,
-        adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+
+    AdminMessageType adminMessageType = AdminMessageType.valueOf(adminOperation);
+    if (adminMessageType.isBatchUpdate()) {
+      long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
+      long brokerTimestamp = record.timestamp();
+      for (Queue<AdminOperationWrapper> operationQueue : storeAdminOperationsMapWithOffset.values()) {
+        AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(adminOperation, record.offset(),
+            producerTimestamp, brokerTimestamp, System.currentTimeMillis());
+        operationQueue.add(adminOperationWrapper);
+        stats.recordAdminMessageMMLatency(Math.max(0,
+            adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+        stats.recordAdminMessageDelegateLatency(Math.max(0,
+            adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+      }
+    } else {
+      String storeName = extractStoreName(adminOperation);
+      storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
+      long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
+      long brokerTimestamp = record.timestamp();
+      AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(adminOperation, record.offset(),
+          producerTimestamp, brokerTimestamp, System.currentTimeMillis());
+      storeAdminOperationsMapWithOffset.get(storeName).add(adminOperationWrapper);
+      stats.recordAdminMessageMMLatency(Math.max(0,
+          adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+      stats.recordAdminMessageDelegateLatency(Math.max(0,
+          adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+    }
     return executionId;
   }
 
@@ -588,6 +604,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         KillOfflinePushJob message = (KillOfflinePushJob) adminOperation.payloadUnion;
         storeName = Version.parseStoreFromKafkaTopicName(message.kafkaTopic.toString());
         break;
+      case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER:
+        throw new VeniceException("Operation " + AdminMessageType.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER + " is a batch "
+            + "update that affects all existing store in cluster " + clusterName + ". Cannot extract a specific store name.");
       default:
         try {
           GenericRecord payload = (GenericRecord) adminOperation.payloadUnion;

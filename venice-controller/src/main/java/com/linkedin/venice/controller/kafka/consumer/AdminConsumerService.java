@@ -90,7 +90,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
-  public Long getLastSucceedExecutionId(String clusterName) {
+  public Long getLastSucceededExecutionIdInCluster(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
       return consumerTask.getLastSucceededExecutionId();
     } else {

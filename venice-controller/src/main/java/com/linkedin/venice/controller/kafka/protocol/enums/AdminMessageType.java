@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka.protocol.enums;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -26,32 +27,35 @@ import java.util.HashMap;
 import java.util.Map;
 
 public enum AdminMessageType {
-  STORE_CREATION(0),
-  VALUE_SCHEMA_CREATION(1),
-  DISABLE_STORE_WRITE(2),
-  ENABLE_STORE_WRITE(3),
-  KILL_OFFLINE_PUSH_JOB(4),
-  DISABLE_STORE_READ(5),
-  ENABLE_STORE_READ(6),
-  DELETE_ALL_VERSIONS(7),
-  SET_STORE_OWNER(8),
-  SET_STORE_PARTITION(9),
-  SET_STORE_CURRENT_VERSION(10),
-  UPDATE_STORE(11),
-  DELETE_STORE(12),
-  DELETE_OLD_VERSION(13),
-  MIGRATE_STORE(14),
-  ABORT_MIGRATION(15),
-  ADD_VERSION(16),
-  DERIVED_SCHEMA_CREATION(17),
-  SUPERSET_SCHEMA_CREATION(18);
+  STORE_CREATION(0, false),
+  VALUE_SCHEMA_CREATION(1, false),
+  DISABLE_STORE_WRITE(2, false),
+  ENABLE_STORE_WRITE(3, false),
+  KILL_OFFLINE_PUSH_JOB(4, false),
+  DISABLE_STORE_READ(5, false),
+  ENABLE_STORE_READ(6, false),
+  DELETE_ALL_VERSIONS(7, false),
+  SET_STORE_OWNER(8, false),
+  SET_STORE_PARTITION(9, false),
+  SET_STORE_CURRENT_VERSION(10, false),
+  UPDATE_STORE(11, false),
+  DELETE_STORE(12, false),
+  DELETE_OLD_VERSION(13, false),
+  MIGRATE_STORE(14, false),
+  ABORT_MIGRATION(15, false),
+  ADD_VERSION(16, false),
+  DERIVED_SCHEMA_CREATION(17, false),
+  SUPERSET_SCHEMA_CREATION(18, false),
+  CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER(19, true);
 
 
   private final int value;
+  private final boolean batchUpdate;
   private static final Map<Integer, AdminMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
 
-  AdminMessageType(int value) {
+  AdminMessageType(int value, boolean batchUpdate) {
     this.value = value;
+    this.batchUpdate = batchUpdate;
   }
 
   public Object getNewInstance() {
@@ -75,6 +79,7 @@ public enum AdminMessageType {
       case ADD_VERSION: return new AddVersion();
       case DERIVED_SCHEMA_CREATION: return new DerivedSchemaCreation();
       case SUPERSET_SCHEMA_CREATION: return new SupersetSchemaCreation();
+      case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER: return new ConfigureNativeReplicationForCluster();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }
@@ -101,5 +106,9 @@ public enum AdminMessageType {
 
   public int getValue() {
     return value;
+  }
+
+  public boolean isBatchUpdate() {
+    return batchUpdate;
   }
 }

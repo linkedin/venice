@@ -191,7 +191,11 @@ public enum Command {
   ADD_TO_STORE_ACL("add-to-store-acl", "Add a principal to ACL's for an existing store",
       new Arg[] {URL, CLUSTER, STORE, PRINCIPAL}, new Arg[] {READABILITY, WRITEABILITY}),
   REMOVE_FROM_STORE_ACL("remove-from-store-acl", "Remove a principal from ACL's for an existing store",
-      new Arg[] {URL, CLUSTER, STORE, PRINCIPAL}, new Arg[] {READABILITY, WRITEABILITY});
+      new Arg[] {URL, CLUSTER, STORE, PRINCIPAL}, new Arg[] {READABILITY, WRITEABILITY}),
+  ENABLE_NATIVE_REPLICATION_FOR_CLUSTER("enable-native-replication-for-cluster", "enable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
+      new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC}),
+  DISABLE_NATIVE_REPLICATION_FOR_CLUSTER("disable-native-replication-for-cluster", "disable native replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
+      new Arg[] {URL, CLUSTER, STORE_TYPE}, new Arg[] {REGIONS_FILTER, NATIVE_REPLICATION_SOURCE_FABRIC});
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;
