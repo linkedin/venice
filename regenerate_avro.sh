@@ -66,6 +66,7 @@ CODE_GEN_PATH=(
   "venice-common/src/main/java"
   "venice-common/src/main/java"
   "venice-common/src/main/java"
+  "venice-common/src/main/java"
 )
 FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[0]}/com/linkedin/venice/kafka/protocol/*.java"
