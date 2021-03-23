@@ -1423,8 +1423,14 @@ public class ConfigKeys {
    * CLIENT_USE_SYSTEM_STORE_REPOSITORY is set to true. By default the thin-client based implementation will be used.
    */
   public static final String CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY = "client.use.da.vinci.based.system.store.repository";
+
   /**
    * This config specifies the client to use thin client meta system store based repository.
    */
   public static final String CLIENT_USE_META_SYSTEM_STORE_REPOSITORY = "client.use.meta.system.store.repository";
+
+  /**
+   * This config will specify the region name of a controller; the region name can be customized by Venice internal.
+   */
+  public static final String LOCAL_REGION_NAME = "local.region.name";
 }

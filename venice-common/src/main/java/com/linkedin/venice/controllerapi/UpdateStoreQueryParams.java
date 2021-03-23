@@ -419,6 +419,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     this.params.put(configKey, sourceParams.params.get(configKey));
   }
 
+  public UpdateStoreQueryParams setRegionsFilter(String regionsFilter) {
+    return putString(REGIONS_FILTER, regionsFilter);
+  }
+
+  public Optional<String> getRegionsFilter() {
+    return getString(REGIONS_FILTER);
+  }
+
   //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {
     return (UpdateStoreQueryParams) add(name, value);

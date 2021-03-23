@@ -92,7 +92,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         // random controller from each multicluster, in reality this should include all controllers, not just one
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
             clusterNames, parentKafka.getZkAddress(), parentKafka, childControllers, clusterToD2, false,
-            replicationFactor, parentControllerProperties.orElseGet(() -> new VeniceProperties()));
+            replicationFactor, parentControllerProperties.orElseGet(() -> new VeniceProperties()), Optional.empty());
         parentControllers.add(parentController);
       }
 

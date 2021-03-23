@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -114,10 +115,19 @@ public class TestPushJobWithNativeReplicationAndKMM {
      */
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setPartitionCount(partitionCount)
+        .setPartitionCount(partitionCount);
+
+    ControllerClient parentControllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+    /**
+     * Only enable L/F and NR in parent controllers and the child controllers of dc-2 fabric
+     */
+    UpdateStoreQueryParams enableLFAndNR = new UpdateStoreQueryParams()
         .setLeaderFollowerModel(true)
-        .setNativeReplicationEnabled(true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
+        .setNativeReplicationEnabled(true)
+        .setRegionsFilter("dc-2,parent");
+    ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, enableLFAndNR);
+    Assert.assertFalse(updateStoreResponse.isError());
+    parentControllerClient.close();
 
     try (ControllerClient dc0Client = new ControllerClient(clusterName,
         childDatacenters.get(0).getControllerConnectString());
@@ -126,21 +136,7 @@ public class TestPushJobWithNativeReplicationAndKMM {
         ControllerClient dc2Client = new ControllerClient(clusterName,
             childDatacenters.get(2).getControllerConnectString())) {
 
-      /**
-       * Check the update store command in parent controller has been propagated into child controllers, before
-       * sending any commands directly into child controllers, which can help avoid race conditions.
-       */
-      verifyDCConfigNativeRepl(dc0Client, storeName, true);
-      verifyDCConfigNativeRepl(dc1Client, storeName, true);
-      verifyDCConfigNativeRepl(dc2Client, storeName, true);
-
-      //disable L/F+ native replication for dc-0 and dc-1.
-      UpdateStoreQueryParams updateStoreParams1 =
-          new UpdateStoreQueryParams().setLeaderFollowerModel(false).setNativeReplicationEnabled(false);
-      TestPushUtils.updateStore(clusterName, storeName, dc0Client, updateStoreParams1);
-      TestPushUtils.updateStore(clusterName, storeName, dc1Client, updateStoreParams1);
-
-      //verify all the datacenter is configurd correctly.
+      //verify all the datacenter is configured correctly.
       verifyDCConfigNativeRepl(dc0Client, storeName, false);
       verifyDCConfigNativeRepl(dc1Client, storeName, false);
       verifyDCConfigNativeRepl(dc2Client, storeName, true);

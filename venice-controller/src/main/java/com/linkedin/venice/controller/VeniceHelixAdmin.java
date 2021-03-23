@@ -208,6 +208,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
     private static final int RECORD_COUNT = 10;
+    private static final String REGION_FILTER_LIST_SEPARATOR = ",\\s*";
 
     private final VeniceControllerMultiClusterConfig multiClusterConfigs;
     private final String controllerClusterName;
@@ -2710,6 +2711,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     @Override
     public synchronized void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
+        /**
+         * Check whether the command affects this fabric.
+         */
+        if (params.getRegionsFilter().isPresent()) {
+            Set<String> regionsFilter = parseRegionsFilterList(params.getRegionsFilter().get());
+            if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
+                logger.info("UpdateStore command will be skipped for store " + storeName + " in cluster " + clusterName
+                    + ", because the fabrics filter is " + regionsFilter.toString() + " which doesn't include the "
+                    + "current fabric: " + multiClusterConfigs.getRegionName());
+                return;
+            }
+        }
+
         Store originalStore = getStore(clusterName, storeName);
         if (null == originalStore) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -3072,6 +3086,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " configs for store " + oldStore.getName());
         }
         return hybridConfig;
+    }
+
+    /**
+     * A helper function to split a region list with {@link VeniceHelixAdmin#REGION_FILTER_LIST_SEPARATOR}
+     */
+    protected static Set<String> parseRegionsFilterList(String regionsFilterList) {
+        Set<String> fabrics = new HashSet<>();
+        String[] tokens = regionsFilterList.trim().toLowerCase().split(REGION_FILTER_LIST_SEPARATOR);
+        Collections.addAll(fabrics, tokens);
+        return fabrics;
     }
 
     public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {

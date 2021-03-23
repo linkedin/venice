@@ -99,7 +99,8 @@ public enum Arg {
   NATIVE_REPLICATION_SOURCE_FABRIC("native-replication-source-fabric", "nrsf", true, "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."),
   PRINCIPAL("principal", "p", true, "Principal to add/modify/delete ACLs"),
   REPLICATE_ALL_CONFIGS("replicate-all-configs", "rac", false,"Whether all unchanged store configs in parent controller will be replicated to child controllers"),
-  ACTIVE_ACTIVE_REPLICATION_ENABLED("active-active-replication-enabled", "aa", true, "A parameter flag to enable/disable Active/Active replication feature for a store");
+  ACTIVE_ACTIVE_REPLICATION_ENABLED("active-active-replication-enabled", "aa", true, "A parameter flag to enable/disable Active/Active replication feature for a store"),
+  REGIONS_FILTER("regions-filter", "regf", true, "A list of fabrics that will be impacted by the command; can be used by UpdateStore command");
 
   private final String argName;
   private final String first;
