@@ -1,22 +1,31 @@
 package com.linkedin.venice.server;
 
+import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.storage.DiskHealthCheckService;
+import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.davinci.config.VeniceClusterConfig;
-import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
-import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
@@ -24,7 +33,6 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
-import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
@@ -36,33 +44,22 @@ import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AggRocksDBStats;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.DiskHealthStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
-import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
-import com.linkedin.davinci.storage.StorageEngineMetadataService;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
-
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
 
 
 // TODO curate all comments later
@@ -92,6 +89,7 @@ public class VeniceServer {
   private HelixReadOnlyZKSharedSchemaRepository readOnlyZKSharedSchemaRepository;
   private ZkClient zkClient;
   private VeniceJVMStats jvmStats;
+  private ICProvider icProvider;
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
       throws VeniceException {
@@ -108,7 +106,7 @@ public class VeniceServer {
       Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
       Optional<StaticAccessController> routerAccessController,
       Optional<ClientConfig> clientConfigForConsumer) {
-    this(veniceConfigLoader, metricsRepository, sslFactory, routerAccessController, Optional.empty(), clientConfigForConsumer);
+    this(veniceConfigLoader, metricsRepository, sslFactory, routerAccessController, Optional.empty(), clientConfigForConsumer, null);
   }
 
   public VeniceServer(
@@ -117,7 +115,8 @@ public class VeniceServer {
       Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
-      Optional<ClientConfig> clientConfigForConsumer) {
+      Optional<ClientConfig> clientConfigForConsumer,
+      ICProvider icProvider) {
 
     // force out any potential config errors using a wildcard store name
     veniceConfigLoader.getStoreConfig("");
@@ -137,6 +136,7 @@ public class VeniceServer {
     this.routerAccessController = routerAccessController;
     this.storeAccessController = storeAccessController;
     this.clientConfigForConsumer = clientConfigForConsumer;
+    this.icProvider = icProvider;
   }
 
   /**
@@ -208,7 +208,8 @@ public class VeniceServer {
         kafkaMessageEnvelopeSchemaReader,
         clientConfigForConsumer,
         partitionStateSerializer,
-        Optional.of(this.readOnlyZKSharedSchemaRepository));
+        Optional.of(this.readOnlyZKSharedSchemaRepository),
+        icProvider);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
