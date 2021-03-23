@@ -39,6 +39,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/PushStatus/PushStatusKey/v1/*"
   "venice-common/src/main/resources/avro/PushStatus/PushStatusValue/v1/*"
   "venice-common/src/main/resources/avro/AdminResponseRecord/v1/*"
+  "hadoop-to-venice-bridge/src/main/resources/avro/KafkaInputMapperValue/*"
 )
 CODE_GEN_PATH=(
   "venice-common/src/main/java"
@@ -69,6 +70,7 @@ CODE_GEN_PATH=(
   "venice-common/src/main/java"
   "venice-common/src/main/java"
   "venice-common/src/main/java"
+  "hadoop-to-venice-bridge/src/main/java"
 )
 FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[0]}/com/linkedin/venice/kafka/protocol/*.java"
@@ -99,6 +101,7 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[25]}/com/linkedin/venice/pushstatus/*.java"
   "${CODE_GEN_PATH[26]}/com/linkedin/venice/pushstatus/*.java"
   "${CODE_GEN_PATH[27]}/com/linkedin/venice/admin/protocol/response/*.java"
+  "${CODE_GEN_PATH[28]}/com/linkedin/venice/hadoop/input/kafka/avro/*.java"
 )
 
 if [[ $# < 1 ]]; then

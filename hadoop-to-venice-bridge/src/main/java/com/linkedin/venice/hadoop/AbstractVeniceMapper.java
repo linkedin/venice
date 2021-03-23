@@ -61,7 +61,16 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
             + " successfully sprayed all partitions, to ensure that all Reducers come up.");
       }
     }
+    if (process(inputKey, inputValue, keyBW, valueBW, reporter)) {
+      // key/value pair is valid.
+      output.collect(keyBW, valueBW);
+    }
+  }
 
+  /**
+   * This function will return true if the input key/value pair is valid.
+   */
+  protected boolean process(INPUT_KEY inputKey, INPUT_VALUE inputValue, BytesWritable keyBW, BytesWritable valueBW, Reporter reporter) {
     recordKey = veniceRecordReader.getKeyBytes(inputKey, inputValue);
     recordValue = veniceRecordReader.getValueBytes(inputKey, inputValue);
 
@@ -71,7 +80,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     if (recordValue == null) {
       LOGGER.warn("Received null record, skip.");
       MRJobCounterHelper.incrEmptyRecordCount(reporter, 1);
-      return;
+      return false;
     }
     MRJobCounterHelper.incrTotalUncompressedValueSize(reporter, recordValue.length);
 
@@ -85,8 +94,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     MRJobCounterHelper.incrTotalValueSize(reporter, recordValue.length);
     keyBW.set(recordKey, 0, recordKey.length);
     valueBW.set(recordValue, 0, recordValue.length);
-    output.collect(keyBW, valueBW);
+    return true;
   }
+
+
 
   /**
    * A method for child classes to setup {@link AbstractVeniceMapper#veniceRecordReader}.
@@ -94,7 +105,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   abstract protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> getRecordReader(VeniceProperties props);
 
   @Override
-  protected final void configureTask(VeniceProperties props, JobConf job) {
+  protected void configureTask(VeniceProperties props, JobConf job) {
     this.veniceRecordReader = getRecordReader(props);
 
     if (this.veniceRecordReader == null) {
@@ -118,7 +129,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
   @Override
   public void close() throws IOException {
-    if (compressor.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT) {
+    if (compressor != null && compressor.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT) {
       IOUtils.closeQuietly(compressor);
     }
   }

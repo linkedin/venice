@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -63,6 +64,31 @@ import static com.linkedin.venice.hadoop.VenicePushJob.*;
 public class VeniceReducer
     extends AbstractMapReduceTask
     implements Reducer<BytesWritable, BytesWritable, NullWritable, NullWritable> {
+
+  public static class VeniceWriterMessage {
+    private byte[] keyBytes;
+    private byte[] valueBytes;
+    private int valueSchemaId;
+
+    public VeniceWriterMessage(byte[] keyBytes, byte[] valueBytes, int valueSchemaId) {
+      this.keyBytes = keyBytes;
+      this.valueBytes = valueBytes;
+      this.valueSchemaId = valueSchemaId;
+    }
+
+    public byte[] getKeyBytes() {
+      return keyBytes;
+    }
+
+    public byte[] getValueBytes() {
+      return valueBytes;
+    }
+
+    public int getValueSchemaId() {
+      return valueSchemaId;
+    }
+  }
+
   public static final String MAP_REDUCE_JOB_ID_PROP = "mapred.job.id";
   private static final Logger LOGGER = Logger.getLogger(VeniceReducer.class);
   private static final String NON_INITIALIZED_LEADER = "N/A";
@@ -104,7 +130,6 @@ public class VeniceReducer
   private HadoopJobClientProvider hadoopJobClientProvider = new DefaultHadoopJobClientProvider();
   private boolean isDuplicateKeyAllowed = DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 
-  VeniceReducer() {}
 
   @Override
   public void reduce(
@@ -122,28 +147,40 @@ public class VeniceReducer
       aggregateTimeOfInBetweenReduceInvocationsInNS += (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
     }
     if (key.getLength() > VeniceMRPartitioner.EMPTY_KEY_LENGTH && (!hasReportedFailure(reporter, this.isDuplicateKeyAllowed))) {
-      /**
-       * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
-       */
-      byte[] keyBytes = key.copyBytes();
-      if (!values.hasNext()) {
-        throw new VeniceException("There is no value corresponding to key bytes: " +
-            ByteUtils.toHexString(keyBytes));
-      }
-      byte[] valueBytes = values.next().copyBytes();
-      try {
-        sendMessageToKafka(keyBytes, valueBytes, reporter);
-      } catch (VeniceException e) {
-        if (e instanceof TopicAuthorizationVeniceException) {
-          MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
-          LOGGER.error(e);
-          return;
+      Optional<VeniceWriterMessage> message = extract(key, values, reporter);
+      if (message.isPresent()) {
+        try {
+          sendMessageToKafka(message.get().keyBytes, message.get().valueBytes, message.get().valueSchemaId, reporter);
+        } catch (VeniceException e) {
+          if (e instanceof TopicAuthorizationVeniceException) {
+            MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
+            LOGGER.error(e);
+            return;
+          }
+          throw e;
         }
-        throw e;
       }
-      duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
     }
     updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
+  }
+
+  protected Optional<VeniceWriterMessage> extract(BytesWritable key, Iterator<BytesWritable> values, Reporter reporter) {
+    /**
+     * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
+     */
+    byte[] keyBytes = key.copyBytes();
+    if (!values.hasNext()) {
+      throw new VeniceException("There is no value corresponding to key bytes: " +
+          ByteUtils.toHexString(keyBytes));
+    }
+    byte[] valueBytes = values.next().copyBytes();
+    if (duplicateKeyPrinter == null) {
+      throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
+    }
+    duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
+
+
+    return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, valueSchemaId));
   }
 
   protected boolean hasReportedFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
@@ -208,7 +245,7 @@ public class VeniceReducer
     aggregateTimeOfReduceExecutionInNS += (timeOfLastReduceFunctionEndInNS - timeOfLastReduceFunctionStartInNS);
   }
 
-  protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, Reporter reporter) {
+  protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, int valueSchemaId, Reporter reporter) {
     maybePropagateCallbackException();
     if (null == veniceWriter) {
       veniceWriter = createBasicVeniceWriter();
@@ -306,6 +343,10 @@ public class VeniceReducer
     }
   }
 
+  protected DuplicateKeyPrinter initDuplicateKeyPrinter(JobConf job) {
+    return new DuplicateKeyPrinter(job);
+  }
+
   @Override
   protected void configureTask(VeniceProperties props, JobConf job) {
     this.props = props;
@@ -315,7 +356,7 @@ public class VeniceReducer
     this.derivedValueSchemaId = (props.containsKey(DERIVED_SCHEMA_ID_PROP)) ? props.getInt(DERIVED_SCHEMA_ID_PROP) : -1;
     this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) && props.getBoolean(ENABLE_WRITE_COMPUTE);
     this.minimumLoggingIntervalInMS = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
-    this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
+    this.duplicateKeyPrinter = initDuplicateKeyPrinter(job);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
     initStorageQuotaFields(props, job);
@@ -530,7 +571,7 @@ public class VeniceReducer
    * Avro as well from Reducer's perspective) We should update this method once
    * Venice supports other format in the future
    */
-  static class DuplicateKeyPrinter {
+  public static class DuplicateKeyPrinter {
     private static final int MAX_NUM_OF_LOG = 10;
 
     private final boolean isDupKeyAllowed;
@@ -558,7 +599,7 @@ public class VeniceReducer
       this.avroDatumWriter = new GenericDatumWriter<>(keySchema);
     }
 
-    private void detectAndHandleDuplicateKeys(byte[] keyBytes, byte[] valueBytes, Iterator<BytesWritable> values, Reporter reporter) {
+    protected void detectAndHandleDuplicateKeys(byte[] keyBytes, byte[] valueBytes, Iterator<BytesWritable> values, Reporter reporter) {
       if (numOfDupKey > MAX_NUM_OF_LOG) {
         return;
       }

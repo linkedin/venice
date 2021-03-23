@@ -15,6 +15,9 @@ import com.linkedin.venice.hadoop.heartbeat.DefaultPushJobHeartbeatSenderFactory
 import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
+import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
+import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -121,6 +124,21 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public final static String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
   public final static String SOURCE_ETL = "source.etl";
   public final static String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
+
+  /**
+   * Configs used to enable Kafka Input.
+   */
+  public final static String SOURCE_KAFKA = "source.kafka";
+  /**
+   * TODO: consider to automatically discover the source topic for the specified store.
+   * We need to be careful in the following scenarios:
+   * 1. Not all the prod colos are using the same current version if the previous push experiences a partial failure.
+   * 2. We might want to re-push from a backup version, which should be unlikely.
+   */
+  public static final String KAFKA_INPUT_TOPIC = "kafka.input.topic";
+  public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
+  // Optional
+  public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -302,6 +320,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     boolean isSourceETL;
     boolean enableWriteCompute;
     ETLValueSchemaTransformation etlValueSchemaTransformation;
+    boolean isSourceKafka;
+    String kafkaInputBrokerUrl;
+    String kafkaInputTopic;
   }
   protected PushJobSetting pushJobSetting;
 
@@ -337,6 +358,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     boolean isLeaderFollowerModelEnabled;
     boolean isWriteComputeEnabled;
     boolean isIncrementalPushEnabled;
+    Version sourceKafkaInputVersionInfo;
   }
 
   protected StoreSetting storeSetting;
@@ -446,6 +468,31 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     pushJobSetting.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
     pushJobSetting.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
     pushJobSetting.isSourceETL = props.getBoolean(SOURCE_ETL, false);
+    pushJobSetting.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
+
+    if (pushJobSetting.isSourceKafka) {
+      pushJobSetting.kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+      pushJobSetting.kafkaInputTopic = props.getString(KAFKA_INPUT_TOPIC);
+      String storeName = Version.parseStoreFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
+      pushJobSetting.storeName = storeName;
+      /**
+       * The topic could contain duplicate records since the topic could belong to a hybrid store
+       * or the speculation execution could be executed for the batch store as well.
+       */
+      pushJobSetting.isDuplicateKeyAllowed = true;
+
+      if (pushJobSetting.isIncrementalPush) {
+        throw new VeniceException("Incremental push is not supported while using Kafka Input");
+      }
+      if (pushJobSetting.isSourceETL) {
+        throw new VeniceException("Source ETL is not supported while using Kafka Input");
+      }
+      if (pushJobSetting.enablePBNJ) {
+        throw new VeniceException("PBNJ is not supported while using Kafka Input");
+      }
+    } else {
+      pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
+    }
 
     if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -468,7 +515,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
        */
       pushJobSetting.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     }
-    pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
 
     if (!pushJobSetting.enablePush && !pushJobSetting.enablePBNJ) {
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
@@ -546,16 +592,33 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation.NONE;
       }
 
-      // Check data size
-      // TODO: do we actually need this information?
-      InputDataInfoProvider.InputDataInfo inputInfo =
-          getInputDataInfoProvider().validateInputAndGetInfo(inputDirectory);
-      // Get input schema
-      schemaInfo = inputInfo.getSchemaInfo();
-      inputFileDataSize = inputInfo.getInputFileDataSizeInBytes();
-      inputFileHasRecords = inputInfo.hasRecords();
-      validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
-      validateValueSchema(controllerClient, pushJobSetting, schemaInfo, storeSetting.isSchemaAutoRegisterFromPushJobEnabled);
+      /**
+       * If the data source is from some existing Kafka topic, no need to validate the input.
+       */
+      if (!pushJobSetting.isSourceKafka) {
+        // Check data size
+        // TODO: do we actually need this information?
+        InputDataInfoProvider.InputDataInfo inputInfo =
+            getInputDataInfoProvider().validateInputAndGetInfo(inputDirectory);
+        // Get input schema
+        schemaInfo = inputInfo.getSchemaInfo();
+        inputFileDataSize = inputInfo.getInputFileDataSizeInBytes();
+        inputFileHasRecords = inputInfo.hasRecords();
+        validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
+        validateValueSchema(controllerClient, pushJobSetting, schemaInfo, storeSetting.isSchemaAutoRegisterFromPushJobEnabled);
+      } else {
+        /**
+         * Using a default number: 1GB here.
+         * No need to specify the accurate input size since the re-push mustn't be the first version, so the partition
+         * count calculation won't be affected by this random number.
+         */
+        inputFileDataSize = 1024 * 1024 * 1024l;
+        /**
+         * This is used to ensure the {@link #verifyCountersWithZeroValues()} function won't assume the reducer count
+         * should be 0.
+         */
+        inputFileHasRecords = true;
+      }
 
       if (!pushJobSetting.enablePush) {
         LOGGER.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
@@ -660,11 +723,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       }
       throwVeniceException(e);
     } finally {
-      try {
-        inputDataInfoProvider.close();
-      } catch (Exception e) {
-        LOGGER.error("Failed to close inputDataInfoProvider. Exception swallowed", e);
-      }
+      IOUtils.closeQuietly(inputDataInfoProvider);
       pushJobHeartbeatSender.stop();
       inputDataInfoProvider = null;
     }
@@ -764,6 +823,12 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() {
+    if (pushJobSetting.isSourceKafka) {
+      /**
+       * Kafka Input is not supporting dict compression right now.
+       */
+      return Optional.empty();
+    }
     ByteBuffer compressionDictionary = null;
     if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       LOGGER.info("Training Zstd dictionary");
@@ -807,6 +872,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    * @throws Exception
    */
   protected String getInputURI(VeniceProperties props) throws Exception {
+    if (pushJobSetting.isSourceKafka) {
+      return "";
+    }
     Configuration conf = new Configuration();
     FileSystem fs = FileSystem.get(conf);
     String uri = props.getString(INPUT_PATH_PROP);
@@ -1133,6 +1201,72 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         throw new VeniceException("Leader follower mode needs to be enabled for write compute.");
       }
     }
+
+    if (setting.isSourceKafka) {
+      int sourceVersionNumber = Version.parseVersionFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
+      Optional<Version> sourceVersion = storeResponse.getStore().getVersion(sourceVersionNumber);
+      if (!sourceVersion.isPresent()) {
+        throw new VeniceException("Couldn't find the source version for Kafka Input: " + sourceVersionNumber +
+            " from Controller for store: " + setting.storeName);
+      }
+      storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
+      Map<String, Integer> coloToCurrentVersionMap = storeResponse.getStore().getColoToCurrentVersions();
+      /**
+       * TODO: we need to loose the constraint here since in the future we might want to use re-push to fix a problematic
+       * version in some colos.
+       *
+       * Besides checking whether the source version is the current version or not, we may need to check whether the offset
+       * lag of the current version is minimal to avoid the potential rewinding gap.
+       * For example, if the current version is lagging behind a lot, the rewinding time configured in store-level
+       * may not be able to fill the gap.
+       * In the future, we will need to override the rewinding time for every re-push to make sure no gap will happen.
+       */
+      if (coloToCurrentVersionMap == null || coloToCurrentVersionMap.isEmpty()) {
+        /**
+         * Single-colo setup without Parent Cluster
+         */
+        if (storeResponse.getStore().getCurrentVersion() != sourceVersionNumber) {
+          throw new VeniceException(
+              "Only current version for re-push is supported, but current version is: "
+                  + storeResponse.getStore().getCurrentVersion() + " and source version is: " + sourceVersionNumber);
+        }
+      } else {
+        coloToCurrentVersionMap.forEach((colo, version) -> {
+          if (version != sourceVersionNumber) {
+            throw new VeniceException(
+                "Only current version for re-push is supported, but colo: " + colo + " is using a different version: " + version + " source version: " + version);
+          }
+        });
+      }
+      if (storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
+        /**
+         * TODO: we need to extract the raw key bytes from the composite key including raw key and chunking suffix,
+         * otherwise the partitioner couldn't guarantee that all the chunks belonging to the same large message will be
+         * assigned to the same reducer/partition.
+         */
+        throw new VeniceException("Source version: " + sourceVersionNumber + " with chunking enabled is not supported right now");
+      }
+      if (storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+        /**
+         * Dictionary Compression is not supported right now since Kafka Input is doing message pass-through,
+         * and it won't copy the dictionary from the source version to the new version
+         * during re-push.
+         * TODO: We will need to extend the implementation to support compression or re-compression.
+         */
+        throw new VeniceException("Source version: " + sourceVersionNumber + " with ZSTD_WITH_DICT compression strategy is not supported right now");
+      }
+      // Skip quota check
+      storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
+      /**
+       * Chunking should be disabled since Kafka Input is meant to do pass-through.
+       */
+      storeSetting.isChunkingEnabled = false;
+      /**
+       * If the source topic is using self-contained compression algorithm, such as Gzip, KafkaInput pass-through will produce
+       * the compressed message to the new topic, so with the following logic, VPJ won't compress it again.
+       */
+      storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
+    }
     return storeSetting;
   }
 
@@ -1202,6 +1336,47 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     kafkaTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
     kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
     kafkaTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
+
+    if (pushJobSetting.isSourceKafka) {
+      /**
+       * Check whether the new version setup is compatible with the source version, and we will check the following configs:
+       * 1. Chunking.
+       * 2. Compression Strategy.
+       * 3. Partition Count.
+       * 4. Partitioner Config.
+       * Since right now, the messages from the source topic will be passed through to the new version topic without
+       * reformatting, we need to make sure the pass-through messages won't violate the new version config.
+       *
+       * TODO: maybe we should fail fast before creating a new version.
+       */
+      StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, setting.controllerRetries,
+          c -> c.getStore(setting.storeName));
+      if (storeResponse.isError()) {
+        throw new VeniceException("Failed to retrieve store response with urls: " + setting.veniceControllerUrl
+            + ", error: " + storeResponse.getError());
+      }
+      int newVersionNum = kafkaTopicInfo.version;
+      Optional<Version> newVersionOptional = storeResponse.getStore().getVersion(newVersionNum);
+      if (!newVersionOptional.isPresent()) {
+        throw new VeniceException("Couldn't fetch the newly created version: " + newVersionNum + " for store: " + setting.storeName
+            + " with urls: " + setting.veniceControllerUrl);
+      }
+      Version newVersion = newVersionOptional.get();
+      Version sourceVersion = storeSetting.sourceKafkaInputVersionInfo;
+
+      if (sourceVersion.getCompressionStrategy() != newVersion.getCompressionStrategy()) {
+        throw new VeniceException("Compression strategy mismatch between the source version and the new version is "
+            + "not supported by Kafka Input right now, "
+            + " source version: " + sourceVersion.getNumber() + " is using: " + sourceVersion.getCompressionStrategy()
+            + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.getCompressionStrategy());
+      }
+      if (sourceVersion.isChunkingEnabled() != newVersion.isChunkingEnabled()) {
+        throw new VeniceException("Chunking config mismatch between the source version and the new version is "
+            + "not supported by Kafka Input right now, "
+            + " source version: " + sourceVersion.getNumber() + " is using: " + sourceVersion.isChunkingEnabled()
+            + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.isChunkingEnabled());
+      }
+    }
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
@@ -1502,8 +1677,13 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       }
     }
 
-    conf.setInt(VALUE_SCHEMA_ID_PROP, schemaInfo.valueSchemaId);
-    conf.setInt(DERIVED_SCHEMA_ID_PROP, schemaInfo.derivedSchemaId);
+    if (pushJobSetting.isSourceKafka) {
+      // Use some fake value schema id here since it won't be used
+      conf.setInt(VALUE_SCHEMA_ID_PROP, -1);
+    } else {
+      conf.setInt(VALUE_SCHEMA_ID_PROP, schemaInfo.valueSchemaId);
+      conf.setInt(DERIVED_SCHEMA_ID_PROP, schemaInfo.derivedSchemaId);
+    }
     conf.setBoolean(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
 
     if (System.getenv(HADOOP_TOKEN_FILE_LOCATION) != null) {
@@ -1546,43 +1726,52 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     jobConf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
     LOGGER.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + jobConf.get(MAPREDUCE_JOB_CLASSLOADER));
 
-    // TODO:The job is using path-filter to check the consistency of avro file schema ,
-    // but doesn't specify the path filter for the input directory of map-reduce job.
-    // We need to revisit it if any failure because of this happens.
-    FileInputFormat.setInputPaths(jobConf, new Path(inputDirectory));
-
-    /**
-     * Include all the files in the input directory no matter whether the file is with '.avro' suffix or not
-     * to keep the logic consistent with {@link #checkAvroSchemaConsistency(FileStatus[])}.
-     */
-    jobConf.set(AvroInputFormat.IGNORE_FILES_WITHOUT_EXTENSION_KEY, "false");
-
-    jobConf.set(KEY_FIELD_PROP, schemaInfo.keyField);
-    jobConf.set(VALUE_FIELD_PROP, schemaInfo.valueField);
-
-    if (schemaInfo.isAvro) {
-      jobConf.set(SCHEMA_STRING_PROP, schemaInfo.fileSchemaString);
-      jobConf.set(AvroJob.INPUT_SCHEMA, schemaInfo.fileSchemaString);
-      jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
-      jobConf.setInputFormat(AvroInputFormat.class);
-      jobConf.setMapperClass(VeniceAvroMapper.class);
-      jobConf.setBoolean(VSON_PUSH, false);
+    if (pushJobSetting.isSourceKafka) {
+        jobConf.setInputFormat(KafkaInputFormat.class);
+        jobConf.setMapperClass(VeniceKafkaInputMapper.class);
     } else {
-      jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
-      jobConf.setMapperClass(VeniceVsonMapper.class);
-      jobConf.setBoolean(VSON_PUSH, true);
-      jobConf.set(FILE_KEY_SCHEMA, schemaInfo.vsonFileKeySchema);
-      jobConf.set(FILE_VALUE_SCHEMA, schemaInfo.vsonFileValueSchema);
+      // TODO:The job is using path-filter to check the consistency of avro file schema ,
+      // but doesn't specify the path filter for the input directory of map-reduce job.
+      // We need to revisit it if any failure because of this happens.
+      FileInputFormat.setInputPaths(jobConf, new Path(inputDirectory));
+
+      /**
+       * Include all the files in the input directory no matter whether the file is with '.avro' suffix or not
+       * to keep the logic consistent with {@link #checkAvroSchemaConsistency(FileStatus[])}.
+       */
+      jobConf.set(AvroInputFormat.IGNORE_FILES_WITHOUT_EXTENSION_KEY, "false");
+
+      jobConf.set(KEY_FIELD_PROP, schemaInfo.keyField);
+      jobConf.set(VALUE_FIELD_PROP, schemaInfo.valueField);
+
+      if (schemaInfo.isAvro) {
+        jobConf.set(SCHEMA_STRING_PROP, schemaInfo.fileSchemaString);
+        jobConf.set(AvroJob.INPUT_SCHEMA, schemaInfo.fileSchemaString);
+        jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
+        jobConf.setInputFormat(AvroInputFormat.class);
+        jobConf.setMapperClass(VeniceAvroMapper.class);
+        jobConf.setBoolean(VSON_PUSH, false);
+      } else {
+        jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
+        jobConf.setMapperClass(VeniceVsonMapper.class);
+        jobConf.setBoolean(VSON_PUSH, true);
+        jobConf.set(FILE_KEY_SCHEMA, schemaInfo.vsonFileKeySchema);
+        jobConf.set(FILE_VALUE_SCHEMA, schemaInfo.vsonFileValueSchema);
+      }
     }
   }
 
   private void setupReducerConf(JobConf jobConf, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
     jobConf.setPartitionerClass(this.mapRedPartitionerClass);
-    jobConf.setMapOutputKeyClass(BytesWritable.class);
-    jobConf.setMapOutputValueClass(BytesWritable.class);
-    jobConf.setReducerClass(VeniceReducer.class);
     jobConf.setReduceSpeculativeExecution(pushJobSetting.enableReducerSpeculativeExecution);
     jobConf.setNumReduceTasks(versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor);
+    jobConf.setMapOutputKeyClass(BytesWritable.class);
+    jobConf.setMapOutputValueClass(BytesWritable.class);
+    if (pushJobSetting.isSourceKafka) {
+      jobConf.setReducerClass(VeniceKafkaInputReducer.class);
+    } else {
+      jobConf.setReducerClass(VeniceReducer.class);
+    }
   }
 
   private void logPushJobProperties(
@@ -1614,15 +1803,22 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     propKeyValuePairs.add("Venice Store Name: " + pushJobSetting.storeName);
     propKeyValuePairs.add("Venice Cluster Name: " + clusterName);
     propKeyValuePairs.add("Venice URL: " + pushJobSetting.veniceControllerUrl);
-    propKeyValuePairs.add("File Schema: " + schemaInfo.fileSchemaString);
-    propKeyValuePairs.add("Avro key schema: " + schemaInfo.keySchemaString);
-    propKeyValuePairs.add("Avro value schema: " + schemaInfo.valueSchemaString);
+    if (schemaInfo != null) {
+      propKeyValuePairs.add("File Schema: " + schemaInfo.fileSchemaString);
+      propKeyValuePairs.add("Avro key schema: " + schemaInfo.keySchemaString);
+      propKeyValuePairs.add("Avro value schema: " + schemaInfo.valueSchemaString);
+    }
     propKeyValuePairs.add("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024)
         + " MB, estimated with a factor of " + INPUT_DATA_SIZE_FACTOR);
     propKeyValuePairs.add("Is incremental push: " + pushJobSetting.isIncrementalPush);
     propKeyValuePairs.add("Is duplicated key allowed: " + pushJobSetting.isDuplicateKeyAllowed);
     propKeyValuePairs.add("Is source ETL data: " + pushJobSetting.isSourceETL);
     propKeyValuePairs.add("ETL value schema transformation : " + pushJobSetting.etlValueSchemaTransformation);
+    propKeyValuePairs.add("Is Kafka Input: " + pushJobSetting.isSourceKafka);
+    if (pushJobSetting.isSourceKafka) {
+      propKeyValuePairs.add("Kafka Input broker urls: " + pushJobSetting.kafkaInputBrokerUrl);
+      propKeyValuePairs.add("Kafka Input topic name: " + pushJobSetting.kafkaInputTopic);
+    }
     return String.join(Utils.NEW_LINE_CHAR, propKeyValuePairs);
   }
 
