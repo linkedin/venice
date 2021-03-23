@@ -54,7 +54,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   // For perf test purpose
   private final String veniceZKAddress;
-  private final String clusterName;
 
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final long metadataRefreshInvervalInSeconds;
@@ -76,7 +75,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       int routingPendingRequestCounterInstanceBlockThreshold,
       int maxAllowedKeyCntInBatchGetReq,
       String veniceZKAddress,
-      String clusterName,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
       long metadataRefreshInvervalInSeconds) {
     if (storeName == null || storeName.isEmpty()) {
@@ -121,7 +119,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
 
     this.veniceZKAddress = veniceZKAddress;
-    this.clusterName = clusterName;
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
     this.metadataRefreshInvervalInSeconds = metadataRefreshInvervalInSeconds;
   }
@@ -192,10 +189,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public String getVeniceZKAddress() {
     return veniceZKAddress;
-  }
-
-  public String getClusterName() {
-    return clusterName;
   }
 
   public DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore() {
@@ -315,11 +308,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setClusterName(String clusterName) {
-      this.clusterName = clusterName;
-      return this;
-    }
-
     public ClientConfigBuilder<K, V, T> setDaVinciClientForMetaStore(DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore) {
       this.daVinciClientForMetaStore = daVinciClientForMetaStore;
       return this;
@@ -354,7 +342,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
           .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeyCntInBatchGetReq)
           .setVeniceZKAddress(veniceZKAddress)
-          .setClusterName(clusterName)
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
           .setMetadataRefreshInvervalInSeconds(metadataRefreshInvervalInSeconds);
     }
@@ -377,7 +364,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingPendingRequestCounterInstanceBlockThreshold,
           maxAllowedKeyCntInBatchGetReq,
           veniceZKAddress,
-          clusterName,
           daVinciClientForMetaStore,
           metadataRefreshInvervalInSeconds);
     }

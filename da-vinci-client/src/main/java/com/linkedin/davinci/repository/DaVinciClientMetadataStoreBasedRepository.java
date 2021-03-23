@@ -1,5 +1,8 @@
 package com.linkedin.davinci.repository;
 
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -26,28 +29,26 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-
-import org.apache.avro.Schema;
-
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import org.apache.avro.Schema;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
 
 /**
- * Implementation that uses DaVinci client to bootstrap the metadata system stores locally.
+ * Implementation that uses DaVinci client to bootstrap the metadata system stores locally. This implementation will not
+ * be used since it's deprecated by the new DaVinciClientMetaStoreBasedRepository implementation. The class should be
+ * removed once DaVinciClientMetaStoreBasedRepository is verified in PROD.
  */
 public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRepository {
 
   private static final long OFFSET_LAG_THRESHOLD_FOR_METADATA_DA_VINCI_STORE = 1;
   private static final long DEFAULT_DA_VINCI_CLIENT_ROCKS_DB_MEMORY_LIMIT = 1024 * 1024 * 1024; // 1 GB
+  private static final Logger logger = Logger.getLogger(DaVinciClientMetadataStoreBasedRepository.class);
 
   // Dummy stores that mocks the zk shared store and should only be used to bootstrap the corresponding current version.
   // TODO Add a server endpoint to retrieve the zk shared store configs and versions properly instead of relying on the
@@ -77,21 +78,25 @@ public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRep
   public void subscribe(String storeName) throws InterruptedException {
     if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
       String veniceStoreName = VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName);
-      if (!metadataSystemStoreVersion.containsKey(veniceStoreName)) {
-        throw new VeniceException("Unable to find corresponding metadata system store version for store: "
-            + storeName + ". Please double check the config: " + ConfigKeys.CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP);
-      }
       metadataSystemStores.computeIfAbsent(storeName, k -> {
-        Store store = new ZKStore(storeName, "venice-system", 0,
-            PersistenceType.ROCKS_DB, RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE,
-            OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        Store store = new ZKStore(storeName, "venice-system", 0, PersistenceType.ROCKS_DB, RoutingStrategy.HASH,
+            ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
             1); // TODO: figure out how to get hold of a sensible RF value here
         store.setPartitionCount(DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
         // TODO time based lag threshold might be more suitable than offset based for system store use cases.
         store.setHybridStoreConfig(new HybridStoreConfigImpl(DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
             OFFSET_LAG_THRESHOLD_FOR_METADATA_DA_VINCI_STORE, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
-        Version currentVersion = new VersionImpl(storeName, Integer.parseInt(metadataSystemStoreVersion.get(veniceStoreName)),
-            "system_store_push_job", DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
+        int currentVersionNumber = DEFAULT_SYSTEM_STORE_CURRENT_VERSION;
+        if (metadataSystemStoreVersion.containsKey(veniceStoreName)) {
+          currentVersionNumber = Integer.parseInt(metadataSystemStoreVersion.get(veniceStoreName));
+        } else {
+          logger.info("Unable to find corresponding metadata system store version for store: " + storeName
+              + ". Using the default value of: " + DEFAULT_SYSTEM_STORE_CURRENT_VERSION
+              + " instead. Please use the config: " + ConfigKeys.CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP
+              + " to specify if the default value doesn't work.");
+        }
+        Version currentVersion = new VersionImpl(storeName, currentVersionNumber, "system_store_push_job",
+            DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
         store.addVersion(currentVersion);
         store.setCurrentVersion(currentVersion.getNumber());
         return store;
@@ -181,7 +186,7 @@ public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRep
 
   @Override
   public void clear() {
-      super.clear();
+    super.clear();
     daVinciClientMap.forEach((k, v) -> v.unsubscribeAll());
     daVinciClientFactory.close();
     daVinciClientMap.clear();
@@ -223,12 +228,14 @@ public class DaVinciClientMetadataStoreBasedRepository extends NativeMetadataRep
 
   private DaVinciClient<StoreMetadataKey, StoreMetadataValue> getDaVinciClientForSystemStore(String storeName) {
     return daVinciClientMap.computeIfAbsent(storeName, k -> {
-      DaVinciClient<StoreMetadataKey, StoreMetadataValue> client = daVinciClientFactory.getAndStartSpecificAvroClient(
-          VeniceSystemStoreUtils.getMetadataStoreName(storeName), daVinciConfig, StoreMetadataValue.class);
+      DaVinciClient<StoreMetadataKey, StoreMetadataValue> client =
+          daVinciClientFactory.getAndStartSpecificAvroClient(VeniceSystemStoreUtils.getMetadataStoreName(storeName),
+              daVinciConfig, StoreMetadataValue.class);
       try {
         client.subscribeAll().get();
       } catch (InterruptedException | ExecutionException e) {
-        throw new VeniceException("Failed to construct DaVinci client for the metadata store of store: " + storeName, e);
+        throw new VeniceException("Failed to construct DaVinci client for the metadata store of store: " + storeName,
+            e);
       }
       daVinciClientMap.put(storeName, client);
       return client;

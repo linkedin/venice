@@ -14,7 +14,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
-import com.linkedin.venice.fastclient.meta.HelixBasedStoreMetadata;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -158,6 +157,7 @@ public class AvroStoreClientEndToEndTest {
           .put(PERSISTENCE_TYPE, ROCKS_DB)
           .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_META_SYSTEM_STORE_VERSION_MAP, storeName + ":" + metaSystemStoreVersionCreationResponse.getVersion())
+          .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
           .build();
     });
 
@@ -210,15 +210,14 @@ public class AvroStoreClientEndToEndTest {
     // always specify a different MetricsRepository to avoid conflict.
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     // Test generic store client first
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient;
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     if (useDaVinciClientBasedMetadata){
       clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
       genericFastClient = ClientFactory.getAndStartGenericStoreClient(clientConfigBuilder.build());
     } else if (metadata.isPresent()) {
       genericFastClient = ClientFactory.getAndStartGenericStoreClient(metadata.get(), clientConfigBuilder.build());
     } else {
-      ClientConfig clientConfig = clientConfigBuilder.build();
-      genericFastClient = ClientFactory.getAndStartGenericStoreClient(new HelixBasedStoreMetadata(clientConfig), clientConfig);
+      fail("No valid StoreMetadata implementation provided");
     }
     if (batchGet) {
       for (int i = 0; i < recordCnt - 1; ++i) {
@@ -244,15 +243,14 @@ public class AvroStoreClientEndToEndTest {
     ClientConfig.ClientConfigBuilder specificClientConfigBuilder = clientConfigBuilder.clone()
         .setSpecificValueClass(TestValueSchema.class)
         .setMetricsRepository(new MetricsRepository()); // To avoid metric registration conflict.
-    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient;
+    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = null;
     if (metadata.isPresent()) {
       specificFastClient = ClientFactory.getAndStartSpecificStoreClient(metadata.get(), specificClientConfigBuilder.build());
     } else if (useDaVinciClientBasedMetadata){
       clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
       specificFastClient = ClientFactory.getAndStartSpecificStoreClient(specificClientConfigBuilder.build());
     } else {
-      ClientConfig clientConfig = specificClientConfigBuilder.build();
-      specificFastClient = ClientFactory.getAndStartSpecificStoreClient(new HelixBasedStoreMetadata(clientConfig), clientConfig);
+      fail("No valid StoreMetadata implementation provided");
     }
     if (batchGet) {
       for (int i = 0; i < recordCnt - 1; ++i) {
@@ -313,7 +311,6 @@ public class AvroStoreClientEndToEndTest {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setVeniceZKAddress(veniceCluster.getZk().getAddress());
-    clientConfigBuilder.setClusterName(veniceCluster.getClusterName());
 
     ClientConfig clientConfig = clientConfigBuilder.build();
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
@@ -334,7 +331,6 @@ public class AvroStoreClientEndToEndTest {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setDualReadEnabled(true);
-    clientConfigBuilder.setClusterName(veniceCluster.getClusterName());
     AvroGenericStoreClient<String, GenericRecord> genericThinClient = getGenericThinClient();
     clientConfigBuilder.setGenericThinClient(genericThinClient);
     AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = getSpecificThinClient();

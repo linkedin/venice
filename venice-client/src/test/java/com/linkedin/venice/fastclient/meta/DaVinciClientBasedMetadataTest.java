@@ -84,6 +84,7 @@ public class DaVinciClientBasedMetadataTest {
           .put(PERSISTENCE_TYPE, ROCKS_DB)
           .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_META_SYSTEM_STORE_VERSION_MAP, storeName + ":" + metaSystemStoreVersionCreationResponse.getVersion())
+          .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
           .build();
     });
 
@@ -102,7 +103,6 @@ public class DaVinciClientBasedMetadataTest {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setVeniceZKAddress(veniceCluster.getZk().getAddress());
-    clientConfigBuilder.setClusterName(veniceCluster.getClusterName());
     clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
     clientConfigBuilder.setMetadataRefreshInvervalInSeconds(1); // Faster refreshes for faster tests
     daVinciClientBasedMetadata = new DaVinciClientBasedMetadata(clientConfigBuilder.build());

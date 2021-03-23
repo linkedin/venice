@@ -1,5 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.repository.DaVinciClientMetaStoreBasedRepository;
+import com.linkedin.davinci.repository.NativeMetadataRepository;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -9,15 +13,25 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.ReadOnlyStore;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -25,10 +39,12 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static org.testng.Assert.*;
 
@@ -213,5 +229,105 @@ public class MetaSystemStoreTest {
             "Any request to meta system store should throw exception before non-existing store");
       }
     });
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testDaVinciClientMetaStoreBasedRepository() throws InterruptedException {
+    String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
+    addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
+    D2Client d2Client = null;
+    try {
+      d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+      ClientConfig<StoreMetaValue> clientConfig =
+          ClientConfig.defaultSpecificClientConfig(regularVeniceStoreName, StoreMetaValue.class)
+              .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+              .setD2Client(d2Client)
+              .setVeniceURL(venice.getZk().getAddress());
+      // Not providing a CLIENT_META_SYSTEM_STORE_VERSION_MAP, should use the default value of 1 for system store current version.
+      VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+          .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+          .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
+          .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+          .build();
+      NativeMetadataRepository nativeMetadataRepository =
+          NativeMetadataRepository.getInstance(clientConfig, backendConfig);
+      // DaVinciClientMetaStoreBasedRepository implementation should be used since CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY is set to true.
+      Assert.assertTrue(nativeMetadataRepository instanceof DaVinciClientMetaStoreBasedRepository);
+      verifyRepository(nativeMetadataRepository, regularVeniceStoreName);
+    } finally {
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
+      }
+    }
+  }
+
+  // TODO This method can also be used to verify the thin-client meta system store based implementation.
+  private void verifyRepository(NativeMetadataRepository nativeMetadataRepository, String regularVeniceStoreName)
+      throws InterruptedException {
+    nativeMetadataRepository.subscribe(regularVeniceStoreName);
+    Store store = nativeMetadataRepository.getStore(regularVeniceStoreName);
+    Store controllerStore = new ReadOnlyStore(venice.getMasterVeniceController()
+        .getVeniceAdmin()
+        .getStore(venice.getClusterName(), regularVeniceStoreName));
+    assertEquals(store, controllerStore);
+    SchemaEntry keySchema = nativeMetadataRepository.getKeySchema(regularVeniceStoreName);
+    SchemaEntry controllerKeySchema = venice.getMasterVeniceController()
+        .getVeniceAdmin()
+        .getKeySchema(venice.getClusterName(), regularVeniceStoreName);
+    assertEquals(keySchema, controllerKeySchema);
+    Collection<SchemaEntry> valueSchemas = nativeMetadataRepository.getValueSchemas(regularVeniceStoreName);
+    Collection<SchemaEntry> controllerValueSchemas = venice.getMasterVeniceController()
+        .getVeniceAdmin()
+        .getValueSchemas(venice.getClusterName(), regularVeniceStoreName);
+    assertEquals(valueSchemas, controllerValueSchemas);
+    long storageQuota = 123456789;
+    int partitionCount = 3;
+    assertFalse(controllerClient.updateStore(regularVeniceStoreName,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota).setPartitionCount(partitionCount))
+        .isError());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      final Store nativeRepoStore = nativeMetadataRepository.getStore(regularVeniceStoreName);
+      assertEquals(nativeRepoStore.getPartitionCount(), partitionCount);
+      assertEquals(nativeRepoStore.getStorageQuotaInByte(), storageQuota);
+    });
+    assertFalse(controllerClient.addValueSchema(regularVeniceStoreName, VALUE_SCHEMA_2).isError());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertEquals(nativeMetadataRepository.getValueSchemas(regularVeniceStoreName),
+          venice.getMasterVeniceController()
+              .getVeniceAdmin()
+              .getValueSchemas(venice.getClusterName(), regularVeniceStoreName));
+    });
+    VersionCreationResponse versionCreationResponse =
+        controllerClient.emptyPush(regularVeniceStoreName, "new_push", 10000);
+    assertFalse(versionCreationResponse.isError());
+    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponse.getKafkaTopic(), controllerClient, 10,
+        TimeUnit.SECONDS, Optional.of(LOGGER));
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertTrue(nativeMetadataRepository.getStore(regularVeniceStoreName)
+          .getVersion(versionCreationResponse.getVersion())
+          .isPresent());
+      assertEquals(nativeMetadataRepository.getStore(regularVeniceStoreName)
+          .getVersionStatus(versionCreationResponse.getVersion()), VersionStatus.ONLINE);
+    });
+  }
+
+  private void addStoreAndMaterializeMetaSystemStore(String storeName) {
+    // Verify and add Venice regular store if it doesn't exist.
+    if (controllerClient.getStore(storeName).getStore() == null) {
+      assertFalse(controllerClient.createNewStore(storeName, "test_owner", INT_KEY_SCHEMA, VALUE_SCHEMA_1).isError());
+    }
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    // Ignore transient failures on job status when the cluster is still starting.
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertNotNull(
+        controllerClient.queryJobStatus(Version.composeKafkaTopic(metaSystemStoreName, 1)).getStatus()));
+    String metaSystemStoreStatus =
+        controllerClient.queryJobStatus(Version.composeKafkaTopic(metaSystemStoreName, 1)).getStatus();
+    if (ExecutionStatus.NOT_CREATED.toString().equals(metaSystemStoreStatus)) {
+      assertFalse(controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push", 10000).isError());
+      TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(metaSystemStoreName, 1),
+          controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
+    } else if (!ExecutionStatus.COMPLETED.toString().equals(metaSystemStoreStatus)) {
+      fail("Unexpected meta system store status: " + metaSystemStoreStatus);
+    }
   }
 }
