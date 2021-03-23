@@ -215,9 +215,9 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   }
 
   @Override
-  public void reset() {
-    closeController();
+  public synchronized void reset() {
     clearResources();
+    closeController();
   }
 
   /** synchronized because concurrent calls could cause a NPE */
