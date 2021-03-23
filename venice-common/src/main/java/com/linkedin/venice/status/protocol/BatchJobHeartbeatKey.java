@@ -10,12 +10,12 @@ package com.linkedin.venice.status.protocol;
 public class BatchJobHeartbeatKey extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
   public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"BatchJobHeartbeatKey\",\"namespace\":\"com.linkedin.venice.status.protocol\",\"fields\":[{\"name\":\"storeName\",\"type\":\"string\",\"doc\":\"Name of the store which the running push job instance is pushing data to\"},{\"name\":\"storeVersion\",\"type\":\"int\",\"doc\":\"Version of the store which the running push job instance is pushing data to\"}]}");
   /** Name of the store which the running push job instance is pushing data to */
-  public CharSequence storeName;
+  public java.lang.CharSequence storeName;
   /** Version of the store which the running push job instance is pushing data to */
   public int storeVersion;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
-  public Object get(int field$) {
+  public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return storeName;
     case 1: return storeVersion;
@@ -24,10 +24,10 @@ public class BatchJobHeartbeatKey extends org.apache.avro.specific.SpecificRecor
   }
   // Used by DatumReader.  Applications should not call. 
   @SuppressWarnings(value="unchecked")
-  public void put(int field$, Object value$) {
+  public void put(int field$, java.lang.Object value$) {
     switch (field$) {
-    case 0: storeName = (CharSequence)value$; break;
-    case 1: storeVersion = (Integer)value$; break;
+    case 0: storeName = (java.lang.CharSequence)value$; break;
+    case 1: storeVersion = (java.lang.Integer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
