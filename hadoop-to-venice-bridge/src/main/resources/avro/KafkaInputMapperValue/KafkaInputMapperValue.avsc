@@ -1,0 +1,32 @@
+{
+  "name": "KafkaInputMapperValue",
+  "namespace": "com.linkedin.venice.hadoop.input.kafka.avro",
+  "type": "record",
+  "doc": "The data protocol between Mapper and Reducer for KafkaInputFormat",
+  "fields": [
+    {
+      "name": "valueType",
+      "doc": "The value type of the message",
+      "type": {
+        "type": "enum",
+        "name": "MapperValueType",
+        "symbols": ["PUT", "DELETE"]
+      }
+    },
+    {
+      "name": "value",
+      "doc": "The raw value bytes",
+      "type": "bytes"
+    },
+    {
+      "name": "offset",
+      "doc": "The offset of the record in the original Kafka topic partition",
+      "type": "long"
+    },
+    {
+      "name": "schemaId",
+      "doc": "The schema id of the original record",
+      "type": "int"
+    }
+  ]
+}

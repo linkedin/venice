@@ -156,7 +156,28 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testCompressingRecord() throws Exception {
-    testBatchStore(
+    H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+      //test single get
+      for (int i = 1; i <= 100; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+
+      //test batch get
+      for (int i = 0; i < 10; i ++) {
+        Set<String> keys = new HashSet<>();
+        for (int j = 1; j <= 10; j ++) {
+          keys.add(Integer.toString(i * 10 + j));
+        }
+
+        Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+        Assert.assertEquals(values.size(), 10);
+
+        for (int j = 1; j <= 10; j ++) {
+          Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
+        }
+      }
+    };
+    String storeName = testBatchStore(
         inputDir -> {
           Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
           return new Pair<>(recordSchema.getField("id").schema(),
@@ -169,27 +190,18 @@ public abstract class TestBatch {
           properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
           properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
         },
-        (avroClient, vsonClient, metricsRepository) -> {
-          //test single get
-          for (int i = 1; i <= 100; i ++) {
-            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-          }
+        validator, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
 
-          //test batch get
-          for (int i = 0; i < 10; i ++) {
-            Set<String> keys = new HashSet<>();
-            for (int j = 1; j <= 10; j ++) {
-              keys.add(Integer.toString(i * 10 + j));
-            }
-
-            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
-            Assert.assertEquals(values.size(), 10);
-
-            for (int j = 1; j <= 10; j ++) {
-              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
-            }
-          }
-    }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
+    // Re-push with Kafka Input
+    testBatchStore(
+        inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
+        properties -> {
+          properties.setProperty(SOURCE_KAFKA, "true");
+          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+        },
+        validator, storeName, new UpdateStoreQueryParams(), false);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -514,6 +526,30 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     }, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testKafkaInputBatchJob() throws Exception {
+    H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+      //test single get
+      for (int i = 1; i <= 100; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    };
+    String storeName = testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+      return new Pair<>(recordSchema.getField("id").schema(),
+          recordSchema.getField("name").schema());
+    }, properties -> {}, validator);
+    // Re-push with Kafka Input
+    testBatchStore(
+        inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
+        properties -> {
+          properties.setProperty(SOURCE_KAFKA, "true");
+          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+        }, validator, storeName, new UpdateStoreQueryParams(), false);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -1,13 +1,13 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.utils.VeniceProperties;
+import java.io.Closeable;
 import org.apache.avro.Schema;
 
 
 /**
  * This interface lets users get input data information
  */
-public interface InputDataInfoProvider extends AutoCloseable {
+public interface InputDataInfoProvider extends Closeable {
 
   /**
    * A POJO that contains input data information (schema information and input data file size)

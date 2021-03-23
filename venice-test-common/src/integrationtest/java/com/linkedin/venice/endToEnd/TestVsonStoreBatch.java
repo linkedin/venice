@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
@@ -21,6 +22,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -215,6 +217,40 @@ public class TestVsonStoreBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testKafkaInputBatchJobWithVsonStoreMultiLevelRecordsSchemaWithSelectedField() throws Exception {
+    TestBatch.H2VValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 0; i < 100; i ++) {
+        GenericRecord valueInnerRecord = (GenericRecord) ((List) avroClient.get(i).get()).get(0);
+        Assert.assertEquals(valueInnerRecord.get("member_id"), i);
+        Assert.assertEquals(valueInnerRecord.get("score"), (float) i);
+
+        HashMap<String, Object> vsonValueInnerMap = (HashMap<String, Object>) ((List) vsonClient.get(i).get()).get(0);
+        Assert.assertEquals(vsonValueInnerMap.get("member_id"), i);
+        Assert.assertEquals(vsonValueInnerMap.get("score"), (float) i);
+      }
+    };
+    String storeName = testBatchStore(inputDir -> {
+      Pair<VsonSchema, VsonSchema> schemas = writeMultiLevelVsonFile2(inputDir);
+      Schema keySchema = VsonAvroSchemaAdapter.parse(schemas.getFirst().toString());
+      Schema selectedValueSchema = VsonAvroSchemaAdapter.parse(schemas.getSecond().recordSubtype("recs").toString());
+      return new Pair<>( keySchema, selectedValueSchema);
+    }, props -> {
+      props.setProperty(KEY_FIELD_PROP, "");
+      props.setProperty(VALUE_FIELD_PROP, "recs");
+    }, validator, new UpdateStoreQueryParams(), Optional.empty(), false);
+    // Re-push with Kafka Input
+    testBatchStore(
+        inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
+        properties -> {
+          properties.setProperty(SOURCE_KAFKA, "true");
+          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+        },
+        validator, new UpdateStoreQueryParams(), Optional.of(storeName), true);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testZstdCompressingVsonRecord() throws Exception {
     testBatchStore(inputDir -> {
           Pair<Schema, Schema> schemas = writeSimpleVsonFileWithUserSchema(inputDir);
@@ -252,14 +288,20 @@ public class TestVsonStoreBatch {
         }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
-  private void testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps, TestBatch.H2VValidator dataValidator) throws Exception {
-    testBatchStore(inputFileWriter, extraProps, dataValidator, new UpdateStoreQueryParams());
+  private String testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps, TestBatch.H2VValidator dataValidator) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, new UpdateStoreQueryParams());
   }
 
-  private void testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps, TestBatch.H2VValidator dataValidator, UpdateStoreQueryParams storeParms) throws Exception {
+  private String testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps,
+      TestBatch.H2VValidator dataValidator, UpdateStoreQueryParams storeParms) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, storeParms, Optional.empty(), true);
+  }
+
+  private String testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps,
+      TestBatch.H2VValidator dataValidator, UpdateStoreQueryParams storeParms, Optional<String> storeNameOptional, boolean deleteStoreAfterValidation) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = storeNameOptional.isPresent() ? storeNameOptional.get() : TestUtils.getUniqueString("store");
     AvroGenericStoreClient avroClient = null;
     AvroGenericStoreClient vsonClient = null;
 
@@ -268,7 +310,15 @@ public class TestVsonStoreBatch {
       Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
       extraProps.accept(props);
 
-      createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props, storeParms).close();
+
+      if (!storeNameOptional.isPresent()) {
+        /**
+         * If the caller passes an non-empty store name, we will assume the store already exists.
+         * If this assumption is not valid for some test cases, the logic needs to be changed here.
+         */
+        createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(),
+            props, storeParms).close();
+      }
 
       TestPushUtils.runPushJob("Test Batch push job", props);
       MetricsRepository metricsRepository = new MetricsRepository();
@@ -281,24 +331,16 @@ public class TestVsonStoreBatch {
           ClientConfig.defaultVsonGenericClientConfig(storeName)
               .setVeniceURL(veniceCluster.getRandomRouterURL())
       );
-
-      String controllerUrl = veniceCluster.getAllControllersURLs();
-
-      TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT/2, TimeUnit.SECONDS, () -> {
-        int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
-        // Refresh router metadata once new version (1 since there is just one push) is pushed, so that the router sees the latest store version.
-        if (currentVersion == 1) {
-          veniceCluster.refreshAllRouterMetaData();
-        }
-        return currentVersion == 1;
-      });
+      veniceCluster.refreshAllRouterMetaData();
       dataValidator.validate(avroClient, vsonClient, metricsRepository);
     } finally {
       IOUtils.closeQuietly(avroClient);
       IOUtils.closeQuietly(vsonClient);
-      controllerClient.enableStoreReadWrites(storeName, false);
-      controllerClient.deleteStore(storeName);
+      if (deleteStoreAfterValidation) {
+        controllerClient.enableStoreReadWrites(storeName, false);
+        controllerClient.deleteStore(storeName);
+      }
     }
+    return storeName;
   }
-
 }

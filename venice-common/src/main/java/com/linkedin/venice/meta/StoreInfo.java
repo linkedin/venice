@@ -3,6 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.compression.CompressionStrategy;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.linkedin.venice.meta.Store.*;
 
@@ -377,6 +378,15 @@ public class StoreInfo {
    */
   public List<Version> getVersions() {
     return versions;
+  }
+
+  public Optional<Version> getVersion(int versionNum) {
+    for (Version v : getVersions()) {
+      if (v.getNumber() == versionNum) {
+        return Optional.of(v);
+      }
+    }
+    return Optional.empty();
   }
 
   public void setVersions(List<Version> versions) {
