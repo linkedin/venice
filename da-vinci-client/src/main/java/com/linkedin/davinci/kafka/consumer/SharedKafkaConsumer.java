@@ -146,9 +146,16 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
     currentPollTimes++;
     waitingForPoll.set(true);
+    //Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait returned
+    //due to timeout. So an explicit time check is necessary.
+    long timeoutMs = (time.getNanoseconds()/Time.NS_PER_MS) + (10 * Time.MS_PER_SECOND);
     try {
       while (currentPollTimes > pollTimes) {
-        wait();
+        long waitMs = timeoutMs - (time.getNanoseconds()/Time.NS_PER_MS);
+        if (waitMs <= 0) {
+          break;
+        }
+        wait(waitMs);
       }
       //no action to take actually, just return;
     } catch (InterruptedException e) {
