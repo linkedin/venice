@@ -22,6 +22,8 @@ public interface KafkaAdminWrapper extends Closeable {
 
   Properties getTopicConfig(String topicName);
 
+  Properties getTopicConfigWithRetry(String topicName);
+
   boolean containsTopic(String topic);
 
   Map<String, Properties> getAllTopicConfig();

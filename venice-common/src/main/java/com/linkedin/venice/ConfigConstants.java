@@ -13,6 +13,9 @@ public class ConfigConstants {
    */
   public static final int DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS = 2 * Time.MS_PER_SECOND;
 
+  public static final long DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS = 600;
+
+
   /**
    * End of controller config default value
    */

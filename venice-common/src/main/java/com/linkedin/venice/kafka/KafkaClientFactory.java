@@ -9,6 +9,8 @@ import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 
+import static com.linkedin.venice.ConfigConstants.*;
+
 
 public abstract class KafkaClientFactory {
   public KafkaConsumerWrapper getConsumer(Properties props) {
@@ -27,6 +29,9 @@ public abstract class KafkaClientFactory {
     );
     Properties properties = setupSSL(new Properties());
     properties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, getKafkaZkAddress());
+    if (!properties.contains(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC)) {
+      properties.put(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC, DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
+    }
     adminWrapper.initialize(properties);
     return adminWrapper;
   }
