@@ -43,6 +43,7 @@ public class ConfigKeys {
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
+  public static final String KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC = "kafka.admin.get.topic.config.max.retry.sec";
 
   public static final String KAFKA_REQUEST_TIMEOUT_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
   public static final String KAFKA_DELIVERY_TIMEOUT_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;

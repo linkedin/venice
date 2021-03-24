@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -13,7 +14,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.ConfigEntry;
@@ -28,6 +28,9 @@ import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.utils.Time.*;
 
 
 public class KafkaAdminClient implements KafkaAdminWrapper {
@@ -114,6 +117,26 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     } catch (Exception e) {
       throw new VeniceException("Failed to get topic configs for: " + topicName, e);
     }
+  }
+
+  @Override
+  public Properties getTopicConfigWithRetry(String topic) {
+    long maxRetryInMs = (Long)properties.get(KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND;
+    long accumWaitTime = 0;
+    long sleepIntervalInMs = 100;
+    VeniceException veniceException = null;
+    while (accumWaitTime < maxRetryInMs) {
+      try {
+        Properties properties = getTopicConfig(topic);
+        return properties;
+      } catch (VeniceException e) {
+        veniceException = e;
+        Utils.sleep(sleepIntervalInMs);
+        accumWaitTime += sleepIntervalInMs;
+        sleepIntervalInMs = Math.min(5 * MS_PER_SECOND, sleepIntervalInMs * 2);
+      }
+    }
+    throw new VeniceException("After retrying for " + accumWaitTime + "ms, failed to get topic configs for: " + topic, veniceException);
   }
 
   @Override

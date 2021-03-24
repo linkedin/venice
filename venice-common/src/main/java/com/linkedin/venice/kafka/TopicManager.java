@@ -401,6 +401,10 @@ public class TopicManager implements Closeable {
     return getKafkaAdmin().getTopicConfig(topicName);
   }
 
+  public Properties getTopicConfigWithRetry(String topic) {
+    return getKafkaAdmin().getTopicConfigWithRetry(topic);
+  }
+
   /**
    * Still heavy, but can be called repeatedly to amortize that cost.
    *
@@ -411,7 +415,7 @@ public class TopicManager implements Closeable {
     // query the cache first, if it it doesn't have it, query it from kafka and store it.
     Properties properties = topicConfigCache.getIfPresent(topicName);
     if (properties == null) {
-      properties = getTopicConfig(topicName);
+      properties = getTopicConfigWithRetry(topicName);
       topicConfigCache.put(topicName, properties);
     }
     return properties;

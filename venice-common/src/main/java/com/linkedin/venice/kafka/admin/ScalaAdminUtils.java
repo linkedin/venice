@@ -92,6 +92,11 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   }
 
   @Override
+  public Properties getTopicConfigWithRetry(String topicName) {
+    return AdminUtils.fetchEntityConfig(getZkUtils(), ConfigType.Topic(), topicName);
+  }
+
+  @Override
   public boolean containsTopic(String topic) {
     return AdminUtils.topicExists(getZkUtils(), topic);
   }
