@@ -138,7 +138,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
       Assert.fail("Adding a new partition: " + partitionId + "failed!");
     }
 
-    // remove existign partition
+    // remove existing partition
     doRemovePartition(partitionId);
     Assert.assertEquals(testStoreEngine.containsPartition(partitionId), false,
         "Failed to remove partition: " + partitionId + " from the storage engine!");
