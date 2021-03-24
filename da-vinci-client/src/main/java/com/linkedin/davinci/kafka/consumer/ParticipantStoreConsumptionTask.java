@@ -67,23 +67,25 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
         key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
 
         for (String topic : storeIngestionService.getIngestingTopicsWithVersionStatusNotOnline()) {
-          key.resourceName = topic;
-          String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
-          if (clusterName != null) {
-            ParticipantMessageValue value;
-            if (icProvider != null) {
-              CompletableFuture<ParticipantMessageValue> future =
-                  icProvider.call(this.getClass().getCanonicalName(), () -> getParticipantStoreClient(clusterName).get(key));
-              value = future.get();
-            } else {
-              value = getParticipantStoreClient(clusterName).get(key).get();
-            }
-            if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
-              KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
-              if (storeIngestionService.killConsumptionTask(topic)) {
-                // emit metrics only when a confirmed kill is made
-                stats.recordKilledPushJobs();
-                stats.recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
+          try {
+            key.resourceName = topic;
+            String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
+
+            if (clusterName != null) {
+              ParticipantMessageValue value;
+              if (icProvider != null) {
+                CompletableFuture<ParticipantMessageValue> future = icProvider.call(this.getClass().getCanonicalName(), () -> getParticipantStoreClient(clusterName).get(key));
+                value = future.get();
+              } else {
+                value = getParticipantStoreClient(clusterName).get(key).get();
+              }
+              if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
+                KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+                if (storeIngestionService.killConsumptionTask(topic)) {
+                  // emit metrics only when a confirmed kill is made
+                  stats.recordKilledPushJobs();
+                  stats.recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
+                }
               }
             }
           } catch (Exception e) {
