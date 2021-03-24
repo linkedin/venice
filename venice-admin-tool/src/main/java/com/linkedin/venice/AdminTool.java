@@ -1092,10 +1092,10 @@ public class AdminTool {
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
-    Map<String, String> childClusterMap = srcControllerClient.listChildControllers(srcClusterName).getChildClusterMap();
+    Map<String, String> childClusterMap = destControllerClient.listChildControllers(destClusterName).getChildClusterMap();
     if (childClusterMap == null) {
       // This is a controller in single datacenter setup
-      System.err.println("WARN: fabric option is ignored on child controller.");
+      System.out.println("WARN: fabric option is ignored on child controller.");
       if (isClonedStoreOnline(srcControllerClient, destControllerClient, storeName)) {
         System.err.println("Cloned store is ready in dest cluster " + destClusterName + ". Updating cluster discovery info...");
         srcControllerClient.completeMigration(storeName, destClusterName);
@@ -1113,16 +1113,15 @@ public class AdminTool {
       ControllerClient destChildController = new ControllerClient(destClusterName, childControllerUrl, sslFactory);
 
       if (destChildController.discoverCluster(storeName).getCluster().equals(destClusterName)) {
-        System.err.println("ERROR: " + storeName + " already belongs to dest cluster " + destClusterName + " in fabric " + fabric);
-        return;
-      }
-
-      if (isClonedStoreOnline(srcChildController, destChildController, storeName)) {
-        System.err.println("Cloned store is ready in " + fabric + " dest cluster " + destClusterName + ". Updating cluster discovery info...");
-        srcChildController.completeMigration(storeName, destClusterName);
+        System.out.println("WARN: " + storeName + " already belongs to dest cluster " + destClusterName + " in fabric " + fabric);
       } else {
-        System.err.println("Cloned store is not ready in " + fabric + " dest cluster " + destClusterName + ". Please try again later.");
-        return;
+        if (isClonedStoreOnline(srcChildController, destChildController, storeName)) {
+          System.err.println("Cloned store is ready in " + fabric + " dest cluster " + destClusterName + ". Updating cluster discovery info...");
+          srcChildController.completeMigration(storeName, destClusterName);
+        } else {
+          System.err.println("Cloned store is not ready in " + fabric + " dest cluster " + destClusterName + ". Please try again later.");
+          return;
+        }
       }
 
       // Update parent cluster discovery info if all child clusters are online.

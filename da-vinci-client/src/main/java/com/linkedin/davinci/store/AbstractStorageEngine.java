@@ -467,7 +467,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public synchronized AbstractStoragePartition getPartitionOrThrow(int partitionId) {
     AbstractStoragePartition partition = partitionList.get(partitionId);
     if (partition == null) {
-      VeniceException e = new PersistenceFailureException("Partition: " + partitionId + " of store: " + getName() + " does't exist");
+      VeniceException e = new PersistenceFailureException("Partition: " + partitionId + " of store: " + getName() + " does not exist");
       logger.error(e.getMessage(), e.getCause());
       throw e;
     }
