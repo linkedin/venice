@@ -10,6 +10,8 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
+import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
@@ -249,8 +251,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final MetadataStoreWriter metadataStoreWriter;
     private final Optional<PushStatusStoreReader> pushStatusStoreReader;
     private final Optional<PushStatusStoreRecordDeleter> pushStatusStoreDeleter;
-    private final HelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
-    private final HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
+    private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
+    private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
     private final MetaStoreWriter metaStoreWriter;
     /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -379,9 +381,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushStatusStoreDeleter = Optional.empty();
         }
 
-        zkSharedSystemStoreRepository = new HelixReadOnlyZKSharedSystemStoreRepository(
+        zkSharedSystemStoreRepository = new SharedHelixReadOnlyZKSharedSystemStoreRepository(
             zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName());
-        zkSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(
+        zkSharedSchemaRepository = new SharedHelixReadOnlyZKSharedSchemaRepository(
             zkSharedSystemStoreRepository, zkClient, adapterSerializer, commonConfig.getSystemSchemaClusterName(),
             commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
         metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository);
@@ -4382,6 +4384,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void close() {
         manager.disconnect();
+        IOUtils.closeQuietly(zkSharedSystemStoreRepository);
+        IOUtils.closeQuietly(zkSharedSchemaRepository);
         zkClient.close();
         jobTrackingVeniceWriterMap.forEach( (k, v) -> IOUtils.closeQuietly(v));
         jobTrackingVeniceWriterMap.clear();
