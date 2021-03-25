@@ -1752,10 +1752,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract long getLeaderOffsetLag();
 
+  public abstract long getBatchLeaderOffsetLag();
+
+  public abstract long getHybridLeaderOffsetLag();
+
   /**
    * Measure the offset lag between follower and leader
    */
   public abstract long getFollowerOffsetLag();
+
+  public abstract long getBatchFollowerOffsetLag();
+
+  public abstract long getHybridFollowerOffsetLag();
 
   public abstract int getWriteComputeErrorCode();
 

@@ -235,6 +235,20 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       return ingestionTask.getLeaderOffsetLag();
     }
 
+    public long getBatchLeaderOffsetLag() {
+      if (ingestionTask == null) {
+        return 0;
+      }
+      return ingestionTask.getBatchLeaderOffsetLag();
+    }
+
+    public long getHybridLeaderOffsetLag() {
+      if (ingestionTask == null) {
+        return 0;
+      }
+      return ingestionTask.getHybridLeaderOffsetLag();
+    }
+
     /**
      * @return This stats is usually aggregated across the nodes so that
      * we can see the overall lags between leaders and followers.
@@ -247,6 +261,20 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
         return 0;
       }
       return ingestionTask.getFollowerOffsetLag();
+    }
+
+    public long getBatchFollowerOffsetLag() {
+      if (ingestionTask == null) {
+        return 0;
+      }
+      return ingestionTask.getBatchFollowerOffsetLag();
+    }
+
+    public long getHybridFollowerOffsetLag() {
+      if (ingestionTask == null) {
+        return 0;
+      }
+      return ingestionTask.getHybridFollowerOffsetLag();
     }
 
     public int getWriteComputeErrorCode() {
@@ -336,8 +364,16 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
 
       registerSensor("leader_offset_lag", new IngestionStatsGauge(this, () ->
           (double) getStats().getLeaderOffsetLag(), 0));
+      registerSensor("batch_leader_offset_lag", new IngestionStatsGauge(this, () ->
+          (double) getStats().getBatchLeaderOffsetLag(), 0));
+      registerSensor("hybrid_leader_offset_lag", new IngestionStatsGauge(this, () ->
+          (double) getStats().getHybridLeaderOffsetLag(), 0));
       registerSensor("follower_offset_lag", new IngestionStatsGauge(this, () ->
           (double) getStats().getFollowerOffsetLag(), 0));
+      registerSensor("batch_follower_offset_lag", new IngestionStatsGauge(this, () ->
+          (double) getStats().getBatchFollowerOffsetLag(), 0));
+      registerSensor("hybrid_follower_offset_lag", new IngestionStatsGauge(this, () ->
+          (double) getStats().getHybridFollowerOffsetLag(), 0));
       registerSensor("write_compute_operation_failure", new IngestionStatsGauge(this,
           () -> (double) getStats().getWriteComputeErrorCode()));
 

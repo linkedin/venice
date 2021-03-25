@@ -62,6 +62,7 @@ import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -1403,8 +1404,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  @Override
-  public long getLeaderOffsetLag() {
+  private static final Predicate<? super PartitionConsumptionState> LEADER_OFFSET_LAG_FILTER = pcs -> pcs.getLeaderState().equals(LEADER);
+  private static final Predicate<? super PartitionConsumptionState> BATCH_LEADER_OFFSET_LAG_FILTER = pcs ->
+      !pcs.isEndOfPushReceived() && pcs.getLeaderState().equals(LEADER);
+  private static final Predicate<? super PartitionConsumptionState> HYBRID_LEADER_OFFSET_LAG_FILTER = pcs ->
+      pcs.isEndOfPushReceived() && pcs.isHybrid() && pcs.getLeaderState().equals(LEADER);
+
+  private long getLeaderOffsetLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
 
     Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (!svs.isPresent()) {
@@ -1425,7 +1431,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     long offsetLag = partitionConsumptionStateMap.values()
         .stream()
-        .filter(pcs -> pcs.getLeaderState().equals(LEADER))
+        .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong((pcs) -> {
           String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();
@@ -1447,7 +1453,28 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  public long getFollowerOffsetLag() {
+  public long getLeaderOffsetLag() {
+    return getLeaderOffsetLag(LEADER_OFFSET_LAG_FILTER);
+  }
+
+  @Override
+  public long getBatchLeaderOffsetLag() {
+    return getLeaderOffsetLag(BATCH_LEADER_OFFSET_LAG_FILTER);
+  }
+
+  @Override
+  public long getHybridLeaderOffsetLag() {
+    return getLeaderOffsetLag(HYBRID_LEADER_OFFSET_LAG_FILTER);
+  }
+
+  private static final Predicate<? super PartitionConsumptionState> FOLLOWER_OFFSET_LAG_FILTER = pcs ->
+      pcs.getOffsetRecord().getUpstreamOffset() != -1  && !pcs.getLeaderState().equals(LEADER);
+  private static final Predicate<? super PartitionConsumptionState> BATCH_FOLLOWER_OFFSET_LAG_FILTER = pcs ->
+      !pcs.isEndOfPushReceived() && pcs.getOffsetRecord().getUpstreamOffset() != -1  && !pcs.getLeaderState().equals(LEADER);
+  private static final Predicate<? super PartitionConsumptionState> HYBRID_FOLLOWER_OFFSET_LAG_FILTER = pcs ->
+      pcs.isEndOfPushReceived() && pcs.isHybrid() && pcs.getOffsetRecord().getUpstreamOffset() != -1  && !pcs.getLeaderState().equals(LEADER);
+
+  private long getFollowerOffsetLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
     Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (!svs.isPresent()) {
       /**
@@ -1468,7 +1495,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long offsetLag = partitionConsumptionStateMap.values().stream()
         //only calculate followers who have received EOP since before that, both leaders and followers
         //consume from VT
-        .filter(pcs -> pcs.getOffsetRecord().getUpstreamOffset() != -1  && !pcs.getLeaderState().equals(LEADER))
+        .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong(pcs ->
             (cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, pcs.getPartition()) - 1)
@@ -1478,7 +1505,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return minZeroLag(offsetLag);
   }
 
+  @Override
+  public long getFollowerOffsetLag() {
+    return getFollowerOffsetLag(FOLLOWER_OFFSET_LAG_FILTER);
+  }
 
+  @Override
+  public long getBatchFollowerOffsetLag() {
+    return getFollowerOffsetLag(BATCH_FOLLOWER_OFFSET_LAG_FILTER);
+  }
+
+  @Override
+  public long getHybridFollowerOffsetLag() {
+    return getFollowerOffsetLag(HYBRID_FOLLOWER_OFFSET_LAG_FILTER);
+  }
 
   /**
    * Unsubscribe from all the topics being consumed for the partition in partitionConsumptionState
