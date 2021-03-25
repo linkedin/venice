@@ -272,7 +272,27 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
+  public long getBatchLeaderOffsetLag() {
+    return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
+  }
+
+  @Override
+  public long getHybridLeaderOffsetLag() {
+    return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
+  }
+
+  @Override
   public long getFollowerOffsetLag() {
+    return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
+  }
+
+  @Override
+  public long getBatchFollowerOffsetLag() {
+    return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
+  }
+
+  @Override
+  public long getHybridFollowerOffsetLag() {
     return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
   }
 
