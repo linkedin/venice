@@ -32,23 +32,18 @@ public class RouteHttpRequestStats {
       this.isConnManagerPendingConnEnabled = isConnManagerPendingConnEnabled;
     }
 
-  public void recordPendingRequest(String hostName) {
-    if (!isConnManagerPendingConnEnabled) {
-      InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
-      stats.recordPendingRequestCount();
-    }
+  public void recordPendingRequest(String hostName, long count) {
+    InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
+    stats.recordPendingRequestCount(count);
   }
 
   public void recordFinishedRequest(String hostName) {
-    if (!isConnManagerPendingConnEnabled) {
-      InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
-      stats.recordFinishedRequestCount();
-    }
+    InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
+    stats.recordFinishedRequestCount();
   }
 
   public void recordUnhealthyQueueDuration(String hostName, double duration) {
-    InternalHostStats
-        stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
+    InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
     stats.recordUnhealthyQueueDuration(duration);
   }
 
@@ -65,6 +60,7 @@ public class RouteHttpRequestStats {
 
   class InternalHostStats extends AbstractVeniceStats  {
     private final Sensor pendingRequestCountSensor;
+    private final Sensor pendingRequestCountSensorConnPool;
     private final Sensor unhealthyPendingQueueDuration;
     private final Sensor unhealthyPendingRateSensor;
     private AtomicLong pendingRequestCount;
@@ -73,12 +69,18 @@ public class RouteHttpRequestStats {
     public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
       pendingRequestCount = new AtomicLong();
-      pendingRequestCountSensor = registerSensor("pending_request_count", new Gauge(() -> pendingRequestCount.get()));
+      pendingRequestCountSensor = registerSensor("pending_request_count_router", new Gauge(() -> pendingRequestCount.get()));
+      pendingRequestCountSensorConnPool = registerSensor("pending_request_count_conn_pool", new Avg(), new Max());
+
       unhealthyPendingQueueDuration  = registerSensor("unhealthy_pending_queue_duration_per_route", new Avg(), new Min(), new Max(), new SampledTotal());;
       unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue_per_route", new OccurrenceRate());
     }
 
-    public void recordPendingRequestCount() {
+    public void recordPendingRequestCount(long count) {
+      if (isConnManagerPendingConnEnabled) {
+        pendingRequestCountSensorConnPool.record(count);
+      }
+
       pendingRequestCount.incrementAndGet();
     }
 

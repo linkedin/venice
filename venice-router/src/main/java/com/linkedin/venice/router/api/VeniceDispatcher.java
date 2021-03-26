@@ -192,7 +192,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           Optional.of(requestType),
           SERVICE_UNAVAILABLE,
           "Maximum number of pending request threshold reached! Current pending request count: "
-              + pendingRequestThrottler.getCurrentPendingRequestCount() + ". Please contact Venice team.");
+              + pendingRequestThrottler.getCurrentPendingRequestCount());
     }
 
     ReentrantLock lock = storageNodeLockMap.computeIfAbsent(hostName, id ->  new ReentrantLock());
@@ -213,7 +213,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
               Optional.of(requestType), SERVICE_UNAVAILABLE, "Too many pending request to storage node : " + hostName);
         }
       }
-      routerStats.recordPendingRequest(storageNode.getNodeId());
+      routerStats.recordPendingRequest(storageNode.getNodeId(), pendingRequestCount);
     } finally {
       lock.unlock();
       if (isRequestThrottled) {
