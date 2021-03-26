@@ -108,6 +108,13 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     }
   }
 
+  public void recordRequestThrottledByRouterCapacity(String storeName) {
+    totalStats.recordRequestThrottledByRouterCapacity();
+    if (storeName != null) {
+      getStoreStats(storeName).recordRequestThrottledByRouterCapacity();
+    }
+  }
+
   public void recordFanoutRequestCount(String storeName, int count) {
     totalStats.recordFanoutRequestCount(count);
     getStoreStats(storeName).recordFanoutRequestCount(count);

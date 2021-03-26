@@ -183,8 +183,12 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
       ));
     }
 
+    /**
+     * Return number of request being used + awaiting connection.
+     * @return
+     */
     public Long getPendingRequestCount() {
-      return getRouteAggStats(PoolStats::getPending);
+      return getRouteAggStats(poolStats -> poolStats.getLeased() + poolStats.getPending());
     }
 
     private Long getRouteAggStats(Function<PoolStats, Integer> func) {

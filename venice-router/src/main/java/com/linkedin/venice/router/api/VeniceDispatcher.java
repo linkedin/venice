@@ -73,7 +73,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final StorageNodeClient storageNodeClient;
   private final PendingRequestThrottler pendingRequestThrottler;
 
-  private final RouteHttpRequestStats routerStats;
+  private final RouteHttpRequestStats routeHttpRequestStats;
   private final RouterStats<RouteHttpStats> perRouteStatsByType;
   private final RouterStats<AggRouterHttpRequestStats> perStoreStatsByType;
 
@@ -84,19 +84,22 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   private final LeakedCompletableFutureCleanupService leakedCompletableFutureCleanupService;
 
+  private final RouterStats<AggRouterHttpRequestStats> routerStats;
+
   public VeniceDispatcher(
       VeniceRouterConfig config,
       ReadOnlyStoreRepository storeRepository,
       RouterStats perStoreStatsByType,
       MetricsRepository metricsRepository,
       StorageNodeClient storageNodeClient,
-      RouteHttpRequestStats routerStats,
-      AggHostHealthStats aggHostHealthStats) {
+      RouteHttpRequestStats routeHttpRequestStats,
+      AggHostHealthStats aggHostHealthStats,
+      RouterStats<AggRouterHttpRequestStats> routetrStats) {
     this.routerConfig = config;
     this.routerUnhealthyPendingConnThresholdPerRoute = routerConfig.getRouterUnhealthyPendingConnThresholdPerRoute();
     this.isStateFullHealthCheckEnabled = routerConfig.isStatefulRouterHealthCheckEnabled();
     this.storeRepository = storeRepository;
-    this.routerStats = routerStats;
+    this.routeHttpRequestStats = routeHttpRequestStats;
     this.perRouteStatsByType = new RouterStats<>(requestType -> new RouteHttpStats(metricsRepository, requestType));
     this.perStoreStatsByType = perStoreStatsByType;
     this.storageNodeClient = storageNodeClient;
@@ -105,6 +108,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
     this.leakedCompletableFutureCleanupService = new LeakedCompletableFutureCleanupService();
     this.leakedCompletableFutureCleanupService.start();
+    this.routerStats = routetrStats;
   }
 
   @Override
@@ -187,6 +191,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
      *       in the earlier stack before scattering any request, which can save more resource.
      */
     if (!pendingRequestThrottler.put()) {
+      AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
+      stats.recordRequestThrottledByRouterCapacity(storeName);
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.of(storeName),
           Optional.of(requestType),
@@ -199,7 +205,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     boolean isRequestThrottled = false;
     lock.lock();
     try {
-      long pendingRequestCount = routerStats.getPendingRequestCount(storageNode.getNodeId());
+      long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(storageNode.getNodeId());
       if (isStateFullHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
         isRequestThrottled = true;
         // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which increases the unhealthy request metric.
@@ -213,7 +219,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
               Optional.of(requestType), SERVICE_UNAVAILABLE, "Too many pending request to storage node : " + hostName);
         }
       }
-      routerStats.recordPendingRequest(storageNode.getNodeId(), pendingRequestCount);
+      routeHttpRequestStats.recordPendingRequest(storageNode.getNodeId());
     } finally {
       lock.unlock();
       if (isRequestThrottled) {
@@ -245,7 +251,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         RouteHttpStats perRouteStats = perRouteStatsByType.getStatsByType(requestType);
         perRouteStats.recordResponseWaitingTime(storageNode.getHost(), LatencyUtils.getLatencyInMS(startTime));
 
-        routerStats.recordFinishedRequest(storageNode.getNodeId());
+        routeHttpRequestStats.recordFinishedRequest(storageNode.getNodeId());
         pendingRequestThrottler.take();
         responseFutureMap.remove(requestId);
       });
@@ -294,8 +300,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   /**
    * For TEST ONLY
    */
-  public RouteHttpRequestStats getRouterStats() {
-    return routerStats;
+  public RouteHttpRequestStats getRouteHttpRequestStats() {
+    return routeHttpRequestStats;
   }
 
   /**
