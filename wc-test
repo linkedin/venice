@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+
+import os
+import json
+import argparse
+import textwrap
+import subprocess
+
+CI_CONFIG = ".ciconfig"
+
+def get_config(file_name):
+  file_path = file_name if os.path.isfile(file_name) else os.path.expanduser(os.path.join('~', file_name))
+  with open(file_path) as file:
+    config = json.load(file)
+    return config
+
+def run_command(command):
+  status, output = subprocess.getstatusoutput(command)
+  if status:
+    raise SystemExit(output)
+  return output
+
+if __name__ == "__main__":
+  parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawTextHelpFormatter,
+    description=textwrap.dedent(
+      """
+      Run tests on Jenkins with current working copy changes.
+
+      Please follow instructions from the link below to generate an API token:
+      https://jenkins.io/doc/book/system-administration/authenticating-scripted-clients
+
+      Example ~/{config}:
+        {{
+          \"url\": \"https://venice-ci.stg.linkedin.com:8443\",
+          \"apiToken\": \"**********************************\"
+        }}
+      """.format(config=CI_CONFIG)))
+
+  parser.add_argument("patch", nargs='?', help="Patch file to submit for testing.")
+  args = parser.parse_args()
+
+  params = dict(job="Venice-WcTest")
+  params.update(get_config(CI_CONFIG))
+
+  if args.patch:
+    run_command(
+      "curl -fv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
+        .format(**params, patch=args.patch))
+  else:
+    changes = run_command("git diff --patch --compact-summary origin/master")
+    if not changes:
+      raise SystemExit("No changes")
+
+    revision = '#' + run_command("git rev-parse --short HEAD")
+    run_command(
+        "curl -fv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={patch_name}' <<'\003'\n{changes}\n\003"
+          .format(**params, changes=changes, patch_name=revision))
+
+    print("Submitted working copy {patch_name} for testing:".format(patch_name=revision))
+    print(run_command("git diff --compact-summary origin/master"))
+    print()
+
+  print("{url}/job/{job}".format(**params))
