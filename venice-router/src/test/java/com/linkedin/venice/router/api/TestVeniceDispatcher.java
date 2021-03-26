@@ -109,8 +109,8 @@ public class TestVeniceDispatcher {
 
       triggerResponse(dispatcher, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
         Assert.assertEquals(successRetries.size(), 0);
-        verify(dispatcher.getRouterStats(), times(1)).recordFinishedRequest(any());
-        verify(dispatcher.getRouterStats(), times(1)).getPendingRequestCount(any());
+        verify(dispatcher.getRouteHttpRequestStats(), times(1)).recordFinishedRequest(any());
+        verify(dispatcher.getRouteHttpRequestStats(), times(1)).getPendingRequestCount(any());
       }, true);
     } finally {
       dispatcher.stop();
@@ -187,7 +187,7 @@ public class TestVeniceDispatcher {
       storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo, mockLiveInstanceMonitor);
     }
     VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockStoreRepo,
-        mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats, mock(AggHostHealthStats.class));
+        mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats, mock(AggHostHealthStats.class), mock(RouterStats.class));
     return dispatcher;
   }
 

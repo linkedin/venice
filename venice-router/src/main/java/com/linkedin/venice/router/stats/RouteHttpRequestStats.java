@@ -32,9 +32,9 @@ public class RouteHttpRequestStats {
       this.isConnManagerPendingConnEnabled = isConnManagerPendingConnEnabled;
     }
 
-  public void recordPendingRequest(String hostName, long count) {
+  public void recordPendingRequest(String hostName) {
     InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
-    stats.recordPendingRequestCount(count);
+    stats.recordPendingRequestCount();
   }
 
   public void recordFinishedRequest(String hostName) {
@@ -60,7 +60,6 @@ public class RouteHttpRequestStats {
 
   class InternalHostStats extends AbstractVeniceStats  {
     private final Sensor pendingRequestCountSensor;
-    private final Sensor pendingRequestCountSensorConnPool;
     private final Sensor unhealthyPendingQueueDuration;
     private final Sensor unhealthyPendingRateSensor;
     private AtomicLong pendingRequestCount;
@@ -69,18 +68,13 @@ public class RouteHttpRequestStats {
     public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
       super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
       pendingRequestCount = new AtomicLong();
-      pendingRequestCountSensor = registerSensor("pending_request_count_router", new Gauge(() -> pendingRequestCount.get()));
-      pendingRequestCountSensorConnPool = registerSensor("pending_request_count_conn_pool", new Avg(), new Max());
+      pendingRequestCountSensor = registerSensor("pending_request_count", new Gauge(() -> pendingRequestCount.get()));
 
       unhealthyPendingQueueDuration  = registerSensor("unhealthy_pending_queue_duration_per_route", new Avg(), new Min(), new Max(), new SampledTotal());;
       unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue_per_route", new OccurrenceRate());
     }
 
-    public void recordPendingRequestCount(long count) {
-      if (isConnManagerPendingConnEnabled) {
-        pendingRequestCountSensorConnPool.record(count);
-      }
-
+    public void recordPendingRequestCount() {
       pendingRequestCount.incrementAndGet();
     }
 
