@@ -127,7 +127,7 @@ public class InstanceStatusDecider {
         }
       return NodeRemovableResult.removableResult();
     } catch (Exception e) {
-      String errorMsg = "Can not get current states for instance:" + instanceId + " from Zookeeper";
+      String errorMsg = "Can not verify whether instance " + instanceId + " is removable.";
       logger.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
