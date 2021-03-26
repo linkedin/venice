@@ -1499,6 +1499,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
   protected abstract String getBatchWriteSourceAddress();
 
+  Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
+    return Optional.of(partitionConsumptionStateMap.get(partitionId));
+  }
+
   /**
    * Common record check for different state models:
    * check whether server continues receiving messages after EOP for a batch-only store.
@@ -2869,6 +2873,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected void waitForAllMessageToBeProcessedFromTopicPartition(String topic, int partition,
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+    final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
 
     /**
      * This will wait for all the messages to be processed (persisted to disk) that are already
@@ -2888,11 +2893,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The code should only be effective in L/F model Leader instances as lastFuture should be null in all other scenarios.
      */
     if (partitionConsumptionState != null) {
+      /**
+       * The following logic will make sure all the records queued in the buffer queue will be processed completely.
+       */
+      try {
+        CompletableFuture<Void> lastQueuedRecordPersistedFuture = partitionConsumptionState.getLastQueuedRecordPersistedFuture();
+        if (lastQueuedRecordPersistedFuture != null) {
+          lastQueuedRecordPersistedFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+        }
+      } catch (Exception e) {
+        logger.error("Got exception while waiting for the latest queued record future to be completed for topic: "
+            + topic + " partition: " + partition, e);
+      }
       try {
         Future<Void> lastFuture = partitionConsumptionState.getLastLeaderPersistFuture();
         if (lastFuture != null) {
           long synchronizeStartTimeInNS = System.nanoTime();
-          lastFuture.get();
+          lastFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
           storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
         }
       } catch (Exception e) {
