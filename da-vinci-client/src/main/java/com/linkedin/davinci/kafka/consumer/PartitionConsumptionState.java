@@ -9,6 +9,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 
@@ -79,6 +80,14 @@ public class PartitionConsumptionState {
    * this map or from the DB.
    */
   private ConcurrentMap<ByteBuffer, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
+
+  /**
+   * This field is used to track whether the last queued record has been fully processed or not.
+   * For Leader role, it is redundant from {@literal ProducedRecord#persistedToDBFuture} since it is tracking
+   * the completeness end to end, since this field won't be set.
+   * This field is useful for O/B/O model or for follower role since the server doesn't need to produce to local Kafka.
+   */
+  private CompletableFuture<Void> lastQueuedRecordPersistedFuture;
 
 
   public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid, boolean isIncrementalPushEnabled) {
@@ -235,6 +244,14 @@ public class PartitionConsumptionState {
 
   public Future<Void> getLastLeaderPersistFuture() {
     return this.lastLeaderPersistFuture;
+  }
+
+  public CompletableFuture<Void> getLastQueuedRecordPersistedFuture() {
+    return lastQueuedRecordPersistedFuture;
+  }
+
+  public void setLastQueuedRecordPersistedFuture(CompletableFuture<Void> lastQueuedRecordPersistedFuture) {
+    this.lastQueuedRecordPersistedFuture = lastQueuedRecordPersistedFuture;
   }
 
   /**

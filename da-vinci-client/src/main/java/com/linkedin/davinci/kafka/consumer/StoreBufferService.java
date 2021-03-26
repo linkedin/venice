@@ -10,7 +10,9 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -55,11 +57,14 @@ public class StoreBufferService extends AbstractVeniceService {
     private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final ProducedRecord producedRecord;
+    private final Optional<CompletableFuture<Void>> queuedRecordPersistedFuture;
 
-    public QueueNode(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, StoreIngestionTask ingestionTask, ProducedRecord producedRecord) {
+    public QueueNode(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, StoreIngestionTask ingestionTask,
+        ProducedRecord producedRecord, Optional<CompletableFuture<Void>> queuedRecordPersistedFuture) {
       this.consumerRecord = consumerRecord;
       this.ingestionTask = ingestionTask;
       this.producedRecord = producedRecord;
+      this.queuedRecordPersistedFuture = queuedRecordPersistedFuture;
     }
 
     public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getConsumerRecord() {
@@ -71,6 +76,10 @@ public class StoreBufferService extends AbstractVeniceService {
     }
 
     public ProducedRecord getProducedRecord() { return this.producedRecord; }
+
+    public Optional<CompletableFuture<Void>> getQueuedRecordPersistedFuture() {
+      return queuedRecordPersistedFuture;
+    }
 
     /**
      * This function is being used by {@link BlockingQueue#contains(Object)}.
@@ -140,6 +149,7 @@ public class StoreBufferService extends AbstractVeniceService {
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = node.getConsumerRecord();
         ProducedRecord producedRecord = node.getProducedRecord();
         StoreIngestionTask ingestionTask = node.getIngestionTask();
+        Optional<CompletableFuture<Void>> recordPersistedFuture = node.getQueuedRecordPersistedFuture();
         try {
           long startTime = System.currentTimeMillis();
           ingestionTask.processConsumerRecord(consumerRecord, producedRecord);
@@ -147,6 +157,13 @@ public class StoreBufferService extends AbstractVeniceService {
           if (producedRecord != null) {
             producedRecord.completePersistedToDBFuture(null);
           }
+          /**
+           * Complete {@link QueueNode#queuedRecordPersistedFuture} since the processing for the current record is done.
+           */
+          if (recordPersistedFuture.isPresent()) {
+            recordPersistedFuture.get().complete(null);
+          }
+
           TopicPartition topicPartition = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
           topicToTimeSpent.compute(topicPartition, (K,V) ->  (V == null ? 0 : V) + System.currentTimeMillis() - startTime );
         } catch (Throwable e) {
@@ -167,6 +184,9 @@ public class StoreBufferService extends AbstractVeniceService {
             ingestionTask.setLastDrainerException(ee);
             if (producedRecord != null) {
               producedRecord.completePersistedToDBFuture(ee);
+            }
+            if (recordPersistedFuture.isPresent()) {
+              recordPersistedFuture.get().completeExceptionally(ee);
             }
             if (e instanceof VeniceChecksumException) {
               ingestionTask.recordChecksumVerificationFailure();
@@ -208,11 +228,26 @@ public class StoreBufferService extends AbstractVeniceService {
   }
 
   public void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-                                StoreIngestionTask ingestionTask, ProducedRecord producedRecord) throws InterruptedException {
+      StoreIngestionTask ingestionTask, ProducedRecord producedRecord)
+      throws InterruptedException {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord);
+    Optional<CompletableFuture<Void>> recordFuture = Optional.empty();
+    if (producedRecord == null) {
+      /**
+       * The last queued record persisted future will only be setup when {@param producedRecord} is 'null',
+       * since {@link ProducedRecord#persistedToDBFuture} is a superset of this, which is tracking the
+       * end-to-end completeness when producing to local Kafka is needed.
+       */
+      recordFuture = Optional.of(new CompletableFuture<>());
+    }
 
     blockingQueueArr.get(drainerIndex)
-        .put(new QueueNode(consumerRecord, ingestionTask, producedRecord));
+        .put(new QueueNode(consumerRecord, ingestionTask, producedRecord, recordFuture));
+    // Setup the last queued record's future
+    Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
+    if (partitionConsumptionState.isPresent() && recordFuture.isPresent()) {
+      partitionConsumptionState.get().setLastQueuedRecordPersistedFuture(recordFuture.get());
+    }
   }
 
   /**
@@ -234,7 +269,7 @@ public class StoreBufferService extends AbstractVeniceService {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fakeRecord = new ConsumerRecord<>(topic, partition, -1, null, null);
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord);
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
-    QueueNode fakeNode = new QueueNode(fakeRecord, null, null);
+    QueueNode fakeNode = new QueueNode(fakeRecord, null, null, Optional.empty());
 
     int cur = 0;
     while (cur++ < retryNum) {

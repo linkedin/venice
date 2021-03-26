@@ -830,10 +830,15 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       try {
         LOGGER.info("Start the manual compaction for database: " + storeName + ", partition: " + partitionId);
         rocksDB.compactRange();
-        rocksDB.close();
-        // Reopen the database with auto compaction on
-        this.options.setDisableAutoCompactions(false);
-        rocksDB = rocksDBThrottler.open(options, fullPathForPartitionDB);
+        synchronized(this) {
+          /**
+           * Guard the critical section for closing/re-opening database.
+           */
+          rocksDB.close();
+          // Reopen the database with auto compaction on
+          this.options.setDisableAutoCompactions(false);
+          rocksDB = rocksDBThrottler.open(options, fullPathForPartitionDB);
+        }
         dbCompactFuture.complete(null);
         LOGGER.info("Manual compaction for database: " + storeName + ", partition: " + partitionId +
             " is done, and the database was re-opened with auto compaction enabled");
