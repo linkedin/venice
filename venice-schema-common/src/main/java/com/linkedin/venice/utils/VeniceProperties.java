@@ -8,6 +8,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,27 +20,32 @@ import java.util.function.Supplier;
 
 
 public class VeniceProperties {
-  private final Map<String, String> props = new HashMap<>();
+  private final Map<String, String> props;
 
   public VeniceProperties() {
+    props = Collections.emptyMap();
   }
 
   public VeniceProperties(Properties properties) {
+    Map<String, String> tmpProps = new HashMap<>(properties.size());
     for (Map.Entry<Object, Object> e : properties.entrySet()) {
-      props.put(
+      tmpProps.put(
           (String) e.getKey(),
           null == e.getValue() ? null : e.getValue().toString()
       );
     }
+    props = Collections.unmodifiableMap(tmpProps);
   }
 
   public VeniceProperties(Map<CharSequence, CharSequence> properties) {
+    Map<String, String> tmpProps = new HashMap<>(properties.size());
     for (Map.Entry<CharSequence, CharSequence> e : properties.entrySet()) {
-      props.put(
+      tmpProps.put(
           e.getKey().toString(),
           null == e.getValue() ? null : e.getValue().toString()
       );
     }
+    props = Collections.unmodifiableMap(tmpProps);
   }
 
   public Set<String> keySet() {

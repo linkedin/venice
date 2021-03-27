@@ -421,7 +421,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * @return
    */
   public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterWhitelist, Boolean D2Routing) {
-    Properties childDataCenterUriProps;
     String propsPrefix =  D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
     return parseChildDataCenterToValue(propsPrefix, clusterPros, datacenterWhitelist,
         (m, k, v, errMsg) -> {

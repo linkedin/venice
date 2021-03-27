@@ -15,6 +15,8 @@ import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -480,6 +482,9 @@ public interface Admin extends AutoCloseable, Closeable {
 
     void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value);
 
+    PushJobDetails getPushJobDetails(PushJobStatusRecordKey key);
+
+    BatchJobHeartbeatValue getBatchJobHeartbeatValue(BatchJobHeartbeatKey batchJobHeartbeatKey);
 
     void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 

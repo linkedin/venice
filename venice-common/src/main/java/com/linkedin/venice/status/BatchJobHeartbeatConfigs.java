@@ -1,9 +1,10 @@
-package com.linkedin.venice.hadoop.heartbeat;
+package com.linkedin.venice.status;
 
 import com.linkedin.venice.utils.Utils;
 import java.time.Duration;
 
-public class HeartbeatConfigs {
+
+public class BatchJobHeartbeatConfigs {
 
     public static final Utils.ConfigEntity<Boolean> HEARTBEAT_ENABLED_CONFIG = new Utils.ConfigEntity<>(
             "batch.job.heartbeat.enabled",
@@ -35,7 +36,7 @@ public class HeartbeatConfigs {
             null,
             "Heartbeat store name"
     );
-    private HeartbeatConfigs() {
+    private BatchJobHeartbeatConfigs() {
         // Util class
     }
 }
