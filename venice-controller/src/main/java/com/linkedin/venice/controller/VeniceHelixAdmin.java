@@ -6,6 +6,9 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.client.store.AvroSpecificStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -106,6 +109,8 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
@@ -145,6 +150,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
@@ -212,12 +218,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, AdminConsumerService> adminConsumerServices = new ConcurrentHashMap<>();
 
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
-    public static final long CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS = 1000*300l; // 5min
-    public static final long CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS = 500l;
+    public static final long CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5);
+    public static final long CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS = 500;
     public static final long WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS = 500;
 
     private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
-    private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = 5000;
+    private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
     private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
 
     // TODO remove this field and all invocations once we are fully on HaaS. Use the helixAdminClient instead.
@@ -254,6 +260,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
     private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
     private final MetaStoreWriter metaStoreWriter;
+    private AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> pushJobDetailsStoreClient;
+
     /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
@@ -264,7 +272,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     private PropertyKey.Builder level1KeyBuilder;
 
-    private String pushJobStatusTopicName;
     private String pushJobDetailsRTTopic;
 
     // Those variables will be initialized lazily.
@@ -776,6 +783,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return response.getId();
     }
 
+    @Override
     public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
         if (pushJobStatusStoreClusterName.isEmpty()) {
             throw new VeniceException(("Unable to send the push job details because "
@@ -812,6 +820,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pushJobDetailsWriter.put(key, value, pushJobDetailsSchemaId, null);
     }
 
+    @Override
+    public PushJobDetails getPushJobDetails(PushJobStatusRecordKey key) {
+        Utils.notNull(key);
+        String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+        String d2Service = discoverCluster(storeName).getSecond();
+        return readValue(key, storeName, d2Service, PushJobDetails.class);
+    }
+
+    @Override
+    public BatchJobHeartbeatValue getBatchJobHeartbeatValue(BatchJobHeartbeatKey batchJobHeartbeatKey) {
+        Utils.notNull(batchJobHeartbeatKey);
+        String storeName = VeniceSystemStoreUtils.getBatchJobHeartbeatStoreName();
+        String d2Service = discoverCluster(storeName).getSecond();
+        return readValue(batchJobHeartbeatKey, storeName, d2Service, BatchJobHeartbeatValue.class);
+    }
+
+    private static <K, V extends SpecificRecord> V readValue(K key, String storeName, String d2Service,  Class<V> specificValueClass) {
+        // TODO: we may need to use the ICProvider interface to avoid missing IC warning logs when making these client calls
+        try (AvroSpecificStoreClient<K, V> client = ClientFactory.getAndStartSpecificAvroClient(
+                ClientConfig.defaultSpecificClientConfig(
+                    storeName,
+                    specificValueClass
+                ).setD2ServiceName(d2Service))
+        ) {
+            return client.get(key).get();
+        } catch (Exception e) {
+            throw new VeniceException(e);
+        }
+    }
+
+    @Override
     public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
         //validate store and version exist
         Store store = getStore(clusterName, storeName);

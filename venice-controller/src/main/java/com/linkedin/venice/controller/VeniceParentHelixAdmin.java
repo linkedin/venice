@@ -79,6 +79,8 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -94,7 +96,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
 import java.util.LinkedList;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -106,7 +107,6 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
-
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -196,6 +196,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final ExecutorService systemStoreAclSynchronizationExecutor;
 
+  private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty());
@@ -203,6 +204,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
       boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<AuthorizerService> authorizerService) {
+    this(veniceHelixAdmin, multiClusterConfigs, sslEnabled, sslConfig, authorizerService, new DefaultLingeringStoreVersionChecker());
+  }
+
+  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
+      boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<AuthorizerService> authorizerService,
+      LingeringStoreVersionChecker lingeringStoreVersionChecker) {
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
@@ -245,6 +252,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (systemStoreAclSynchronizationTask != null) {
       systemStoreAclSynchronizationExecutor.submit(systemStoreAclSynchronizationTask);
     }
+    this.lingeringStoreVersionChecker = Utils.notNull(lingeringStoreVersionChecker);
   }
 
   // For testing purpose
@@ -831,7 +839,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       String existingPushJobId = version.get().getPushJobId();
       if (!existingPushJobId.equals(pushJobId)) {
-        if (checkLingeringVersion(store, version.get())) {
+        if (lingeringStoreVersionChecker.isStoreVersionLingering(store, version.get(), timer, veniceHelixAdmin)) {
           if (pushType.isIncremental()) {
             /**
              * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't
@@ -2088,6 +2096,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return timer;
   }
 
+  // Visible for testing
   protected void setTimer(Time timer) {
     this.timer = timer;
   }
@@ -2220,10 +2229,22 @@ public class VeniceParentHelixAdmin implements Admin {
     veniceHelixAdmin.updateClusterDiscovery(storeName, oldCluster, newCluster);
   }
 
+  @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
     veniceHelixAdmin.sendPushJobDetails(key, value);
   }
 
+  @Override
+  public PushJobDetails getPushJobDetails(PushJobStatusRecordKey key) {
+    return veniceHelixAdmin.getPushJobDetails(key);
+  }
+
+  @Override
+  public BatchJobHeartbeatValue getBatchJobHeartbeatValue(BatchJobHeartbeatKey batchJobHeartbeatKey) {
+    return veniceHelixAdmin.getBatchJobHeartbeatValue(batchJobHeartbeatKey);
+  }
+
+  @Override
   public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
     veniceHelixAdmin.writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush);
   }
@@ -2236,6 +2257,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return true;
   }
 
+  @Override
   public void migrateStore(String srcClusterName, String destClusterName, String storeName) {
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
@@ -2402,18 +2424,6 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName);
     }
-  }
-
-  /**
-   * Check if a version has been lingering around for more than the bootstrap to online timeout because of bugs or other
-   * unexpected events.
-   * @param store of interest.
-   * @param version of interest that may be lingering around.
-   * @return true if the provided version is has been lingering around for long enough and is killed, otherwise false.
-   */
-  private boolean checkLingeringVersion(Store store, Version version) {
-    long bootstrapTimeLimit = version.getCreatedTime() + store.getBootstrapToOnlineTimeoutInHours() * Time.MS_PER_HOUR;
-    return timer.getMilliseconds() > bootstrapTimeLimit;
   }
 
   /**

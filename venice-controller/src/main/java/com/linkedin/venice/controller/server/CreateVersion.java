@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -81,6 +82,7 @@ public class CreateVersion extends AbstractRoute {
           responseObject.setError(errorMsg);
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
+
         AdminSparkServer.validateParams(request, REQUEST_TOPIC.getParams(), admin);
 
         //Query params

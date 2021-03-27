@@ -145,53 +145,20 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
 
     @Override
-    public void updateStore(String clusterName,
-        String storeName,
-        UpdateStoreQueryParams params) {
-      Optional<String> owner = params.getOwner();
-      Optional<Boolean> readability = params.getEnableReads();
-      Optional<Boolean> writeability = params.getEnableWrites();
-      Optional<Integer> partitionCount = params.getPartitionCount();
-      Optional<String> partitionerClass = params.getPartitionerClass();
-      Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
-      Optional<Integer> amplificationFactor = params.getAmplificationFactor();
-      Optional<Long> storageQuotaInByte = params.getStorageQuotaInByte();
-      Optional<Boolean> hybridStoreDbOverheadBypass = params.getHybridStoreOverheadBypass();
-      Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
-      Optional<Integer> currentVersion = params.getCurrentVersion();
-      Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
+    public void updateStore(
+            String clusterName,
+            String storeName,
+            UpdateStoreQueryParams params
+    ) {
       Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
       Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
-      Optional<Boolean> accessControlled = params.getAccessControlled();
-      Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
-      Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
-      Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
-      Optional<Integer> batchGetLimit = params.getBatchGetLimit();
-      Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
-      Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
-      Optional<Boolean> storeMigration = params.getStoreMigration();
-      Optional<Boolean> writeComputationEnabled = params.getWriteComputationEnabled();
-      Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
-      Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
-      Optional<Boolean> leaderFollowerModelEnabled = params.getLeaderFollowerModelEnabled();
-      Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
-      Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
-      Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
-      Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
-      Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
-      Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
-      Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
-      Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
-      Optional<IncrementalPushPolicy> incrementalPushPolicy = params.getIncrementalPushPolicy();
-      Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
-      Optional<Integer> replicationFactor = params.getReplicationFactor();
+
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
       }
       if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
-        final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.isPresent() ? hybridTimeLagThreshold.get()
-            : DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+        final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
         systemStores.get(storeName)
             .setHybridStoreConfig(new HybridStoreConfigImpl(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get(), finalHybridTimeLagThreshold));
       }
@@ -1652,7 +1619,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       long startTime = System.currentTimeMillis();
       MockTime mockTime = new MockTime(startTime);
       partialMockParentAdmin.setTimer(mockTime);
-      mockTime.addMilliseconds(30 * Time.MS_PER_HOUR);
+      mockTime.addMilliseconds(TimeUnit.HOURS.toMillis(30));
       String storeName = "test_store";
       String existingTopicName = storeName + "_v1";
       Store store = mock(Store.class);

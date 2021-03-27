@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop.heartbeat;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -25,7 +24,7 @@ import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.heartbeat.HeartbeatConfigs.*;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 
 public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSenderFactory {
   private static final Logger LOGGER = Logger.getLogger(DefaultPushJobHeartbeatSenderFactory.class);

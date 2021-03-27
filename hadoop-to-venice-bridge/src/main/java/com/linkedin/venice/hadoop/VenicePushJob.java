@@ -82,7 +82,7 @@ import java.util.concurrent.TimeUnit;
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.hadoop.heartbeat.HeartbeatConfigs.*;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
 import static org.apache.hadoop.mapreduce.MRJobConfig.*;
 import static org.apache.hadoop.security.UserGroupInformation.*;
 
@@ -863,6 +863,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         Map<CharSequence, CharSequence> pushJobConfigs = new HashMap<>();
         for (String key : props.keySet()) {
           pushJobConfigs.put(key, props.getString(key));
+        }
+        if (!pushJobConfigs.containsKey(HEARTBEAT_ENABLED_CONFIG.getConfigName())) {
+          pushJobConfigs.put(HEARTBEAT_ENABLED_CONFIG.getConfigName(), String.valueOf(jobHeartbeatEnabled));
         }
         pushJobDetails.pushJobConfigs = pushJobConfigs;
         // TODO find a way to get meaningful producer configs to populate the producerConfigs map here.
