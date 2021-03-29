@@ -27,6 +27,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -437,7 +438,7 @@ public class StoreIngestionTaskTest {
         .setPartitionStateSerializer(partitionStateSerializer)
         .build();
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
-        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true,
+        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, storeConfig, true,
         false, "", PARTITION_FOO, false, new DefaultVenicePartitioner());
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 

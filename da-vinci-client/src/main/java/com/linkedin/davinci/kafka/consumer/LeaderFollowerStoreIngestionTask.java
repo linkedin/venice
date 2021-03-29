@@ -32,6 +32,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -147,6 +148,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean isIncrementalPushEnabled,
+      IncrementalPushPolicy incrementalPushPolicy,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
@@ -182,6 +184,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isCurrentVersion,
         hybridStoreConfig,
         isIncrementalPushEnabled,
+        incrementalPushPolicy,
         storeConfig,
         diskUsage,
         rocksDBMemoryStats,
@@ -445,8 +448,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            *   and push job directly produces prod cluster instead of parent corp cluster.
            * TODO: The logic needs to be updated in order to support native replication for hybrid.
            */
-          if (partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived() &&
-              !partitionConsumptionState.isIncrementalPushEnabled()) {
+          if (shouldLeaderSwitchLocalConsumption(partitionConsumptionState)) {
             // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
             consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
             // If remote consumption flag is false, existing messages for the partition in the drainer queue should be processed before that
@@ -547,6 +549,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     long lastConsumedMessageTimestamp = partitionConsumptionState.getLatestMessageConsumptionTimestampInMs();
 
     return lastConsumedMessageTimestamp;
+  }
+
+  private boolean shouldLeaderSwitchLocalConsumption(PartitionConsumptionState partitionConsumptionState) {
+    return (partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived() && !(
+        partitionConsumptionState.isIncrementalPushEnabled() && partitionConsumptionState.getIncrementalPushPolicy()
+            .equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) && !isWriteComputationEnabled);
   }
 
   /**

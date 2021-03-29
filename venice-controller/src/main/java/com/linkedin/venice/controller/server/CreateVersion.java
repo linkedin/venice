@@ -173,6 +173,15 @@ public class CreateVersion extends AbstractRoute {
             }
             String dictionaryStr = request.queryParams(COMPRESSION_DICTIONARY);
 
+            /**
+             * Before trying to get the version, create the RT topic in parent kafka since it's needed anyway in following cases.
+             * Otherwise topic existence check fails internally.
+             */
+            if (pushType.isIncremental() && (isWriteComputeEnabled || store.getIncrementalPushPolicy()
+                .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
+              admin.getRealTimeTopic(clusterName, storeName);
+            }
+
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
                    pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric);
@@ -186,7 +195,7 @@ public class CreateVersion extends AbstractRoute {
             if(pushType.isStreamReprocessing()) {
               responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
             } else if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
-              responseTopic = admin.getRealTimeTopic(clusterName, storeName);
+              responseTopic = Version.composeRealTimeTopic(storeName);
             } else if (pushType.isIncremental() && store.isHybrid()) {
               /** We want to check if the current version has both incremental push and buffer replay enabled but a full push has
                *  not been made. There are three possible cases of config updates that could lead to this:
@@ -225,7 +234,7 @@ public class CreateVersion extends AbstractRoute {
             if (isWriteComputeEnabled && pushType.isIncremental() &&
                !version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
 
-              String realTimeTopic = admin.getRealTimeTopic(clusterName, storeName);
+              String realTimeTopic = Version.composeRealTimeTopic(storeName);
 
               VeniceWriter veniceWriter = admin.getVeniceWriterFactory()
                   .createVeniceWriter(responseObject.getKafkaTopic(), responseObject.getKafkaBootstrapServers());

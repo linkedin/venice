@@ -414,6 +414,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         isVersionCurrent,
         Optional.ofNullable(version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig()),
         version.isUseVersionLevelIncrementalPushEnabled() ? version.isIncrementalPushEnabled() : store.isIncrementalPushEnabled(),
+        version.getIncrementalPushPolicy(),
         veniceStoreConfig,
         version.isBufferReplayEnabledForHybrid(),
         version.isNativeReplicationEnabled(),

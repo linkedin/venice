@@ -9,6 +9,7 @@ import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
@@ -244,7 +245,7 @@ public class StorageExecutionHandlerTest {
     // Mock the AdminResponse from ingestion task
     AdminResponse expectedAdminResponse = new AdminResponse();
     PartitionConsumptionState state = new PartitionConsumptionState(expectedPartitionId, new OffsetRecord(
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer()), false, false);
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer()), false, false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
     expectedAdminResponse.addPartitionConsumptionState(state);
 
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
