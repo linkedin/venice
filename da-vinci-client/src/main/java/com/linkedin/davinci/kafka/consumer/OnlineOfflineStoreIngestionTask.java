@@ -19,6 +19,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -66,6 +67,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean isIncrementalPushEnabled,
+      IncrementalPushPolicy incrementalPushPolicy,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
@@ -98,6 +100,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         isCurrentVersion,
         hybridStoreConfig,
         isIncrementalPushEnabled,
+        incrementalPushPolicy,
         storeConfig,
         diskUsage,
         rocksDBMemoryStats,

@@ -330,7 +330,7 @@ public class  TestPushJobWithNativeReplication {
         });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT, enabled=false)
   public void testNativeReplicationForIncrementalPush() throws Exception {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams

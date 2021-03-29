@@ -51,6 +51,7 @@ import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -187,6 +188,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** A quick check point to see if incremental push is supported.
    * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
   protected final boolean isIncrementalPushEnabled;
+  protected final IncrementalPushPolicy incrementalPushPolicy;
 
   protected final boolean readOnlyForBatchOnlyStoreEnabled;
 
@@ -320,6 +322,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean isIncrementalPushEnabled,
+      IncrementalPushPolicy incrementalPushPolicy,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       RocksDBMemoryStats rocksDBMemoryStats,
@@ -374,6 +377,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isCurrentVersion = isCurrentVersion;
     this.hybridStoreConfig = hybridStoreConfig;
     this.isIncrementalPushEnabled = isIncrementalPushEnabled;
+    this.incrementalPushPolicy = incrementalPushPolicy;
     this.notificationDispatcher = new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
 
     this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeName, versionNumber, e));
@@ -631,7 +635,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Log only once a minute per partition.
       boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
-
       /**
        * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
        */
@@ -1405,7 +1408,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         OffsetRecord record = storageMetadataService.getLastOffset(topic, partition);
 
         // First let's try to restore the state retrieved from the OffsetManager
-        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record, hybridStoreConfig.isPresent(), isIncrementalPushEnabled);
+        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record,
+            hybridStoreConfig.isPresent(), isIncrementalPushEnabled, incrementalPushPolicy);
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -1478,7 +1482,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 + "on resetting offset for Topic: " + topic + " Partition Id: " + partition);
           }
           partitionConsumptionStateMap.put(partition,
-              new PartitionConsumptionState(partition, new OffsetRecord(partitionStateSerializer), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
+              new PartitionConsumptionState(partition, new OffsetRecord(partitionStateSerializer), hybridStoreConfig.isPresent(),
+                  isIncrementalPushEnabled, incrementalPushPolicy));
         } else {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);

@@ -5,6 +5,7 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -21,6 +22,7 @@ public class PartitionConsumptionState {
   private final int partition;
   private final boolean hybrid;
   private final boolean isIncrementalPushEnabled;
+  private final IncrementalPushPolicy incrementalPushPolicy;
   private OffsetRecord offsetRecord;
   /** whether the ingestion of current partition is deferred-write. */
   private boolean deferredWrite;
@@ -90,10 +92,12 @@ public class PartitionConsumptionState {
   private CompletableFuture<Void> lastQueuedRecordPersistedFuture;
 
 
-  public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid, boolean isIncrementalPushEnabled) {
+  public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid, boolean isIncrementalPushEnabled,
+      IncrementalPushPolicy incrementalPushPolicy) {
     this.partition = partition;
     this.hybrid = hybrid;
     this.isIncrementalPushEnabled = isIncrementalPushEnabled;
+    this.incrementalPushPolicy = incrementalPushPolicy;
     this.offsetRecord = offsetRecord;
     this.errorReported = false;
     this.lagCaughtUp = false;
@@ -229,6 +233,8 @@ public class PartitionConsumptionState {
   public boolean isIncrementalPushEnabled() {
     return isIncrementalPushEnabled;
   }
+
+  public IncrementalPushPolicy getIncrementalPushPolicy() { return incrementalPushPolicy; }
 
   public void setLeaderState(LeaderFollowerStateType state) {
     this.leaderState = state;

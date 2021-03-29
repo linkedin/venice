@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -44,6 +45,7 @@ public class StoreIngestionTaskFactory {
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean isIncrementalPushEnabled,
+      IncrementalPushPolicy incrementalPushPolicy,
       VeniceStoreConfig storeConfig,
       boolean bufferReplayEnabledForHybrid,
       boolean isNativeReplicationEnabled,
@@ -74,6 +76,7 @@ public class StoreIngestionTaskFactory {
           isCurrentVersion,
           hybridStoreConfig,
           isIncrementalPushEnabled,
+          incrementalPushPolicy,
           storeConfig,
           builder.diskUsage,
           builder.rocksDBMemoryStats,
@@ -110,6 +113,7 @@ public class StoreIngestionTaskFactory {
           isCurrentVersion,
           hybridStoreConfig,
           isIncrementalPushEnabled,
+          incrementalPushPolicy,
           storeConfig,
           builder.diskUsage,
           builder.rocksDBMemoryStats,
