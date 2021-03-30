@@ -81,12 +81,11 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    * 3. Populate key schema, value schema;
    * 4. Load samples for dictionary compression if enabled
    * @param inputUri
-   * @param veniceProps push job properties
-   * @return a pair containing schema related information and input file size
+   * @return a {@link com.linkedin.venice.hadoop.InputDataInfoProvider.InputDataInfo} that contains input data information
    * @throws Exception
    */
   @Override
-  public InputDataInfo validateInputAndGetSchema(String inputUri, VeniceProperties veniceProps) throws Exception {
+  public InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception {
     Configuration conf = new Configuration();
     FileSystem fs = FileSystem.get(conf);
     Path srcPath = new Path(inputUri);
@@ -118,8 +117,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     final AtomicLong inputFileDataSize = new AtomicLong(0);
     if (schemaInfo.isAvro) {
       LOGGER.info("Detected Avro input format.");
-      schemaInfo.keyField = veniceProps.getString(KEY_FIELD_PROP);
-      schemaInfo.valueField = veniceProps.getString(VALUE_FIELD_PROP);
+      schemaInfo.keyField = props.getString(KEY_FIELD_PROP);
+      schemaInfo.valueField = props.getString(VALUE_FIELD_PROP);
 
       Pair<Schema, Schema> avroSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
@@ -132,8 +131,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     } else {
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
       //key / value fields are optional for Vson input
-      schemaInfo.keyField = veniceProps.getString(KEY_FIELD_PROP, "");
-      schemaInfo.valueField = veniceProps.getString(VALUE_FIELD_PROP, "");
+      schemaInfo.keyField = props.getString(KEY_FIELD_PROP, "");
+      schemaInfo.valueField = props.getString(VALUE_FIELD_PROP, "");
 
       Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
@@ -148,7 +147,22 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
     // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
     // we are applying this factor to provide a more reasonable estimation.
-    return new InputDataInfo(schemaInfo, inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR);
+    return new InputDataInfo(
+        schemaInfo,
+        inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR,
+        hasRecords(schemaInfo.isAvro, fs, fileStatuses)
+    );
+  }
+
+  private boolean hasRecords(boolean isAvroFile, FileSystem fs, FileStatus[] fileStatusList) {
+    for (FileStatus fileStatus : fileStatusList) {
+      AbstractVeniceRecordReader recordReader = isAvroFile ?
+          getVeniceAvroRecordReader(fs, fileStatus.getPath()) : getVeniceVsonRecordReader(fs, fileStatus.getPath());
+      if (recordReader.iterator().hasNext()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override
@@ -225,17 +239,18 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
   private Map<String, String> getMetadataFromSequenceFile(FileSystem fs, Path path, boolean buildDictionary) {
     LOGGER.debug("path:" + path.toUri().getPath());
-
-    String keyField = props.getString(KEY_FIELD_PROP, "");
-    String valueField = props.getString(VALUE_FIELD_PROP, "");
-    VeniceVsonRecordReader recordReader = new VeniceVsonRecordReader(null, keyField, valueField, fs, path);
-
+    VeniceVsonRecordReader recordReader = getVeniceVsonRecordReader(fs, path);
     // If dictionary compression is enabled for version, read the records to get training samples
     if (buildDictionary && storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       loadZstdTrainingSamples(recordReader);
     }
-
     return recordReader.getMetadataMap();
+  }
+
+  private VeniceVsonRecordReader getVeniceVsonRecordReader(FileSystem fs, Path path) {
+    String keyField = props.getString(KEY_FIELD_PROP, "");
+    String valueField = props.getString(VALUE_FIELD_PROP, "");
+    return new VeniceVsonRecordReader(null, keyField, valueField, fs, path);
   }
 
   /**
@@ -312,17 +327,18 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
   private Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean buildDictionary) {
     LOGGER.debug("path:" + path.toUri().getPath());
-
-    String keyField = props.getString(KEY_FIELD_PROP);
-    String valueField = props.getString(VALUE_FIELD_PROP);
-    VeniceAvroRecordReader recordReader = new VeniceAvroRecordReader(null, keyField, valueField, fs, path, pushJobSetting.etlValueSchemaTransformation);
-
+    VeniceAvroRecordReader recordReader = getVeniceAvroRecordReader(fs, path);
     // If dictionary compression is enabled for version, read the records to get training samples
     if (buildDictionary && storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       loadZstdTrainingSamples(recordReader);
     }
-
     return new Pair<>(recordReader.getFileSchema(), recordReader.getStoreSchema());
+  }
+
+  private VeniceAvroRecordReader getVeniceAvroRecordReader(FileSystem fs, Path path) {
+    String keyField = props.getString(KEY_FIELD_PROP);
+    String valueField = props.getString(VALUE_FIELD_PROP);
+    return new VeniceAvroRecordReader(null, keyField, valueField, fs, path, pushJobSetting.etlValueSchemaTransformation);
   }
 
   @Override

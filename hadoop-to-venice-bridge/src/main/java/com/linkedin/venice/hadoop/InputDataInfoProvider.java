@@ -15,10 +15,15 @@ public interface InputDataInfoProvider extends AutoCloseable {
   class InputDataInfo {
     private final VenicePushJob.SchemaInfo schemaInfo;
     private final long inputFileDataSizeInBytes;
+    private final boolean hasRecords;
 
-    InputDataInfo(VenicePushJob.SchemaInfo schemaInfo, long inputFileDataSizeInBytes) {
+    InputDataInfo(VenicePushJob.SchemaInfo schemaInfo, long inputFileDataSizeInBytes, boolean hasRecords) {
+      if (inputFileDataSizeInBytes <= 0) {
+        throw new IllegalArgumentException("The input data file size is expected to be positive. Got: " + inputFileDataSizeInBytes);
+      }
       this.schemaInfo = schemaInfo;
       this.inputFileDataSizeInBytes = inputFileDataSizeInBytes;
+      this.hasRecords = hasRecords;
     }
 
     public VenicePushJob.SchemaInfo getSchemaInfo() {
@@ -28,9 +33,13 @@ public interface InputDataInfoProvider extends AutoCloseable {
     public long getInputFileDataSizeInBytes() {
       return inputFileDataSizeInBytes;
     }
+
+    public boolean hasRecords() {
+      return hasRecords;
+    }
   }
 
-  InputDataInfo validateInputAndGetSchema(String inputUri, VeniceProperties props) throws Exception;
+  InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception;
 
   void initZstdConfig(int numFiles);
 

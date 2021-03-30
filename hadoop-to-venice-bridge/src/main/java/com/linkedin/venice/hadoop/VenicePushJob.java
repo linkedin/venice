@@ -58,6 +58,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
@@ -249,6 +250,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
+  private boolean inputFileHasRecords;
   private long jobStartTimeMs;
   private Properties veniceWriterProperties;
   private Properties sslProperties;
@@ -547,10 +549,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       // Check data size
       // TODO: do we actually need this information?
       InputDataInfoProvider.InputDataInfo inputInfo =
-          getInputDataInfoProvider().validateInputAndGetSchema(inputDirectory, props);
+          getInputDataInfoProvider().validateInputAndGetInfo(inputDirectory);
       // Get input schema
       schemaInfo = inputInfo.getSchemaInfo();
       inputFileDataSize = inputInfo.getInputFileDataSizeInBytes();
+      inputFileHasRecords = inputInfo.hasRecords();
       validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
       validateValueSchema(controllerClient, pushJobSetting, schemaInfo, storeSetting.isSchemaAutoRegisterFromPushJobEnabled);
 
@@ -679,14 +682,44 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   }
 
   private void validateCountersAfterPush() throws IOException {
-    if (inputFileDataSize > 0) {
-      long reducerClosedCount = MRJobCounterHelper.getReducerClosedCount(runningJob.getCounters());
+    final long reducerClosedCount = MRJobCounterHelper.getReducerClosedCount(runningJob.getCounters());
+    if (inputFileHasRecords) {
       if (reducerClosedCount < kafkaTopicInfo.partitionCount) {
         throw new VeniceException(String.format(
             "MR job counter is not reliable since the reducer job closed count (%d) < the partition count (%d), "
                 + "while the input file data size is %d byte(s)",
             reducerClosedCount, kafkaTopicInfo.partitionCount, inputFileDataSize));
       }
+    } else {
+      verifyCountersWithZeroValues();
+    }
+  }
+
+  private void verifyCountersWithZeroValues() throws IOException {
+    final Counters counters = runningJob.getCounters();
+    final long reducerClosedCount = MRJobCounterHelper.getReducerClosedCount(counters);
+    if (reducerClosedCount != 0) {
+      throw new VeniceException("Expect 0 reducer closed. Got count: " + reducerClosedCount);
+    }
+    final long outputRecordsCount = MRJobCounterHelper.getOutputRecordsCount(counters);
+    if (outputRecordsCount != 0) {
+      throw new VeniceException("Expect 0 output record. Got count: " + outputRecordsCount);
+    }
+    final long writeAclAuthorizationFailureCount = MRJobCounterHelper.getWriteAclAuthorizationFailureCount(counters);
+    if (writeAclAuthorizationFailureCount != 0) {
+      throw new VeniceException("Expect 0 ACL authorization failure. Got count: " + writeAclAuthorizationFailureCount);
+    }
+    final long duplicateKeyWithDistinctCount = MRJobCounterHelper.getDuplicateKeyWithDistinctCount(counters);
+    if (duplicateKeyWithDistinctCount != 0) {
+      throw new VeniceException("Expect 0 duplicated key with distinct value. Got count: " + duplicateKeyWithDistinctCount);
+    }
+    final long totalKeySize = MRJobCounterHelper.getTotalKeySize(counters);
+    if (totalKeySize != 0) {
+      throw new VeniceException("Expect 0 byte for total key size. Got count: " + totalKeySize);
+    }
+    final long totalValueSize = MRJobCounterHelper.getTotalValueSize(counters);
+    if (totalValueSize != 0) {
+      throw new VeniceException("Expect 0 byte for total value size. Got count: " + totalValueSize);
     }
   }
 
