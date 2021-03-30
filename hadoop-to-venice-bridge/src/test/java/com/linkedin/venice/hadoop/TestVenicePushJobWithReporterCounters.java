@@ -111,6 +111,48 @@ public class TestVenicePushJobWithReporterCounters {
     );
   }
 
+  @Test (expectedExceptions = { VeniceException.class }, expectedExceptionsMessageRegExp = "MR job counter is not reliable.*")
+  public void testUnreliableMapReduceCounter() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 0), // Quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all closed
+        ),
+        Collections.emptyList(),
+        10L, // Non-empty input data file
+           true
+    );
+  }
+
+  @Test
+  public void testHandleZeroClosedReducersWithNoRecordInputDataFile() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 0), // No quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0) // No reducers at all closed
+        ),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED // Expect the job to finish successfully
+        ),
+        10L,
+           false // Input data file has no record
+    );
+  }
+
+  @Test (expectedExceptions = { IllegalArgumentException.class })
+  public void testInitInputDataInfoWithIllegalArguments() {
+    VenicePushJob.SchemaInfo schemaInfo = new VenicePushJob.SchemaInfo();
+    // Input file size cannot be zero.
+    new InputDataInfoProvider.InputDataInfo(schemaInfo, 0, false);
+  }
+
   @Test (expectedExceptions = { VeniceException.class })
   public void testHandleInsufficientClosedReducersFailure() throws Exception { // Successful workflow
     testHandleErrorsInCounter(
@@ -159,11 +201,20 @@ public class TestVenicePushJobWithReporterCounters {
       List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
       long inputFileDataSizeInBytes
   ) throws Exception {
+    testHandleErrorsInCounter(mockCounterInfos, expectedReportedCheckpoints, inputFileDataSizeInBytes, inputFileDataSizeInBytes > 0);
+  }
+
+  private void testHandleErrorsInCounter(
+      List<MockCounterInfo> mockCounterInfos,
+      List<VenicePushJob.PushJobCheckpoints> expectedReportedCheckpoints,
+      long inputFileDataSizeInBytes,
+      boolean inputFileHasRecords
+  ) throws Exception {
     VenicePushJob venicePushJob = new VenicePushJob("job-id", getH2VProps());
     venicePushJob.setControllerClient(createControllerClientMock());
     venicePushJob.setJobClientWrapper(createJobClientWrapperMock(mockCounterInfos));
     venicePushJob.setClusterDiscoveryControllerClient(createClusterDiscoveryControllerClientMock());
-    venicePushJob.setInputDataInfoProvider(getInputDataInfoProviderMock(inputFileDataSizeInBytes));
+    venicePushJob.setInputDataInfoProvider(getInputDataInfoProviderMock(inputFileDataSizeInBytes, inputFileHasRecords));
     venicePushJob.setVeniceWriter(createVeniceWriterMock());
 
     SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
@@ -199,7 +250,10 @@ public class TestVenicePushJobWithReporterCounters {
     return props;
   }
 
-  private InputDataInfoProvider getInputDataInfoProviderMock(long inputFileDataSizeInBytes) throws Exception {
+  private InputDataInfoProvider getInputDataInfoProviderMock(
+      long inputFileDataSizeInBytes,
+      boolean inputFileHasRecords
+  ) throws Exception {
     InputDataInfoProvider inputDataInfoProvider = mock(InputDataInfoProvider.class);
     VenicePushJob.SchemaInfo schemaInfo = new VenicePushJob.SchemaInfo();
     schemaInfo.keySchemaString = SCHEMA_STR;
@@ -208,8 +262,9 @@ public class TestVenicePushJobWithReporterCounters {
     schemaInfo.valueField = "value-field";
     schemaInfo.fileSchemaString = "file-schema-string";
     schemaInfo.fileSchemaString = "file-schema-string";
-    InputDataInfoProvider.InputDataInfo inputDataInfo = new InputDataInfoProvider.InputDataInfo(schemaInfo, inputFileDataSizeInBytes);
-    when(inputDataInfoProvider.validateInputAndGetSchema(anyString(), any())).thenReturn(inputDataInfo);
+    InputDataInfoProvider.InputDataInfo inputDataInfo =
+        new InputDataInfoProvider.InputDataInfo(schemaInfo, inputFileDataSizeInBytes, inputFileHasRecords);
+    when(inputDataInfoProvider.validateInputAndGetInfo(anyString())).thenReturn(inputDataInfo);
     return inputDataInfoProvider;
   }
 

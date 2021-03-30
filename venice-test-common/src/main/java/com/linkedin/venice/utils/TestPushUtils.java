@@ -599,6 +599,12 @@ public class TestPushUtils {
         });
   }
 
+  public static Schema writeEmptyAvroFileWithUserSchema(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "empty_file.avro", USER_SCHEMA_STRING,
+        (recordSchema, avroFileWriter) -> {
+          // No-op so that the file is empty
+        });
+  }
 
   public static Schema writeSimpleAvroFileWithCustomSize(File parentDir, int numberOfRecords, int minValueSize, int maxValueSize) throws IOException {
     return writeAvroFile(parentDir, "large_values.avro", USER_SCHEMA_STRING,

@@ -139,6 +139,22 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testEmptyPush() throws Exception {
+    testBatchStore(
+        inputDir -> {
+          Schema recordSchema = writeEmptyAvroFileWithUserSchema(inputDir);
+          return new Pair<>(recordSchema.getField("id").schema(),
+              recordSchema.getField("name").schema());
+        },
+        properties -> {
+          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
+          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+        },
+        (avroClient, vsonClient, metricsRepository) -> {}
+    );
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testCompressingRecord() throws Exception {
     testBatchStore(
         inputDir -> {
