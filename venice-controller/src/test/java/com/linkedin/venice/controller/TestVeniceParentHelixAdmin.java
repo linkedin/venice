@@ -812,7 +812,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
       Version newVersion =
           partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1,
-              Version.PushType.BATCH, false, false, null, Optional.empty());
+              Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty());
       verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1,
           false, false, Version.PushType.BATCH, null, null, Optional.empty());
       Assert.assertEquals(newVersion, version);
@@ -851,7 +851,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           .thenReturn(null)
           .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
       partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1,
-          Version.PushType.BATCH, false, false, null, Optional.empty());
+          Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty());
       verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1,
           false, false, Version.PushType.BATCH, null, null, Optional.empty());
     }
@@ -1653,7 +1653,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
          */
         try {
           partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3,
-              Version.PushType.INCREMENTAL, false, true, null, Optional.empty());
+              Version.PushType.INCREMENTAL, false, true, null, Optional.empty(), Optional.empty());
           Assert.fail("Incremental push should fail if the previous batch push is not in COMPLETE state.");
         } catch (Exception e) {
           /**
@@ -1664,7 +1664,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       } else {
         Assert.assertEquals(partialMockParentAdmin
                 .incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, Version.PushType.BATCH, false,
-                    true, null, Optional.empty()),
+                    true, null, Optional.empty(), Optional.empty()),
             newVersion, "Unexpected new version returned by incrementVersionIdempotent");
         //Parent should kill the lingering job.
         Assert.assertTrue(partialMockParentAdmin.isJobKilled(version.kafkaTopicName()));

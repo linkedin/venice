@@ -3,10 +3,11 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
+import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,6 +39,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String d2ServiceName;
   private final Map<String, String> childDataCenterControllerD2Map;
   private final int parentControllerWaitingTimeForConsumptionMs;
+  private final boolean batchJobHeartbeatEnabled;
+  private final Duration batchJobHeartbeatTimeout;
+  private final Duration batchJobHeartbeatInitialBufferTime;
   private final long adminConsumptionTimeoutMinute;
   private final long adminConsumptionCycleTimeoutMs;
   private final int adminConsumptionMaxWorkerThreadPoolSize;
@@ -136,6 +140,15 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
+    this.batchJobHeartbeatEnabled = props.getBoolean(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
+    this.batchJobHeartbeatTimeout = Duration.ofMillis(props.getLong(
+        BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG.getConfigName(),
+        BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG.getDefaultValue()
+    ));
+    this.batchJobHeartbeatInitialBufferTime = Duration.ofMillis(props.getLong(
+        BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getConfigName(),
+        BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getDefaultValue()
+    ));
     this.adminConsumptionTimeoutMinute = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
     this.adminConsumptionCycleTimeoutMs = props.getLong(ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
     this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
@@ -292,6 +305,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getParentControllerWaitingTimeForConsumptionMs() {
     return parentControllerWaitingTimeForConsumptionMs;
+  }
+
+  public boolean getBatchJobHeartbeatEnabled() {
+    return batchJobHeartbeatEnabled;
+  }
+
+  public Duration getBatchJobHeartbeatTimeout() {
+    return batchJobHeartbeatTimeout;
+  }
+
+  public Duration getBatchJobHeartbeatInitialBufferTime() {
+    return batchJobHeartbeatInitialBufferTime;
   }
 
   public long getAdminConsumptionTimeoutMinutes(){

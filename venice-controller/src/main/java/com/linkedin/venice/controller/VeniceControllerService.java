@@ -5,6 +5,10 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
+import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
+import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreVersionChecker;
+import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -29,7 +33,9 @@ public class VeniceControllerService extends AbstractVeniceService {
     this.mutliClusterConfigs = multiClusterConfigs;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, sslConfig, accessController, d2Client);
     if (multiClusterConfigs.isParent()) {
-      this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig, authorizerService);
+
+      this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig,
+          authorizerService, createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository));
       logger.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
@@ -43,6 +49,24 @@ public class VeniceControllerService extends AbstractVeniceService {
       this.consumerServices.put(cluster, adminConsumerService);
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);
+    }
+  }
+
+  private LingeringStoreVersionChecker createLingeringStoreVersionChecker(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository
+  ) {
+    if (multiClusterConfigs.getBatchJobHeartbeatEnabled()) {
+      logger.info("Batch job heartbeat is enabled. Hence use the heartbeat-based batch job liveness checker.");
+      return new HeartbeatBasedLingeringStoreVersionChecker(
+          multiClusterConfigs.getBatchJobHeartbeatTimeout(),
+          multiClusterConfigs.getBatchJobHeartbeatInitialBufferTime(),
+          new DefaultLingeringStoreVersionChecker(),
+          new HeartbeatBasedCheckerStats(metricsRepository)
+      );
+    } {
+      logger.info("Batch job heartbeat is NOT enabled. Hence use the default batch job liveness checker.");
+      return new DefaultLingeringStoreVersionChecker();
     }
   }
 
