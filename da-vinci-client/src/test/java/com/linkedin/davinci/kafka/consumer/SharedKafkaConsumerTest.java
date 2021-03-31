@@ -97,6 +97,41 @@ public class SharedKafkaConsumerTest {
   }
 
   @Test
+  public void testSubscriptionEmptyPoll() throws InterruptedException {
+    KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
+    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
+    KafkaConsumerServiceStats consumerServiceStats = mock(KafkaConsumerServiceStats.class);
+    doReturn(consumerServiceStats).when(consumerService).getStats();
+    Time mockTime = new MockTime();
+    final long nonExistingTopicCleanupDelayMS = 1000;
+
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime);
+    String nonExistingTopic1 = "nonExistingTopic1";
+    Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>();
+    doReturn(topicListReturnedByConsumer).when(consumer).listTopics();
+    Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
+    assignmentReturnedConsumer.add(new TopicPartition(nonExistingTopic1, 1));
+    doReturn(assignmentReturnedConsumer).when(consumer).getAssignment();
+    when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer); // after unsubscription to existingTopicWithoutIngestionTask1
+    sharedConsumer.subscribe(nonExistingTopic1, 1, -1);
+    StoreIngestionTask ingestionTaskForNonExistingTopic1 = mock(StoreIngestionTask.class);
+    sharedConsumer.attach(nonExistingTopic1, ingestionTaskForNonExistingTopic1);
+
+    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsReturnedByConsumer = new HashMap<>();
+    doReturn(new ConsumerRecords(consumerRecordsReturnedByConsumer)).when(consumer).poll(anyLong());
+
+    sharedConsumer.poll(1000);
+    Set<TopicPartition> newAssignment = new HashSet<>(assignmentReturnedConsumer);
+    newAssignment.remove(new TopicPartition(nonExistingTopic1, 1));
+    mockTime.sleep(nonExistingTopicCleanupDelayMS);
+    doReturn(Collections.emptySet()).when(consumer).getAssignment();
+
+    sharedConsumer.poll(1000);
+
+    verify(consumer, times(1)).poll(1000);
+  }
+
+  @Test
   public void testIngestionTaskBehaviorWhenConsumerListTopicsReturnStaledInfo() throws InterruptedException {
     KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
     KafkaConsumerService consumerService = mock(KafkaConsumerService.class);

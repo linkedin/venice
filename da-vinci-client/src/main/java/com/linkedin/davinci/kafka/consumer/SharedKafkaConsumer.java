@@ -280,6 +280,18 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
       notifyAll();
     }
 
+    if (++pollTimesSinceLastSanitization == sanitizeTopicSubscriptionAfterPollTimes) {
+      /**
+       * The reasons only to sanitize the subscription periodically:
+       * 1. This is a heavy operation.
+       * 2. The behavior of subscripting non-existing topics is not common.
+       * 3. The subscription to the non-existing topics will only cause some inefficiency because of the logging in each
+       *    poll request, but not correctness.
+       */
+      pollTimesSinceLastSanitization = 0;
+      sanitizeConsumerSubscription();
+    }
+
     /**
      * If the consumer does not have subscription, sleep the specified timeout and return.
      */
@@ -292,17 +304,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
       throw new VeniceException("Shared Consumer poll sleep got interrupted", e);
     }
 
-    if (++pollTimesSinceLastSanitization == sanitizeTopicSubscriptionAfterPollTimes) {
-      /**
-       * The reasons only to sanitize the subscription periodically:
-       * 1. This is a heavy operation.
-       * 2. The behavior of subscripting non-existing topics is not common.
-       * 3. The subscription to the non-existing topics will only cause some inefficiency because of the logging in each
-       *    poll request, but not correctness.
-       */
-      pollTimesSinceLastSanitization = 0;
-      sanitizeConsumerSubscription();
-    }
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = this.delegate.poll(timeout);
     // Check whether the returned records, which don't have the corresponding ingestion tasks
     topicsWithoutCorrespondingIngestionTask.clear();
