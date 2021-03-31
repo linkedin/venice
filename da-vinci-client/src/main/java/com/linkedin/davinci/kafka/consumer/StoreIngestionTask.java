@@ -29,6 +29,7 @@ import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentExcepti
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
@@ -149,6 +150,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   protected final StorageMetadataService storageMetadataService;
   protected final TopicManagerRepository topicManagerRepository;
+  protected final TopicManagerRepository topicManagerRepositoryJavaBased;
   protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
   protected final EventThrottler bandwidthThrottler;
   protected final EventThrottler recordsThrottler;
@@ -315,6 +317,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ReadOnlySchemaRepository schemaRepository,
       ReadOnlyStoreRepository storeRepository,
       TopicManagerRepository topicManagerRepository,
+      TopicManagerRepository topicManagerRepositoryJavaBased,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
@@ -364,7 +367,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = topicManagerRepository;
-    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(topicManagerRepository, storeConfig.getTopicOffsetCheckIntervalMs());
+    this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased;
+    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(topicManagerRepository, topicManagerRepositoryJavaBased, storeConfig.getTopicOffsetCheckIntervalMs());
 
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
@@ -2791,14 +2795,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected class CachedKafkaMetadataGetter {
     private final long ttl;
     private final TopicManagerRepository topicManagerRepository;
+    private final TopicManagerRepository topicManagerRepositoryJavaBased;
     private final Map<String, Pair<Long, Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
     private final Map<Pair<String, Integer>, Pair<Long, Long>> offsetCache = new VeniceConcurrentHashMap<>();
     private final Map<Pair<String, Integer>, Pair<Long, Long>> lastProducerTimestampCache = new VeniceConcurrentHashMap<>();
     private final Map<Pair<String, Integer>, Pair<Long, Long>> remoteOffsetCache = new VeniceConcurrentHashMap<>();
 
-    CachedKafkaMetadataGetter(TopicManagerRepository topicManagerRepository, long timeToLiveMs) {
+    CachedKafkaMetadataGetter(TopicManagerRepository topicManagerRepository, TopicManagerRepository topicManagerRepositoryJavaBased, long timeToLiveMs) {
       this.ttl = MILLISECONDS.toNanos(timeToLiveMs);
       this.topicManagerRepository = topicManagerRepository;
+      this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased;
     }
 
     /**
@@ -2830,10 +2836,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return entry.getSecond();
       }
 
-      entry = remoteOffsetCache.compute(key, (k, oldValue) ->
-          (oldValue != null && oldValue.getFirst() > now) ?
-              oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager(remoteKafkaServer).getLatestOffsetAndRetry(topicName, partitionId, 10)));
-      return entry.getSecond();
+      try {
+        entry = remoteOffsetCache.compute(key, (k, oldValue) ->
+            (oldValue != null && oldValue.getFirst() > now) ? oldValue : new Pair<>(now + ttl,
+                topicManagerRepositoryJavaBased.getTopicManager(remoteKafkaServer)
+                    .getLatestOffsetAndRetry(topicName, partitionId, 10)));
+        return entry.getSecond();
+      } catch (TopicDoesNotExistException e) {
+        //It's observed in production that With java based admin client the topic may not be found temporarily, so return 0 in such cases.
+        return 0;
+      }
     }
 
     long getProducerTimestampOfLastMessage(String topicName, int partitionId) {

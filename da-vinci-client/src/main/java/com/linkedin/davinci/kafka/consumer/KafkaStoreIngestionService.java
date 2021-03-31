@@ -169,6 +169,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
 
+    /**
+     * This new veniceConsumerJavaBasedFactory (underneath it works with java based admin client only) is needed for leader_offset_lag metrics to work.
+     * TODO: This should be removed once the VeniceServerConsumerFactory uses java based admin client in production reliably.
+     */
+    VeniceServerConsumerJavaBasedFactory veniceConsumerJavaBasedFactory = new VeniceServerConsumerJavaBasedFactory(serverConfig);
+
     Properties veniceWriterProperties = veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
     if (serverConfig.isKafkaOpenSSLEnabled()) {
       veniceWriterProperties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
@@ -207,6 +213,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         veniceConsumerFactory.getKafkaBootstrapServers(),
         veniceConsumerFactory.getKafkaZkAddress(),
         veniceConsumerFactory);
+
+    TopicManagerRepository topicManagerRepositoryJavaBased = new TopicManagerRepository(
+        veniceConsumerFactory.getKafkaBootstrapServers(),
+        veniceConsumerFactory.getKafkaZkAddress(),
+        veniceConsumerJavaBasedFactory);
 
     VeniceNotifier notifier = new LogNotifier();
     this.onlineOfflineNotifiers.add(notifier);
@@ -317,6 +328,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
         .setTopicManagerRepository(topicManagerRepository)
+        .setTopicManagerRepositoryJavaBased(topicManagerRepositoryJavaBased)
         .setStoreIngestionStats(ingestionStats)
         .setVersionedDIVStats(versionedDIVStats)
         .setVersionedStorageIngestionStats(versionedStorageIngestionStats)

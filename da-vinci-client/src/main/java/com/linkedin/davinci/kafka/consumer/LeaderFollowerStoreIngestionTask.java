@@ -141,6 +141,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreRepository metadataRepo,
       TopicManagerRepository topicManagerRepository,
+      TopicManagerRepository topicManagerRepositoryJavaBased,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
@@ -177,6 +178,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         schemaRepo,
         metadataRepo,
         topicManagerRepository,
+        topicManagerRepositoryJavaBased,
         storeIngestionStats,
         versionedDIVStats,
         versionedStorageIngestionStats,
@@ -1403,13 +1405,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public long getLeaderOffsetLag() {
-    /**
-     * If the admin client is scala based then getting offset from remote kafka is difficult as it needs the
-     * ZK address of the kafka broker. So this metric will not work in this case.
-     */
-    if (serverConfig.getKafkaAdminClass().contains(SCALA_BASED_KAFKA_ADMIN_CLIENT_CLASS_NAME)) {
-      return 0;
-    }
 
     Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (!svs.isPresent()) {

@@ -11,6 +11,7 @@ import java.util.function.Function;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
 
 
@@ -93,7 +94,7 @@ public class TopicManagerRepository implements Closeable {
 
   public TopicManager getTopicManager(String kafkaBootstrapServers) {
     // Creating remote topic manager by remote Kafka server requires Java-based Kafka admin client
-    if (kafkaClientFactory.getKafkaAdminClient() instanceof ScalaAdminUtils) {
+    if (kafkaClientFactory.getKafkaAdminClass().contains(SCALA_BASED_KAFKA_ADMIN_CLIENT_CLASS_NAME)) {
       throw new VeniceException("Kafka ZK address is required by Scala Kafka admin client.");
     }
     return topicManagersMap.computeIfAbsent(kafkaBootstrapServers,
