@@ -80,6 +80,10 @@ public interface Admin extends AutoCloseable, Closeable {
 
     boolean isClusterValid(String clusterName);
 
+    default boolean isBatchJobHeartbeatEnabled() {
+        return false;
+    }
+
     default void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
         addStore(clusterName, storeName, owner, keySchema, valueSchema, false, Optional.empty());
     }
@@ -110,6 +114,10 @@ public interface Admin extends AutoCloseable, Closeable {
     void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers);
 
+    default boolean hasWritePermissionToBatchJobHeartbeatStore(String principalId) {
+        return false;
+    }
+
     /**
      * The implementation of this method must take no action and return the same Version object if the same parameters
      * are provided on a subsequent invocation.  The expected use is multiple distributed components of a single push
@@ -120,12 +128,12 @@ public interface Admin extends AutoCloseable, Closeable {
     default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor) {
         return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            Version.PushType.BATCH, false, false, null, Optional.empty());
+            Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty());
     }
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary,
-        Optional<String> batchStartingFabric);
+        Optional<String> batchStartingFabric, Optional<String> optionalRequesterPrincipalId);
 
     String getRealTimeTopic(String clusterName, String storeName);
 

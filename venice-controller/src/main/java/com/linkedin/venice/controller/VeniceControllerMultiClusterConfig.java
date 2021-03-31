@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -120,6 +121,18 @@ public class VeniceControllerMultiClusterConfig {
 
   public int getParentControllerWaitingTimeForConsumptionMs() {
     return getCommonConfig().getParentControllerWaitingTimeForConsumptionMs();
+  }
+
+  public boolean getBatchJobHeartbeatEnabled() {
+    return getCommonConfig().getBatchJobHeartbeatEnabled();
+  }
+
+  public Duration getBatchJobHeartbeatTimeout() {
+    return getCommonConfig().getBatchJobHeartbeatTimeout();
+  }
+
+  public Duration getBatchJobHeartbeatInitialBufferTime() {
+    return getCommonConfig().getBatchJobHeartbeatInitialBufferTime();
   }
 
   public int getKafkaReplicaFactor() {

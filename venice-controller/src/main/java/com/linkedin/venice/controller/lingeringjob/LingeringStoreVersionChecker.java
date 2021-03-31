@@ -1,8 +1,10 @@
-package com.linkedin.venice.controller;
+package com.linkedin.venice.controller.lingeringjob;
 
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
+import java.util.Optional;
 
 public interface LingeringStoreVersionChecker {
 
@@ -12,5 +14,11 @@ public interface LingeringStoreVersionChecker {
      * @param version
      * @return true if the provided version is has been lingering (so that it can be killed potentially)
      */
-    boolean isStoreVersionLingering(Store store, Version version, Time time, Admin controllerAdmin);
+    boolean isStoreVersionLingering(
+        Store store,
+        Version version,
+        Time time,
+        Admin controllerAdmin,
+        Optional<String> optionalRequesterPrincipalId
+    );
 }

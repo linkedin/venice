@@ -43,6 +43,8 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
+import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -195,6 +197,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final int waitingTimeForConsumptionMs;
 
+  private final boolean batchJobHeartbeatEnabled;
+
   private final Optional<AuthorizerService> authorizerService;
 
   private final ExecutorService systemStoreAclSynchronizationExecutor;
@@ -216,6 +220,7 @@ public class VeniceParentHelixAdmin implements Admin {
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
+    this.batchJobHeartbeatEnabled = multiClusterConfigs.getBatchJobHeartbeatEnabled();
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(this.veniceHelixAdmin.getZkClient(),
         this.veniceHelixAdmin.getAdapterSerializer());
@@ -431,6 +436,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public boolean isClusterValid(String clusterName) {
     return veniceHelixAdmin.isClusterValid(clusterName);
+  }
+
+  @Override
+  public boolean isBatchJobHeartbeatEnabled() {
+    return batchJobHeartbeatEnabled;
   }
 
   private void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
@@ -825,9 +835,20 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public boolean hasWritePermissionToBatchJobHeartbeatStore(String principalId) {
+    if (!authorizerService.isPresent()) {
+      throw new VeniceException("Cannot handle ACL operation since the authorizer is not set for principal ID " + principalId);
+    }
+    AuthorizerService authorizer = authorizerService.get();
+    Resource heartbeatStoreResource = new Resource(VeniceSystemStoreUtils.getBatchJobHeartbeatStoreName());
+    Principal batchJobPrincipal = new Principal(principalId);
+    return authorizer.canAccess(Method.Write, heartbeatStoreResource, batchJobPrincipal);
+  }
+
+  @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
-      boolean sorted, String compressionDictionary, Optional<String> batchStartingFabric) {
+      boolean sorted, String compressionDictionary, Optional<String> batchStartingFabric, Optional<String> optionalRequesterPrincipalId) {
 
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
     if (currentPushTopic.isPresent()) {
@@ -840,7 +861,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       String existingPushJobId = version.get().getPushJobId();
       if (!existingPushJobId.equals(pushJobId)) {
-        if (lingeringStoreVersionChecker.isStoreVersionLingering(store, version.get(), timer, veniceHelixAdmin)) {
+        if (lingeringStoreVersionChecker.isStoreVersionLingering(store, version.get(), timer, this, optionalRequesterPrincipalId)) {
           if (pushType.isIncremental()) {
             /**
              * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't

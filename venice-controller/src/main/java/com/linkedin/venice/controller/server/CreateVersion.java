@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -23,6 +22,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
+import org.apache.log4j.Logger;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -34,6 +34,7 @@ import static com.linkedin.venice.meta.Version.PushType;
  * This class will add a new version to the given store.
  */
 public class CreateVersion extends AbstractRoute {
+  private static final Logger LOGGER = Logger.getLogger(CreateVersion.class);
   private final boolean checkReadMethodForKafka;
 
   public CreateVersion(Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka) {
@@ -183,10 +184,9 @@ public class CreateVersion extends AbstractRoute {
                 .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
               admin.getRealTimeTopic(clusterName, storeName);
             }
-
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric);
+                   pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric, Optional.ofNullable(getPrincipalId(request)));
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.

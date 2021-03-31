@@ -16,6 +16,16 @@ public class BatchJobHeartbeatConfigs {
             Duration.ofMinutes(1).toMillis(),
             "Time interval between sending two consecutive heartbeats"
     );
+    public static final Utils.ConfigEntity<Long> HEARTBEAT_CONTROLLER_TIMEOUT_CONFIG = new Utils.ConfigEntity<>(
+        "controller.batch.job.heartbeat.timeout.ms",
+        HEARTBEAT_INTERVAL_CONFIG.getDefaultValue() == null ? Duration.ofMinutes(3).toMillis() : 3 * HEARTBEAT_INTERVAL_CONFIG.getDefaultValue(),
+        "The max amount of time the controller waits for a heartbeat to show up before it claims a timeout."
+    );
+    public static final Utils.ConfigEntity<Long> HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG = new Utils.ConfigEntity<>(
+        "controller.batch.job.heartbeat.initial.delay.ms",
+        Duration.ofMinutes(15).toMillis(),
+        "The amount of time the controller waits after a store creation before it enables the heartbeat-based lingering push job checking feature."
+    );
     public static final Utils.ConfigEntity<Long> HEARTBEAT_INITIAL_DELAY_CONFIG = new Utils.ConfigEntity<>(
             "batch.job.heartbeat.initial.delay.ms",
             0L,

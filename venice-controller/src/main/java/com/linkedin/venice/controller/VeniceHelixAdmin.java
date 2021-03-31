@@ -1685,7 +1685,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
-        String compressionDictionary, Optional<String> batchStartingFabric) {
+        String compressionDictionary, Optional<String> batchStartingFabric, Optional<String> optionalRequesterPrincipalId) {
         checkControllerMastership(clusterName);
         Store store = getStore(clusterName, storeName);
         if (store != null) {
