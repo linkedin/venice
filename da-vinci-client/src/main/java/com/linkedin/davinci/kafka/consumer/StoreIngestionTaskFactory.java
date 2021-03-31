@@ -69,6 +69,7 @@ public class StoreIngestionTaskFactory {
           builder.schemaRepo,
           builder.metadataRepo,
           builder.topicManagerRepository,
+          builder.topicManagerRepositoryJavaBased,
           builder.ingestionStats,
           builder.versionedDIVStats,
           builder.versionedStorageIngestionStats,
@@ -106,6 +107,7 @@ public class StoreIngestionTaskFactory {
           builder.schemaRepo,
           builder.metadataRepo,
           builder.topicManagerRepository,
+          builder.topicManagerRepositoryJavaBased,
           builder.ingestionStats,
           builder.versionedDIVStats,
           builder.versionedStorageIngestionStats,
@@ -155,6 +157,7 @@ public class StoreIngestionTaskFactory {
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
+    private TopicManagerRepository topicManagerRepositoryJavaBased;
     private AggStoreIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedStorageIngestionStats versionedStorageIngestionStats;
@@ -260,6 +263,13 @@ public class StoreIngestionTaskFactory {
     public Builder setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
       if (!built) {
         this.topicManagerRepository = topicManagerRepository;
+      }
+      return this;
+    }
+
+    public Builder setTopicManagerRepositoryJavaBased(TopicManagerRepository topicManagerRepositoryJavaBased) {
+      if (!built) {
+        this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased;
       }
       return this;
     }
