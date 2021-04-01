@@ -2,6 +2,7 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -86,17 +87,43 @@ public class ReplicaStatus {
         .equals(PROGRESS)) {
       return;
     }
-    // remove the oldest status snapshots once history is too long.
-    int statusHistorySize = statusHistory.size();
-    if (statusHistorySize >= MAX_HISTORY_LENGTH) {
-      statusHistory = statusHistory.subList(statusHistorySize - MAX_HISTORY_LENGTH + 1, statusHistorySize);
-    }
+
+    /**
+     * Only remove inc push status related states for first run. After this run, {@link MAX_HISTORY_LENGTH}
+     * may not be fulfilled as the history could contains a very long batch push status history.
+     * TODO: If parallel inc push doesn't need inc status history, we can choose to keep only the current inc push status.
+     */
+    removeOldHistoryStatuses(true);
+    /**
+     * Remove batch status on second run so that {@link MAX_HISTORY_LENGTH} is fulfilled. The reason that we do it
+     * in two runs is that we don't want to lose batch push statuses because of too many incremental pushes.
+     * Especially EOP/COMPLETED, which are used to tell whether a version is good for buffer replay/ready to serve.
+     */
+    removeOldHistoryStatuses(false);
 
     StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
     if (!Utils.isNullOrEmpty(incrementalPushVersion)) {
       snapshot.setIncrementalPushVersion(incrementalPushVersion);
     }
     statusHistory.add(snapshot);
+  }
+
+  private void removeOldHistoryStatuses(boolean onlyRemoveIncPushStatuses) {
+    Iterator<StatusSnapshot> itr = statusHistory.iterator();
+    while (itr.hasNext()) {
+      StatusSnapshot oldSnapshot = itr.next();
+      ExecutionStatus oldStatus = oldSnapshot.getStatus();
+      if (statusHistory.size() >= MAX_HISTORY_LENGTH) {
+        if (!onlyRemoveIncPushStatuses) {
+          itr.remove();
+        } else if (onlyRemoveIncPushStatuses && isIncrementalPushStatus(oldStatus) &&
+            (!oldSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion))) {
+          itr.remove();
+        }
+      } else {
+        break;
+      }
+    }
   }
 
   @Override
