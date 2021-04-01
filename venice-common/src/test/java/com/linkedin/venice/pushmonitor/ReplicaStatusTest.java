@@ -89,6 +89,39 @@ public class ReplicaStatusTest {
   }
 
   @Test
+  public void testIncrementalPushStatesGotRemovedFirst() {
+    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    for (int i = 0; i < ReplicaStatus.MAX_HISTORY_LENGTH; i++) {
+      replicaStatus.updateStatus(STARTED);
+    }
+    replicaStatus.updateStatus(START_OF_INCREMENTAL_PUSH_RECEIVED, "testInc1");
+    replicaStatus.updateStatus(END_OF_INCREMENTAL_PUSH_RECEIVED, "testInc1");
+    // since we are adding another inc push and the max length is reached, the previous inc push status should be removed.
+    replicaStatus.updateStatus(START_OF_INCREMENTAL_PUSH_RECEIVED, "testInc2");
+    replicaStatus.updateStatus(END_OF_INCREMENTAL_PUSH_RECEIVED, "testInc2");
+
+    List<StatusSnapshot> statusHistory = replicaStatus.getStatusHistory();
+    Assert.assertEquals(statusHistory.size(), replicaStatus.MAX_HISTORY_LENGTH);
+    // verify it's the first pair of inc push status got removed
+    statusHistory.forEach((i) -> Assert.assertTrue(!isIncrementalPushStatus(i.getStatus()) ||
+        i.getIncrementalPushVersion().equals(replicaStatus.getIncrementalPushVersion())));
+  }
+
+  @Test
+  public void testCurrentIncPushVersionStatusGotSaved() {
+    ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    // update (max length + 1) statuses to the replica status history
+    replicaStatus.updateStatus(STARTED);
+    for (int i = 0; i < ReplicaStatus.MAX_HISTORY_LENGTH; i++) {
+      replicaStatus.updateStatus(START_OF_INCREMENTAL_PUSH_RECEIVED, "testInc1");
+    }
+    // Inc push statuses which share the current inc push version would be saved.
+    List<StatusSnapshot> statusHistory = replicaStatus.getStatusHistory();
+    Assert.assertEquals(statusHistory.size(), replicaStatus.MAX_HISTORY_LENGTH);
+    statusHistory.forEach((i) -> Assert.assertTrue(isIncrementalPushStatus(i.getStatus())));
+  }
+
+  @Test
   public void testStatusHistoryWithLotsOfProgressStatus() {
     ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
     replicaStatus.updateStatus(STARTED);

@@ -124,6 +124,10 @@ public enum ExecutionStatus {
     return this.isTerminal;
   }
 
+  public static boolean isIncrementalPushStatus(ExecutionStatus status) {
+    return status == START_OF_INCREMENTAL_PUSH_RECEIVED || status == END_OF_INCREMENTAL_PUSH_RECEIVED;
+  }
+
   public int getValue() {
     return value;
   }
