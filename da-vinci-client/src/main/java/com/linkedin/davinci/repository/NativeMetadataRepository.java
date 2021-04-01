@@ -572,7 +572,11 @@ public abstract class NativeMetadataRepository
     store.setStoreMetadataSystemStoreEnabled(true);
     store.setStorageQuotaInByte(storeProperties.storageQuotaInByte);
     store.setWriteComputationEnabled(storeProperties.writeComputationEnabled);
-    store.setDaVinciPushStatusStoreEnabled(storeProperties.daVinciPushStatusStoreEnabled);
+    if (storeProperties.daVinciPushStatusStoreEnabled != null) {
+      store.setDaVinciPushStatusStoreEnabled(storeProperties.daVinciPushStatusStoreEnabled);
+    } else {
+      store.setDaVinciPushStatusStoreEnabled(false);
+    }
 
     return store;
   }
