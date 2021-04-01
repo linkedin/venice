@@ -15,6 +15,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushstatus.PushStatusValue;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -121,6 +122,8 @@ public enum AvroProtocolDefinition {
    * Used to encode various kinds of ingestion task commands, which are used to control ingestion task in child process.
    */
   PROCESS_SHUTDOWN_COMMAND(32, 1, ProcessShutdownCommand.class),
+
+  BATCH_JOB_HEARTBEAT(33, 1, BatchJobHeartbeatValue.class),
 
   /**
    * Key schema for metadata system store.
