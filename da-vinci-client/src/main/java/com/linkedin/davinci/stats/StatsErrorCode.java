@@ -139,7 +139,12 @@ public enum StatsErrorCode {
    * This is bubbled up when write compute adapter fails to perform update
    * operations on top of the current value.
    */
-  WRITE_COMPUTE_UPDATE_FAILURE(-22);
+  WRITE_COMPUTE_UPDATE_FAILURE(-22),
+
+  /**
+   * This may be used when kafka topic's offset lag measurement may fail due to any reason.
+   */
+  LAG_MEASUREMENT_FAILURE(-23);
 
   public final int code;
 
