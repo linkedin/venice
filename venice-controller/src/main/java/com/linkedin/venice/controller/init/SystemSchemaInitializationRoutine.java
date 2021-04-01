@@ -88,9 +88,8 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
           admin.addStore(clusterToInit, systemStoreName, VeniceConstants.SYSTEM_STORE_OWNER, firstKeySchemaStr,
               firstSchemaStr, true);
           // Update the default store config
-          if (storeMetadataUpdate.isPresent()) {
-            admin.updateStore(clusterToInit, systemStoreName, storeMetadataUpdate.get());
-          }
+          storeMetadataUpdate.ifPresent(
+              updateStoreQueryParams -> admin.updateStore(clusterToInit, systemStoreName, updateStoreQueryParams));
 
           LOGGER.info("System store '" + systemStoreName + "' has been created.");
         } else {
@@ -146,8 +145,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
           }
           LOGGER.info("Added new schema v" + schemaVersion + " to '" + systemStoreName + "'.");
         } else {
-          boolean schemasAreEqual = knownSchema.equals(schemaInLocalResources);
-          if (schemasAreEqual) {
+          if (knownSchema.equals(schemaInLocalResources)) {
             LOGGER.info("Schema v" + schemaVersion + " in '" + systemStoreName
                 + "' is already registered and consistent with the local definition.");
           } else {
