@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 
@@ -96,8 +97,9 @@ public class QueryTool {
         default:
           throw new VeniceException("Cannot handle key type, found key schema: " + keySchema.toString());
       }
+      System.out.println("Key string parsed successfully. About to make the query.");
 
-      Object value = client.get(key).get();
+      Object value = client.get(key).get(15, TimeUnit.SECONDS);
 
       outputMap.put("key-class", key.getClass().getCanonicalName());
       outputMap.put("value-class", value == null ? "null" : value.getClass().getCanonicalName());
