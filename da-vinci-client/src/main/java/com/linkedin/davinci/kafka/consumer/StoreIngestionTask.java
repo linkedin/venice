@@ -2852,7 +2852,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return entry.getSecond();
       } catch (TopicDoesNotExistException e) {
         //It's observed in production that With java based admin client the topic may not be found temporarily, so return 0 in such cases.
-        return 0;
+        return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
       }
     }
 
