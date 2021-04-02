@@ -27,7 +27,7 @@ public class RedundantExceptionFilter {
     this.bitSetSize = bitSetSize;
     activeBitset = new BitSet(bitSetSize);
     oldBitSet = new BitSet(bitSetSize);
-    cleanerExecutor.scheduleAtFixedRate(this::clearBitSet, 0, noRedundantExceptionDurationMs, TimeUnit.MILLISECONDS);
+    cleanerExecutor.scheduleAtFixedRate(this::clearBitSet, noRedundantExceptionDurationMs, noRedundantExceptionDurationMs, TimeUnit.MILLISECONDS);
   }
 
   public synchronized static RedundantExceptionFilter getRedundantExceptionFilter(){
