@@ -1,8 +1,11 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import java.util.Arrays;
+import org.apache.avro.AvroTypeException;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
 import org.apache.log4j.Logger;
@@ -19,10 +22,11 @@ public class SchemaEntry {
   // To ensure we don't accidentally use different compatibility type for schema creation in Venice.
   public static final DirectionalSchemaCompatibilityType DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE =
       DirectionalSchemaCompatibilityType.FULL;
+  private static final Logger logger = Logger.getLogger(SchemaEntry.class);
 
   private final int id;
   private Schema schema;
-  private Logger logger = Logger.getLogger(getClass());
+  private boolean failedParsing = false;
 
   /**
    * Primary constructor taking a literal id and schema.
@@ -37,7 +41,13 @@ public class SchemaEntry {
       this.schema = Schema.parse(schemaStr);
     } catch (Exception e) {
       logger.error("Failed to parse schema: " + schemaStr);
-      throw new SchemaParseException(e);
+      if ((e instanceof AvroTypeException) && (AvroCompatibilityHelper.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
+        this.schema = Schema.create(Schema.Type.NULL);
+        this.failedParsing = true;
+        logger.warn("Avro 1.9 and newer version enforces stricter schema validation during parsing, will treat failed value schema as deprecated old value schema and ignore it.");
+      } else {
+        throw new SchemaParseException(e);
+      }
     }
   }
 
@@ -90,7 +100,7 @@ public class SchemaEntry {
   }
 
   public String toString(boolean pretty) {
-    return id + "\t" + schema.toString(pretty);
+    return id + "\t" + schema.toString(pretty) + "\t" + failedParsing;
   }
 
   public byte[] getSchemaBytes() {

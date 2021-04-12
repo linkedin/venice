@@ -112,6 +112,18 @@ public final class ForkedJavaProcess extends Process {
           classpathDirs.add(new File(file.getParent(), "*"));
         }
       }
+
+      /*
+        Prepend WEB-INF/lib classpath to the forked Java process's classpath so the forked
+        process will have correct(newest) jar version for every dependencies when deployed in regular-war fashion.
+       */
+      for (File file : new ArrayList<>(classpathDirs)) {
+        if (!file.getPath().contains("WEB-INF/lib")) {
+          classpathDirs.remove(file);
+          classpathDirs.add(file);
+        }
+      }
+
       /*
         Prepend extra_webapp_resources/lib classpath to the forked Java process's classpath so the forked
         process will have correct(newest) jar version for every dependencies when deployed in thin-war fashion.

@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
@@ -21,6 +22,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -122,7 +124,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * when reading records that don't have those fields, typically when we deserialize a record from older version to
    * newer version.
    */
-  public static final long DEFAULT_UPSTREAM_OFFSET = ProducerMetadata.SCHEMA$.getField("upstreamOffset").defaultValue().asLong();
+  public static final long DEFAULT_UPSTREAM_OFFSET = (long)AvroCompatibilityHelper.getSpecificDefaultValue(ProducerMetadata.SCHEMA$.getField("upstreamOffset"));
 
   /**
    * A static counter shared by all VeniceWriter instances to track the number of active VeniceWriter

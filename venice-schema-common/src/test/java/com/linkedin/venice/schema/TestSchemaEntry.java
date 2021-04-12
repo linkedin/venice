@@ -17,7 +17,7 @@ public class TestSchemaEntry {
         "           ]\n" +
         "        }";
     SchemaEntry schemaEntry = new SchemaEntry(10, schemaStr);
-    String expectedStr = "10\t{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
+    String expectedStr = "10\t{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}\tfalse";
     Assert.assertEquals(schemaEntry.toString(), expectedStr);
   }
 

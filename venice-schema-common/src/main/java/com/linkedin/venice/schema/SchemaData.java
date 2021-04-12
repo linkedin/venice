@@ -4,10 +4,10 @@ import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
+
 
 /**
  * This class is used to store all the schemas related to a given store:
@@ -53,7 +53,7 @@ public final class SchemaData {
 
   public void addValueSchema(SchemaEntry valueSchema) {
     //value schema should be unique in store level, same as schema id
-    Integer id = new Integer(valueSchema.getId());
+    Integer id = valueSchema.getId();
     valueSchemaMap.put(id, valueSchema);
     valueSchemaRMap.put(valueSchema, id);
   }
