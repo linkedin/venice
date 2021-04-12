@@ -25,6 +25,7 @@ package com.linkedin.venice.schema.avro;
  * limitations under the License.
  */
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.slf4j.Logger;
@@ -328,7 +329,7 @@ public class SchemaCompatibility {
               if (writerField == null) {
                 // Reader field does not correspond to any field in the writer record schema,
                 // reader field must have a default value.
-                if (readerField.defaultValue() == null) {
+                if (!AvroCompatibilityHelper.fieldHasDefault(readerField)) {
                   // reader field has no default value
                   return SchemaCompatibilityType.INCOMPATIBLE;
                 }

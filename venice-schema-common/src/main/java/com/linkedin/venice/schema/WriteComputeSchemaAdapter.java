@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -10,13 +11,11 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.codehaus.jackson.node.ArrayNode;
-import org.codehaus.jackson.node.JsonNodeFactory;
-import org.codehaus.jackson.node.ObjectNode;
 
-import static org.apache.avro.Schema.Field;
-import static org.apache.avro.Schema.Type.*;
 import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.WriteComputeOperation.*;
+import static org.apache.avro.Schema.*;
+import static org.apache.avro.Schema.Type.*;
+
 
 /**
  * A util class that parses arbitrary Avro schema to its' write compute schema.
@@ -53,8 +52,8 @@ public class WriteComputeSchemaAdapter {
      * 2. setDiff: remove elements from the original array, as if it was a sorted set.
      */
     LIST_OPS("ListOps", new Function[] {
-        schema -> new Field(SET_UNION, (Schema) schema, null, ARRAY_NODE),
-        schema -> new Field(SET_DIFF, (Schema) schema, null, ARRAY_NODE)
+        schema -> AvroCompatibilityHelper.createSchemaField(SET_UNION, (Schema) schema, null, Collections.emptyList()),
+        schema -> AvroCompatibilityHelper.createSchemaField(SET_DIFF, (Schema) schema, null, Collections.emptyList())
     }),
 
     /**
@@ -64,8 +63,8 @@ public class WriteComputeSchemaAdapter {
      * 2. mapDiff: remove entries from the original array.
      */
     MAP_OPS("MapOps", new Function[] {
-        schema -> new Field(MAP_UNION, (Schema) schema, null, OBJECT_NODE),
-        schema -> new Field(MAP_DIFF, Schema.createArray(Schema.create(Schema.Type.STRING)), null, ARRAY_NODE)
+        schema -> AvroCompatibilityHelper.createSchemaField(MAP_UNION, (Schema) schema, null, Collections.emptyMap()),
+        schema -> AvroCompatibilityHelper.createSchemaField(MAP_DIFF, Schema.createArray(Schema.create(Schema.Type.STRING)), null, Collections.emptyList())
     }),
 
     /**
@@ -108,9 +107,6 @@ public class WriteComputeSchemaAdapter {
 
   //Instantiate some constants here so that they could be reused.
   private static final String WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX = "WriteOpRecord";
-
-  private static final ArrayNode ARRAY_NODE = JsonNodeFactory.instance.arrayNode();
-  private static final ObjectNode OBJECT_NODE = JsonNodeFactory.instance.objectNode();
 
   //List operations
   public static final String SET_UNION = "setUnion";
@@ -244,14 +240,14 @@ public class WriteComputeSchemaAdapter {
         recordSchema.isError());
     List<Field> fieldList = new ArrayList<>();
     for (Field field : recordSchema.getFields()) {
-      if (field.defaultValue() == null) {
+      if (!AvroCompatibilityHelper.fieldHasDefault(field)) {
         throw new VeniceException(String.format("Cannot generate derived schema because field: \"%s\" "
-                + "does not have a default value.", field.name()));
+            + "does not have a default value.", field.name()));
       }
 
       //parse each field. We'd like to skip parsing "RECORD" type in order to avoid recursive parsing
-      fieldList.add(new Field(field.name(), wrapNoopUnion(recordNamespace, field.schema().getType() == RECORD ?
-          field.schema() : parse(field.schema(), field.name(), recordNamespace)), field.doc(), OBJECT_NODE,
+      fieldList.add(AvroCompatibilityHelper.createSchemaField(field.name(), wrapNoopUnion(recordNamespace, field.schema().getType() == RECORD ?
+          field.schema() : parse(field.schema(), field.name(), recordNamespace)), field.doc(), Collections.emptyMap(),
           field.order()));
     }
 

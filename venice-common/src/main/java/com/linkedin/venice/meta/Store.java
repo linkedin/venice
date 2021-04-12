@@ -3,9 +3,8 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
-
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-
+import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -78,7 +77,7 @@ public interface Store {
   static <T extends SpecificRecord> T prefillAvroRecordWithDefaultValue(T recordType) {
     Schema schema = recordType.getSchema();
     for (Schema.Field field : schema.getFields()) {
-      if (field.defaultValue() != null) {
+      if (AvroCompatibilityHelper.fieldHasDefault(field)) {
         // has default
         Object defaultValue = AvroCompatibilityHelper.getSpecificDefaultValue(field);
         Schema.Type fieldType = field.schema().getType();
