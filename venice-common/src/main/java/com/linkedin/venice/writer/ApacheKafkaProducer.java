@@ -87,10 +87,15 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
       properties.setProperty(ProducerConfig.RETRIES_CONFIG, Integer.toString(Integer.MAX_VALUE));
     }
 
-    // Hard-coded backoff config to be 1 sec
-    validateProp(properties, strictConfigs, ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "1000");
-    // Block if buffer is full
-    validateProp(properties, strictConfigs, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
+    if (!properties.contains(ProducerConfig.RETRY_BACKOFF_MS_CONFIG)) {
+      // Hard-coded backoff config to be 1 sec
+      validateProp(properties, strictConfigs, ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "1000");
+    }
+
+    if (!properties.containsKey(ProducerConfig.MAX_BLOCK_MS_CONFIG)) {
+      // Block if buffer is full
+      validateProp(properties, strictConfigs, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
+    }
 
     if (properties.containsKey(ProducerConfig.COMPRESSION_TYPE_CONFIG)) {
       LOGGER.info("Compression type explicitly specified by config: " + properties.getProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG));
