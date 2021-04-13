@@ -47,6 +47,7 @@ public class ConfigKeys {
 
   public static final String KAFKA_REQUEST_TIMEOUT_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
   public static final String KAFKA_DELIVERY_TIMEOUT_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
+  public static final String KAFKA_MAX_BLOCK_MS = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.MAX_BLOCK_MS_CONFIG;
 
   /**
    * The time window used by the consumption throttler. Throttler will sum the requests during the time window and
