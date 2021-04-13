@@ -45,6 +45,16 @@ public class TestVenicePushJobWithReporterCounters {
       "       { \"name\": \"company\", \"type\": \"string\" }  " +
       "  ] " +
       " } ";
+  private static final String SIMPLE_FILE_SCHEMA_STR = "{\n" +
+          "    \"type\": \"record\",\n" +
+          "    \"name\": \"Type1\",\n" +
+          "    \"fields\": [\n" +
+          "        {\n" +
+          "            \"name\": \"something\",\n" +
+          "            \"type\": \"string\"\n" +
+          "        }\n" +
+          "    ]\n" +
+          "}";
 
   @Test (expectedExceptions = { VeniceException.class })
   public void testHandleQuotaExceeded() throws Exception {
@@ -260,8 +270,7 @@ public class TestVenicePushJobWithReporterCounters {
     schemaInfo.valueSchemaString = SCHEMA_STR;
     schemaInfo.keyField = "key-field";
     schemaInfo.valueField = "value-field";
-    schemaInfo.fileSchemaString = "file-schema-string";
-    schemaInfo.fileSchemaString = "file-schema-string";
+    schemaInfo.fileSchemaString = SIMPLE_FILE_SCHEMA_STR;
     InputDataInfoProvider.InputDataInfo inputDataInfo =
         new InputDataInfoProvider.InputDataInfo(schemaInfo, inputFileDataSizeInBytes, inputFileHasRecords);
     when(inputDataInfoProvider.validateInputAndGetInfo(anyString())).thenReturn(inputDataInfo);

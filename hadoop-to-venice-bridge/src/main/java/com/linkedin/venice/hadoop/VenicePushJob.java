@@ -22,6 +22,7 @@ import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
+import com.linkedin.venice.hadoop.utils.AvroSchemaParseUtils;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -102,6 +103,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
   public static final String SCHEMA_STRING_PROP = "schema";
+  public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
+  public static final Boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
 
   //Vson input configs
   //Vson files store key/value schema on file header. key / value fields are optional
@@ -382,7 +385,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     JOB_STATUS_POLLING_COMPLETED(5),
     QUOTA_EXCEEDED(-1),
     WRITE_ACL_FAILED(-2),
-    DUP_KEY_WITH_DIFF_VALUE(-3);
+    DUP_KEY_WITH_DIFF_VALUE(-3),
+    FILE_SCHEMA_VALIDATION_FAILED(-4),
+    EXTENDED_FILE_SCHEMA_VALIDATION_FAILED(-5);
 
     private final int value;
 
@@ -602,6 +607,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
             getInputDataInfoProvider().validateInputAndGetInfo(inputDirectory);
         // Get input schema
         schemaInfo = inputInfo.getSchemaInfo();
+        if (schemaInfo.isAvro) {
+          validateFileSchema(schemaInfo.fileSchemaString);
+        } else {
+          LOGGER.info("Skip validating file schema since it is not Avro.");
+        }
         inputFileDataSize = inputInfo.getInputFileDataSizeInBytes();
         inputFileHasRecords = inputInfo.hasRecords();
         validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
@@ -612,7 +622,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
          * No need to specify the accurate input size since the re-push mustn't be the first version, so the partition
          * count calculation won't be affected by this random number.
          */
-        inputFileDataSize = 1024 * 1024 * 1024l;
+        inputFileDataSize = 1024 * 1024 * 1024L;
         /**
          * This is used to ensure the {@link #verifyCountersWithZeroValues()} function won't assume the reducer count
          * should be 0.
@@ -726,6 +736,30 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       IOUtils.closeQuietly(inputDataInfoProvider);
       pushJobHeartbeatSender.stop();
       inputDataInfoProvider = null;
+    }
+  }
+
+  private void validateFileSchema(String fileSchemaString) {
+    final boolean extendedSchemaValidityCheckEnabled = props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
+    boolean parseSchemaFailed = false;
+
+    try {
+      AvroSchemaParseUtils.parseSchemaFromJSONWithExtendedValidation(fileSchemaString);
+    } catch (Exception e) {
+      if (extendedSchemaValidityCheckEnabled) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.EXTENDED_FILE_SCHEMA_VALIDATION_FAILED);
+        throw new VeniceException(e);
+      }
+      parseSchemaFailed = true;
+    }
+
+    if (parseSchemaFailed) {
+      try {
+        AvroSchemaParseUtils.parseSchemaFromJSONWithNoExtendedValidation(fileSchemaString);
+      } catch (Exception e) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.FILE_SCHEMA_VALIDATION_FAILED);
+        throw new VeniceException(e);
+      }
     }
   }
 
