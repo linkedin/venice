@@ -578,7 +578,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 newStore.setLeaderFollowerModelEnabled(true);
             }
             if (newStore.isLeaderFollowerModelEnabled()) {
-                newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledForBatchOnly());
+                newStore.setNativeReplicationEnabled(
+                    config.isNativeReplicationEnabledForBatchOnly() && config.isNativeReplicationEnabledForHybrid()
+                        && config.isNativeReplicationEnabledForIncremental());
             } else {
                 newStore.setNativeReplicationEnabled(false);
             }
