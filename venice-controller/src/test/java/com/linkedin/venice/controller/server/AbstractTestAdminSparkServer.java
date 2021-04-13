@@ -17,13 +17,13 @@ import org.apache.commons.io.IOUtils;
  * A common base class to provide setup and teardown routines to be used in venice AdminSparkServer related test cases.
  */
 public class AbstractTestAdminSparkServer {
-  static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
-  static final int STORAGE_NODE_COUNT = 1;
+  protected static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
+  protected static final int STORAGE_NODE_COUNT = 1;
 
-  VeniceClusterWrapper cluster;
-  ControllerClient controllerClient;
-  VeniceControllerWrapper parentController;
-  ZkServerWrapper parentZk;
+  protected VeniceClusterWrapper cluster;
+  protected ControllerClient controllerClient;
+  protected VeniceControllerWrapper parentController;
+  protected ZkServerWrapper parentZk;
 
   public void setUp(boolean useParentRestEndpoint, Optional<AuthorizerService> authorizerService) {
     cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0);

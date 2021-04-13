@@ -501,18 +501,33 @@ public class StoresRoutes extends AbstractRoute {
         String cluster = request.queryParams(CLUSTER);
 
         List<Store> storeCandidates;
-        if (storeType.equals(HYBRID_ONLY.toString())) {
-          storeCandidates = admin.getAllStores(cluster).stream()
-              .filter(Store::isHybrid)
-              .collect(Collectors.toList());
-        } else if (storeType.equals(HYBRID_OR_INCREMENTAL.toString())) {
-          storeCandidates = admin.getAllStores(cluster).stream()
-              .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
-              .collect(Collectors.toList());
-        } else if (storeType.equals(ALL.toString())){
-          storeCandidates = admin.getAllStores(cluster);
-        } else {
-          throw new VeniceException("Unsupported store type." + storeType);
+        VeniceUserStoreType userStoreType = VeniceUserStoreType.valueOf(storeType.toUpperCase());
+        switch (userStoreType) {
+          case BATCH_ONLY:
+            storeCandidates = admin.getAllStores(cluster).stream()
+                .filter(store -> (!store.isHybrid() && !store.isIncrementalPushEnabled()))
+                .collect(Collectors.toList());
+            break;
+          case HYBRID_ONLY:
+            storeCandidates = admin.getAllStores(cluster).stream()
+                .filter(store -> (store.isHybrid() && !store.isIncrementalPushEnabled()))
+                .collect(Collectors.toList());
+            break;
+          case INCREMENTAL_PUSH:
+            storeCandidates = admin.getAllStores(cluster).stream()
+                .filter(Store::isIncrementalPushEnabled)
+                .collect(Collectors.toList());
+            break;
+          case HYBRID_OR_INCREMENTAL:
+            storeCandidates = admin.getAllStores(cluster).stream()
+                .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
+                .collect(Collectors.toList());
+            break;
+          case ALL:
+            storeCandidates = admin.getAllStores(cluster);
+            break;
+          default:
+            throw new VeniceException("Unsupported store type." + storeType);
         }
 
         // filter out all the system stores
