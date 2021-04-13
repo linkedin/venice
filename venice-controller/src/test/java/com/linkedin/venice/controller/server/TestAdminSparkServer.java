@@ -55,9 +55,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.meta.VeniceUserStoreType.*;
-
-
 public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   /**
    * Seems that Helix has limit on the number of resource each node is able to handle.
@@ -135,26 +132,29 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     NewStoreResponse newStoreResponse =
         controllerClient.createNewStore(storeToCreate, "owner", keySchema, valueSchema);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
+    try {
+      NewStoreResponse duplicateNewStoreResponse = controllerClient.createNewStore(storeToCreate, "owner", keySchema, valueSchema);
+      Assert.assertTrue(duplicateNewStoreResponse.isError(), "create new store should fail for duplicate store creation");
 
-    NewStoreResponse duplicateNewStoreResponse =
-        controllerClient.createNewStore(storeToCreate, "owner", keySchema, valueSchema);
-    Assert.assertTrue(duplicateNewStoreResponse.isError(), "create new store should fail for duplicate store creation");
-
-    // ensure creating a duplicate store throws a http 409, status code isn't exposed in controllerClient
-    CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1,1, Optional.empty());
-    httpClient.start();
-    List<NameValuePair> params = new ArrayList<>();
-    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, Utils.getHostName()));
-    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, cluster.getClusterName()));
-    params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeToCreate));
-    params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, "owner"));
-    params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
-    params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
-    final HttpPost post = new HttpPost(cluster.getAllControllersURLs() + ControllerRoute.NEW_STORE.getPath());
-    post.setEntity(new UrlEncodedFormEntity(params));
-    HttpResponse duplicateStoreCreationHttpResponse = httpClient.execute(post, null).get();
-    Assert.assertEquals(duplicateStoreCreationHttpResponse.getStatusLine().getStatusCode(), 409, IOUtils.toString(duplicateStoreCreationHttpResponse.getEntity().getContent()));
-    httpClient.close();
+      // ensure creating a duplicate store throws a http 409, status code isn't exposed in controllerClient
+      CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1, 1, Optional.empty());
+      httpClient.start();
+      List<NameValuePair> params = new ArrayList<>();
+      params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, Utils.getHostName()));
+      params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, cluster.getClusterName()));
+      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeToCreate));
+      params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, "owner"));
+      params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
+      params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
+      final HttpPost post = new HttpPost(cluster.getAllControllersURLs() + ControllerRoute.NEW_STORE.getPath());
+      post.setEntity(new UrlEncodedFormEntity(params));
+      HttpResponse duplicateStoreCreationHttpResponse = httpClient.execute(post, null).get();
+      Assert.assertEquals(duplicateStoreCreationHttpResponse.getStatusLine().getStatusCode(), 409, IOUtils.toString(duplicateStoreCreationHttpResponse.getEntity().getContent()));
+      httpClient.close();
+    } finally {
+      // clear the store since the cluster is shared by other test cases
+      deleteStore(storeToCreate);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -168,11 +168,15 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     // Create Store
     NewStoreResponse newStoreResponse =
         controllerClient.createNewStore(storeToCreate, "owner", keySchemaStr, valueSchemaStr);
-
-    Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
-    SchemaResponse sr1 = controllerClient.getKeySchema(storeToCreate);
-    Assert.assertEquals(sr1.getId(), 1);
-    Assert.assertEquals(sr1.getSchemaStr(), keySchemaStr);
+    try {
+      Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
+      SchemaResponse sr1 = controllerClient.getKeySchema(storeToCreate);
+      Assert.assertEquals(sr1.getId(), 1);
+      Assert.assertEquals(sr1.getSchemaStr(), keySchemaStr);
+    } finally {
+      // clear the store since the cluster is shared by other test cases
+      deleteStore(storeToCreate);
+    }
   }
 
   private String formatSchema(String schema) {
@@ -210,93 +214,94 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     // Add value schema to an existing store
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeToCreate, "owner", keySchemaStr, schema1);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
-    SchemaResponse sr1 = controllerClient.addValueSchema(storeToCreate, schema1);
-    Assert.assertFalse(sr1.isError());
-    Assert.assertEquals(sr1.getId(), 1);
-    // Add same value schema
-    SchemaResponse sr2 = controllerClient.addValueSchema(storeToCreate, schema1);
-    Assert.assertFalse(sr2.isError());
-    Assert.assertEquals(sr2.getId(), sr1.getId());
-    // Add a new value schema
-    SchemaResponse sr3 = controllerClient.addValueSchema(storeToCreate, schema2);
-    Assert.assertFalse(sr3.isError());
-    Assert.assertEquals(sr3.getId(), 2);
-    // Add invalid schema
-    SchemaResponse sr4 = controllerClient.addValueSchema(storeToCreate, invalidSchema);
-    Assert.assertTrue(sr4.isError());
-    // Add incompatible schema
-    SchemaResponse sr5 = controllerClient.addValueSchema(storeToCreate, incompatibleSchema);
-    Assert.assertTrue(sr5.isError());
+    try {
+      SchemaResponse sr1 = controllerClient.addValueSchema(storeToCreate, schema1);
+      Assert.assertFalse(sr1.isError());
+      Assert.assertEquals(sr1.getId(), 1);
+      // Add same value schema
+      SchemaResponse sr2 = controllerClient.addValueSchema(storeToCreate, schema1);
+      Assert.assertFalse(sr2.isError());
+      Assert.assertEquals(sr2.getId(), sr1.getId());
+      // Add a new value schema
+      SchemaResponse sr3 = controllerClient.addValueSchema(storeToCreate, schema2);
+      Assert.assertFalse(sr3.isError());
+      Assert.assertEquals(sr3.getId(), 2);
+      // Add invalid schema
+      SchemaResponse sr4 = controllerClient.addValueSchema(storeToCreate, invalidSchema);
+      Assert.assertTrue(sr4.isError());
+      // Add incompatible schema
+      SchemaResponse sr5 = controllerClient.addValueSchema(storeToCreate, incompatibleSchema);
+      Assert.assertTrue(sr5.isError());
 
-    // Formatted schema string
-    String formattedSchemaStr1 = formatSchema(schema1);
-    String formattedSchemaStr2 = formatSchema(schema2);
-    // Get schema by id
-    SchemaResponse sr6 = controllerClient.getValueSchema(storeToCreate, 1);
-    Assert.assertFalse(sr6.isError());
-    Assert.assertEquals(sr6.getSchemaStr(), formattedSchemaStr1);
-    SchemaResponse sr7 = controllerClient.getValueSchema(storeToCreate, 2);
-    Assert.assertFalse(sr7.isError());
-    Assert.assertEquals(sr7.getSchemaStr(), formattedSchemaStr2);
-    // Get schema by non-existed schema id
-    SchemaResponse sr8 = controllerClient.getValueSchema(storeToCreate, 3);
-    Assert.assertTrue(sr8.isError());
+      // Formatted schema string
+      String formattedSchemaStr1 = formatSchema(schema1);
+      String formattedSchemaStr2 = formatSchema(schema2);
+      // Get schema by id
+      SchemaResponse sr6 = controllerClient.getValueSchema(storeToCreate, 1);
+      Assert.assertFalse(sr6.isError());
+      Assert.assertEquals(sr6.getSchemaStr(), formattedSchemaStr1);
+      SchemaResponse sr7 = controllerClient.getValueSchema(storeToCreate, 2);
+      Assert.assertFalse(sr7.isError());
+      Assert.assertEquals(sr7.getSchemaStr(), formattedSchemaStr2);
+      // Get schema by non-existed schema id
+      SchemaResponse sr8 = controllerClient.getValueSchema(storeToCreate, 3);
+      Assert.assertTrue(sr8.isError());
 
-    // Get value schema by schema
-    SchemaResponse sr9 = controllerClient.getValueSchemaID(storeToCreate, schema1);
-    Assert.assertFalse(sr9.isError());
-    Assert.assertEquals(sr9.getId(), 1);
-    SchemaResponse sr10 = controllerClient.getValueSchemaID(storeToCreate, schema2);
-    Assert.assertFalse(sr10.isError());
-    Assert.assertEquals(sr10.getId(), 2);
-    SchemaResponse sr11 = controllerClient.getValueSchemaID(storeToCreate, invalidSchema);
-    Assert.assertTrue(sr11.isError());
-    SchemaResponse sr12 = controllerClient.getValueSchemaID(storeToCreate, incompatibleSchema);
-    Assert.assertTrue(sr12.isError());
+      // Get value schema by schema
+      SchemaResponse sr9 = controllerClient.getValueSchemaID(storeToCreate, schema1);
+      Assert.assertFalse(sr9.isError());
+      Assert.assertEquals(sr9.getId(), 1);
+      SchemaResponse sr10 = controllerClient.getValueSchemaID(storeToCreate, schema2);
+      Assert.assertFalse(sr10.isError());
+      Assert.assertEquals(sr10.getId(), 2);
+      SchemaResponse sr11 = controllerClient.getValueSchemaID(storeToCreate, invalidSchema);
+      Assert.assertTrue(sr11.isError());
+      SchemaResponse sr12 = controllerClient.getValueSchemaID(storeToCreate, incompatibleSchema);
+      Assert.assertTrue(sr12.isError());
 
-    // Get all value schema
-    MultiSchemaResponse msr = controllerClient.getAllValueSchema(storeToCreate);
-    Assert.assertFalse(msr.isError());
-    MultiSchemaResponse.Schema[] schemas = msr.getSchemas();
-    Assert.assertEquals(schemas.length, 2);
-    Assert.assertEquals(schemas[0].getId(), 1);
-    Assert.assertEquals(schemas[0].getSchemaStr(), formattedSchemaStr1);
-    Assert.assertEquals(schemas[1].getId(), 2);
-    Assert.assertEquals(schemas[1].getSchemaStr(), formattedSchemaStr2);
+      // Get all value schema
+      MultiSchemaResponse msr = controllerClient.getAllValueSchema(storeToCreate);
+      Assert.assertFalse(msr.isError());
+      MultiSchemaResponse.Schema[] schemas = msr.getSchemas();
+      Assert.assertEquals(schemas.length, 2);
+      Assert.assertEquals(schemas[0].getId(), 1);
+      Assert.assertEquals(schemas[0].getSchemaStr(), formattedSchemaStr1);
+      Assert.assertEquals(schemas[1].getId(), 2);
+      Assert.assertEquals(schemas[1].getSchemaStr(), formattedSchemaStr2);
 
-    // Add way more schemas, to test for the bug where we ordered schemas lexicographically: 1, 10, 11, 2, 3, ...
-    String[] allSchemas = new String[100];
-    allSchemas[0] = schema1;
-    allSchemas[1] = schema2;
-    String prefixForLotsOfSchemas = schemaPrefix + salaryFieldWithDefault;
+      // Add way more schemas, to test for the bug where we ordered schemas lexicographically: 1, 10, 11, 2, 3, ...
+      String[] allSchemas = new String[100];
+      allSchemas[0] = schema1;
+      allSchemas[1] = schema2;
+      String prefixForLotsOfSchemas = schemaPrefix + salaryFieldWithDefault;
 
-    // add incorrect schema
-    sr1 = controllerClient.addValueSchema(storeToCreate, schemaStr);
-    Assert.assertTrue(sr1.isError());
-    for (int i = 3; i < allSchemas.length; i++) {
-      prefixForLotsOfSchemas += "," +
-          "               {\"name\": \"newField" + i + "\", \"type\": \"long\", \"default\": 123 }\n";
-      String schema = formatSchema(prefixForLotsOfSchemas + schemaSuffix);
-      allSchemas[i - 1] = schema;
-      SchemaResponse sr = controllerClient.addValueSchema(storeToCreate, schema);
-      Assert.assertFalse(sr.isError());
-      Assert.assertEquals(sr.getId(), i);
+      // add incorrect schema
+      sr1 = controllerClient.addValueSchema(storeToCreate, schemaStr);
+      Assert.assertTrue(sr1.isError());
+      for (int i = 3; i < allSchemas.length; i++) {
+        prefixForLotsOfSchemas += "," + "               {\"name\": \"newField" + i + "\", \"type\": \"long\", \"default\": 123 }\n";
+        String schema = formatSchema(prefixForLotsOfSchemas + schemaSuffix);
+        allSchemas[i - 1] = schema;
+        SchemaResponse sr = controllerClient.addValueSchema(storeToCreate, schema);
+        Assert.assertFalse(sr.isError());
+        Assert.assertEquals(sr.getId(), i);
 
-      // At each new schema we create, we test that the ordering is correct
-      MultiSchemaResponse msr2 = controllerClient.getAllValueSchema(storeToCreate);
-      Assert.assertFalse(msr2.isError());
-      MultiSchemaResponse.Schema[] schemasFromController = msr2.getSchemas();
-      Assert.assertEquals(schemasFromController.length, i,
-          "getAllValueSchema request should return " + i + " schemas.");
+        // At each new schema we create, we test that the ordering is correct
+        MultiSchemaResponse msr2 = controllerClient.getAllValueSchema(storeToCreate);
+        Assert.assertFalse(msr2.isError());
+        MultiSchemaResponse.Schema[] schemasFromController = msr2.getSchemas();
+        Assert.assertEquals(schemasFromController.length, i, "getAllValueSchema request should return " + i + " schemas.");
 
-      for (int j = 1; j <= i; j++) {
-        Assert.assertEquals(schemasFromController[j - 1].getId(), j,
-            "getAllValueSchema request should return the right schema ID for item " + j
-                + " after " + i + " schemas have been created.");
-        Assert.assertEquals(schemasFromController[j - 1].getSchemaStr(), allSchemas[j - 1],
-            "getAllValueSchema request should return the right schema string for item " + j
-                + " after " + i + " schemas have been created.");
+        for (int j = 1; j <= i; j++) {
+          Assert.assertEquals(schemasFromController[j - 1].getId(), j,
+              "getAllValueSchema request should return the right schema ID for item " + j + " after " + i + " schemas have been created.");
+          Assert.assertEquals(schemasFromController[j - 1].getSchemaStr(), allSchemas[j - 1],
+              "getAllValueSchema request should return the right schema string for item " + j + " after " + i + " schemas have been created.");
+        }
       }
+    } finally {
+      // clear the store since the cluster is shared by other test cases
+      deleteStore(storeToCreate);
     }
   }
 
@@ -356,14 +361,19 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
 
-    StoreInfo store = controllerClient.getStore(storeName).getStore();
-    Assert.assertTrue(store.isEnableStoreReads(), "Store should NOT be disabled after creating new store-version");
+    try {
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      Assert.assertTrue(store.isEnableStoreReads(), "Store should NOT be disabled after creating new store-version");
 
-    ControllerResponse response = controllerClient.enableStoreReads(storeName, false);
-    Assert.assertFalse(response.isError(), response.getError());
+      ControllerResponse response = controllerClient.enableStoreReads(storeName, false);
+      Assert.assertFalse(response.isError(), response.getError());
 
-    store = controllerClient.getStore(storeName).getStore();
-    Assert.assertFalse(store.isEnableStoreReads(), "Store should be disabled after setting disabled status to true");
+      store = controllerClient.getStore(storeName).getStore();
+      Assert.assertFalse(store.isEnableStoreReads(), "Store should be disabled after setting disabled status to true");
+    } finally {
+      // clear the store since the cluster is shared by other test cases
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -394,20 +404,22 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     int partitionCount = 2;
 
     cluster.getNewStore(storeName);
-    OwnerResponse ownerRes = controllerClient.setStoreOwner(storeName, owner);
-    Assert.assertFalse(ownerRes.isError(), ownerRes.getError());
-    Assert.assertEquals(ownerRes.getOwner(), owner);
+    try {
+      OwnerResponse ownerRes = controllerClient.setStoreOwner(storeName, owner);
+      Assert.assertFalse(ownerRes.isError(), ownerRes.getError());
+      Assert.assertEquals(ownerRes.getOwner(), owner);
 
-    UpdateStoreQueryParams updateStoreQueryParams =
-        new UpdateStoreQueryParams()
-            .setPartitionCount(partitionCount)
-            .setIncrementalPushEnabled(true);
-    ControllerResponse partitionRes = controllerClient.updateStore(storeName, updateStoreQueryParams);
-    Assert.assertFalse(partitionRes.isError(), partitionRes.getError());
+      UpdateStoreQueryParams updateStoreQueryParams =
+          new UpdateStoreQueryParams().setPartitionCount(partitionCount).setIncrementalPushEnabled(true);
+      ControllerResponse partitionRes = controllerClient.updateStore(storeName, updateStoreQueryParams);
+      Assert.assertFalse(partitionRes.isError(), partitionRes.getError());
 
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.getStore().getPartitionCount(), partitionCount);
-    Assert.assertEquals(storeResponse.getStore().isIncrementalPushEnabled(), true);
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertEquals(storeResponse.getStore().getPartitionCount(), partitionCount);
+      Assert.assertEquals(storeResponse.getStore().isIncrementalPushEnabled(), true);
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -422,29 +434,36 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanDeleteAllVersion() {
     String storeName = cluster.getNewStoreVersion().getName();
-    controllerClient.enableStoreReads(storeName, false);
-    controllerClient.enableStoreWrites(storeName, false);
+    try {
+      controllerClient.enableStoreReads(storeName, false);
+      controllerClient.enableStoreWrites(storeName, false);
 
-    MultiVersionResponse deleteVersionsResponse = controllerClient.deleteAllVersions(storeName);
-    Assert.assertFalse(deleteVersionsResponse.isError(), deleteVersionsResponse.getError());
-    Assert.assertEquals(deleteVersionsResponse.getExecutionId(), 0,
-        "The command executed in non-parent controller should have an execution id 0");
+      MultiVersionResponse deleteVersionsResponse = controllerClient.deleteAllVersions(storeName);
+      Assert.assertFalse(deleteVersionsResponse.isError(), deleteVersionsResponse.getError());
+      Assert.assertEquals(deleteVersionsResponse.getExecutionId(), 0,
+          "The command executed in non-parent controller should have an execution id 0");
 
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
-    Assert.assertEquals(storeResponse.getStore().getVersions().size(), 0);
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
+      Assert.assertEquals(storeResponse.getStore().getVersions().size(), 0);
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanDeleteOldVersion() {
     String storeName = cluster.getNewStoreVersion().getName();
+    try {
+      VersionResponse response = controllerClient.deleteOldVersion(storeName, 1);
+      Assert.assertFalse(response.isError(), response.getError());
+      Assert.assertEquals(response.getVersion(), 1);
 
-    VersionResponse response = controllerClient.deleteOldVersion(storeName, 1);
-    Assert.assertFalse(response.isError(), response.getError());
-    Assert.assertEquals(response.getVersion(), 1);
-
-    StoreInfo store = controllerClient.getStore(storeName).getStore();
-    Assert.assertEquals(store.getVersions().size(), 0);
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      Assert.assertEquals(store.getVersions().size(), 0);
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -474,6 +493,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       AdminCommandExecutionResponse response = parentControllerClient.getAdminCommandExecution(executionId);
       Assert.assertFalse(response.isError());
       Assert.assertNotNull(response.getExecution());
+    } finally {
+      deleteStore(storeName);
     }
   }
 
@@ -485,26 +506,33 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       storeNames.add(cluster.getNewStore("testStore" + i).getName());
     }
 
-    MultiStoreStatusResponse storeResponse =
-        controllerClient.listStoresStatuses();
-    Assert.assertFalse(storeResponse.isError());
-    //since all test cases share VeniceClusterWrapper, we get the total number of stores from the Wrapper.
-    List<String> storesInCluster = storeResponse.getStoreStatusMap().entrySet().stream()
-        .map(e -> e.getKey()).collect(Collectors.toList());
-    for (String storeName : storeNames) {
-      Assert.assertTrue(storesInCluster.contains(storeName), "Result of listing store status should contain all stores we created.");
-    }
-    List<String> storeStatuses = storeResponse.getStoreStatusMap().entrySet().stream()
-        .filter(e -> !e.getKey().equals(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster.getClusterName())))
-        .map(Map.Entry::getValue).collect(Collectors.toList());
-    Assert.assertFalse(storeStatuses.isEmpty());
-    for (String status : storeStatuses) {
-      Assert.assertEquals(status, StoreStatus.UNAVAILABLE.toString(),
-          "Store should be unavailable because we have not created a version for this store.");
-    }
-    for (String expectedStore : storeNames) {
-      Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey(expectedStore),
-          "Result of list store status should contain the store we created: " + expectedStore);
+    try {
+      MultiStoreStatusResponse storeResponse = controllerClient.listStoresStatuses();
+      Assert.assertFalse(storeResponse.isError());
+      //since all test cases share VeniceClusterWrapper, we get the total number of stores from the Wrapper.
+      List<String> storesInCluster =
+          storeResponse.getStoreStatusMap().entrySet().stream().map(e -> e.getKey()).collect(Collectors.toList());
+      for (String storeName : storeNames) {
+        Assert.assertTrue(storesInCluster.contains(storeName),
+            "Result of listing store status should contain all stores we created.");
+      }
+      List<String> storeStatuses = storeResponse.getStoreStatusMap()
+          .entrySet()
+          .stream()
+          .filter(e -> !e.getKey().equals(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster.getClusterName())))
+          .map(Map.Entry::getValue)
+          .collect(Collectors.toList());
+      Assert.assertFalse(storeStatuses.isEmpty());
+      for (String status : storeStatuses) {
+        Assert.assertEquals(status, StoreStatus.UNAVAILABLE.toString(),
+            "Store should be unavailable because we have not created a version for this store.");
+      }
+      for (String expectedStore : storeNames) {
+        Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey(expectedStore),
+            "Result of list store status should contain the store we created: " + expectedStore);
+      }
+    } finally {
+      storeNames.forEach(this::deleteStore);
     }
   }
 
@@ -512,14 +540,16 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientCanListFutureStoreVersions() {
     List<String> storeNames = new ArrayList<>();
     storeNames.add(cluster.getNewStore("testStore").getName());
+    try {
+      ControllerClient parentControllerClient = new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
+      MultiStoreStatusResponse storeResponse = parentControllerClient.getFutureVersions(cluster.getClusterName(), storeNames.get(0));
 
-    ControllerClient parentControllerClient = new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
-    MultiStoreStatusResponse storeResponse =
-        parentControllerClient.getFutureVersions(cluster.getClusterName(), storeNames.get(0));
-
-    // Theres no version for this store and no future version coming, so we expect an entry with Store.NON_EXISTING_VERSION
-    Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey("dc-0"));
-    Assert.assertEquals(storeResponse.getStoreStatusMap().get("dc-0"), String.valueOf(Store.NON_EXISTING_VERSION));
+      // Theres no version for this store and no future version coming, so we expect an entry with Store.NON_EXISTING_VERSION
+      Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey("dc-0"));
+      Assert.assertEquals(storeResponse.getStoreStatusMap().get("dc-0"), String.valueOf(Store.NON_EXISTING_VERSION));
+    } finally {
+      storeNames.forEach(this::deleteStore);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -566,28 +596,30 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
         .setAccessControlled(accessControlled)
         .setNumVersionsToPreserve(numVersionToPreserve);
 
-    ControllerResponse response = controllerClient.updateStore(storeName, queryParams);
+    try {
+      ControllerResponse response = controllerClient.updateStore(storeName, queryParams);
 
-    Assert.assertFalse(response.isError(), response.getError());
-    Store store = cluster.getMasterVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
-    Assert.assertEquals(store.getOwner(), owner);
-    Assert.assertEquals(store.getPartitionCount(), partitionCount);
-    Assert.assertEquals(store.getCurrentVersion(), current);
-    Assert.assertEquals(store.isEnableReads(), enableReads);
-    Assert.assertEquals(store.isEnableWrites(), enableWrite);
-    Assert.assertEquals(store.isAccessControlled(), accessControlled);
-    Assert.assertEquals(store.getNumVersionsToPreserve(), numVersionToPreserve);
+      Assert.assertFalse(response.isError(), response.getError());
+      Store store = cluster.getMasterVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
+      Assert.assertEquals(store.getOwner(), owner);
+      Assert.assertEquals(store.getPartitionCount(), partitionCount);
+      Assert.assertEquals(store.getCurrentVersion(), current);
+      Assert.assertEquals(store.isEnableReads(), enableReads);
+      Assert.assertEquals(store.isEnableWrites(), enableWrite);
+      Assert.assertEquals(store.isAccessControlled(), accessControlled);
+      Assert.assertEquals(store.getNumVersionsToPreserve(), numVersionToPreserve);
 
-    enableWrite = false;
-    accessControlled = !accessControlled;
-    queryParams = new UpdateStoreQueryParams()
-        .setEnableWrites(enableWrite)
-        .setAccessControlled(accessControlled);
-    Assert.assertFalse(controllerClient.updateStore(storeName, queryParams).isError(),
-        "We should be able to disable store writes again.");
+      enableWrite = false;
+      accessControlled = !accessControlled;
+      queryParams = new UpdateStoreQueryParams().setEnableWrites(enableWrite).setAccessControlled(accessControlled);
+      Assert.assertFalse(controllerClient.updateStore(storeName, queryParams).isError(),
+          "We should be able to disable store writes again.");
 
-    store = cluster.getMasterVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
-    Assert.assertEquals(store.isAccessControlled(), accessControlled);
+      store = cluster.getMasterVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), storeName);
+      Assert.assertEquals(store.isAccessControlled(), accessControlled);
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -622,12 +654,15 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     String storeName = TestUtils.getUniqueString("store");
     String owner = TestUtils.getUniqueString("owner");
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, owner, "\"string\"", "\"string\"");
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(123L)
-        .setHybridOffsetLagThreshold(1515L));
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 123L);
-    Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getOffsetLagThresholdToGoOnline(), 1515L);
+    try {
+      controllerClient.updateStore(storeName,
+          new UpdateStoreQueryParams().setHybridRewindSeconds(123L).setHybridOffsetLagThreshold(1515L));
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 123L);
+      Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getOffsetLagThresholdToGoOnline(), 1515L);
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -646,16 +681,20 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanDeleteStore() {
     String storeName = cluster.getNewStoreVersion().getName();
-    controllerClient.enableStoreReads(storeName, false);
-    controllerClient.enableStoreWrites(storeName, false);
+    try {
+      controllerClient.enableStoreReads(storeName, false);
+      controllerClient.enableStoreWrites(storeName, false);
 
-    TrackableControllerResponse response = controllerClient.deleteStore(storeName);
-    Assert.assertFalse(response.isError(), response.getError());
-    Assert.assertEquals(response.getExecutionId(), 0,
-        "The command executed in non-parent controller should have an execution id 0");
+      TrackableControllerResponse response = controllerClient.deleteStore(storeName);
+      Assert.assertFalse(response.isError(), response.getError());
+      Assert.assertEquals(response.getExecutionId(), 0,
+          "The command executed in non-parent controller should have an execution id 0");
 
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.isError(), "Store should already be deleted.");
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertTrue(storeResponse.isError(), "Store should already be deleted.");
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -679,6 +718,8 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       Assert.assertFalse(response.isError());
       AdminCommandExecution execution = response.getExecution();
       Assert.assertNotNull(execution);
+    } finally {
+      deleteStore(storeName);
     }
   }
 
@@ -734,39 +775,13 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientCanDiscoverCluster() {
     String storeName = TestUtils.getUniqueString("controllerClientCanDiscoverCluster");
     controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-    Assert.assertEquals(
-        ControllerClient.discoverCluster(cluster.getMasterVeniceController().getControllerUrl(), storeName).getCluster(),
-        cluster.getClusterName(), "Should be able to find the cluster which the given store belongs to.");
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void controllerClientCanSetLeaderFollowerModelInTheCluster() {
-    String storeName = TestUtils.getUniqueString("controllerClientCanSetLeaderFollowerModel");
-    controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-
-
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
-    Assert.assertEquals(storeName, controllerClient.listLFStores().getStores()[0]);
-    controllerClient.enableLFModel(false, ALL.toString());
-    Assert.assertEquals(0, controllerClient.listLFStores().getStores().length);
-
-    //set the store to be incremental push enabled store
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setIncrementalPushEnabled(true)
-        .setLeaderFollowerModel(true));
-    //if only hybrid stores are L/F disabled, incremental push stores shouldn't be affect
-    controllerClient.enableLFModel(false, HYBRID_ONLY.toString());
-    Assert.assertEquals(storeName, controllerClient.listLFStores().getStores()[0]);
-    controllerClient.enableLFModel(false, HYBRID_OR_INCREMENTAL.toString());
-    Assert.assertEquals(0, controllerClient.listLFStores().getStores().length);
-
-    //set the store to be hybrid store
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setHybridOffsetLagThreshold(1000l)
-        .setHybridRewindSeconds(1000l)
-        .setLeaderFollowerModel(true));
-    controllerClient.enableLFModel(false, HYBRID_ONLY.toString());
-    Assert.assertEquals(0, controllerClient.listLFStores().getStores().length);
+    try {
+      Assert.assertEquals(
+          ControllerClient.discoverCluster(cluster.getMasterVeniceController().getControllerUrl(), storeName).getCluster(),
+          cluster.getClusterName(), "Should be able to find the cluster which the given store belongs to.");
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   private void deleteStore(String storeName) {
