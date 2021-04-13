@@ -62,7 +62,7 @@ class AbstractTestVeniceHelixAdmin {
   Map<String, SafeHelixManager> participants = new HashMap<>();
 
   VeniceProperties controllerProps;
-  MockTestStateModelFactory stateModelFactory;
+  Map<String,MockTestStateModelFactory> stateModelFactories = new HashMap<>();
   HelixMessageChannelStats helixMessageChannelStats;
 
   public void setupCluster() throws Exception {
@@ -70,11 +70,9 @@ class AbstractTestVeniceHelixAdmin {
     zkAddress = zkServerWrapper.getAddress();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
-    stateModelFactory = new MockTestStateModelFactory();
     clusterName = TestUtils.getUniqueString("test-cluster");
     controllerProps = new VeniceProperties(getControllerProperties(clusterName));
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
-
     config = new VeniceControllerConfig(controllerProps);
     veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), new MetricsRepository());
     veniceAdmin.start(clusterName);
@@ -98,10 +96,19 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   void delayParticipantJobCompletion(boolean isDelay) {
-    stateModelFactory.setBlockTransition(isDelay);
+    for (String nodeId : stateModelFactories.keySet()) {
+      stateModelFactories.get(nodeId).setBlockTransition(isDelay);
+    }
   }
 
   void startParticipant(boolean isDelay, String nodeId) throws Exception {
+    MockTestStateModelFactory stateModelFactory;
+    if (stateModelFactories.containsKey(nodeId)) {
+      stateModelFactory = stateModelFactories.get(nodeId);
+    } else {
+      stateModelFactory = new MockTestStateModelFactory();
+      stateModelFactories.put(nodeId, stateModelFactory);
+    }
     stateModelFactory.setBlockTransition(isDelay);
     manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, SERVER_LISTENING_PORT, stateModelFactory,
         VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
@@ -115,12 +122,14 @@ class AbstractTestVeniceHelixAdmin {
       participants.get(nodeId).disconnect();
     }
     participants.clear();
+    stateModelFactories.clear();
   }
 
   void stopParticipant(String nodeId) {
     if (participants.containsKey(nodeId)) {
       participants.get(nodeId).disconnect();
       participants.remove(nodeId);
+      stateModelFactories.remove(nodeId);
     }
   }
 

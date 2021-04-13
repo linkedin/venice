@@ -105,7 +105,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     getMaster(allAdmins, clusterName).addStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
   }
 
-  @Test(groups = {"flaky"})
+  @Test
   public void testIsInstanceRemovable() throws Exception {
     // Create another participant so we will get two running instances.
     String newNodeId = "localhost_9900";
@@ -118,6 +118,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(replicationFactor));
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
         partitionCount, replicationFactor);
+
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
@@ -132,12 +133,16 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       }
       return true;
     });
+
+    //Without waiting for offline push status to be COMPLETED, isCurrentVersion check will fail, then node removable
+    //check will not work as expected.
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () ->
+        veniceAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus() == ExecutionStatus.COMPLETED);
     //Make version ONLINE
     ReadWriteStoreRepository storeRepository = veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
     Store store = storeRepository.getStore(storeName);
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     storeRepository.updateStore(store);
-
     //Enough number of replicas, any of instance is able to moved out.
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, false).isRemovable());
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId,  false).isRemovable());
@@ -157,7 +162,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, false).isRemovable(), "Instance is shutdown.");
   }
 
-  @Test(groups = {"flaky"})
+  @Test
   public void testIsInstanceRemovableOnOldVersion() throws Exception {
     int partitionCount = 2;
     int replicaCount = 1;
