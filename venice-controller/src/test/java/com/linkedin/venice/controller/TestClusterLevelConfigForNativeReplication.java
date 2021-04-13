@@ -34,14 +34,14 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
   Properties getControllerProperties(String clusterName) throws IOException {
     Properties props = super.getControllerProperties(clusterName);
     // enable native replication for batch-only stores through cluster-level config
-    props.setProperty(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, "true");
+    props.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
     // enable L/F mode for all stores through cluster-level config
     props.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
     return props;
   }
 
   @Test
-  public void testAddVersionWithClusterLevelNativeReplicationConfig() {
+  public void testClusterLevelNativeReplicationConfigForNewStores() {
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
@@ -51,23 +51,15 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = TestUtils.getUniqueString("test-store");
-    String pushJobId1 = "test-push-job-id-1";
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.
      */
     veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
 
-    /**
-     * Add a version
-     */
-    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
-        false, true, Version.PushType.BATCH, null, null, Optional.empty());
-    // Version 1 should exist.
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // L/F should be enabled by cluster-level config
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(1).get().isLeaderFollowerModelEnabled(), true);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isLeaderFollowerModelEnabled(), true);
     // native replication should be enabled by cluster-level config
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(1).get().isNativeReplicationEnabled(), true);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isNativeReplicationEnabled(), true);
 
     //set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
