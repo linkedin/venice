@@ -417,14 +417,14 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       newStoreResponse = parentControllerClient.createNewStore(hybridStoreName, "", keySchemaStr, valueSchemaStr);
       Assert.assertFalse(newStoreResponse.isError());
       updateStoreParams = new UpdateStoreQueryParams()
-          .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-          .setLeaderFollowerModel(true)
-          .setRegionsFilter("parent,dc-0");
+          .setHybridRewindSeconds(10)
+          .setHybridOffsetLagThreshold(2);
       controllerResponse = parentControllerClient.updateStore(hybridStoreName, updateStoreParams);
       Assert.assertFalse(controllerResponse.isError());
       updateStoreParams = new UpdateStoreQueryParams()
-          .setHybridRewindSeconds(10)
-          .setHybridOffsetLagThreshold(2);
+          .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+          .setLeaderFollowerModel(true)
+          .setRegionsFilter("parent,dc-0");
       controllerResponse = parentControllerClient.updateStore(hybridStoreName, updateStoreParams);
       Assert.assertFalse(controllerResponse.isError());
 
@@ -434,13 +434,13 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       String incrementPushStoreName = TestUtils.getUniqueString("incremental-push-store");
       newStoreResponse = parentControllerClient.createNewStore(incrementPushStoreName, "", keySchemaStr, valueSchemaStr);
       Assert.assertFalse(newStoreResponse.isError());
+      updateStoreParams = new UpdateStoreQueryParams().setIncrementalPushEnabled(true);
+      controllerResponse = parentControllerClient.updateStore(incrementPushStoreName, updateStoreParams);
+      Assert.assertFalse(controllerResponse.isError());
       updateStoreParams = new UpdateStoreQueryParams()
           .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
           .setLeaderFollowerModel(true)
           .setRegionsFilter("parent,dc-0");
-      controllerResponse = parentControllerClient.updateStore(incrementPushStoreName, updateStoreParams);
-      Assert.assertFalse(controllerResponse.isError());
-      updateStoreParams = new UpdateStoreQueryParams().setIncrementalPushEnabled(true);
       controllerResponse = parentControllerClient.updateStore(incrementPushStoreName, updateStoreParams);
       Assert.assertFalse(controllerResponse.isError());
 
