@@ -29,7 +29,10 @@ public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase 
   public long totalCompressedValueBytes;
   public java.util.Map<java.lang.CharSequence,java.lang.CharSequence> pushJobConfigs;
   public java.util.Map<java.lang.CharSequence,java.lang.CharSequence> producerConfigs;
-  /** Latest checkpoint reached by the push job if available, negative values are known error checkpoints  0 => INITIALIZE_PUSH_JOB, 1 => NEW_VERSION_CREATED, 2 =>  START_MAP_REDUCE_JOB, 3 => MAP_REDUCE_JOB_COMPLETED, 4 => START_JOB_STATUS_POLLING, 5 => JOB_STATUS_POLLING_COMPLETED, -1 => QUOTA_EXCEEDED, -2 => WRITE_ACL_FAILED, -3 => DUP_KEY_WITH_DIFF_VALUE */
+  /**
+   * Latest checkpoint reached by the push job if available, negative values are known error checkpoints.
+   * Refer to {@link com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints}
+   */
   public java.lang.Integer pushJobLatestCheckpoint;
   public java.lang.CharSequence failureDetails;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }

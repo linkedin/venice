@@ -5,6 +5,7 @@ import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.hadoop.utils.AvroSchemaParseUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
@@ -68,7 +69,10 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
 
   public VeniceAvroRecordReader(VeniceProperties props) {
     this(props.getString(TOPIC_PROP),
-        AvroCompatibilityHelper.parse(props.getString(SCHEMA_STRING_PROP)),
+        AvroSchemaParseUtils.parseSchemaFromJSON(
+                props.getString(SCHEMA_STRING_PROP),
+                props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED)
+        ),
         props.getString(KEY_FIELD_PROP),
         props.getString(VALUE_FIELD_PROP),
         ETLValueSchemaTransformation.valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name())));
