@@ -69,11 +69,11 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
@@ -88,7 +88,6 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
@@ -102,17 +101,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import java.util.LinkedList;
-import java.util.function.Function;
-import org.apache.avro.Schema;
-import org.apache.http.HttpStatus;
-import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.log4j.Logger;
-import org.codehaus.jackson.JsonNode;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.node.ArrayNode;
-import org.codehaus.jackson.node.JsonNodeFactory;
-import org.codehaus.jackson.node.ObjectNode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -121,6 +109,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -133,7 +122,17 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.avro.Schema;
+import org.apache.http.HttpStatus;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.log4j.Logger;
+import org.codehaus.jackson.JsonNode;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.node.ArrayNode;
+import org.codehaus.jackson.node.JsonNodeFactory;
+import org.codehaus.jackson.node.ObjectNode;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -1261,7 +1260,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
       Optional<Integer> amplificationFactor = params.getAmplificationFactor();
       Optional<Long> storageQuotaInByte = params.getStorageQuotaInByte();
-      Optional<Boolean> hybridStoreDbOverheadBypass = params.getHybridStoreOverheadBypass();
       Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
       Optional<Integer> currentVersion = params.getCurrentVersion();
       Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
@@ -1439,39 +1437,11 @@ public class VeniceParentHelixAdmin implements Admin {
       /**
        * Set storage quota according to store properties. For hybrid stores, rocksDB has the overhead ratio as we
        * do append-only and compaction will happen later.
-       * We need to multiply/divide the overhead ratio by situations
+       * We expose actual disk usage to users, instead of multiplying/dividing the overhead ratio by situations.
        */
-      long setStoreQuota = storageQuotaInByte
+      setStore.storageQuotaInByte = storageQuotaInByte
           .map(addToUpdatedConfigList(updatedConfigsList, STORAGE_QUOTA_IN_BYTE))
           .orElseGet(store::getStorageQuotaInByte);
-      // When hybridStoreOverheadBypass is true, we skip checking situations and simply set it to be the passed value.
-      if (hybridStoreDbOverheadBypass.orElse(false) || setStoreQuota == Store.UNLIMITED_STORAGE_QUOTA) {
-        setStore.storageQuotaInByte = setStoreQuota;
-      } else {
-        if (!oldStoreHybrid) {
-          // convert from non-hybrid to hybrid store, needs to increase the storage quota accordingly
-          if ((hybridRewindSeconds.isPresent() && hybridRewindSeconds.get() >= 0) &&
-              (hybridOffsetLagThreshold.isPresent() && hybridOffsetLagThreshold.get() >= 0)) {
-            setStore.storageQuotaInByte = Math.round(setStoreQuota * RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
-          } else { // user updates storage quota for non-hybrid stores or just inherit the old value
-            setStore.storageQuotaInByte = setStoreQuota;
-          }
-        } else {
-          // convert from hybrid to non-hybrid store, needs to shrink the storage quota accordingly
-          if ((hybridRewindSeconds.isPresent() && hybridRewindSeconds.get() < 0) ||
-              (hybridOffsetLagThreshold.isPresent() && hybridOffsetLagThreshold.get() < 0)) {
-            setStore.storageQuotaInByte = Math.round(setStoreQuota / RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
-            // user updates storage quota for hybrid store
-          } else if (storageQuotaInByte.isPresent() && storageQuotaInByte.get() != store.getStorageQuotaInByte()) {
-            // Nuage UI may auto-fill the origin store quota value into the form, we check whether it is same with
-            // the original store quota. If they are not same, we know users are sending request to update
-            //  storage quota. Otherwise, we just inherit old value here.
-            setStore.storageQuotaInByte = Math.round(setStoreQuota * RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
-          } else { // inherit old value
-            setStore.storageQuotaInByte = store.getStorageQuotaInByte();
-          }
-        }
-      }
 
       setStore.accessControlled = accessControlled
           .map(addToUpdatedConfigList(updatedConfigsList, ACCESS_CONTROLLED))
