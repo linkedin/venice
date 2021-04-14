@@ -41,18 +41,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor fanoutRequestCountSensor;
   private final Sensor quotaSensor;
   private final Sensor findUnhealthyHostRequestSensor;
-  private final Sensor cacheLookupRequestSensor;
-  private final Sensor cacheHitRequestSensor;
-  private final Sensor cacheHitRatioSensor;
-  private final Sensor cacheLookupLatencySensor;
-  private final Sensor cacheLookupLatencyForEachKeyInMultiGetSensor;
-  private final Sensor cachePutRequestSensor;
-  private final Sensor cachePutLatencySensor;
-  private final Sensor cacheUpdateLatencyForMultiGetSensor;
   private final Sensor keyNumSensor;
   // Reflect the real request usage, e.g count each key as an unit of request usage.
   private final Sensor requestUsageSensor;
-  private final Sensor cacheResultSerializationLatencySensor;
   private final Sensor responseResultsDeserializationLatencySensor;
   private final Sensor requestParsingLatencySensor;
   private final Sensor requestRoutingLatencySensor;
@@ -121,26 +112,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     registerSensor("retry_error_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesError()));
     registerSensor("retry_faster_than_original_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesWinner()));
 
-    Rate cacheLookupRequestRate = new OccurrenceRate();
-    Rate cacheHitRequestRate = new OccurrenceRate();
-    cacheLookupRequestSensor = registerSensor("cache_lookup_request", new Count(), cacheLookupRequestRate);
-    cacheHitRequestSensor = registerSensor("cache_hit_request", new Count(), cacheHitRequestRate);
-    cacheHitRatioSensor = registerSensor("cache_hit_ratio",
-        new TehutiUtils.SimpleRatioStat(cacheHitRequestRate, cacheLookupRequestRate));
-    cacheLookupLatencySensor = registerSensor("cache_lookup_latency",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_lookup_latency")));
-    cacheLookupLatencyForEachKeyInMultiGetSensor = registerSensor("cache_lookup_latency_for_each_key_in_multiget",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_lookup_latency_for_each_key_in_multiget")));
-    cacheResultSerializationLatencySensor = registerSensor("cache_result_serialization_latency",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_result_serialization_latency")));
     responseResultsDeserializationLatencySensor = registerSensor("response_results_deserialization_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_results_deserialization_latency")));
-    cacheUpdateLatencyForMultiGetSensor = registerSensor("cache_update_latency_for_multiget",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_update_latency_for_multiget")));
-    cachePutRequestSensor = registerSensor("cache_put_request", new Count());
-    cachePutLatencySensor = registerSensor("cache_put_latency",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_put_latency")));
-
     keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));
     /**
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
@@ -275,22 +248,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     latencySensor.record(latency);
   }
 
-  public void recordHealthyRequestLatencySensor(double latency) {
-    healthyRequestLatencySensor.record(latency);
-  }
-
-  public void recordUnhealthyRequestLatencySensor(double latency) {
-    unhealthyRequestLatencySensor.record(latency);
-  }
-
-  public void recordTardyRequestLatencySensor(double latency) {
-    tardyRequestLatencySensor.record(latency);
-  }
-
-  public void recordThrottledRequestLatencySensor(double latency) {
-    throttledRequestLatencySensor.record(latency);
-  }
-
   public void recordResponseWaitingTime(double waitingTime) {
     routerResponseWaitingTimeSensor.record(waitingTime);
   }
@@ -319,40 +276,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     findUnhealthyHostRequestSensor.record();
   }
 
-  public void recordCacheHitRequest() {
-    cacheHitRequestSensor.record();
-  }
-
-  public void recordCacheLookupRequest() {
-    cacheLookupRequestSensor.record();
-  }
-
-  public void recordCacheLookupLatency(double latency) {
-    cacheLookupLatencySensor.record(latency);
-  }
-
-  public void recordCacheLookupLatencyForEachKeyInMultiGet(double latency) {
-    cacheLookupLatencyForEachKeyInMultiGetSensor.record(latency);
-  }
-
-  public void recordCacheResultSerializationLatency(double latency) {
-    cacheResultSerializationLatencySensor.record(latency);
-  }
-
   public void recordResponseResultsDeserializationLatency(double latency) {
     responseResultsDeserializationLatencySensor.record(latency);
-  }
-
-  public void recordCacheUpdateLatencyForMultiGet(double latency) {
-    cacheUpdateLatencyForMultiGetSensor.record(latency);
-  }
-
-  public void recordCachePutRequest() {
-    cachePutRequestSensor.record();
-  }
-
-  public void recordCachePutLatency(double latency) {
-    cachePutLatencySensor.record(latency);
   }
 
   public void recordNettyClientFirstResponseLatency(double latency) {

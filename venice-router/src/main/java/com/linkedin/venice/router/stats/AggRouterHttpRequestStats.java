@@ -204,49 +204,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     }
   }
 
-  public void recordCacheLookupRequest(String storeName) {
-    totalStats.recordCacheLookupRequest();
-    getStoreStats(storeName).recordCacheLookupRequest();
-  }
-
-  public void recordCacheHitRequest(String storeName) {
-    totalStats.recordCacheHitRequest();
-    getStoreStats(storeName).recordCacheHitRequest();
-  }
-
-  public void recordCacheLookupLatency(String storeName, double latency) {
-    totalStats.recordCacheLookupLatency(latency);
-    getStoreStats(storeName).recordCacheLookupLatency(latency);
-  }
-
-  public void recordCacheLookupLatencyForEachKeyInMultiget(String storeName, double latency) {
-    totalStats.recordCacheLookupLatencyForEachKeyInMultiGet(latency);
-    getStoreStats(storeName).recordCacheLookupLatencyForEachKeyInMultiGet(latency);
-  }
-
-  public void recordCacheResultSerializationLatency(String storeName, double latency) {
-    totalStats.recordCacheResultSerializationLatency(latency);
-    getStoreStats(storeName).recordCacheResultSerializationLatency(latency);
-  }
-
   public void recordResponseResultsDeserializationLatency(String storeName, double latency) {
     totalStats.recordResponseResultsDeserializationLatency(latency);
     getStoreStats(storeName).recordResponseResultsDeserializationLatency(latency);
-  }
-
-  public void recordCacheUpdateLatencyForMultiGet(String storeName, double latency) {
-    totalStats.recordCacheUpdateLatencyForMultiGet(latency);
-    getStoreStats(storeName).recordCacheUpdateLatencyForMultiGet(latency);
-  }
-
-  public void recordCachePutRequest(String storeName) {
-    totalStats.recordCachePutRequest();
-    getStoreStats(storeName).recordCachePutRequest();
-  }
-
-  public void recordCachePutLatency(String storeName, double latency) {
-    totalStats.recordCachePutLatency(latency);
-    getStoreStats(storeName).recordCachePutLatency(latency);
   }
 
   public void recordNettyClientFirstResponseLatency(String storeName, double latency) {
