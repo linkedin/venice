@@ -304,9 +304,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   // Used to construct VenicePartitioner
   private final VenicePartitioner venicePartitioner;
-
   //Total number of partition for this store version
   private final int storeVersionPartitionCount;
+  private int subscribedCount = 0;
+  private int forceUnSubscribedCount = 0;
 
   // Push timeout threshold for the store
   protected final long bootstrapTimeoutInMs;
@@ -1058,12 +1059,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Thread.sleep(readCycleDelayMs);
         }
       } else {
-        logger.warn(consumerTaskId + " Has expired due to not being subscribed to any partitions for too long.");
-        complete();
+        if (serverConfig.isUnsubscribeAfterBatchpushEnabled() && subscribedCount != 0 && subscribedCount == forceUnSubscribedCount) {
+          logger.info(consumerTaskId + "Going back to sleep as consumption has finished and topics are unsubscribed");
+          Thread.sleep(readCycleDelayMs * 20);
+          idleCounter = 0;
+        } else {
+          logger.warn(consumerTaskId + " Has expired due to not being subscribed to any partitions for too long.");
+          complete();
+        }
       }
       return;
     }
+
     idleCounter = 0;
+
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    if (!hybridStoreConfig.isPresent() && serverConfig.isUnsubscribeAfterBatchpushEnabled()) {
+      // unsubscribe completed backup version and batch-store versions.
+      if (versionNumber <= store.getCurrentVersion()) {
+        for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
+          if (state.isCompletionReported() && !state.isIncrementalPushEnabled()) {
+            unSubscribePartition(kafkaVersionTopic, state.getPartition());
+            forceUnSubscribedCount++;
+          }
+        }
+      }
+    }
 
     if (emitMetrics.get()) {
       long currentQuota = storeRepository.getStoreOrThrow(storeName).getStorageQuotaInByte();
@@ -1433,7 +1454,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case SUBSCRIBE:
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
-
+        subscribedCount++;
         OffsetRecord record = storageMetadataService.getLastOffset(topic, partition);
 
         // First let's try to restore the state retrieved from the OffsetManager
@@ -1456,6 +1477,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
+        forceUnSubscribedCount--;
+        subscribedCount--;
         if (consumptionState != null) {
           consumerUnSubscribeAllTopics(consumptionState);
         }
@@ -2764,7 +2787,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
             }
           }
-
           if (suppressLiveUpdates) {
             /**
              * If live updates suppression is enabled, stop consuming any new messages once the partition is ready to serve.
