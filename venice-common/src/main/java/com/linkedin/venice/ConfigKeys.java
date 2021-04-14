@@ -485,6 +485,11 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_MODE = "server.ingestion.mode";
 
   /**
+   * Unsubscribe from kakfa topic once a batch-store push finishes
+   */
+  public static final String SERVER_UNSUB_AFTER_BATCHPUSH = "server.unsub.after.batch.push";
+
+  /**
    * A boolean config to specify if we are using Da Vinci client for ingestion. This config will be parsed by
    * isDaVinciConfig variable in VeniceServerConfig. By default it is false (use Venice Server)
    */

@@ -413,6 +413,9 @@ public class StoreIngestionTaskTest {
     doReturn(rocksDBServerConfig).when(veniceServerConfig).getRocksDBServerConfig();
     doReturn(isAutoCompactionEnabledForSamzaReprocessingJob).when(veniceServerConfig).isEnableAutoCompactionForSamzaReprocessingJob();
 
+    AggKafkaConsumerService aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
+    doReturn(inMemoryKafkaConsumer).when(aggKafkaConsumerService).getConsumer(any(), any());
+
     EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
     EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);
     StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()
@@ -435,6 +438,7 @@ public class StoreIngestionTaskTest {
         .setStoreBufferService(storeBufferService)
         .setServerConfig(veniceServerConfig)
         .setDiskUsage(diskUsage)
+        .setAggKafkaConsumerService(aggKafkaConsumerService)
         .setCacheWarmingThreadPool(Executors.newFixedThreadPool(1))
         .setPartitionStateSerializer(partitionStateSerializer)
         .build();
@@ -1113,6 +1117,55 @@ public class StoreIngestionTaskTest {
         () -> doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO),
         () -> {
           verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+        },
+        isLeaderFollowerModelEnabled
+    );
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSubscribeCompletedPartitionUnsubscribe(boolean isLeaderFollowerModelEnabled) throws Exception {
+    final int offset = 100;
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+
+    runTest(getSet(PARTITION_FOO),
+        () -> {
+          doReturn(true).when(veniceServerConfig).isSharedConsumerPoolEnabled();
+          doReturn(true).when(veniceServerConfig).isUnsubscribeAfterBatchpushEnabled();
+          doReturn(true).when(mockKafkaConsumer).hasSubscription(anySet());
+          Store mockStore = mock(Store.class);
+          doReturn(1).when(mockStore).getCurrentVersion();
+          doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+          doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
+          doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
+      },
+        () -> {
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+          verify(mockKafkaConsumer).unSubscribe(topic, PARTITION_FOO);
+          verify(mockKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
+        },
+        isLeaderFollowerModelEnabled
+    );
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testCompleteCalledWhenUnsubscribeAfterBatchpushDisabled(boolean isLeaderFollowerModelEnabled) throws Exception {
+    final int offset = 10;
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+
+    runTest(getSet(PARTITION_FOO),
+        () -> {
+          doReturn(false).when(veniceServerConfig).isUnsubscribeAfterBatchpushEnabled();
+          Store mockStore = mock(Store.class);
+          storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
+          doReturn(1).when(mockStore).getCurrentVersion();
+          doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+          doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
+          doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
+        },
+        () -> {
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+          waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+              () -> storeIngestionTaskUnderTest.isRunning() == false);
         },
         isLeaderFollowerModelEnabled
     );
