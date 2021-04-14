@@ -2797,7 +2797,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /**
      * TODO: some logics are in parent controller {@link VeniceParentHelixAdmin} #updateStore and
      *       some are in the child controller here. Need to unify them in the future.
-     *       If updateStore is triggered only in child controller, hybridStoreDbOverheadBypass would be ignored.
      */
     @Override
     public synchronized void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
@@ -2835,7 +2834,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
         Optional<Integer> amplificationFactor = params.getAmplificationFactor();
         Optional<Long> storageQuotaInByte = params.getStorageQuotaInByte();
-        Optional<Boolean> hybridStoreDbOverheadBypass = params.getHybridStoreOverheadBypass();
         Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
         Optional<Integer> currentVersion = params.getCurrentVersion();
         Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
@@ -3066,12 +3064,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setAutoSchemaRegisterPushJobEnabled(clusterName, storeName, value));
             hybridStoreDiskQuotaEnabled.ifPresent(value ->
                 setHybridStoreDiskQuotaEnabled(clusterName, storeName, value));
-
-            if (hybridStoreDbOverheadBypass.isPresent()) {
-                logger.warn("If updateStore is triggered only in child controller, "
-                    + "hybridStoreDbOverheadBypass would be ignored.");
-            }
-
             if (regularVersionETLEnabled.isPresent() || futureVersionETLEnabled.isPresent() || etledUserProxyAccount.isPresent()) {
                 ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl(
                     etledUserProxyAccount.orElse(originalStore.getEtlStoreConfig().getEtledUserProxyAccount()),
