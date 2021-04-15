@@ -74,8 +74,8 @@ public class TestVenicePartitioner {
     byte[] keyBytes1 = "123456suffix".getBytes();
     byte[] keyBytes2 = "123456".getBytes();
 
-    partition1 = sumPartitioner.getPartitionId(keyBytes1, 0, 6, 1);
-    partition2 = sumPartitioner.getPartitionId(keyBytes2, 1);
+    partition1 = sumPartitioner.getPartitionId(keyBytes1, 0, 6, 16);
+    partition2 = sumPartitioner.getPartitionId(keyBytes2, 16);
     Assert.assertEquals(partition1, partition2);
   }
 }
