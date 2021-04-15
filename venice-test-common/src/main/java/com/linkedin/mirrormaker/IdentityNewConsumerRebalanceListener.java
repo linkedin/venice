@@ -253,7 +253,6 @@ public class IdentityNewConsumerRebalanceListener implements org.apache.kafka.cl
   private Consumer createTargetHelperConsumer() {
     logger.info("Identity MirrorMaker creating helper consumer for target cluster");
     _targetConfig.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, _targetClientId + "-IMM-MetadataClient");
-    _targetConfig.setProperty(CommonClientConfigs.ENABLE_STICKY_METADATA_FETCH_DOC, "false");
     return new KafkaConsumer<>(_targetConfig, new ByteArrayDeserializer(), new ByteArrayDeserializer());
   }
 
@@ -264,7 +263,6 @@ public class IdentityNewConsumerRebalanceListener implements org.apache.kafka.cl
   private Consumer createSourceHelperConsumer() {
     logger.info("Identity MirrorMaker creating helper consumer for source cluster");
     _sourceConfig.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, _sourceClientId + "-IMM-MetadataClient");
-    _sourceConfig.setProperty(CommonClientConfigs.ENABLE_STICKY_METADATA_FETCH_DOC, "false");
     return new KafkaConsumer<>(_sourceConfig, new ByteArrayDeserializer(), new ByteArrayDeserializer());
   }
 
