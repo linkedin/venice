@@ -719,10 +719,11 @@ public class TopicManager implements Closeable {
       consumer.assign(Arrays.asList(topicPartition));
       consumer.seekToEnd(Arrays.asList(topicPartition));
       latestOffset = consumer.position(topicPartition);
-      consumer.assign(Arrays.asList());
     } catch (org.apache.kafka.common.errors.TimeoutException ex) {
       throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to end to get latest offset"
           + " for topic: " + topic + " and partition: " + partition, ex);
+    } finally {
+      consumer.assign(Arrays.asList());
     }
     return latestOffset;
   }
@@ -781,10 +782,11 @@ public class TopicManager implements Closeable {
           latestProducerTimestamp = record.value().producerMetadata.messageTimestamp;
         }
       }
-      consumer.assign(Arrays.asList());
     } catch (org.apache.kafka.common.errors.TimeoutException ex) {
       throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to end to get latest offset"
           + " for topic: " + topic + " and partition: " + partition, ex);
+    } finally {
+      consumer.assign(Arrays.asList());
     }
     return latestProducerTimestamp;
   }
@@ -839,10 +841,11 @@ public class TopicManager implements Closeable {
       consumer.assign(Arrays.asList(topicPartition));
       consumer.seekToBeginning(Arrays.asList(topicPartition));
       earliestOffset = consumer.position(topicPartition);
-      consumer.assign(Arrays.asList());
     } catch (org.apache.kafka.common.errors.TimeoutException ex) {
       throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to beginning to get earliest offset"
           + " for topic: " + topic + " and partition: " + partition, ex);
+    } finally {
+      consumer.assign(Arrays.asList());
     }
     return earliestOffset;
   }
