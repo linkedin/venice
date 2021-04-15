@@ -2,6 +2,9 @@ package com.linkedin.venice.partitioner;
 
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.unit.kafka.SimplePartitioner;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.nio.ByteBuffer;
 import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -16,33 +19,63 @@ import org.testng.annotations.Test;
  */
 public class TestVenicePartitioner {
 
-    @Test
-    public void testConsistentPartitioning() {
+  @Test
+  public void testConsistentPartitioning() {
 
-        VenicePartitioner vp = new DefaultVenicePartitioner();
+    VenicePartitioner vp = new DefaultVenicePartitioner();
 
-        byte[] keyBytes = "key1".getBytes();
-        KafkaKey key = new KafkaKey(MessageType.PUT, keyBytes);  // OperationType doesn't matter. We are just testing the partitioning.
+    byte[] keyBytes = "key1".getBytes();
+    KafkaKey key =
+        new KafkaKey(MessageType.PUT, keyBytes);  // OperationType doesn't matter. We are just testing the partitioning.
 
-        PartitionInfo [] partitionArray = {new PartitionInfo("", 0, null, null, null),
-            new PartitionInfo("", 1, null, null, null), new PartitionInfo("", 2, null, null, null)};
+    PartitionInfo[] partitionArray =
+        {new PartitionInfo("", 0, null, null, null), new PartitionInfo("", 1, null, null, null),
+            new PartitionInfo("", 2, null, null, null)};
 
-        // Test 1
-        int partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
-        int partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
-        Assert.assertEquals(partition1, partition2);
+    // Test 1
+    int partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
+    int partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
+    Assert.assertEquals(partition1, partition2);
 
-        // Test 2
-      keyBytes = "    ".getBytes();
-        partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
-        partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
-        Assert.assertEquals(partition1, partition2);
+    // Test 2
+    keyBytes = "    ".getBytes();
+    partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
+    partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
+    Assert.assertEquals(partition1, partition2);
 
-        // Test 3
-        keyBytes = "00000".getBytes();
-        partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
-        partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
-        Assert.assertEquals(partition1, partition2);
+    // Test 3
+    keyBytes = "00000".getBytes();
+    partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
+    partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
+    Assert.assertEquals(partition1, partition2);
 
-    }
+    // Test 4
+    // Use sumPartitioner since DefaultVenicePartitioner overrides
+    // getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions)
+    VenicePartitioner sumPartitioner = new VenicePartitioner() {
+      @Override
+      public int getPartitionId(byte[] keyBytes, int numPartitions) {
+        int sum = 0;
+        for (byte keyByte : keyBytes) {
+          sum += keyByte;
+        }
+        return Math.abs(sum) % numPartitions;
+      }
+
+      @Override
+      public int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions) {
+        int sum = 0;
+        for (int i = keyByteBuffer.position(); i < keyByteBuffer.remaining(); i++) {
+          sum += keyByteBuffer.get(i);
+        }
+        return Math.abs(sum) % numPartitions;
+      }
+    };
+    byte[] keyBytes1 = "123456suffix".getBytes();
+    byte[] keyBytes2 = "123456".getBytes();
+
+    partition1 = sumPartitioner.getPartitionId(keyBytes1, 0, 6, 1);
+    partition2 = sumPartitioner.getPartitionId(keyBytes2, 1);
+    Assert.assertEquals(partition1, partition2);
+  }
 }
