@@ -545,7 +545,15 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       LOGGER.debug("Flush memtable to disk for store: " + storeName + ", partition id: " + partitionId);
 
       if (this.readOnly) {
-        LOGGER.warn("Unexpected sync in RocksDB read-only mode");
+        /**
+         * Update the log level to be debug since in some cases (a sync could be triggered after adjusting the storage
+         * engine to be ready-only even there is no write in between), this log is causing confusion.
+         *
+         * And this log is not so important because of the following reasons:
+         * 1. If there is data being writen before 'sync', the write will be rejected with proper exceptional message.
+         * 2. If there is no data being writen before sync, the 'sync' will do nothing.
+         */
+        LOGGER.debug("Unexpected sync in RocksDB read-only mode");
       } else {
         try {
           // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to avoid data loss during
