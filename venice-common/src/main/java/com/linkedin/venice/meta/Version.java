@@ -201,7 +201,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return lastIndexOfVersionSeparator;
   }
 
-  static String composeKafkaTopic(String storeName,int versionNumber){
+  static String composeKafkaTopic(String storeName,int versionNumber) {
     return storeName + VERSION_SEPARATOR + versionNumber;
   }
 

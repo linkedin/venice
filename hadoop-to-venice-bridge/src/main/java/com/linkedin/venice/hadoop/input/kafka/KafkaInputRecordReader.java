@@ -49,10 +49,10 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
 
   private final KafkaConsumerWrapper consumer;
   private final TopicPartition topicPartition;
-  private long maxNumberOfRecords;
-  private long startingOffset;
+  private final long maxNumberOfRecords;
+  private final long startingOffset;
   private long currentOffset;
-  private long endingOffset;
+  private final long endingOffset;
   /**
    * Iterator pointing to the current messages fetched from the Kafka topic partition.
    */
@@ -63,7 +63,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
     }
-    KafkaInputSplit inputSplit = (KafkaInputSplit)split;
+    KafkaInputSplit inputSplit = (KafkaInputSplit) split;
     KafkaClientFactory kafkaClientFactory = KafkaInputUtils.getConsumerFactory(job);
     this.consumer = kafkaClientFactory.getConsumer(KafkaInputUtils.getConsumerProperties());
     this.topicPartition = inputSplit.getTopicPartition();
