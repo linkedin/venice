@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.meta.Store.*;
+
 
 /**
  * This class define the throttler on reads request. Basically it will calculate the store quota per router based on
@@ -198,6 +200,9 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     List<Store> allStores = storeRepository.getAllStores();
     ConcurrentMap<String, StoreReadThrottler> newStoreThrottlers = new ConcurrentHashMap<>();
     for (Store store : allStores) {
+      if (store.getCurrentVersion() == NON_EXISTING_VERSION || store.isSystemStore()) {
+        continue;
+      }
       newStoreThrottlers.put(VeniceSystemStoreUtils.getZkStoreName(store.getName()), buildStoreReadThrottler(store.getName(), store.getCurrentVersion(),
           calculateStoreQuotaPerRouter(store.getReadQuotaInCU())));
     }

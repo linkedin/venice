@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Arrays;
@@ -37,6 +38,7 @@ public class ReadRequestThrottlerTest {
     routerCount = 5;
     store = TestUtils.createTestStore("testGetQuotaForStore", "test", System.currentTimeMillis());
     store.setReadQuotaInCU(totalQuota);
+    store.setCurrentVersion(1);
     Mockito.doReturn(store).when(storeRepository).getStore(Mockito.eq(store.getName()));
     Mockito.doReturn(Arrays.asList(new Store[]{store})).when(storeRepository).getAllStores();
     Mockito.doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
@@ -141,6 +143,7 @@ public class ReadRequestThrottlerTest {
       stores[i] =
           TestUtils.createTestStore("testOnStoreQuotaChangedWithMultiStores" + i, "test", System.currentTimeMillis());
       stores[i].setReadQuotaInCU(100 * (i + 1));
+      stores[i].setCurrentVersion(1);
     }
     Mockito.doReturn(Arrays.asList(stores)).when(storeRepository).getAllStores();
     Mockito.doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
@@ -211,6 +214,7 @@ public class ReadRequestThrottlerTest {
     long extraQuota = 200;
     Store newStore = TestUtils.createTestStore("testOnStoreCreatedAndDeleted", "test", System.currentTimeMillis());
     newStore.setReadQuotaInCU(extraQuota);
+    newStore.setCurrentVersion(1);
     Mockito.doReturn(Arrays.asList(store, newStore)).when(storeRepository).getAllStores();
     Mockito.doReturn(totalQuota + extraQuota).when(storeRepository).getTotalStoreReadQuota();
     throttler.handleStoreChanged(newStore);
