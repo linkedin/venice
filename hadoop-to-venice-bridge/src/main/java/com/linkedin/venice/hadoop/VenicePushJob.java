@@ -50,6 +50,7 @@ import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdDictTrainer;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.mapred.AvroInputFormat;
@@ -400,11 +401,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     }
   }
 
-  /**
-   * @param jobId  id of the job
-   * @param vanillaProps  Property bag for the job
-   */
-  public VenicePushJob(String jobId, Properties vanillaProps) {
+  // Visible for testing
+  VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient) {
+    this.controllerClient = controllerClient;
     this.jobId = jobId;
     props = getVenicePropsFromVanillaProps(vanillaProps);
     LOGGER.info("Constructing " + VenicePushJob.class.getSimpleName() + ": " + props.toString(true));
@@ -418,6 +417,19 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       LOGGER.info("Push job heartbeat is NOT enabled.");
       pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
     }
+  }
+
+  /**
+   * @param jobId  id of the job
+   * @param vanillaProps  Property bag for the job
+   */
+  public VenicePushJob(String jobId, Properties vanillaProps) {
+    this(jobId, vanillaProps, null);
+  }
+
+  // Visible for testing
+  PushJobSetting getPushJobSetting() {
+    return this.pushJobSetting;
   }
 
   private VeniceProperties getVenicePropsFromVanillaProps(Properties vanillaProps) {
@@ -476,10 +488,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     pushJobSetting.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
 
     if (pushJobSetting.isSourceKafka) {
-      pushJobSetting.kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
-      pushJobSetting.kafkaInputTopic = props.getString(KAFKA_INPUT_TOPIC);
-      String storeName = Version.parseStoreFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
-      pushJobSetting.storeName = storeName;
       /**
        * The topic could contain duplicate records since the topic could belong to a hybrid store
        * or the speculation execution could be executed for the batch store as well.
@@ -495,6 +503,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       if (pushJobSetting.enablePBNJ) {
         throw new VeniceException("PBNJ is not supported while using Kafka Input");
       }
+      pushJobSetting.kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+      pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(props.getString(VENICE_STORE_NAME_PROP), props);
+      pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
+
     } else {
       pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     }
@@ -525,6 +537,57 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
     }
     return pushJobSetting;
+  }
+
+  /**
+   * This method gets the name of the topic with the current version for the given store. It handles below 5 cases:
+   *
+   * 1. User-provided topic name is null and discovered topic name is good --> use discovered topic name.
+   * 2. User-provided topic name is null and discovered topic name is bad --> throw runtime exception.
+   * 3. User-provided topic name is not null and discovered name is bad --> use user-provided topic name.
+   * 4. User-provided topic name is not null, discovered name is good, and these 2 names mismatch --> throw runtime exception.
+   * 5. User-provided topic name is not null, discovered name is good, and these 2 names match --> use either name since
+   *    they are the same topic name.
+   *
+   * @param userProvidedStoreName store name provided by user
+   * @param properties properties
+   * @return Topic name
+   */
+  private String getSourceTopicNameForKafkaInput(final String userProvidedStoreName, VeniceProperties properties) {
+    final Optional<String> userProvidedTopicNameOptional = Optional.ofNullable(properties.getString(KAFKA_INPUT_TOPIC, () -> null));
+    if (userProvidedTopicNameOptional.isPresent()) {
+      String derivedStoreName = Version.parseStoreFromKafkaTopicName(userProvidedTopicNameOptional.get());
+      if (!Objects.equals(derivedStoreName, userProvidedStoreName)) {
+        throw new IllegalArgumentException(String.format("Store user-provided name mismatch with the derived store name. " +
+            "Got user-provided store name %s and derived store name %s", userProvidedStoreName, derivedStoreName));
+      }
+    }
+    if (controllerClient == null) {
+      initControllerClient(createSSlFactory());
+    }
+    Map<String, Integer> coloToCurrentVersions =
+        getCurrentStoreVersions(ControllerClient.retryableRequest(controllerClient, 3, c -> c.getStore(userProvidedStoreName)));
+    if (new HashSet<>(coloToCurrentVersions.values()).size() > 1) {
+      if (userProvidedTopicNameOptional.isPresent()) {
+        LOGGER.info(String.format("Got current topic version mismatch across multiple colos %s. Use user-provided topic " +
+            "name: %s", coloToCurrentVersions, userProvidedTopicNameOptional.get()));
+        return userProvidedTopicNameOptional.get();
+
+      } else {
+        throw new VeniceException(String.format("Got current topic version mismatch across multiple colos %s but " +
+            "no user-provided topic name.", coloToCurrentVersions));
+      }
+    }
+    Integer detectedCurrentTopicVersion = null;
+    for (Integer topicVersion : coloToCurrentVersions.values()) {
+      detectedCurrentTopicVersion = topicVersion;
+    }
+    String derivedTopicName = Version.composeKafkaTopic(userProvidedStoreName, detectedCurrentTopicVersion);
+    if (userProvidedTopicNameOptional.isPresent() && !Objects.equals(derivedTopicName, userProvidedTopicNameOptional.get())) {
+      throw new IllegalStateException(String.format("Mismatch between user-provided topic name and auto discovered " +
+              "topic name. They are %s and %s respectively", userProvidedTopicNameOptional.get(), derivedTopicName));
+    }
+    return derivedTopicName;
   }
 
   // Visible for testing
@@ -1244,34 +1307,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
             " from Controller for store: " + setting.storeName);
       }
       storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
-      Map<String, Integer> coloToCurrentVersionMap = storeResponse.getStore().getColoToCurrentVersions();
-      /**
-       * TODO: we need to loose the constraint here since in the future we might want to use re-push to fix a problematic
-       * version in some colos.
-       *
-       * Besides checking whether the source version is the current version or not, we may need to check whether the offset
-       * lag of the current version is minimal to avoid the potential rewinding gap.
-       * For example, if the current version is lagging behind a lot, the rewinding time configured in store-level
-       * may not be able to fill the gap.
-       * In the future, we will need to override the rewinding time for every re-push to make sure no gap will happen.
-       */
-      if (coloToCurrentVersionMap == null || coloToCurrentVersionMap.isEmpty()) {
-        /**
-         * Single-colo setup without Parent Cluster
-         */
-        if (storeResponse.getStore().getCurrentVersion() != sourceVersionNumber) {
-          throw new VeniceException(
-              "Only current version for re-push is supported, but current version is: "
-                  + storeResponse.getStore().getCurrentVersion() + " and source version is: " + sourceVersionNumber);
-        }
-      } else {
-        coloToCurrentVersionMap.forEach((colo, version) -> {
-          if (version != sourceVersionNumber) {
-            throw new VeniceException(
-                "Only current version for re-push is supported, but colo: " + colo + " is using a different version: " + version + " source version: " + version);
-          }
-        });
-      }
       if (storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
         /**
          * TODO: we need to extract the raw key bytes from the composite key including raw key and chunking suffix,
@@ -1302,6 +1337,15 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
     }
     return storeSetting;
+  }
+
+  private Map<String, Integer> getCurrentStoreVersions(StoreResponse storeResponse) {
+    Map<String, Integer> coloToCurrentVersionMap = storeResponse.getStore().getColoToCurrentVersions();
+    if (coloToCurrentVersionMap == null || coloToCurrentVersionMap.isEmpty()) {
+      // Single-colo setup without Parent Cluster
+      return Collections.singletonMap("unknown_single_colo", storeResponse.getStore().getCurrentVersion());
+    }
+    return Collections.unmodifiableMap(coloToCurrentVersionMap);
   }
 
   private Version.PushType getPushType(PushJobSetting pushJobSetting) {
