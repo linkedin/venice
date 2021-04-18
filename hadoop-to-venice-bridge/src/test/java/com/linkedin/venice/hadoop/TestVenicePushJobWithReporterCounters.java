@@ -220,8 +220,12 @@ public class TestVenicePushJobWithReporterCounters {
       long inputFileDataSizeInBytes,
       boolean inputFileHasRecords
   ) throws Exception {
-    VenicePushJob venicePushJob = new VenicePushJob("job-id", getH2VProps());
-    venicePushJob.setControllerClient(createControllerClientMock());
+    VenicePushJob venicePushJob = new VenicePushJob(
+            "job-id",
+            getH2VProps(),
+            createControllerClientMock(),
+            createClusterDiscoverControllerClient()
+    );
     venicePushJob.setJobClientWrapper(createJobClientWrapperMock(mockCounterInfos));
     venicePushJob.setClusterDiscoveryControllerClient(createClusterDiscoveryControllerClientMock());
     venicePushJob.setInputDataInfoProvider(getInputDataInfoProviderMock(inputFileDataSizeInBytes, inputFileHasRecords));
@@ -329,6 +333,15 @@ public class TestVenicePushJobWithReporterCounters {
     ControllerResponse controllerResponse = mock(ControllerResponse.class);
     when(controllerResponse.isError()).thenReturn(false);
     when(controllerClient.sendPushJobDetails(anyString(), anyInt(), any(byte[].class))).thenReturn(controllerResponse);
+    return controllerClient;
+  }
+
+  private ControllerClient createClusterDiscoverControllerClient() {
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    D2ServiceDiscoveryResponse clusterDiscoveryResponse = mock(D2ServiceDiscoveryResponse.class);
+    when(clusterDiscoveryResponse.isError()).thenReturn(false);
+    when(clusterDiscoveryResponse.getCluster()).thenReturn("some-cluster");
+    when(controllerClient.discoverCluster(anyString())).thenReturn(clusterDiscoveryResponse);
     return controllerClient;
   }
 
