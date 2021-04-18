@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -36,7 +38,8 @@ public class TestKafkaFormatTopicAutoDiscover {
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
 
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
-    VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient);
+    VenicePushJob venicePushJob = new VenicePushJob(
+            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
     String expectedTopicName = Version.composeKafkaTopic(STORE_NAME, singleColoCurrentVersion);
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
@@ -53,7 +56,8 @@ public class TestKafkaFormatTopicAutoDiscover {
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
 
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
-    VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient);
+    VenicePushJob venicePushJob = new VenicePushJob(
+            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
     String expectedTopicName = Version.composeKafkaTopic(STORE_NAME, multipleColoCurrentVersion);
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
@@ -72,7 +76,7 @@ public class TestKafkaFormatTopicAutoDiscover {
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
 
     Map<String, String> overrideProperties = Collections.singletonMap(VENICE_STORE_NAME_PROP, STORE_NAME);
-    new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient);
+    new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
   }
 
   @Test
@@ -92,7 +96,8 @@ public class TestKafkaFormatTopicAutoDiscover {
     Map<String, String> overrideProperties = new HashMap<>();
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(KAFKA_INPUT_TOPIC, userProvidedTopicName);
-    VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient);
+    VenicePushJob venicePushJob = new VenicePushJob(
+            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, userProvidedTopicName);
   }
 
@@ -106,7 +111,7 @@ public class TestKafkaFormatTopicAutoDiscover {
     Map<String, String> overrideProperties = new HashMap<>();
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(KAFKA_INPUT_TOPIC, userProvidedTopicName);
-    new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient);
+    new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
   }
 
   @Test
@@ -124,7 +129,8 @@ public class TestKafkaFormatTopicAutoDiscover {
     Map<String, String> overrideProperties = new HashMap<>();
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(KAFKA_INPUT_TOPIC, userProvidedTopicName);
-    VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient);
+    VenicePushJob venicePushJob = new VenicePushJob(
+            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
     String expectedTopicName = userProvidedTopicName;
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
   }
@@ -144,9 +150,19 @@ public class TestKafkaFormatTopicAutoDiscover {
     Map<String, String> overrideProperties = new HashMap<>();
     overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
     overrideProperties.put(KAFKA_INPUT_TOPIC, userProvidedTopicName);
-    VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties), controllerClient);
+    VenicePushJob venicePushJob = new VenicePushJob(
+            JOB_ID, getJobProperties(overrideProperties), controllerClient, getClusterDiscoveryControllerClient());
     String expectedTopicName = userProvidedTopicName;
     Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
+  }
+
+  private ControllerClient getClusterDiscoveryControllerClient() {
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    D2ServiceDiscoveryResponse clusterDiscoveryResponse = mock(D2ServiceDiscoveryResponse.class);
+    when(clusterDiscoveryResponse.isError()).thenReturn(false);
+    when(clusterDiscoveryResponse.getCluster()).thenReturn("some-cluster");
+    when(controllerClient.discoverCluster(STORE_NAME)).thenReturn(clusterDiscoveryResponse);
+    return controllerClient;
   }
 
   private StoreResponse getMockStoreResponse(Map<String, Integer> coloToVersionMap, int currentVersion) {

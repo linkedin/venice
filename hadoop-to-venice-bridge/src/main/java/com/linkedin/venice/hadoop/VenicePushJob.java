@@ -403,12 +403,22 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   // Visible for testing
   VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient) {
+    this(jobId, vanillaProps, controllerClient, null);
+  }
+
+  // Visible for testing
+  VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient, ControllerClient clusterDiscoveryControllerClient) {
     this.controllerClient = controllerClient;
+    this.clusterDiscoveryControllerClient = clusterDiscoveryControllerClient;
     this.jobId = jobId;
     props = getVenicePropsFromVanillaProps(vanillaProps);
     LOGGER.info("Constructing " + VenicePushJob.class.getSimpleName() + ": " + props.toString(true));
+    String veniceControllerUrl = getVeniceControllerUrl(props);
+    LOGGER.info("Get Venice controller URL: " + veniceControllerUrl);
+    this.clusterName = getClusterName(veniceControllerUrl, props);
+    LOGGER.info("Get Venice cluster name: " + clusterName);
     // Optional configs:
-    pushJobSetting = getPushJobSetting(props);
+    pushJobSetting = getPushJobSetting(veniceControllerUrl, this.clusterName, props);
     jobHeartbeatEnabled = props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
     if (jobHeartbeatEnabled) {
       LOGGER.info("Push job heartbeat is enabled.");
@@ -456,8 +466,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     return new VeniceProperties(vanillaProps);
   }
 
-  private PushJobSetting getPushJobSetting(VeniceProperties props) {
+  private PushJobSetting getPushJobSetting(String veniceControllerUrl, String clusterName, VeniceProperties props) {
     PushJobSetting pushJobSetting = new PushJobSetting();
+    pushJobSetting.veniceControllerUrl = veniceControllerUrl;
     pushJobSetting.enablePush = props.getBoolean(ENABLE_PUSH, true);
     /**
      * TODO: after controller SSL support is rolled out everywhere, change the default behavior for ssl enabled to true;
@@ -504,7 +515,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         throw new VeniceException("PBNJ is not supported while using Kafka Input");
       }
       pushJobSetting.kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
-      pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(props.getString(VENICE_STORE_NAME_PROP), props);
+      pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(props.getString(VENICE_STORE_NAME_PROP), clusterName, props);
       pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
 
     } else {
@@ -518,25 +529,38 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       pushJobSetting.veniceRouterUrl = null;
     }
 
-    // Mandatory configs:
+    if (!pushJobSetting.enablePush && !pushJobSetting.enablePBNJ) {
+      throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
+    }
+    return pushJobSetting;
+  }
+
+  private String getVeniceControllerUrl(VeniceProperties props) {
+    String veniceControllerUrl = null;
     if (!props.containsKey(VENICE_URL_PROP) && !props.containsKey(VENICE_DISCOVER_URL_PROP)) {
       throw new VeniceException("At least one of the following config properties needs to be present: "
-          + VENICE_URL_PROP + " or " + VENICE_DISCOVER_URL_PROP);
+              + VENICE_URL_PROP + " or " + VENICE_DISCOVER_URL_PROP);
     }
     if (props.containsKey(VENICE_URL_PROP)) {
-      pushJobSetting.veniceControllerUrl = props.getString(VENICE_URL_PROP);
+      veniceControllerUrl = props.getString(VENICE_URL_PROP);
     }
     if (props.containsKey(VENICE_DISCOVER_URL_PROP)) {
       /**
        * {@link VENICE_DISCOVER_URL_PROP} has higher priority than {@link VENICE_URL_PROP}.
        */
-      pushJobSetting.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
+      veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     }
+    return veniceControllerUrl;
+  }
 
-    if (!pushJobSetting.enablePush && !pushJobSetting.enablePBNJ) {
-      throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
-    }
-    return pushJobSetting;
+  private String getClusterName(String veniceControllerUrl, VeniceProperties props) {
+    return discoverCluster(
+            props.getString(VENICE_STORE_NAME_PROP),
+            veniceControllerUrl,
+            createSSlFactory(
+                    props.getBoolean(ENABLE_SSL, false),
+                    props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)
+    ));
   }
 
   /**
@@ -553,7 +577,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    * @param properties properties
    * @return Topic name
    */
-  private String getSourceTopicNameForKafkaInput(final String userProvidedStoreName, VeniceProperties properties) {
+  private String getSourceTopicNameForKafkaInput(
+          final String userProvidedStoreName,
+          final String clusterName,
+          final VeniceProperties properties
+  ) {
     final Optional<String> userProvidedTopicNameOptional = Optional.ofNullable(properties.getString(KAFKA_INPUT_TOPIC, () -> null));
     if (userProvidedTopicNameOptional.isPresent()) {
       String derivedStoreName = Version.parseStoreFromKafkaTopicName(userProvidedTopicNameOptional.get());
@@ -563,10 +591,21 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       }
     }
     if (controllerClient == null) {
-      initControllerClient(createSSlFactory());
+      initControllerClient(createSSlFactory(
+              properties.getBoolean(ENABLE_SSL, false),
+              properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)
+              ),
+              getVeniceControllerUrl(properties),
+              clusterName
+      );
     }
-    Map<String, Integer> coloToCurrentVersions =
-        getCurrentStoreVersions(ControllerClient.retryableRequest(controllerClient, 3, c -> c.getStore(userProvidedStoreName)));
+    LOGGER.info("userProvidedStoreName: " + userProvidedStoreName);
+    StoreResponse storeResponse = ControllerClient.retryableRequest(controllerClient, 3, c -> c.getStore(userProvidedStoreName));
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+              String.format("Fail to get store information for store %s with error %s", userProvidedStoreName, storeResponse.getError()));
+    }
+    Map<String, Integer> coloToCurrentVersions = getCurrentStoreVersions(storeResponse);
     if (new HashSet<>(coloToCurrentVersions.values()).size() > 1) {
       if (userProvidedTopicNameOptional.isPresent()) {
         LOGGER.info(String.format("Got current topic version mismatch across multiple colos %s. Use user-provided topic " +
@@ -640,11 +679,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       initPushJobDetails();
       jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
-      Optional<SSLFactory> sslFactory = createSSlFactory();
-      // Discover the cluster based on the store name and re-initialized controller client.
-      clusterName = discoverCluster(pushJobSetting, sslFactory);
-      pushJobDetails.clusterName = clusterName;
-      initControllerClient(sslFactory);
+      Optional<SSLFactory> sslFactory = createSSlFactory(
+              props.getBoolean(ENABLE_SSL, false),
+              props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)
+      );
+      initControllerClient(sslFactory, pushJobSetting.veniceControllerUrl, clusterName);
       sendPushJobDetailsToController();
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
@@ -879,12 +918,12 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     }
   }
 
-  private Optional<SSLFactory> createSSlFactory() {
+  private Optional<SSLFactory> createSSlFactory(final boolean enableSsl, final String sslFactoryClassName) {
     Optional<SSLFactory> sslFactory = Optional.empty();
-    if (pushJobSetting.enableSsl) {
+    if (enableSsl) {
       LOGGER.info("Controller ACL is enabled.");
       Properties sslProps = getSslProperties();
-      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, pushJobSetting.sslFactoryClassName));
+      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
     }
     return sslFactory;
   }
@@ -911,9 +950,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    *
    * @param sslFactory
    */
-  private void initControllerClient(Optional<SSLFactory> sslFactory) {
+  private void initControllerClient(Optional<SSLFactory> sslFactory, String veniceControllerUrl, String clusterName) {
     if (controllerClient == null) {
-       controllerClient = new ControllerClient(clusterName, pushJobSetting.veniceControllerUrl, sslFactory);
+       controllerClient = new ControllerClient(clusterName, veniceControllerUrl, sslFactory);
     } else {
       LOGGER.warn("Controller client has already been initialized");
     }
@@ -981,7 +1020,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
   private void initPushJobDetails() {
     pushJobDetails = new PushJobDetails();
-    pushJobDetails.clusterName = clusterName;
+    pushJobDetails.clusterName = this.clusterName;
     pushJobDetails.overallStatus = new ArrayList<>();
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.STARTED.getValue()));
     pushJobDetails.pushId = "";
@@ -1984,21 +2023,19 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     return sourcePath;
   }
 
-  private String discoverCluster(PushJobSetting setting, Optional<SSLFactory> sslFactory) {
-    LOGGER.info("Discover cluster for store:" + setting.storeName);
+  private String discoverCluster(String storeName, String veniceControllerUrl, Optional<SSLFactory> sslFactory) {
+    LOGGER.info("Discover cluster for store:" + storeName);
     // TODO: Evaluate what's the proper way to add retries here...
     ControllerResponse clusterDiscoveryResponse;
     if (clusterDiscoveryControllerClient == null) {
-      clusterDiscoveryResponse = ControllerClient.discoverCluster(setting.veniceControllerUrl, setting.storeName, sslFactory);
+      clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrl, storeName, sslFactory);
     } else {
-      clusterDiscoveryResponse = clusterDiscoveryControllerClient.discoverCluster(setting.storeName);
+      clusterDiscoveryResponse = clusterDiscoveryControllerClient.discoverCluster(storeName);
     }
     if (clusterDiscoveryResponse.isError()) {
       throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
     } else {
-      String clusterName = clusterDiscoveryResponse.getCluster();
-      LOGGER.info("Found cluster: " + clusterName + " for store: " + setting.storeName);
-      return clusterName;
+      return clusterDiscoveryResponse.getCluster();
     }
   }
 
