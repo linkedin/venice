@@ -33,6 +33,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
@@ -222,7 +223,7 @@ public class ConsumerIntegrationTest {
         VenicePartitioner partitioner,
         Time time,
         Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
-      super(props, topicName, keySerializer, valueSerializer, new DefaultSerializer(), partitioner, time,
+      super(props, topicName, keySerializer, valueSerializer, new DefaultSerializer(), partitioner, time, Optional.empty(),
           producerWrapperSupplier);
     }
 

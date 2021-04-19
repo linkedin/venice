@@ -79,7 +79,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       ExecutorService cacheWarmingThreadPool,
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      VenicePartitioner venicePartitioner) {
+      VenicePartitioner venicePartitioner,
+      int storeVersionPartitionCount) {
     super(
         writerFactory,
         consumerFactory,
@@ -114,7 +115,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         startReportingReadyToServeTimestamp,
         partitionStateSerializer,
         false,
-        venicePartitioner);
+        venicePartitioner,
+        storeVersionPartitionCount);
   }
 
   @Override

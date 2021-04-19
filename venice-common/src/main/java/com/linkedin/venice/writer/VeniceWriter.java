@@ -175,6 +175,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VeniceKafkaSerializer<U> writeComputeSerializer,
       VenicePartitioner partitioner,
       Time time,
+      Optional<Integer> topicPartitionCount,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
     super(topicName);
 
@@ -218,7 +219,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     try {
       this.producer = producerWrapperSupplier.get();
       // We cache the number of partitions, as it is expected to be immutable, and the call to Kafka is expensive.
-      this.numberOfPartitions = producer.getNumberOfPartitions(topicName);
+      //Also avoiding a metadata call to kafka here as the partitionsFor() call sometimes may get blocked indefinitely if the
+      //kafka broker is overloaded and does not respond in timely manner.
+      if (topicPartitionCount.isPresent()) {
+       this.numberOfPartitions = topicPartitionCount.get();
+      } else {
+        this.numberOfPartitions = producer.getNumberOfPartitions(topicName);
+      }
       this.producerGUID = GuidUtils.getGUID(props);
       this.logger = Logger.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
     } catch (Exception e) {
@@ -241,6 +248,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         writeComputeSerializer,
         new DefaultVenicePartitioner(props),
         time,
+        Optional.empty(),
         () -> new ApacheKafkaProducer(props));
   }
 
