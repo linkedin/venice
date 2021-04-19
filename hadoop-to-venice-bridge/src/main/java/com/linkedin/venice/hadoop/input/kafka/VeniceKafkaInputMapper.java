@@ -33,11 +33,16 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
   }
 
   @Override
-  protected boolean process(BytesWritable inputKey, KafkaInputMapperValue inputValue, BytesWritable keyBW,
-      BytesWritable valueBW, Reporter reporter) {
-      keyBW.set(inputKey);
-      byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue);
-      valueBW.set(serializedValue, 0, serializedValue.length);
-      return true;
+  protected boolean process(
+      BytesWritable inputKey,
+      KafkaInputMapperValue inputValue,
+      BytesWritable keyBW,
+      BytesWritable valueBW,
+      Reporter reporter
+  ) {
+    keyBW.set(inputKey);
+    byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue);
+    valueBW.set(serializedValue, 0, serializedValue.length);
+    return true;
   }
 }

@@ -105,6 +105,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
   public static final String SCHEMA_STRING_PROP = "schema";
+  public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
   public static final Boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
 
@@ -1248,15 +1249,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    * This method will talk to parent controller to validate key schema.
    */
   private void validateKeySchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo) {
-    SchemaResponse keySchemaResponse =
-        ControllerClient.retryableRequest(controllerClient, setting.controllerRetries, c -> c.getKeySchema(setting.storeName));
-    if (keySchemaResponse.isError()) {
-      throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse.toString());
-    } else if (null == keySchemaResponse.getSchemaStr()) {
-      // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
-      throw new VeniceException("Got a null schema in keySchemaResponse: " + keySchemaResponse.toString());
-    }
-    Schema serverSchema = Schema.parse(keySchemaResponse.getSchemaStr());
+    Schema serverSchema = getKeySchemaFromController(controllerClient, setting.controllerRetries, setting.storeName);
     Schema clientSchema = Schema.parse(schemaInfo.keySchemaString);
     String canonicalizedServerSchema = AvroCompatibilityHelper.toParsingForm(serverSchema);
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
@@ -1265,9 +1258,21 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       LOGGER.error(briefErrorMessage +
           "\n\t\tController URLs: " + controllerClient.getControllerDiscoveryUrls() +
           "\n\t\tschema defined in HDFS: \t" + schemaInfo.keySchemaString +
-          "\n\t\tschema defined in Venice: \t" + keySchemaResponse.getSchemaStr());
+          "\n\t\tschema defined in Venice: \t" + serverSchema.toString());
       throw new VeniceException(briefErrorMessage);
     }
+  }
+
+  private Schema getKeySchemaFromController(ControllerClient controllerClient, int retries, String storeName) {
+    SchemaResponse keySchemaResponse =
+        ControllerClient.retryableRequest(controllerClient, retries, c -> c.getKeySchema(storeName));
+    if (keySchemaResponse.isError()) {
+      throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse.toString());
+    } else if (null == keySchemaResponse.getSchemaStr()) {
+      // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
+      throw new VeniceException("Got a null schema in keySchemaResponse: " + keySchemaResponse.toString());
+    }
+    return Schema.parse(keySchemaResponse.getSchemaStr());
   }
 
   /***
@@ -1376,13 +1381,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
             " from Controller for store: " + setting.storeName);
       }
       storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
-      if (storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
-        /**
-         * TODO: we need to extract the raw key bytes from the composite key including raw key and chunking suffix,
-         * otherwise the partitioner couldn't guarantee that all the chunks belonging to the same large message will be
-         * assigned to the same reducer/partition.
-         */
-        throw new VeniceException("Source version: " + sourceVersionNumber + " with chunking enabled is not supported right now");
+      if (storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled() != storeSetting.isChunkingEnabled) {
+        throw new VeniceException(String.format("Source version and new version have mismatch on chunking support. " +
+                "Source chunking enable: %s and new version chunking enable: %s ",
+                storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled(), storeSetting.isChunkingEnabled));
       }
       // Skip quota check
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
@@ -1872,8 +1874,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     LOGGER.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + jobConf.get(MAPREDUCE_JOB_CLASSLOADER));
 
     if (pushJobSetting.isSourceKafka) {
-        jobConf.setInputFormat(KafkaInputFormat.class);
-        jobConf.setMapperClass(VeniceKafkaInputMapper.class);
+      Schema keySchemaFromController = getKeySchemaFromController(controllerClient, 3, pushJobSetting.storeName);
+      String keySchemaString = AvroCompatibilityHelper.toParsingForm(keySchemaFromController);
+      jobConf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, keySchemaString);
+      jobConf.setInputFormat(KafkaInputFormat.class);
+      jobConf.setMapperClass(VeniceKafkaInputMapper.class);
     } else {
       // TODO:The job is using path-filter to check the consistency of avro file schema ,
       // but doesn't specify the path filter for the input directory of map-reduce job.

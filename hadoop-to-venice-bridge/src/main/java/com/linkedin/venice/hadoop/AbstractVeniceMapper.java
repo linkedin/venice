@@ -45,26 +45,31 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   public void map(INPUT_KEY inputKey, INPUT_VALUE inputValue, OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter)
       throws IOException {
     if (recordKey == null) {
-      /** First map invocation, since the {@link recordKey} will be set after this. */
-      if (TASK_ID_NOT_SET == getTaskId()) {
-        throw new IllegalStateException("attemptID not set!");
-      }
-      if (TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS == getTaskId()) {
-        keyBW.setSize(VeniceMRPartitioner.EMPTY_KEY_LENGTH);
-        recordValue = new byte[Integer.BYTES];
-        for (int i = 0; i < getPartitionCount(); i++) {
-          ByteUtils.writeInt(recordValue, i, 0);
-          valueBW.set(recordValue, 0, Integer.BYTES);
-          output.collect(keyBW, valueBW);
-        }
-        LOGGER.info("Map Task ID " + TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS
-            + " successfully sprayed all partitions, to ensure that all Reducers come up.");
-      }
+      maybeSprayAllPartitions(output);
     }
     if (process(inputKey, inputValue, keyBW, valueBW, reporter)) {
       // key/value pair is valid.
       output.collect(keyBW, valueBW);
     }
+  }
+
+  private void maybeSprayAllPartitions(OutputCollector<BytesWritable, BytesWritable> output) throws IOException {
+    /** First map invocation, since the {@link recordKey} will be set after this. */
+    if (TASK_ID_NOT_SET == getTaskId()) {
+      throw new IllegalStateException("attemptID not set!");
+    }
+    if (TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS != getTaskId()) {
+      return;
+    }
+    keyBW.setSize(VeniceMRPartitioner.EMPTY_KEY_LENGTH);
+    recordValue = new byte[Integer.BYTES];
+    for (int i = 0; i < getPartitionCount(); i++) {
+      ByteUtils.writeInt(recordValue, i, 0);
+      valueBW.set(recordValue, 0, Integer.BYTES);
+      output.collect(keyBW, valueBW);
+    }
+    LOGGER.info("Map Task ID " + TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS
+            + " successfully sprayed all partitions, to ensure that all Reducers come up.");
   }
 
   /**
@@ -97,8 +102,6 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     return true;
   }
 
-
-
   /**
    * A method for child classes to setup {@link AbstractVeniceMapper#veniceRecordReader}.
    */
@@ -107,7 +110,6 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   @Override
   protected void configureTask(VeniceProperties props, JobConf job) {
     this.veniceRecordReader = getRecordReader(props);
-
     if (this.veniceRecordReader == null) {
       throw new VeniceException("Record reader not initialized");
     }

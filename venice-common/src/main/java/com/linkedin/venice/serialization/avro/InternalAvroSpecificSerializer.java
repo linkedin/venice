@@ -242,6 +242,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     return deserialize(bytes, bytes[PROTOCOL_VERSION_OFFSET]);
   }
 
+  // TODO (lcli): can be enhanced in the future to take a ByteBuffer input to avoid unnecessary array copy
   public SPECIFIC_RECORD deserialize(byte[] bytes, int protocolVersion) {
     if (bytes == null || bytes.length < PAYLOAD_OFFSET) {
       throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");

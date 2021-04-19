@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;

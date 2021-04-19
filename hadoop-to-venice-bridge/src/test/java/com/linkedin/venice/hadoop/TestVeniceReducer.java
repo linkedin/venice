@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -190,6 +191,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     when(hadoopJobClientProvider.getJobClientFromConfig(any())).thenReturn(jobClient);
     Configuration jobConfig = getDefaultJobConfiguration();
     jobConfig.setLong(STORAGE_QUOTA_PROP, storageQuotaInBytes);
+    jobConfig.setBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     VeniceReducer reducer = new VeniceReducer();
     reducer.setHadoopJobClientProvider(hadoopJobClientProvider);
     reducer.configure(new JobConf(jobConfig));

@@ -4,6 +4,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.hadoop.conf.Configuration;
@@ -66,6 +67,7 @@ public class AbstractTestVeniceMR {
     config.set(SSL_TRUST_STORE_PROPERTY_NAME, "ssl.truststore");
     config.set(VeniceReducer.MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
     config.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, "180000");
+    config.set(VeniceWriter.ENABLE_CHUNKING, "false");
     return new JobConf(config);
   }
 

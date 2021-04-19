@@ -766,9 +766,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
        * We leave 4 bytes of headroom at the beginning of the ByteBuffer so that the Venice Storage Node
        * can use this room to write the value header, without allocating a new byte array nor copying.
        */
-      byte[] value = new byte[chunkEndByteIndex - chunkStartByteIndex + ByteUtils.SIZE_OF_INT];
-      System.arraycopy(serializedValue, chunkStartByteIndex, value, ByteUtils.SIZE_OF_INT, chunkEndByteIndex - chunkStartByteIndex);
-      ByteBuffer chunk = ByteBuffer.wrap(value);
+      final int chunkLength = chunkEndByteIndex - chunkStartByteIndex;
+      byte[] chunkValue = new byte[chunkLength + ByteUtils.SIZE_OF_INT];
+      System.arraycopy(serializedValue, chunkStartByteIndex, chunkValue, ByteUtils.SIZE_OF_INT, chunkLength);
+      ByteBuffer chunk = ByteBuffer.wrap(chunkValue);
       chunk.position(ByteUtils.SIZE_OF_INT);
 
       if (chunks != null) {

@@ -52,6 +52,10 @@ public class VeniceAvroKafkaSerializer implements VeniceKafkaSerializer<Object> 
     }
 
     public Object deserialize(String topic, byte[] bytes) {
+        return deserialize(bytes);
+    }
+
+    public Object deserialize(byte[] bytes) {
         return this.deserializer.deserialize(bytes);
     }
 }

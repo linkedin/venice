@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -739,84 +740,121 @@ public abstract class TestBatch {
     testStoreWithLargeValues(true);
   }
 
-  private void testStoreWithLargeValues(boolean isChunkingAllowed) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT * 3)
+  public void testKafkaInputBatchJobWithLargeValues() throws Exception {
+    String storeName = testStoreWithLargeValues(true);
+    try {
+      testKafkaInputBatchJobWithLargeValues(false, storeName);
+      Assert.fail("Re-pushing large values with chunking disabled should fail.");
+    } catch (VeniceException e) {
+      // Re-push is expected to fail
+    }
+    testKafkaInputBatchJobWithLargeValues(true, storeName);
+  }
+
+  private void testKafkaInputBatchJobWithLargeValues(boolean enableChunkingOnPushJob, String storeName) throws Exception {
+    testStoreWithLargeValues(true,
+        properties -> {
+          properties.setProperty(SOURCE_KAFKA, "true");
+          properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+          if (enableChunkingOnPushJob) {
+            properties.setProperty(VeniceWriter.ENABLE_CHUNKING, "true");
+          } else {
+            properties.setProperty(VeniceWriter.ENABLE_CHUNKING, "false");
+          }
+        }, storeName);
+  }
+
+  private String testStoreWithLargeValues(boolean isChunkingAllowed) throws Exception {
+    return testStoreWithLargeValues(isChunkingAllowed, properties -> {}, null);
+  }
+
+  private String testStoreWithLargeValues(boolean isChunkingAllowed, Consumer<Properties> extraProps, String existingStore) throws Exception {
     int maxValueSize = 3 * 1024 * 1024; // 3 MB apiece
     int numberOfRecords = 10;
-    testBatchStore(inputDir -> {
-          Schema recordSchema = writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, 0, maxValueSize);
-          return new Pair<>(recordSchema.getField("id").schema(),
-                            recordSchema.getField("name").schema());
-        }, props -> {},
-        (avroClient, vsonClient, metricsRepository) -> {
-          Set<String> keys = new HashSet(10);
 
-          // Single gets
-          for (int i = 0; i < numberOfRecords; i++) {
-            int expectedSize = maxValueSize / numberOfRecords * (i + 1);
-            String key = new Integer(i).toString();
-            keys.add(key);
-            char[] chars = new char[expectedSize];
-            Arrays.fill(chars, Integer.toString(i).charAt(0));
-            String expectedString = new String(chars);
-            Utf8 expectedUtf8 = new Utf8(expectedString);
+    InputFileWriter inputFileWriter = inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, 0, maxValueSize);
+      return new Pair<>(recordSchema.getField("id").schema(),
+          recordSchema.getField("name").schema());
+    };
 
-            LOGGER.info("About to query key: " + i);
-            // This call often fails due to a race condition where the store is not perceived to exist yet
-            Utf8 returnedUtf8Value = null;
-            Integer attempts = 0;
-            while(attempts < MAX_RETRY_ATTEMPTS)
-            {
-              try {
-                returnedUtf8Value = (Utf8) avroClient.get(key).get();
-                break;
-              } catch (VeniceClientException e) {
-                attempts++;
-                if(attempts == MAX_RETRY_ATTEMPTS) {
-                  throw e;
-                }
-                // Give it a sec
-                Thread.sleep(1000);
-              }
+    H2VValidator dataValidator = (avroClient, vsonClient, metricsRepository) -> {
+      Set<String> keys = new HashSet<>(10);
+
+      // Single gets
+      for (int i = 0; i < numberOfRecords; i++) {
+        int expectedSize = maxValueSize / numberOfRecords * (i + 1);
+        String key = Integer.toString(i);
+        keys.add(key);
+        char[] chars = new char[expectedSize];
+        Arrays.fill(chars, Integer.toString(i).charAt(0));
+        String expectedString = new String(chars);
+        Utf8 expectedUtf8 = new Utf8(expectedString);
+
+        LOGGER.info("About to query key: " + i);
+        // This call often fails due to a race condition where the store is not perceived to exist yet
+        Utf8 returnedUtf8Value = null;
+        Integer attempts = 0;
+        while(attempts < MAX_RETRY_ATTEMPTS)
+        {
+          try {
+            returnedUtf8Value = (Utf8) avroClient.get(key).get();
+            break;
+          } catch (VeniceClientException e) {
+            attempts++;
+            if(attempts == MAX_RETRY_ATTEMPTS) {
+              throw e;
             }
-
-            Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
-            LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
-            Assert.assertEquals(returnedUtf8Value.toString().substring(0, 1), key, "Avro value does not begin with the expected prefix.");
-            Assert.assertEquals(returnedUtf8Value.length(), expectedSize, "Avro value does not have the expected size.");
-            Assert.assertEquals(returnedUtf8Value, expectedUtf8, "The entire large value should be filled with the same char: " + key);
-
-            String jsonValue = (String) vsonClient.get(key).get();
-            Assert.assertNotNull(jsonValue, "VSON client returned null value for key: " + key + ".");
-            Assert.assertEquals(jsonValue.substring(0, 1), key, "VSON value does not begin with the expected prefix.");
-            Assert.assertEquals(jsonValue.length(), expectedSize, "VSON value does not have the expected size.");
-            Assert.assertEquals(jsonValue, expectedString, "The entire large value should be filled with the same char: " + key);
+            // Give it a sec
+            Thread.sleep(1000);
           }
+        }
 
-          // Batch-get
-          Map<String, Utf8> utf8Results = (Map<String, Utf8>) avroClient.batchGet(keys).get();
-          Map<String, String> jsonResults = (Map<String, String>) vsonClient.batchGet(keys).get();
-          for (String key: keys) {
-            int i = Integer.parseInt(key);
-            int expectedSize = maxValueSize / numberOfRecords * (i + 1);
-            char[] chars = new char[expectedSize];
-            Arrays.fill(chars, key.charAt(0));
-            String expectedString = new String(chars);
-            Utf8 expectedUtf8 = new Utf8(expectedString);
+        Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
+        LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
+        Assert.assertEquals(returnedUtf8Value.toString().substring(0, 1), key, "Avro value does not begin with the expected prefix.");
+        Assert.assertEquals(returnedUtf8Value.length(), expectedSize, "Avro value does not have the expected size.");
+        Assert.assertEquals(returnedUtf8Value, expectedUtf8, "The entire large value should be filled with the same char: " + key);
 
-            Utf8 returnedUtf8Value = utf8Results.get(key);
-            Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
-            LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
-            Assert.assertEquals(returnedUtf8Value.toString().substring(0, 1), key, "Avro value does not begin with the expected prefix.");
-            Assert.assertEquals(returnedUtf8Value.length(), expectedSize, "Avro value does not have the expected size.");
-            Assert.assertEquals(returnedUtf8Value, expectedUtf8, "The entire large value should be filled with the same char: " + key);
+        String jsonValue = (String) vsonClient.get(key).get();
+        Assert.assertNotNull(jsonValue, "VSON client returned null value for key: " + key + ".");
+        Assert.assertEquals(jsonValue.substring(0, 1), key, "VSON value does not begin with the expected prefix.");
+        Assert.assertEquals(jsonValue.length(), expectedSize, "VSON value does not have the expected size.");
+        Assert.assertEquals(jsonValue, expectedString, "The entire large value should be filled with the same char: " + key);
+      }
 
-            String jsonValue = jsonResults.get(key);
-            Assert.assertNotNull(jsonValue, "VSON client returned null value for key: " + key + ".");
-            Assert.assertEquals(jsonValue.substring(0, 1), key, "VSON value does not begin with the expected prefix.");
-            Assert.assertEquals(jsonValue.length(), expectedSize, "VSON value does not have the expected size.");
-            Assert.assertEquals(jsonValue, expectedString, "The entire large value should be filled with the same char: " + key);
-          }
-        }, new UpdateStoreQueryParams().setChunkingEnabled(isChunkingAllowed));
+      // Batch-get
+      Map<String, Utf8> utf8Results = (Map<String, Utf8>) avroClient.batchGet(keys).get();
+      Map<String, String> jsonResults = (Map<String, String>) vsonClient.batchGet(keys).get();
+      for (String key: keys) {
+        int i = Integer.parseInt(key);
+        int expectedSize = maxValueSize / numberOfRecords * (i + 1);
+        char[] chars = new char[expectedSize];
+        Arrays.fill(chars, key.charAt(0));
+        String expectedString = new String(chars);
+        Utf8 expectedUtf8 = new Utf8(expectedString);
+
+        Utf8 returnedUtf8Value = utf8Results.get(key);
+        Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
+        LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
+        Assert.assertEquals(returnedUtf8Value.toString().substring(0, 1), key, "Avro value does not begin with the expected prefix.");
+        Assert.assertEquals(returnedUtf8Value.length(), expectedSize, "Avro value does not have the expected size.");
+        Assert.assertEquals(returnedUtf8Value, expectedUtf8, "The entire large value should be filled with the same char: " + key);
+
+        String jsonValue = jsonResults.get(key);
+        Assert.assertNotNull(jsonValue, "VSON client returned null value for key: " + key + ".");
+        Assert.assertEquals(jsonValue.substring(0, 1), key, "VSON value does not begin with the expected prefix.");
+        Assert.assertEquals(jsonValue.length(), expectedSize, "VSON value does not have the expected size.");
+        Assert.assertEquals(jsonValue, expectedString, "The entire large value should be filled with the same char: " + key);
+      }
+    };
+    if (existingStore == null) {
+      return testBatchStore(inputFileWriter, extraProps, dataValidator, new UpdateStoreQueryParams().setChunkingEnabled(isChunkingAllowed));
+    }
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, existingStore, new UpdateStoreQueryParams().setChunkingEnabled(isChunkingAllowed), false, false);
   }
 
   @Test(timeOut =  TEST_TIMEOUT)
