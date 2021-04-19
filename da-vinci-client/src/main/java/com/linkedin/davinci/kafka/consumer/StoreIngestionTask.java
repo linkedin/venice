@@ -1294,6 +1294,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else {
         consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
       }
+      if (veniceWriter != null) {
+        veniceWriter.close();
+      }
     } catch (Exception e) {
       logger.error("Caught exception while trying to close the current ingestion task", e);
     }
