@@ -1,10 +1,7 @@
 package com.linkedin.venice.serializer;
 
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
-import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificData;
-import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificRecord;
 
 

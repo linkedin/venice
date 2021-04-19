@@ -27,6 +27,12 @@
       "name": "schemaId",
       "doc": "The schema id of the original record",
       "type": "int"
+    },
+    {
+      "name": "chunkedKeySuffix",
+      "doc": "Serialized chunked key suffix and this field is not null only when this value is a chunk of a large value",
+      "type": ["null", "bytes"],
+      "default": null
     }
   ]
 }

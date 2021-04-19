@@ -41,7 +41,7 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
     try (TopicManager topicManager = new TopicManager(consumerFactory)) {
       String topic = config.get(KAFKA_INPUT_TOPIC);
       Map<Integer, Long> latestOffsets = topicManager.getLatestOffsets(topic);
-      Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>();
+      Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
       latestOffsets.forEach((partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));
       return partitionOffsetMap;
     } catch (IOException e) {
@@ -84,8 +84,7 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
   }
 
   @Override
-  public RecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(InputSplit split, JobConf job, Reporter reporter)
-      throws IOException {
+  public RecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(InputSplit split, JobConf job, Reporter reporter) {
     return new KafkaInputRecordReader(split, job, reporter);
   }
 }

@@ -6,15 +6,20 @@ import java.nio.ByteBuffer;
 
 
 public class KeyWithChunkingSuffixSerializer {
-  private static final String IGNORED_TOPIC_NAME = "ignored";
+  public static final String IGNORED_TOPIC_NAME = "ignored";
+  public static final ChunkedKeySuffix NON_CHUNK_KEY_SUFFIX = createNoChunkKeySuffix();
   private final ChunkedKeySuffixSerializer chunkedKeySuffixSerializer = new ChunkedKeySuffixSerializer();
   private final byte[] serializedNonChunkKeySuffix;
 
-  public KeyWithChunkingSuffixSerializer() {
+  private static ChunkedKeySuffix createNoChunkKeySuffix() {
     ChunkedKeySuffix nonChunkKeySuffix = new ChunkedKeySuffix();
     nonChunkKeySuffix.isChunk = false;
     nonChunkKeySuffix.chunkId = null;
-    this.serializedNonChunkKeySuffix = chunkedKeySuffixSerializer.serialize(IGNORED_TOPIC_NAME, nonChunkKeySuffix);
+    return nonChunkKeySuffix;
+  }
+
+  public KeyWithChunkingSuffixSerializer() {
+    this.serializedNonChunkKeySuffix = chunkedKeySuffixSerializer.serialize(IGNORED_TOPIC_NAME, NON_CHUNK_KEY_SUFFIX);
   }
 
   public byte[] serializeChunkedKey(byte[] key, ChunkedKeySuffix chunkedKeySuffix) {
@@ -26,7 +31,7 @@ public class KeyWithChunkingSuffixSerializer {
     return serialize(key, serializedNonChunkKeySuffix);
   }
 
-  private byte[] serialize(byte[] key, byte[] encodedChunkedKeySuffix) {
+  public byte[] serialize(byte[] key, byte[] encodedChunkedKeySuffix) {
     ByteBuffer target = ByteBuffer.allocate(key.length + encodedChunkedKeySuffix.length);
     target.put(key);
     target.put(encodedChunkedKeySuffix);

@@ -130,7 +130,6 @@ public class VeniceReducer
   private HadoopJobClientProvider hadoopJobClientProvider = new DefaultHadoopJobClientProvider();
   private boolean isDuplicateKeyAllowed = DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 
-
   @Override
   public void reduce(
       BytesWritable key,

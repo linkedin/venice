@@ -7,6 +7,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.concurrent.ThreadFactory;
 import javax.annotation.Nonnull;
@@ -168,6 +169,13 @@ public class Utils {
       throw new IllegalArgumentException("This String object MUST be non-empty.");
     }
     return stringObject;
+  }
+
+  public static <T> Collection<T> assertCollectionsNotEmpty(Collection<T> collection) {
+    if (collection.isEmpty()) {
+      throw new IllegalArgumentException("This collection object cannot be empty.");
+    }
+    return collection;
   }
 
   /**

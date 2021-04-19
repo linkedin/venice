@@ -6,6 +6,7 @@ import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
@@ -24,6 +25,7 @@ public abstract class AbstractMapReduceTask {
 
   private int partitionCount;
   private int taskId = TASK_ID_NOT_SET;
+  private boolean isChunkingEnabled;
 
   abstract protected void configureTask(VeniceProperties props, JobConf job);
 
@@ -33,6 +35,14 @@ public abstract class AbstractMapReduceTask {
 
   protected int getTaskId() {
     return this.taskId;
+  }
+
+  protected void setChunkingEnabled(boolean isChunkingEnabled) {
+    this.isChunkingEnabled = isChunkingEnabled;
+  }
+
+  protected boolean isChunkingEnabled() {
+    return isChunkingEnabled;
   }
 
   public final void configure(JobConf job) {
@@ -45,7 +55,7 @@ public abstract class AbstractMapReduceTask {
     } catch (IOException e) {
       throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
     }
-
+    setChunkingEnabled(props.getBoolean(VeniceWriter.ENABLE_CHUNKING));
     this.partitionCount = job.getNumReduceTasks();
     TaskAttemptID taskAttemptID = TaskAttemptID.forName(job.get(MAPRED_TASK_ID_PROP_NAME));
     if (null == taskAttemptID) {

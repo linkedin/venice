@@ -1,10 +1,12 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
@@ -69,6 +71,7 @@ public class TestKafkaInputRecordReader {
   public void testNext() throws IOException {
     JobConf conf = new JobConf();
     conf.set(KAFKA_INPUT_BROKER_URL, kafka.getAddress());
+    conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(-1, -1));
     conf.set(KAFKA_INPUT_TOPIC, topic);
 
@@ -92,7 +95,7 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_BROKER_URL, kafka.getAddress());
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(0, 10));
     conf.set(KAFKA_INPUT_TOPIC, topic);
-
+    conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102),
         conf, Mockito.mock(Reporter.class));
     for (int i = 0; i < 100; ++i) {
@@ -119,7 +122,7 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_BROKER_URL, kafka.getAddress());
     String topic = getTopic(100, new Pair<>(21, 30), new Pair<>(11, 20));
     conf.set(KAFKA_INPUT_TOPIC, topic);
-
+    conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102),
         conf, Mockito.mock(Reporter.class));
     for (int i = 0; i < 100; ++i) {
