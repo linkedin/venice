@@ -303,6 +303,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Used to construct VenicePartitioner
   private final VenicePartitioner venicePartitioner;
 
+  //Total number of partition for this store version
+  private final int storeVersionPartitionCount;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -337,7 +340,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean isWriteComputationEnabled,
-      VenicePartitioner venicePartitioner) {
+      VenicePartitioner venicePartitioner,
+      int storeVersionPartitionCount) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -431,6 +435,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The reason to use a different field name here is that the naming convention will be consistent with RocksDB.
      */
     this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
+
+    this.storeVersionPartitionCount = storeVersionPartitionCount;
   }
 
   protected void throwIfNotRunning() {
@@ -2252,7 +2258,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (null == veniceWriter) {
           Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
           if (storeVersionState.isPresent()) {
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner);
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner, Optional.of(storeVersionPartitionCount));
           } else {
             /**
              * In general, a partition in version topic follows this pattern:
@@ -2263,7 +2269,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
              * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
              * different in some test cases which reuse the same VeniceWriter.
              */
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner);
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner, Optional.of(storeVersionPartitionCount));
           }
         }
       }

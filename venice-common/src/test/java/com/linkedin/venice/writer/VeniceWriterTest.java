@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -141,7 +142,7 @@ public class VeniceWriterTest {
     String testTopic = "test";
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(new VeniceProperties(writerProperties), testTopic, serializer, serializer, serializer,
-            new DefaultVenicePartitioner(), SystemTime.INSTANCE, () -> mockedProducer);
+            new DefaultVenicePartitioner(), SystemTime.INSTANCE, Optional.empty(), () -> mockedProducer);
     for (int i = 0; i < 1000; i++) {
       writer.put(Integer.toString(i), Integer.toString(i), 1, null);
     }

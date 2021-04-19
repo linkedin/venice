@@ -439,7 +439,7 @@ public class StoreIngestionTaskTest {
         .build();
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
         isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, storeConfig, true,
-        false, "", PARTITION_FOO, false, new DefaultVenicePartitioner());
+        false, "", PARTITION_FOO, false, new DefaultVenicePartitioner(), version.getPartitionCount());
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -1652,7 +1652,7 @@ public class StoreIngestionTaskTest {
     protected TestVeniceWriter(VeniceProperties props, String topicName, VeniceKafkaSerializer keySerializer,
         VeniceKafkaSerializer valueSerializer, VeniceKafkaSerializer updateSerializer, VenicePartitioner partitioner,
         Time time, Supplier supplier) {
-      super(props, topicName, keySerializer, valueSerializer, updateSerializer, partitioner, time, supplier);
+      super(props, topicName, keySerializer, valueSerializer, updateSerializer, partitioner, time, Optional.empty(), supplier);
     }
   }
 

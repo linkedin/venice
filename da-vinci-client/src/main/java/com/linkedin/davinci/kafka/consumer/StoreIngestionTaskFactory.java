@@ -52,7 +52,8 @@ public class StoreIngestionTaskFactory {
       String nativeReplicationSourceAddress,
       int partitionId,
       boolean isWriteComputationEnabled,
-      VenicePartitioner venicePartitioner
+      VenicePartitioner venicePartitioner,
+      int storeVersionPartitionCount
   ) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(
@@ -91,7 +92,8 @@ public class StoreIngestionTaskFactory {
           builder.startReportingReadyToServeTimestamp,
           builder.partitionStateSerializer,
           isWriteComputationEnabled,
-          venicePartitioner);
+          venicePartitioner,
+          storeVersionPartitionCount);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -126,7 +128,8 @@ public class StoreIngestionTaskFactory {
           builder.cacheWarmingThreadPool,
           builder.startReportingReadyToServeTimestamp,
           builder.partitionStateSerializer,
-          venicePartitioner);
+          venicePartitioner,
+          storeVersionPartitionCount);
     }
   }
 

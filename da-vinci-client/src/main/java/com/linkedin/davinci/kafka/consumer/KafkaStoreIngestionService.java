@@ -433,7 +433,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         version.getPushStreamSourceAddress(),
         partitionId,
         store.isWriteComputationEnabled(),
-        partitioner);
+        partitioner,
+        version.getPartitionCount());
   }
 
   private static void shutdownExecutorService(ExecutorService executorService, boolean force) {

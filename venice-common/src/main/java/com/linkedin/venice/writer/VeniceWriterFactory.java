@@ -54,12 +54,17 @@ public class VeniceWriterFactory {
         Optional.empty(), time, partitioner);
   }
 
+  public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName, Time time, VenicePartitioner partitioner, Optional<Integer> topicPartitionCount) {
+    return createVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), new DefaultSerializer(),
+        Optional.empty(), time, partitioner, topicPartitionCount);
+  }
+
   public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName) {
     return createBasicVeniceWriter(topicName, SystemTime.INSTANCE);
   }
 
-  public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName, VenicePartitioner partitioner) {
-    return createBasicVeniceWriter(topicName, SystemTime.INSTANCE, partitioner);
+  public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName, VenicePartitioner partitioner, Optional<Integer> topicPartitionCount) {
+    return createBasicVeniceWriter(topicName, SystemTime.INSTANCE, partitioner, topicPartitionCount);
   }
 
   /**
@@ -73,6 +78,11 @@ public class VeniceWriterFactory {
   public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName, boolean chunkingEnabled, VenicePartitioner partitioner) {
     return createVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), new DefaultSerializer(),
         Optional.of(chunkingEnabled), SystemTime.INSTANCE, partitioner);
+  }
+
+  public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName, boolean chunkingEnabled, VenicePartitioner partitioner, Optional<Integer> topicPartitionCount) {
+    return createVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), new DefaultSerializer(),
+        Optional.of(chunkingEnabled), SystemTime.INSTANCE, partitioner, topicPartitionCount);
   }
 
   public <K, V> VeniceWriter<K, V, byte[]> createVeniceWriter(String topicName, VeniceKafkaSerializer<K> keySerializer,
@@ -103,12 +113,18 @@ public class VeniceWriterFactory {
 
   protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, VeniceKafkaSerializer<K> keySerializer,
       VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time, VenicePartitioner partitioner) {
-    return createVeniceWriter(topic, this.localKafkaBootstrapServers, keySerializer, valueSerializer, writeComputeSerializer, chunkingEnabled, time, partitioner);
+    return createVeniceWriter(topic, this.localKafkaBootstrapServers, keySerializer, valueSerializer, writeComputeSerializer, chunkingEnabled, time, partitioner, Optional.empty());
   }
 
   protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, String kafkaBootstrapServers, VeniceKafkaSerializer<K> keySerializer,
       VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time) {
-    return createVeniceWriter(topic, kafkaBootstrapServers, keySerializer, valueSerializer, writeComputeSerializer, chunkingEnabled, time, new DefaultVenicePartitioner());
+    return createVeniceWriter(topic, kafkaBootstrapServers, keySerializer, valueSerializer, writeComputeSerializer, chunkingEnabled, time, new DefaultVenicePartitioner(), Optional.empty());
+  }
+
+  protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, VeniceKafkaSerializer<K> keySerializer,
+      VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time, VenicePartitioner partitioner,
+      Optional<Integer> topicPartitionCount) {
+    return createVeniceWriter(topic, this.localKafkaBootstrapServers, keySerializer, valueSerializer, writeComputeSerializer, chunkingEnabled, time, partitioner, topicPartitionCount);
   }
 
   /**
@@ -117,7 +133,8 @@ public class VeniceWriterFactory {
    * @param chunkingEnabled override the factory's default chunking setting.
    */
   protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, String kafkaBootstrapServers, VeniceKafkaSerializer<K> keySerializer,
-      VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time, VenicePartitioner partitioner) {
+      VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time, VenicePartitioner partitioner,
+      Optional<Integer> topicPartitionCount) {
     Properties writerProperties = new Properties();
     writerProperties.putAll(this.properties);
     writerProperties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
@@ -125,7 +142,7 @@ public class VeniceWriterFactory {
       writerProperties.put(VeniceWriter.ENABLE_CHUNKING, chunkingEnabled.get());
     }
     VeniceProperties props = new VeniceProperties(writerProperties);
-    return new VeniceWriter<>(props, topic, keySerializer, valueSerializer, writeComputeSerializer, partitioner, time,
+    return new VeniceWriter<>(props, topic, keySerializer, valueSerializer, writeComputeSerializer, partitioner, time, topicPartitionCount,
         () -> new ApacheKafkaProducer(props));
   }
 
