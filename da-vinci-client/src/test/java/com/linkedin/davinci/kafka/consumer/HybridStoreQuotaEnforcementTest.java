@@ -34,7 +34,7 @@ public class HybridStoreQuotaEnforcementTest {
   private StoreIngestionTask storeIngestionTask;
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private AbstractStorageEngine storageEngine;
-  private IngestionNotificationDispatcher notificationDispatcher;
+  private StoreIngestionTask.ReportStatusAdapter reportStatusAdapter;
   private Store store;
   private Version version;
   private Map<Integer, Integer> subscribedPartitionToSize;
@@ -50,11 +50,11 @@ public class HybridStoreQuotaEnforcementTest {
   @BeforeMethod
   private void buildNewQuotaEnforcer() {
     storeIngestionTask = mock(StoreIngestionTask.class);
-    notificationDispatcher = mock(IngestionNotificationDispatcher.class);
+    reportStatusAdapter = mock(StoreIngestionTask.ReportStatusAdapter.class);
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs = new PartitionConsumptionState(i, mock(OffsetRecord.class),true, true,
+      PartitionConsumptionState pcs = new PartitionConsumptionState(i, 1, mock(OffsetRecord.class),true, true,
           IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
       partitionConsumptionStateMap.put(i, pcs);
     }
@@ -65,7 +65,7 @@ public class HybridStoreQuotaEnforcementTest {
     when(store.getVersion(storeVersion)).thenReturn(Optional.of(version));
     when(version.getStatus()).thenReturn(VersionStatus.STARTED);
     when(storeIngestionTask.isMetricsEmissionEnabled()).thenReturn(false);
-    when(storeIngestionTask.getNotificationDispatcher()).thenReturn(notificationDispatcher);
+    when(storeIngestionTask.getReportStatusAdapter()).thenReturn(reportStatusAdapter);
 
     quotaEnforcer = new HybridStoreQuotaEnforcement(storeIngestionTask,
                                                     storageEngine,
@@ -171,7 +171,7 @@ public class HybridStoreQuotaEnforcementTest {
     }
     runTest(() -> {
       for (int i = 1; i <= storePartitionCount; i++) {
-        verify(notificationDispatcher, times(10)).reportCompleted(any());
+        verify(reportStatusAdapter, times(10)).reportCompleted(any());
         Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
       }
     });

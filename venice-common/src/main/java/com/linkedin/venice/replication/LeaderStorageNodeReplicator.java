@@ -44,7 +44,7 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
     } else {
       hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     }
-    checkPreconditions(srcTopicName, destTopicName, hybridStoreConfig);
+    checkPreconditions(srcTopicName, destTopicName, store, hybridStoreConfig);
     long bufferReplayStartTime = getRewindStartTime(hybridStoreConfig);
     String finalDestTopicName = version.get().getPushType().isStreamReprocessing() ?
         Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()) : destTopicName;

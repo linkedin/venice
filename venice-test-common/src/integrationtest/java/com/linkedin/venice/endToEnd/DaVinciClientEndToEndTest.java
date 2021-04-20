@@ -85,6 +85,7 @@ public class DaVinciClientEndToEndTest {
     String storeName = TestUtils.getUniqueString("batch-store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setAmplificationFactor(amplificationFactor)
+            .setLeaderFollowerModel(true)
             .setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId)));

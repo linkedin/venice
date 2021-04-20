@@ -178,7 +178,7 @@ public class DaVinciBackend implements Closeable {
         logger.info("Storage service has " + engineRepository.getAllLocalStorageEngines().size() + " storage engines after cleanup.");
       }
 
-      ingestionBackend = new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService);
+      ingestionBackend = new IsolatedIngestionBackend(configLoader, metricsRepository, storageMetadataService, ingestionService, storageService, storeRepository);
       ingestionBackend.addIngestionNotifier(ingestionListener);
       // Send out subscribe requests to child process to complete bootstrap process.
       completeBootstrapRemotely(bootstrapVersions);
@@ -426,7 +426,9 @@ public class DaVinciBackend implements Closeable {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
-          versionBackend.completeSubPartition(partitionId);
+          for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, versionBackend.getAmplificationFactor())) {
+            versionBackend.completeSubPartition(subPartitionId);
+          }
           reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
         }
       });
@@ -437,7 +439,9 @@ public class DaVinciBackend implements Closeable {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
-          versionBackend.completeSubPartitionExceptionally(partitionId, e);
+          for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, versionBackend.getAmplificationFactor())) {
+            versionBackend.completeSubPartitionExceptionally(subPartitionId, e);
+          }
           reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
         }
       });

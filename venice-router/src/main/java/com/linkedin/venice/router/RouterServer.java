@@ -876,7 +876,8 @@ public class RouterServer extends AbstractVeniceService {
     if (hybridStoreQuotaRepository.isPresent()) {
       hybridStoreQuotaRepository.get().refresh();
     }
-
-    partitionStatusOnlineInstanceFinder.refresh();
+    if (partitionStatusOnlineInstanceFinder != null) {
+      partitionStatusOnlineInstanceFinder.refresh();
+    }
   }
 }

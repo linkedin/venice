@@ -8,9 +8,11 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.PartitionUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -49,18 +51,26 @@ public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<Fu
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
+
     logger.info("Received ingestion report " + ingestionReportType.name() + " for topic: " + topicName + ", partition: " + partitionId + " from ingestion service.");
     // TODO: Use more flexible pull model to sync storage metadata from child process to main process.
     updateLocalStorageMetadata(report);
+
+    int amplificationFactor = PartitionUtils.getAmplificationFactor(nativeIngestionMonitorService.getStoreRepository(), topicName);
+
     // Relay the notification to parent service's listener.
     switch (ingestionReportType) {
       case COMPLETED:
         // TODO: Set leader state in local KafkaStoreIngestionService during server integration.
-        nativeIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+        for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
+          nativeIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
+        }
         notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset));
         break;
       case ERROR:
-        nativeIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+        for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
+          nativeIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
+        }
         notifierHelper(notifier -> notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString())));
         break;
       case STARTED:
@@ -106,6 +116,8 @@ public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<Fu
   }
 
   private void updateLocalStorageMetadata(IngestionTaskReport report) {
+    // TODO: when amplifcationFactor > 1, ingestion isolation is not well supported
+    // replace report.offsetRecord to a list of offsetRecords later
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;

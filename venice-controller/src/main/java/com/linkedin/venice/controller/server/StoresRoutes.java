@@ -274,6 +274,7 @@ public class StoresRoutes extends AbstractRoute {
         //TODO: we may want to have a specific response for store updating
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
+
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
 

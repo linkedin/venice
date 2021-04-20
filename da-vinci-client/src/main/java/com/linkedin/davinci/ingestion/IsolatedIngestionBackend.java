@@ -15,6 +15,9 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -42,18 +45,21 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
   private final KafkaStoreIngestionService kafkaStoreIngestionService;
   private final NativeIngestionRequestClient nativeIngestionRequestClient;
   private final NativeIngestionMonitorService nativeIngestionMonitorService;
+  private final ReadOnlyStoreRepository storeRepository;
   private final VeniceConfigLoader configLoader;
   private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap = new VeniceConcurrentHashMap<>();
 
   private Process isolatedIngestionServiceProcess;
 
   public IsolatedIngestionBackend(VeniceConfigLoader configLoader, MetricsRepository metricsRepository,
-      StorageMetadataService storageMetadataService, KafkaStoreIngestionService storeIngestionService, StorageService storageService) {
+      StorageMetadataService storageMetadataService, KafkaStoreIngestionService storeIngestionService,
+      StorageService storageService, ReadOnlyStoreRepository storeRepository) {
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.kafkaStoreIngestionService = storeIngestionService;
     this.storageMetadataService = (NativeIngestionStorageMetadataService) storageMetadataService;
     this.storageService = storageService;
+    this.storeRepository = storeRepository;
     this.configLoader = configLoader;
 
     // Create the ingestion request client.
@@ -67,6 +73,7 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
       nativeIngestionMonitorService.setStoreIngestionService(storeIngestionService);
       nativeIngestionMonitorService.setStorageMetadataService((NativeIngestionStorageMetadataService) storageMetadataService);
       nativeIngestionMonitorService.setConfigLoader(configLoader);
+      nativeIngestionMonitorService.setStoreRepository(storeRepository);
       nativeIngestionMonitorService.startInner();
       logger.info("Ingestion Report Listener started.");
     } catch (Exception e) {
@@ -270,8 +277,11 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
         VeniceStoreConfig config = configLoader.getStoreConfig(kafkaTopic);
         config.setRestoreDataPartitions(false);
         config.setRestoreMetadataPartition(false);
+        int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, kafkaTopic);
         // Start partition consumption locally.
-        startConsumption(config, partition);
+        for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+          startConsumption(config, subPartition);
+        }
       }
     };
   }

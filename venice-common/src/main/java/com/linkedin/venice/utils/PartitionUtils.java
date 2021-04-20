@@ -6,16 +6,18 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-
+import java.util.Collections;
+import java.util.Optional;
+import java.util.Properties;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Properties;
 
 public class PartitionUtils {
   private static final Logger logger = Logger.getLogger(PartitionUtils.class);
@@ -72,6 +74,21 @@ public class PartitionUtils {
     return subPartitions;
   }
 
+  /**
+   * @param topic the consumed topic which the record is from
+   * @param partition the partition in the consumed topic
+   * @param amplificationFactor
+   * @return leaderSubPartition if is consuming from a Real-time topic, else return partition itself
+   */
+  public static int getSubPartition(String topic, int partition, int amplificationFactor) {
+    return Version.isRealTimeTopic(topic) ?
+        getLeaderSubPartition(partition, amplificationFactor) : partition;
+  }
+
+  public static List<Integer> getSubPartitions(int userPartition, int amplificationFactor) {
+    return getSubPartitions(Collections.singleton(userPartition), amplificationFactor);
+  }
+
   public static List<Integer> getUserPartitions(Collection<Integer> subPartitions, int amplificationFactor) {
     List<Integer> userPartitions = new ArrayList<>();
     for (Integer subPartition : subPartitions) {
@@ -83,6 +100,11 @@ public class PartitionUtils {
   public static int getUserPartition(int subPartition, int amplificationFactor) {
     checkAmplificationFactor(amplificationFactor);
     return subPartition / amplificationFactor;
+  }
+
+  public static int getLeaderSubPartition(int userPartition, int amplificationFactor) {
+    checkAmplificationFactor(amplificationFactor);
+    return userPartition * amplificationFactor;
   }
 
   public static VenicePartitioner getVenicePartitioner(PartitionerConfig config) {
@@ -121,5 +143,37 @@ public class PartitionUtils {
     } else {
       return new DefaultVenicePartitioner(props);
     }
+  }
+
+  public static int getAmplificationFactor(ReadOnlyStoreRepository readOnlyStoreRepository, String topicName) {
+    // any exception throw during creation of AbstractParticipantModel could result in severe spamming log in Helix
+    // surround the block with try-catch to be safe
+    try {
+      String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+      int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
+      return getAmplificationFactor(readOnlyStoreRepository, storeName, versionNumber);
+    } catch (Exception e) {
+      return 1;
+    }
+  }
+
+  public static int getAmplificationFactor(ReadOnlyStoreRepository readOnlyStoreRepository, String storeName, int versionNumber) {
+    int amplifcationFactor = 1;
+    if (readOnlyStoreRepository == null) {
+      return amplifcationFactor;
+    }
+    try {
+      Optional<Version> version = readOnlyStoreRepository.getStore(storeName).getVersion(versionNumber);
+      if (version.isPresent()) {
+        amplifcationFactor = version.get().getPartitionerConfig().getAmplificationFactor();
+      } else {
+        logger.warn("Version " + versionNumber + " does not exist.");
+        amplifcationFactor = readOnlyStoreRepository.getStore(storeName).getPartitionerConfig().getAmplificationFactor();
+      }
+    } catch (Exception e) {
+      logger.warn("Failed to fetch amplificationFactor from for store " + storeName + ". Using default value 1.");
+      amplifcationFactor = 1;
+    }
+    return amplifcationFactor;
   }
 }

@@ -71,7 +71,6 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
 
-
       // Placing a latch in the transition if this is the current version
       if (getMetaDataRepo().getStoreOrThrow(storeName).getCurrentVersion() == version
           && !VeniceSystemStoreUtils.isSystemStore(storeName)) {
@@ -86,14 +85,14 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
     executeStateTransition(message, context, () ->
-      getStoreIngestionService().promoteToLeader(getStoreConfig(), getPartition(), checker));
+      getStoreIngestionService().promoteToLeader(getStoreConfig(), getLeaderSubPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
     executeStateTransition(message, context, () ->
-      getStoreIngestionService().demoteToStandby(getStoreConfig(), getPartition(), checker));
+      getStoreIngestionService().demoteToStandby(getStoreConfig(), getLeaderSubPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)

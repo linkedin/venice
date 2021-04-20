@@ -179,10 +179,11 @@ public class VeniceSystemProducer implements SystemProducer {
   }
 
   protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
+    int amplificationFactor = store.getAmplificationFactor();
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(store.getPartitionerParams());
     VenicePartitioner
-        venicePartitioner = PartitionUtils.getVenicePartitioner(store.getPartitionerClass(), store.getAmplificationFactor(), new VeniceProperties(partitionerProperties));
+        venicePartitioner = PartitionUtils.getVenicePartitioner(store.getPartitionerClass(), amplificationFactor, new VeniceProperties(partitionerProperties));
     return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time, venicePartitioner);
   }
 

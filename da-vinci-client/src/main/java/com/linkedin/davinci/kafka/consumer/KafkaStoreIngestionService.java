@@ -446,13 +446,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (version == null) {
       throw new VeniceException("Version " + veniceStoreConfig.getStoreName() + " does not exist.");
     }
-
+    int amplificationFactor;
     VenicePartitioner partitioner;
     PartitionerConfig partitionerConfig = version.getPartitionerConfig();
     if (partitionerConfig == null) {
       partitioner = new DefaultVenicePartitioner();
+      amplificationFactor = 1;
     } else {
       partitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
+      amplificationFactor = partitionerConfig.getAmplificationFactor();
     }
 
     BooleanSupplier isVersionCurrent = () -> {
@@ -479,7 +481,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         store.isWriteComputationEnabled(),
         partitioner,
         version.getPartitionCount(),
-        isIsolatedIngestion);
+        isIsolatedIngestion,
+        amplificationFactor);
   }
 
   private static void shutdownExecutorService(ExecutorService executorService, boolean force) {

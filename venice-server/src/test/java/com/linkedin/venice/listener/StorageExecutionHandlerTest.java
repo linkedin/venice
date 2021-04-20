@@ -18,7 +18,9 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -78,6 +80,10 @@ public class StorageExecutionHandlerTest {
     RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
     doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
 
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    Store store = mock(Store.class);
+    when(store.getVersion(anyInt())).thenReturn(Optional.empty());
+    when(metadataRepo.getStoreOrThrow(anyString())).thenReturn(store);
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
@@ -90,7 +96,7 @@ public class StorageExecutionHandlerTest {
         new LinkedBlockingQueue<>(2));
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
         mockMetadataRetriever, null, false, false, 10, serverConfig);
     testHandler.channelRead(mockCtx, testRequest);
 
@@ -116,13 +122,14 @@ public class StorageExecutionHandlerTest {
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
         new LinkedBlockingQueue<>(2));
     StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
     doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
 
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
         mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig);
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
@@ -182,6 +189,10 @@ public class StorageExecutionHandlerTest {
     doReturn(Optional.of(expectedOffset)).when(mockMetadataRetriever).getOffset(Mockito.anyString(), Mockito.anyInt());
 
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    Store store = mock(Store.class);
+    when(store.getVersion(anyInt())).thenReturn(Optional.empty());
+    when(metadataRepo.getStoreOrThrow(anyString())).thenReturn(store);
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
     doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
@@ -212,7 +223,7 @@ public class StorageExecutionHandlerTest {
     });
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
         mockMetadataRetriever, null, false, false, 10, serverConfig);
     testHandler.channelRead(mockCtx, testRequest);
 
@@ -244,7 +255,7 @@ public class StorageExecutionHandlerTest {
 
     // Mock the AdminResponse from ingestion task
     AdminResponse expectedAdminResponse = new AdminResponse();
-    PartitionConsumptionState state = new PartitionConsumptionState(expectedPartitionId, new OffsetRecord(
+    PartitionConsumptionState state = new PartitionConsumptionState(expectedPartitionId, 1, new OffsetRecord(
         AvroProtocolDefinition.PARTITION_STATE.getSerializer()), false, false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
     expectedAdminResponse.addPartitionConsumptionState(state);
 
@@ -270,7 +281,7 @@ public class StorageExecutionHandlerTest {
 
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
-        mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
+        mock(ReadOnlyStoreRepository.class), mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
         10, serverConfig);
     testHandler.channelRead(mockCtx, testRequest);
 

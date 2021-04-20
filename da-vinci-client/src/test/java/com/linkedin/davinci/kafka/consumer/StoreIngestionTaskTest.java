@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -28,6 +29,8 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -39,7 +42,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.DeepCopyStorageMetadataService;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -68,7 +71,6 @@ import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
 import com.linkedin.venice.unit.kafka.producer.TransformingProducer;
-import com.linkedin.venice.unit.matchers.ExceptionClassAndCauseClassMatcher;
 import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
@@ -76,6 +78,7 @@ import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -107,6 +110,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -151,6 +155,7 @@ public class StoreIngestionTaskTest {
   }
 
   private InMemoryKafkaBroker inMemoryKafkaBroker;
+  private VeniceWriterFactory mockWriterFactory;
   private VeniceWriter veniceWriter;
   private StorageEngineRepository mockStorageEngineRepository;
   private VeniceNotifier mockLogNotifier, mockPartitionStatusNotifier, mockLeaderFollowerStateModelNotifier, mockOnlineOfflineStateModelNotifier;
@@ -282,6 +287,22 @@ public class StoreIngestionTaskTest {
     rocksDBServerConfig = mock(RocksDBServerConfig.class);
   }
 
+  private VeniceWriter getVeniceWriter(String topic, Supplier<KafkaProducerWrapper> producerSupplier, int amplificationFactor) {
+    return new TestVeniceWriter(new VeniceProperties(new Properties()), topic, new DefaultSerializer(),
+        new DefaultSerializer(), new DefaultSerializer(), getVenicePartitioner(amplificationFactor), SystemTime.INSTANCE, producerSupplier);
+  }
+
+  private VenicePartitioner getVenicePartitioner(int amplificationFactor) {
+    VenicePartitioner partitioner;
+    VenicePartitioner simplePartitioner = new SimplePartitioner();
+    if (amplificationFactor == 1) {
+      partitioner = simplePartitioner;
+    } else {
+      partitioner = new UserPartitionAwarePartitioner(simplePartitioner, amplificationFactor);
+    }
+    return partitioner;
+  }
+
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
     return new TestVeniceWriter(new VeniceProperties(new Properties()), topic, new DefaultSerializer(),
         new DefaultSerializer(), new DefaultSerializer(), new SimplePartitioner(), SystemTime.INSTANCE, producerSupplier);
@@ -324,6 +345,12 @@ public class StoreIngestionTaskTest {
         Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
+  private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled, int amplificationFactor) throws Exception {
+    runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
+        Optional.of(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)),
+        false, Optional.empty(), true, isLeaderFollowerModelEnabled, amplificationFactor);
+  }
+
   private void runTest(Set<Integer> partitions,
                        Runnable beforeStartingConsumption,
                        Runnable assertions,
@@ -343,7 +370,7 @@ public class StoreIngestionTaskTest {
       Optional<HybridStoreConfig> hybridStoreConfig,
       Optional<DiskUsage> diskUsageForTest,
       boolean isLeaderFollowerModelEnabled) throws Exception{
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest, true, isLeaderFollowerModelEnabled);
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest, true, isLeaderFollowerModelEnabled, 1);
   }
 
   private void runTest(PollStrategy pollStrategy,
@@ -354,19 +381,20 @@ public class StoreIngestionTaskTest {
       boolean incrementalPushEnabled,
       Optional<DiskUsage> diskUsageForTest,
       boolean isAutoCompactionEnabledForSamzaReprocessingJob,
-      boolean isLeaderFollowerModelEnabled) throws Exception {
+      boolean isLeaderFollowerModelEnabled,
+      int amplificationFactor) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
     kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryKafkaBroker.getKafkaBootstrapServer());
     KafkaClientFactory mockFactory = mock(KafkaClientFactory.class);
     doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(any());
-    VeniceWriterFactory mockWriterFactory = mock(VeniceWriterFactory.class);
+    mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
     StorageMetadataService offsetManager;
     logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
-      for (int partition : partitions) {
+      for (int partition : PartitionUtils.getSubPartitions(partitions, amplificationFactor)) {
         doReturn(new OffsetRecord(partitionStateSerializer)).when(mockStorageMetadataService).getLastOffset(topic, partition);
         if(hybridStoreConfig.isPresent()){
           doReturn(Optional.of(new StoreVersionState())).when(mockStorageMetadataService).getStoreVersionState(topic);
@@ -401,9 +429,13 @@ public class StoreIngestionTaskTest {
     doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(veniceServerConfig).getKafkaBootstrapServers();
     doReturn(false).when(veniceServerConfig).isHybridQuotaEnabled();
     Store mockStore = mock(Store.class);
-    Version version = new VersionImpl(storeNameWithoutVersionInfo, 1, "1", partitions.size());
+    Version version = new VersionImpl(storeNameWithoutVersionInfo, 1, "1", PARTITION_COUNT / amplificationFactor);
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setAmplificationFactor(amplificationFactor);
+    version.setPartitionerConfig(partitionerConfig);
     doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();
     doReturn(1).when(mockStore).getBootstrapToOnlineTimeoutInHours();
@@ -442,14 +474,15 @@ public class StoreIngestionTaskTest {
         .setCacheWarmingThreadPool(Executors.newFixedThreadPool(1))
         .setPartitionStateSerializer(partitionStateSerializer)
         .build();
+    int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
         isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, storeConfig, true,
-        false, "", PARTITION_FOO, false, new DefaultVenicePartitioner(), version.getPartitionCount(), false);
+        false, "", leaderSubPartition, false, getVenicePartitioner(amplificationFactor), version.getPartitionCount(), false, amplificationFactor);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
     try {
-      for (int partition: partitions) {
+      for (int partition: PartitionUtils.getSubPartitions(partitions, amplificationFactor)) {
         storeIngestionTaskUnderTest.subscribePartition(topic, partition);
       }
 
@@ -522,6 +555,44 @@ public class StoreIngestionTaskTest {
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
     }, isLeaderFollowerModelEnabled);
+  }
+
+  @Test
+  public void testAmplificationFactor() throws Exception {
+    int amplificationFactor = 2;
+    inMemoryKafkaBroker.createTopic(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), PARTITION_COUNT / amplificationFactor);
+    mockStorageMetadataService = new InMemoryStorageMetadataService();
+    VeniceWriter vtWriter = getVeniceWriter(topic, () -> new MockInMemoryProducer(inMemoryKafkaBroker), amplificationFactor);
+    VeniceWriter rtWriter = getVeniceWriter(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), () -> new MockInMemoryProducer(inMemoryKafkaBroker), 1);
+    runHybridTest(getSet(PARTITION_FOO), () -> {
+          vtWriter.broadcastStartOfPush(new HashMap<>());
+          vtWriter.broadcastEndOfPush(new HashMap<>());
+          doReturn(vtWriter).when(mockWriterFactory).createBasicVeniceWriter(anyString(), anyBoolean(), any(), any());
+          doReturn(3l).when(veniceServerConfig).getServerPromotionToLeaderReplicaDelayMs();
+          verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
+          vtWriter.broadcastTopicSwitch(Arrays.asList(inMemoryKafkaBroker.getKafkaBootstrapServer()),
+              Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
+              System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
+              new HashMap<>());
+          storeIngestionTaskUnderTest.promoteToLeader(topic, PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor), new LeaderFollowerParticipantModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
+          try {
+            rtWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+            rtWriter.delete(deleteKeyFoo, null).get();
+
+            // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+            VenicePartitioner partitioner = getVenicePartitioner(amplificationFactor);
+            int targetPartition = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
+            verify(mockAbstractStorageEngine, timeout(100000))
+                .put(targetPartition, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
+            // Verify StorageEngine#Delete is invoked only once and with appropriate key.
+           verify(mockAbstractStorageEngine, timeout(100000)).delete(targetPartition, deleteKeyFoo);
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+        },
+        true,
+        amplificationFactor
+    );
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -1612,7 +1683,7 @@ public class StoreIngestionTaskTest {
         verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
         verify(mockLogNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), true, Optional.empty(), true, isLeaderFollowerModelEnabled);
+    }, Optional.empty(), true, Optional.empty(), true, isLeaderFollowerModelEnabled, 1);
   }
 
 
@@ -1643,7 +1714,7 @@ public class StoreIngestionTaskTest {
             );
             verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
           });
-        }, Optional.empty(), false, Optional.empty(), true, isLeaderFollowerModelEnabled
+        }, Optional.empty(), false, Optional.empty(), true, isLeaderFollowerModelEnabled, 1
     );
   }
 
@@ -1685,7 +1756,7 @@ public class StoreIngestionTaskTest {
                 longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
             );
           });
-        }, Optional.empty(), false, Optional.empty(), false, isLeaderFollowerModelEnabled
+        }, Optional.empty(), false, Optional.empty(), false, isLeaderFollowerModelEnabled, 1
     );
   }
 

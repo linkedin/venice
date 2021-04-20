@@ -6,6 +6,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
@@ -104,6 +106,47 @@ public class CreateVersionTest {
 
       verify(response2).status(org.apache.http.HttpStatus.SC_FORBIDDEN);
     }
+  }
+
+  @Test
+  public void testCreateVersionwWithAmplificationFactorAndLeaderFollowerNotEnabled() throws Exception {
+    String clusterName = "test_cluster";
+    String storeName = "test_store";
+    String pushJobId = "push_1";
+    String hostname = "localhost";
+
+    // Setting query params
+    Map<String, String[]> queryMap = new HashMap<>();
+    queryMap.put("store_name", new String[]{storeName});
+    queryMap.put("store_size", new String[]{"0"});
+    queryMap.put("push_type", new String[]{Version.PushType.INCREMENTAL.name()});
+    queryMap.put("push_job_id", new String[]{pushJobId});
+    queryMap.put("hostname", new String[]{hostname});
+
+    // Mock an Admin
+    Admin admin = mock(Admin.class);
+    doReturn(true).when(admin).isMasterController(clusterName);
+    Store store = mock(Store.class);
+    when(store.isLeaderFollowerModelEnabled()).thenReturn(false);
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setAmplificationFactor(2);
+    when(store.getPartitionerConfig()).thenReturn(partitionerConfig);
+    when(admin.getStore(any(), any())).thenReturn(store);
+    CreateVersion createVersion = new CreateVersion(Optional.empty(), false);
+    Route createVersionRoute = createVersion.requestTopicForPushing(admin);
+
+    Request request = mock(Request.class);
+    doReturn(clusterName).when(request).queryParams(CLUSTER);
+    doReturn(REQUEST_TOPIC.getPath()).when(request).pathInfo();
+    for (Map.Entry<String, String[]> queryParam : queryMap.entrySet()) {
+      doReturn(queryParam.getValue()[0]).when(request).queryParams(queryParam.getKey());
+    }
+    HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
+    doReturn(new QueryParamsMap(httpServletRequest)).when(request).queryMap();
+
+    Response response = mock(Response.class);
+    createVersionRoute.handle(request, response);
+    verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
   }
 
   @Test

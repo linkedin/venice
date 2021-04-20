@@ -80,7 +80,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       VenicePartitioner venicePartitioner,
       int storeVersionPartitionCount,
-      boolean isIsolatedIngestion) {
+      boolean isIsolatedIngestion,
+      int amplificationFactor) {
     super(
         consumerFactory,
         kafkaConsumerProperties,
@@ -116,7 +117,11 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         false,
         venicePartitioner,
         storeVersionPartitionCount,
-        isIsolatedIngestion);
+        isIsolatedIngestion,
+        amplificationFactor);
+    if (amplificationFactor != 1) {
+      throw new VeniceException("amplificationFactor is not supported in Online/Offline state model");
+    }
   }
 
   @Override

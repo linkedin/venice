@@ -21,6 +21,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -376,14 +378,19 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private Future<?> submitStopConsumptionAndCloseStorageTask(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
+    int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, topicName);
     return longRunningTaskExecutor.submit(() -> {
       VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
       // Make sure partition is not consuming so we can safely close the rocksdb partition
-      long startTimeInMs = System.currentTimeMillis();
-      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum);
-      // Close RocksDB partition in Ingestion Service.
-      getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
-      logger.info("Partition: " + partitionId + " of topic: " + topicName + " closed in " + LatencyUtils.getElapsedTimeInMs(startTimeInMs) + " ms.");
+      for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
+
+        long startTimeInMs = System.currentTimeMillis();
+        getStoreIngestionService().stopConsumptionAndWait(storeConfig, subPartitionId, 1, stopConsumptionWaitRetriesNum);
+        // Close RocksDB partition in Ingestion Service.
+        getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(subPartitionId);
+        logger.info("Partition: " + subPartitionId + " of topic: " + topicName + " closed in " + LatencyUtils.getElapsedTimeInMs(
+            startTimeInMs) + " ms.");
+      }
     });
   }
 

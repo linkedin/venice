@@ -6,7 +6,10 @@ import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pushmonitor.SubPartitionStatus;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -20,6 +23,8 @@ import java.util.concurrent.Future;
  */
 public class PartitionConsumptionState {
   private final int partition;
+  private final int amplificationFactor;
+  private final int userPartition;
   private final boolean hybrid;
   private final boolean isIncrementalPushEnabled;
   private final IncrementalPushPolicy incrementalPushPolicy;
@@ -100,10 +105,11 @@ public class PartitionConsumptionState {
    */
   private CompletableFuture<Void> lastQueuedRecordPersistedFuture;
 
-
-  public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid, boolean isIncrementalPushEnabled,
-      IncrementalPushPolicy incrementalPushPolicy) {
+  public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid,
+    boolean isIncrementalPushEnabled, IncrementalPushPolicy incrementalPushPolicy) {
     this.partition = partition;
+    this.amplificationFactor = amplificationFactor;
+    this.userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
     this.hybrid = hybrid;
     this.isIncrementalPushEnabled = isIncrementalPushEnabled;
     this.incrementalPushPolicy = incrementalPushPolicy;
@@ -126,6 +132,12 @@ public class PartitionConsumptionState {
 
   public int getPartition() {
     return this.partition;
+  }
+  public int getUserPartition() {
+    return userPartition;
+  }
+  public int getAmplificationFactor() {
+    return this.amplificationFactor;
   }
   public void setOffsetRecord(OffsetRecord offsetRecord) {
     this.offsetRecord = offsetRecord;
@@ -363,8 +375,26 @@ public class PartitionConsumptionState {
     return removed;
   }
 
+  public int getSourceTopicPartition(String topic) {
+    if (Version.isRealTimeTopic(topic)) {
+      return getUserPartition();
+    } else {
+      return getPartition();
+    }
+  }
+
   public int getTransientRecordMapSize() {
     return transientRecordMap.size();
+  }
+
+  public boolean hasSubPartitionStatus(SubPartitionStatus subPartitionStatus) {
+    return this.getOffsetRecord() != null && this.getOffsetRecord().hasSubPartitionStatus(subPartitionStatus);
+  }
+
+  public void recordSubPartitionStatus(SubPartitionStatus subPartitionStatus) {
+    if (this.getOffsetRecord() != null) {
+      this.getOffsetRecord().recordSubPartitionStatus(subPartitionStatus);
+    }
   }
 
   /**

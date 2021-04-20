@@ -435,6 +435,8 @@ public class DaVinciClientTest {
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setPartitionCount(partitionCount)
             .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setLeaderFollowerModel(true)
+            .setReplicationFactor(2)
             .setAmplificationFactor(amplificationFactor)
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))

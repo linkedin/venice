@@ -67,6 +67,7 @@ public class TestVeniceServer extends VeniceServer {
           ThreadPoolExecutor executor,
           ThreadPoolExecutor computeExecutor,
           StorageEngineRepository storageEngineRepository,
+          ReadOnlyStoreRepository metadataRepository,
           ReadOnlySchemaRepository schemaRepository,
           MetadataRetriever metadataRetriever,
           DiskHealthCheckService diskHealthService,
@@ -75,7 +76,7 @@ public class TestVeniceServer extends VeniceServer {
           int parallelBatchGetChunkSize) {
 
         return new StorageExecutionHandler(
-            executor, computeExecutor, storageEngineRepository, schemaRepository, metadataRetriever, diskHealthService,
+            executor, computeExecutor, storageEngineRepository, metadataRepository, schemaRepository, metadataRetriever, diskHealthService,
             fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
