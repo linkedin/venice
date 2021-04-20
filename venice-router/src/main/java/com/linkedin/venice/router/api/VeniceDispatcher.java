@@ -220,41 +220,32 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         }
       }
       routeHttpRequestStats.recordPendingRequest(storageNode.getNodeId());
-    } finally {
-      lock.unlock();
-      if (isRequestThrottled) {
-        pendingRequestThrottler.take();
+
+      long requestId = uniqueRequestId.getAndIncrement();
+      responseFutureMap.put(requestId, responseFuture);
+      try {
+        /**
+         * Mark that the storage node will be used by current request and this piece of information will be used
+         * to decide whether a storage node is suitable for retry request.
+         */
+        path.requestStorageNode(storageNode.getNodeId());
+        storageNodeClient.query(storageNode, path, responseFuture::complete, responseFuture::completeExceptionally, () -> responseFuture.cancel(false),
+            startTime);
+      } catch (Throwable throwable) {
+        responseFuture.completeExceptionally(throwable);
       }
-    }
-
-    long requestId = uniqueRequestId.getAndIncrement();
-    responseFutureMap.put(requestId, responseFuture);
-    try {
-      /**
-       * Mark that the storage node will be used by current request and this piece of information will be used
-       * to decide whether a storage node is suitable for retry request.
-       */
-      path.requestStorageNode(storageNode.getNodeId());
-      storageNodeClient.query(
-          storageNode,
-          path,
-          responseFuture::complete,
-          responseFuture::completeExceptionally ,
-          () -> responseFuture.cancel(false),
-          startTime);
-
-    } catch (Throwable throwable) {
-      responseFuture.completeExceptionally(throwable);
-
-    } finally {
       return responseFuture.whenComplete((response, throwable) -> {
         RouteHttpStats perRouteStats = perRouteStatsByType.getStatsByType(requestType);
         perRouteStats.recordResponseWaitingTime(storageNode.getHost(), LatencyUtils.getLatencyInMS(startTime));
-
         routeHttpRequestStats.recordFinishedRequest(storageNode.getNodeId());
         pendingRequestThrottler.take();
         responseFutureMap.remove(requestId);
       });
+    } finally {
+      if (isRequestThrottled) {
+        pendingRequestThrottler.take();
+      }
+      lock.unlock();
     }
   }
 
