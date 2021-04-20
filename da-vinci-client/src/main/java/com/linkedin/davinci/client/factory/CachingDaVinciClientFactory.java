@@ -9,7 +9,7 @@ import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.AvroSpecificDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-
+import com.linkedin.venice.service.ICProvider;
 import io.tehuti.metrics.MetricsRepository;
 
 import java.io.Closeable;
@@ -32,20 +32,28 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
   protected final MetricsRepository metricsRepository;
   protected final VeniceProperties backendConfig;
   protected final Optional<Set<String>> managedClients;
+  protected final ICProvider icProvider;
   protected final Map<String, AvroGenericDaVinciClient> cachedClients = new HashMap<>();
   protected final List<DaVinciClient> isolatedClients = new ArrayList<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
 
   public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository, VeniceProperties backendConfig) {
-    this(d2Client, metricsRepository, backendConfig, Optional.empty());
+    this(d2Client, metricsRepository, backendConfig, Optional.empty(), null);
   }
 
-  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository, VeniceProperties backendConfig, Optional<Set<String>> managedClients) {
+  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository,
+      VeniceProperties backendConfig, Optional<Set<String>> managedClients) {
+    this(d2Client, metricsRepository, backendConfig, managedClients, null);
+  }
+
+  public CachingDaVinciClientFactory(D2Client d2Client, MetricsRepository metricsRepository,
+      VeniceProperties backendConfig, Optional<Set<String>> managedClients, ICProvider icProvider) {
     logger.info("Creating client factory, managedClients=" + managedClients);
     this.d2Client = d2Client;
     this.metricsRepository = metricsRepository;
     this.backendConfig = backendConfig;
     this.managedClients = managedClients;
+    this.icProvider = icProvider;
   }
 
   @Override
@@ -93,7 +101,8 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
   }
 
   protected interface DaVinciClientConstructor {
-    AvroGenericDaVinciClient apply(DaVinciConfig config, ClientConfig clientConfig, VeniceProperties backendConfig, Optional<Set<String>> managedClients);
+    AvroGenericDaVinciClient apply(DaVinciConfig config, ClientConfig clientConfig, VeniceProperties backendConfig,
+        Optional<Set<String>> managedClients, ICProvider icProvider);
   }
 
   protected synchronized DaVinciClient getClient(
@@ -137,7 +146,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
 
     AvroGenericDaVinciClient client;
     if (config.isIsolated()) {
-      client = clientConstructor.apply(config, clientConfig, backendConfig, managedClients);
+      client = clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider);
       isolatedClients.add(client);
     } else {
       if (originalConfig.getNonLocalAccessPolicy() != config.getNonLocalAccessPolicy()) {
@@ -148,7 +157,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
       }
 
       client = cachedClients.computeIfAbsent(storeName,
-          k -> clientConstructor.apply(config, clientConfig, backendConfig, managedClients));
+          k -> clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider));
 
       if (!clientClass.isInstance(client)) {
         throw new VeniceException("Client type conflict"

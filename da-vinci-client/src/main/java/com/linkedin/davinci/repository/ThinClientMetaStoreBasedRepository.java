@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
@@ -20,7 +21,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 
@@ -29,9 +29,12 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
 
   private final Map<String, AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue>> storeClientMap =
       new VeniceConcurrentHashMap<>();
+  private final ICProvider icProvider;
 
-  public ThinClientMetaStoreBasedRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
+  public ThinClientMetaStoreBasedRepository(ClientConfig clientConfig, VeniceProperties backendConfig,
+      ICProvider icProvider) {
     super(clientConfig, backendConfig);
+    this.icProvider = icProvider;
   }
 
   @Override
@@ -68,8 +71,7 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
   }
 
   @Override
-  protected StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key)
-      throws ExecutionException, InterruptedException {
+  protected StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key) {
     throw new UnsupportedOperationException(
         "getStoreMetadata for store: " + storeName + " and key: " + key.toString() + " is not supported in "
             + this.getClass().getSimpleName());
@@ -84,16 +86,21 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
   protected StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key) {
     StoreMetaValue value;
     try {
-      value = getAvroClientForMetaStore(storeName).get(key).get();
-      if (value == null) {
-        throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());
+      if (icProvider != null) {
+        value = icProvider.call(this.getClass().getCanonicalName(), () -> getAvroClientForMetaStore(storeName).get(key))
+            .get();
+      } else {
+        value = getAvroClientForMetaStore(storeName).get(key).get();
       }
-      return value;
-    } catch (InterruptedException | ExecutionException e) {
+    } catch (Exception e) {
       throw new VeniceException(
           "Failed to get data from meta store using thin client for store: " + storeName + " with key: "
               + key.toString());
     }
+    if (value == null) {
+      throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());
+    }
+    return value;
   }
 
   private AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> getAvroClientForMetaStore(String storeName) {

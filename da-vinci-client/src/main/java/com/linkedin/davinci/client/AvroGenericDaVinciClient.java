@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -61,6 +62,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private final ClientConfig clientConfig;
   private final VeniceProperties backendConfig;
   private final Optional<Set<String>> managedClients;
+  private final ICProvider icProvider;
   private final AtomicBoolean ready = new AtomicBoolean(false);
   // TODO: Implement copy-on-write ComplementSet to support concurrent modification and reading.
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
@@ -75,11 +77,21 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients) {
+    this(daVinciConfig, clientConfig, backendConfig, managedClients, null);
+  }
+
+  public AvroGenericDaVinciClient(
+      DaVinciConfig daVinciConfig,
+      ClientConfig clientConfig,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients,
+      ICProvider icProvider) {
     logger.info("Creating client, storeName=" + clientConfig.getStoreName() + ", daVinciConfig=" + daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.backendConfig = backendConfig;
     this.managedClients = managedClients;
+    this.icProvider = icProvider;
   }
 
   @Override
@@ -327,9 +339,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     return new VeniceConfigLoader(config, config);
   }
 
-  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, Optional<Set<String>> managedClients) {
+  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
+      Optional<Set<String>> managedClients, ICProvider icProvider) {
     if (daVinciBackend == null) {
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients), backend -> {
+      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider),
+          backend -> {
         daVinciBackend = null;
         backend.close();
       });
@@ -353,7 +367,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
     logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-    initBackend(clientConfig, configLoader, managedClients);
+    initBackend(clientConfig, configLoader, managedClients, icProvider);
 
     try {
       storeBackend = getBackend().getStoreOrThrow(getStoreName());
