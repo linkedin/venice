@@ -1,9 +1,6 @@
 package com.linkedin.venice.router.throttle;
 
-import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
-import com.linkedin.ddsstorage.base.concurrency.AsyncPromise;
 import com.linkedin.ddsstorage.base.misc.Metrics;
-import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
 import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.ddsstorage.router.api.PartitionFinder;
@@ -20,29 +17,20 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceDelegateMode;
-import com.linkedin.venice.router.api.VeniceDispatcher;
-import com.linkedin.venice.router.api.VeniceHostHealth;
 import com.linkedin.venice.router.api.VeniceRole;
 import com.linkedin.venice.router.api.path.VenicePath;
-import com.linkedin.venice.router.httpclient.StorageNodeClient;
-import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
-import java.util.concurrent.Executor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
@@ -65,6 +53,7 @@ public class RouterRequestThrottlingTest {
     storeName = TestUtils.getUniqueString("store");
     store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     store.setReadQuotaInCU(totalQuota);
+    store.setCurrentVersion(1);
 
     storeRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(false).when(storeRepository).isReadComputationEnabled(storeName);
