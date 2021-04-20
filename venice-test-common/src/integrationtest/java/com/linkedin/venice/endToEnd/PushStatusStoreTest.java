@@ -99,6 +99,9 @@ public class PushStatusStoreTest {
     TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA));
     TestUtils.assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setLeaderFollowerModel(true)
+        .setPartitionCount(2)
+        .setAmplificationFactor(3)
         .setIncrementalPushEnabled(true)));
     TestUtils.assertCommand(parentControllerClient.createDaVinciPushStatusStore(storeName));
     String metadataStoreTopic =

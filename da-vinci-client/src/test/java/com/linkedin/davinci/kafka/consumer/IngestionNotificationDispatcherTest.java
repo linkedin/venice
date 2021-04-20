@@ -32,6 +32,7 @@ public class IngestionNotificationDispatcherTest {
 
     // Mock a hybrid partition already received the end of push.
     Mockito.doReturn(partitionId).when(psc).getPartition();
+    Mockito.doReturn(partitionId).when(psc).getUserPartition();
     Mockito.doReturn(true).when(psc).isHybrid();
     Mockito.doReturn(true).when(psc).isEndOfPushReceived();
     Mockito.doReturn(false).when(psc).isErrorReported();

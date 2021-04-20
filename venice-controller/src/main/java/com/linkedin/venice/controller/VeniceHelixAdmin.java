@@ -1490,7 +1490,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (pushType.isStreamReprocessing()) {
                     getTopicManager().createTopic(
                         Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
-                        numberOfPartitions,
+                        numberOfPartitions * amplificationFactor,
                         clusterConfig.getKafkaReplicationFactor(),
                         true,
                         false,
@@ -2895,6 +2895,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setStorePartitionCount(clusterName, storeName, partitionCount.get());
             }
 
+            String amplificationFactorNotSupportedErrorMessage = "amplificationFactor is not supported in Online/Offline state model";
+            if (amplificationFactor.isPresent() && amplificationFactor.get() != 1) {
+                if (leaderFollowerModelEnabled.isPresent()) {
+                    if (!leaderFollowerModelEnabled.get()) {
+                        throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
+                    }
+                } else {
+                    if (originalStore.isLeaderFollowerModelEnabled()) {
+                        throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
+                    }
+                }
+            }
             /**
              * If either of these three fields is not present, we should use default value to construct correct PartitionerConfig.
              */
@@ -3027,6 +3039,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (bootstrapToOnlineTimeoutInHours.isPresent()) {
                 setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
+            }
+
+            if (leaderFollowerModelEnabled.isPresent() && !leaderFollowerModelEnabled.get()) {
+                if (amplificationFactor.isPresent()) {
+                    if (amplificationFactor.get() != 1) {
+                        throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
+                    }
+                } else {
+                    if (originalStore.getPartitionerConfig() != null
+                        && originalStore.getPartitionerConfig().getAmplificationFactor() != 1) {
+                        throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
+                    }
+                }
             }
 
             if (leaderFollowerModelEnabled.isPresent()) {
@@ -3637,6 +3662,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!pushStatusStoreReader.isPresent()) {
             throw new VeniceException("D2Client must be provided to read from push status store.");
         }
+        int partitionCount = version.getPartitionCount();
         logger.info("Getting Da Vinci push status for store " + version.getStoreName());
         boolean allMiddleStatusReceived = true;
         ExecutionStatus completeStatus = incrementalPushVersion.isPresent() ?
@@ -3646,7 +3672,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<String> erroredInstance = Optional.empty();
         String storeName = version.getStoreName();
         int completedPartitions = 0;
-        for (int partitionId = 0; partitionId < version.getPartitionCount(); partitionId++) {
+        for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
             Map<CharSequence, Integer> instances = pushStatusStoreReader.get().getPartitionStatus(storeName, version.getNumber(), partitionId, incrementalPushVersion);
             boolean allInstancesCompleted = true;
             for (Map.Entry<CharSequence, Integer> entry : instances.entrySet()) {
@@ -3675,7 +3701,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<String> statusDetail;
         String details = "";
         if (completedPartitions > 0) {
-            details += completedPartitions + "/" + version.getPartitionCount() + " partitions completed in Da Vinci.";
+            details += completedPartitions + "/" + partitionCount + " partitions completed in Da Vinci.";
         }
         if (erroredInstance.isPresent()) {
             details += "Found a failed instance in Da Vinci, it is " + erroredInstance;
@@ -3685,7 +3711,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             statusDetail = Optional.empty();
         }
-        if (completedPartitions == version.getPartitionCount()) {
+        if (completedPartitions == partitionCount) {
             return new Pair<>(completeStatus, statusDetail);
         } else if (allMiddleStatusReceived) {
             return new Pair<>(middleStatus, statusDetail);
@@ -4670,6 +4696,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store.setDaVinciPushStatusStoreEnabled(true);
             return store;
         });
+        logger.info("Da Vinci push status store for " + storeName + " successfully created.");
     }
 
     private void createSystemStoreResources(String clusterName, String storeName, int versionNumber,

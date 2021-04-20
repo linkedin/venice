@@ -500,6 +500,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) { // Should not happen, safety check for rare race condition.
         populateSchemaMap(storeName);
+        // schemaData is still null at this point, rerun schemaMap.get
+        schemaData = schemaMap.get(getZkStoreName(storeName));
       }
     } finally {
       schemaLock.readLock().unlock();

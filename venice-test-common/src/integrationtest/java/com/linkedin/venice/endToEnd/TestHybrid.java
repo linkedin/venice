@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -15,6 +16,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -71,6 +73,9 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
@@ -1340,6 +1345,82 @@ public class TestHybrid {
         }
       });
     }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 60 * Time.MS_PER_SECOND)
+  public void testHybridWithAmplificationFactor(boolean useCustomizedView) throws Exception {
+    final Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    final int partitionCount = 3;
+    final int keyCount = 20;
+    VeniceClusterWrapper cluster;
+    if (useCustomizedView) {
+      cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 1,
+          100, false, false, extraProperties);
+      Properties routerProperties = new Properties();
+      routerProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
+      cluster.addVeniceRouter(routerProperties);
+      Properties serverProperties = new Properties();
+      serverProperties.put(ConfigKeys.HELIX_OFFLINE_PUSH_ENABLED, true);
+      serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+      // add two servers for enough SNs
+      cluster.addVeniceServer(new Properties(), serverProperties);
+      cluster.addVeniceServer(new Properties(), serverProperties);
+      // Build customized state config and update to Zookeeper
+      CustomizedStateConfig.Builder customizedStateConfigBuilder = new CustomizedStateConfig.Builder();
+      List<String> aggregationEnabledTypes = new ArrayList<String>();
+      aggregationEnabledTypes.add(HelixPartitionState.OFFLINE_PUSH.name());
+      customizedStateConfigBuilder.setAggregationEnabledTypes(aggregationEnabledTypes);
+      CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
+      HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
+      admin.addCustomizedStateConfig(cluster.getClusterName(), customizedStateConfig);
+    } else {
+      cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
+          100, false, false, extraProperties);
+    }
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+        .setHybridRewindSeconds(2000000)
+        .setHybridOffsetLagThreshold(10)
+        .setPartitionCount(partitionCount)
+        .setReplicationFactor(2)
+        .setAmplificationFactor(3)
+        .setLeaderFollowerModel(true);
+    String storeName = TestUtils.getUniqueString("store");
+    try (ControllerClient controllerClient = cluster.getControllerClient()) {
+      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+      controllerClient.updateStore(storeName, params);
+    }
+    cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
+    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+      ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+      for (Integer i = 0; i < keyCount; i++) {
+        assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
+      }
+      SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+      for (int i = 0; i < keyCount; i++) {
+        TestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
+      }
+      producer.stop();
+
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+        for (int i = 0; i < keyCount; i++) {
+          checkLargeRecord(client, i);
+        }
+      });
+      try (ControllerClient controllerClient = cluster.getControllerClient()) {
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setAmplificationFactor(5)
+        );
+      }
+      cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i + 2))));
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+        for (int i = 0; i < keyCount; i++) {
+          checkLargeRecord(client, i);
+        }
+      });
+    }
+    cluster.close();
   }
 
   private static Pair<KafkaKey, KafkaMessageEnvelope> getKafkaKeyAndValueEnvelope(byte[] keyBytes, byte[] valueBytes,

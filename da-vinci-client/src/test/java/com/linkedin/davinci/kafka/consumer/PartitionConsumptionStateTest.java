@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.offsets.OffsetRecord;
 import org.testng.Assert;
@@ -16,7 +15,7 @@ public class PartitionConsumptionStateTest {
    */
   @Test
   public void testTransientRecordMap() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(0, mock(OffsetRecord.class), false, false,
+    PartitionConsumptionState pcs = new PartitionConsumptionState(0, 1, mock(OffsetRecord.class), false, false,
         IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
 
     byte[] key1 = new byte[]{65,66,67,68};

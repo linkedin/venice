@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.SubPartitionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -68,6 +69,7 @@ public class OffsetRecord {
     emptyPartitionState.lastUpdate = 0;
     emptyPartitionState.startOfBufferReplayDestinationOffset = null;
     emptyPartitionState.databaseInfo = new HashMap<>();
+    emptyPartitionState.previousStatuses = new HashMap<>();
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
     // Assign an empty map. Otherwise, NPE will be thrown during serialization.
     emptyPartitionState.upstreamOffsetMap = new HashMap<>();
@@ -131,6 +133,14 @@ public class OffsetRecord {
     }
 //    this.setOffset(endOfPushOffset);
     this.partitionState.endOfPush = true;
+  }
+
+  public boolean hasSubPartitionStatus(SubPartitionStatus status) {
+    return partitionState.previousStatuses.containsKey(status.name());
+  }
+
+  public void recordSubPartitionStatus(SubPartitionStatus status) {
+    partitionState.previousStatuses.put(status.name(), status.name());
   }
 
   public boolean isEndOfPushReceived() {

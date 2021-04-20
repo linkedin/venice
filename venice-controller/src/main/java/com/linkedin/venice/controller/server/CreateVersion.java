@@ -99,7 +99,6 @@ public class CreateVersion extends AbstractRoute {
 
         // Retrieve partitioner config from the store
         PartitionerConfig storePartitionerConfig = store.getPartitionerConfig();
-
         if (null == request.queryParams(PARTITIONERS)) {
           // Request does not contain partitioner info
           responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
@@ -120,6 +119,12 @@ public class CreateVersion extends AbstractRoute {
           if (!hasMatchedPartitioner) {
             throw new VeniceException("Expected partitioner class " + storePartitionerConfig.getPartitionerClass() + " cannot be found.");
           }
+        }
+
+        if (!store.isLeaderFollowerModelEnabled()
+            && store.getPartitionerConfig() != null && store.getPartitionerConfig().getAmplificationFactor() != 1) {
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "amplificationFactor can only be specified "
+              + "when leaderFollower enabled");
         }
 
         String pushTypeString = request.queryParams(PUSH_TYPE);
@@ -208,6 +213,8 @@ public class CreateVersion extends AbstractRoute {
               responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
             } else if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
               responseTopic = Version.composeRealTimeTopic(storeName);
+              // disable amplificationFactor logic on real-time topic
+              responseObject.setAmplificationFactor(1);
             } else if (pushType.isIncremental() && store.isHybrid()) {
               /** We want to check if the current version has both incremental push and buffer replay enabled but a full push has
                *  not been made. There are three possible cases of config updates that could lead to this:
@@ -260,6 +267,8 @@ public class CreateVersion extends AbstractRoute {
           case STREAM:
             String realTimeTopic = admin.getRealTimeTopic(clusterName, storeName);
             responseObject.setKafkaTopic(realTimeTopic);
+            // disable amplificationFactor logic on real-time topic
+            responseObject.setAmplificationFactor(1);
             /*
               If native replication is enabled and this is parent controller, response with source kafka bootstrap
               severs to make Samza in aggregated mode produce to RT topic in the source Kafka cluster.

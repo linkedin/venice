@@ -52,6 +52,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -178,7 +179,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean isWriteComputationEnabled,
       VenicePartitioner venicePartitioner,
       int storeVersionPartitionCount,
-      boolean isIsolatedIngestion) {
+      boolean isIsolatedIngestion,
+      int amplificationFactor) {
     super(
         consumerFactory,
         kafkaConsumerProperties,
@@ -214,7 +216,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isWriteComputationEnabled,
         venicePartitioner,
         storeVersionPartitionCount,
-        isIsolatedIngestion);
+        isIsolatedIngestion,
+        amplificationFactor);
     /**
      * We are going to apply fast leader failover for {@link com.linkedin.venice.common.VeniceSystemStoreType#META_STORE}
      * since it is time sensitive, and if the split-brain problem happens in prod, we could design a way to periodically
@@ -254,7 +257,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
           if (storeVersionState.isPresent()) {
             veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner,
-                Optional.of(storeVersionPartitionCount));
+                Optional.of(storeVersionPartitionCount * amplificationFactor));
           } else {
             /**
              * In general, a partition in version topic follows this pattern:
@@ -579,7 +582,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffset();
             if (upstreamStartOffset < 0) {
               if (topicSwitch.rewindStartTimestamp > 0) {
-                upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
+                int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
+                upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
                 /**
                  * {@link com.linkedin.venice.kafka.TopicManager#getOffsetsByTime} will always return the next offset
                  * to consume, but {@link com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer#subscribe} is always
@@ -605,7 +609,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   + "feed topic from " + currentLeaderTopic+ " to " + newSourceTopicName + " partition: " + partition;
               logger.error(errorMsg, e);
               versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
-              notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMsg, e);
+              reportStatusAdapter.reportError(Arrays.asList(partitionConsumptionState), errorMsg, e);
               throw new VeniceException(errorMsg, e);
             }
             // subscribe to the new upstream
@@ -696,13 +700,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException("More than one Kafka server urls in TopicSwitch control message, "
           + "TopicSwitch.sourceKafkaServers: " + kafkaServerUrls);
     }
-    notificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState);
+    reportStatusAdapter.reportTopicSwitchReceived(partitionConsumptionState);
 
     // Calculate the start offset based on start timestamp
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
     if (topicSwitch.rewindStartTimestamp > 0) {
-      upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
+      int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
+      upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
       if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
         upstreamStartOffset -= 1;
       }
@@ -879,7 +884,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 logger.error(logMsg);
                 versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeName, versionNumber);
                 VeniceException e = new VeniceException(logMsg);
-                notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), logMsg, e);
+                reportStatusAdapter.reportError(Arrays.asList(partitionConsumptionState), logMsg, e);
                 throw e;
               } else {
                 logMsg += "\nDon't fail the job during streaming ingestion";
@@ -977,9 +982,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       // leaderTopic is the real-time topic now
-      long leaderOffset = offsetRecord.getLeaderOffset();
-      long lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(leaderTopic, partition);
-
+      long leaderOffset;
+      long lastOffsetInRealTimeTopic;
+      if (amplificationFactor != 1) {
+        /**
+         * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
+         * eg. if amplificationFactor == 10 and partitionCount == 2,
+         *     the RT topic will have 2 partitions and VT topics will have 20 partitions.
+         * No 1-to-1 mapping between the RT topic and VT topics partition, we can not calculate the offset difference.
+         * To measure the offset difference between 2 types of topics, we go through leaderOffset in corresponding
+         * sub-partitions and pick up the maximum value which means picking up the offset of the sub-partition seeing the most recent records in RT,
+         * then use this value to compare against the offset in the RT topic.
+         */
+        int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
+        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(leaderTopic, userPartition);
+        leaderOffset = -1;
+        for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+          if (partitionConsumptionStateMap.get(subPartition) != null
+              && partitionConsumptionStateMap.get(subPartition).getOffsetRecord() != null
+              && partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset() >= 0) {
+            leaderOffset = Math.max(leaderOffset, partitionConsumptionStateMap.get(subPartition).getOffsetRecord().getUpstreamOffset());
+          }
+        }
+      } else {
+        leaderOffset = offsetRecord.getLeaderOffset();
+        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(leaderTopic, partition);
+      }
       long lag = lastOffsetInRealTimeTopic - leaderOffset;
       if (shouldLogLag) {
         logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Last RT offset [%d] - Last leader consumed offset [%d]) = Lag [%d]",
@@ -1008,7 +1036,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
       if (cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partition) - 1 <= pcs.getOffsetRecord().getOffset()) {
-        notificationDispatcher.reportCatchUpBaseTopicOffsetLag(pcs);
+        reportStatusAdapter.reportCatchUpBaseTopicOffsetLag(pcs);
 
         /**
          * Relax to report completion
@@ -1032,7 +1060,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * the rebalance.
          */
         if (isCurrentVersion.getAsBoolean()) {
-          notificationDispatcher.reportCompleted(pcs, true);
+          reportStatusAdapter.reportCompleted(pcs, true);
         }
       }
     }
@@ -1044,10 +1072,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    int partitionId = record.partition();
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
+    int subPartition = PartitionUtils.getSubPartition(record.topic(), record.partition(), amplificationFactor);
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
     if(null == partitionConsumptionState) {
-      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic + " Partition Id: " + partitionId);
+      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic + " Partition Id: " + subPartition);
       return false;
     }
 
@@ -1055,7 +1083,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String recordTopic = record.topic();
       if (!kafkaVersionTopic.equals(recordTopic)) {
         throw new VeniceMessageException(
-            consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderState() + "; partition: " + partitionId
+            consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderState() + "; partition: " + subPartition
                 + "; Message retrieved from different topic. Expected " + this.kafkaVersionTopic + " Actual " + recordTopic);
       }
 
@@ -1063,7 +1091,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (lastOffset >= record.offset()) {
         logger.info(
             consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderState()
-                + "; The record was already processed Partition" + partitionId + " LastKnown " + lastOffset + " Current " + record.offset());
+                + "; The record was already processed Partition" + subPartition + " LastKnown " + lastOffset + " Current " + record.offset());
         return false;
       }
     }
@@ -1141,8 +1169,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected DelegateConsumerRecordResult delegateConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
-    int partition = consumerRecord.partition();
-
+    // if record is from a RT topic, we select partitionConsumptionState of leaderSubPartition
+    // to record the consuming status
+    int subPartition = PartitionUtils.getSubPartition(consumerRecord.topic(), consumerRecord.partition(), amplificationFactor);
     boolean produceToLocalKafka = false;
     try {
       KafkaKey kafkaKey = consumerRecord.key();
@@ -1152,7 +1181,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * partitionConsumptionState must be in a valid state and no error reported. This is made sure by calling
        * {@link shouldProcessRecord} before processing any record.
        */
-      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
       produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
 
       //UPDATE message is only expected in LEADER which must be produced to kafka.
@@ -1254,7 +1283,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
                 (callback, sourceTopicOffset) -> getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(),
-                    callback, partition, sourceTopicOffset));
+                    callback, consumerRecord.partition(), sourceTopicOffset));
             break;
           case START_OF_SEGMENT:
           case END_OF_SEGMENT:
@@ -1274,7 +1303,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             if (!Version.isRealTimeTopic(consumerRecord.topic())) {
               produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
                   (callback, sourceTopicOffset) -> getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(),
-                      callback, partition, sourceTopicOffset));
+                      callback, consumerRecord.partition(), sourceTopicOffset));
             } else {
               /**
                * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -1311,7 +1340,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * allow that.
              */
             produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> getVeniceWriter().asyncSendControlMessage(controlMessage, partition,
+                (callback, sourceTopicOffset) -> getVeniceWriter().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
                     new HashMap<>(), callback, sourceTopicOffset));
             break;
           case TOPIC_SWITCH:
@@ -1322,17 +1351,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             producedRecord = ProducedRecord.newControlMessageRecord(-1, kafkaKey.getKey(), controlMessage);
             produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> getVeniceWriter().asyncSendControlMessage(controlMessage, partition,
+                (callback, sourceTopicOffset) -> getVeniceWriter().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
                     new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET));
             break;
         }
         if (producedFinally) {
           logger.info(consumerTaskId + " hasProducedToKafka: YES. ControlMessage: " + controlMessageType.name()
-              + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + partition + " Offset: "
+              + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + consumerRecord.partition() + " Offset: "
               + consumerRecord.offset());
         } else {
           logger.info(consumerTaskId + " hasPoducedToKafka: NO. ControlMessage: " + controlMessageType.name()
-              + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + partition + " Offset: "
+              + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + consumerRecord.partition() + " Offset: "
               + consumerRecord.offset());
         }
       } else if (null == kafkaValue) {
@@ -1375,9 +1404,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                    */
 
                   if (!partitionConsumptionState.isEndOfPushReceived()) {
-                    return getVeniceWriter().put(kafkaKey, kafkaValue, callback, partition, sourceTopicOffset);
+                    return getVeniceWriter().put(kafkaKey, kafkaValue, callback, consumerRecord.partition(), sourceTopicOffset);
                   }
 
+                  /**
+                   * When amplificationFactor != 1 and it is a leaderSubPartition consuming from the Real-time topic,
+                   * VeniceWriter will run VenicePartitioner inside to decide which subPartition of Kafka VT to write to.
+                   * For details about how VenicePartitioner find the correct subPartition,
+                   * please check {@link com.linkedin.venice.partitioner.UserPartitionAwarePartitioner}
+                   */
                   return getVeniceWriter().put(keyBytes, ByteUtils.extractByteArray(putValue), put.schemaId, callback,
                       sourceTopicOffset);
                 });
@@ -1407,7 +1442,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               try {
                 long lookupStartTimeInNS = System.nanoTime();
                 originalValue = GenericRecordChunkingAdapter.INSTANCE.get(
-                    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic), partition,
+                    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
+                    amplificationFactor != 1 && Version.isRealTimeTopic(consumerRecord.topic()) ?
+                        venicePartitioner.getPartitionId(keyBytes, subPartitionCount) : consumerRecord.partition(),
                     ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
                     storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
                     serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
@@ -1738,12 +1775,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         int version = Version.parseVersionFromKafkaTopicName(versionTopic);
         versionedDIVStats.recordLeaderProducerFailure(storeName, version);
       } else {
+        // recordMetadata.partition() represents the partition being written by VeniceWriter
+        // partitionConsumptionState.getPartition() is leaderSubPartition
+        // when leaderSubPartition != recordMetadata.partition(), local StorageEngine will be written by
+        // followers consuming from VTs. So it is safe to skip adding the record to leader's StorageBufferService
+        if (partitionConsumptionState.getLeaderState() == LEADER
+            && recordMetadata.partition() != partitionConsumptionState.getPartition()) {
+          producedRecord.completePersistedToDBFuture(null);
+          return;
+        }
         /**
          * performs some sanity checks for chunks.
          * key may be null in case of producing control messages with direct api's like
          * {@link VeniceWriter#SendControlMessage} or {@link VeniceWriter#asyncSendControlMessage}
          */
-
         if (chunkedValueManifest != null) {
           if (null == chunks) {
             throw new IllegalStateException("chunking info not initialized.");
@@ -1751,7 +1796,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             throw new IllegalStateException("chunkedValueManifest.keysWithChunkIdSuffix is not in sync with chunks.");
           }
         }
-
         int producedRecordNum = 0;
         int producedRecordSize = 0;
         //produce to drainer buffer service for further processing.

@@ -150,7 +150,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
        * Otherwise it could induce error replicas during rebalance for online version.
        */
       if (isVersionOnline() && pcs != null && !pcs.isCompletionReported()) {
-        storeIngestionTask.getNotificationDispatcher().reportCompleted(pcs);
+        storeIngestionTask.getReportStatusAdapter().reportCompleted(pcs);
       }
 
       /**

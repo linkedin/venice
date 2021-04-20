@@ -54,8 +54,8 @@ public class StoreIngestionTaskFactory {
       boolean isWriteComputationEnabled,
       VenicePartitioner venicePartitioner,
       int storeVersionPartitionCount,
-      boolean isIsolatedIngestion
-  ) {
+      boolean isIsolatedIngestion,
+      int amplificationFactor) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -95,7 +95,8 @@ public class StoreIngestionTaskFactory {
           isWriteComputationEnabled,
           venicePartitioner,
           storeVersionPartitionCount,
-          isIsolatedIngestion);
+          isIsolatedIngestion,
+          amplificationFactor);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.kafkaClientFactory,
@@ -131,7 +132,8 @@ public class StoreIngestionTaskFactory {
           builder.partitionStateSerializer,
           venicePartitioner,
           storeVersionPartitionCount,
-          isIsolatedIngestion);
+          isIsolatedIngestion,
+          amplificationFactor);
     }
   }
 

@@ -2,6 +2,7 @@ package com.linkedin.davinci;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -214,6 +215,11 @@ public class VersionBackend {
             .boxed()
             .collect(Collectors.toList()),
         amplificationFactor);
+  }
+
+  public int getAmplificationFactor() {
+    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
+    return partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
   }
 
   public boolean isSubPartitionSubscribed(Integer subPartition) {

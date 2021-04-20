@@ -53,11 +53,11 @@ public class TopicReplicatorTest {
         .thenReturn(veniceWriter);
 
     // Methods under test
-    doCallRealMethod().when(topicReplicator).checkPreconditions(anyString(), anyString(), any());
+    doCallRealMethod().when(topicReplicator).checkPreconditions(anyString(), anyString(), any(), any());
     doCallRealMethod().when(topicReplicator).getRewindStartTime(hybridStoreConfig);
     doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong(), anyString());
 
-    topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, hybridStoreConfig);
+    topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
     long rewindStartTime = topicReplicator.getRewindStartTime(hybridStoreConfig);
     assertEquals(rewindStartTime, mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME,
         "Rewind start timestamp is not calculated properly");
@@ -66,7 +66,7 @@ public class TopicReplicatorTest {
     verify(topicReplicator).beginReplication(sourceTopicName, destinationTopicName, rewindStartTime, null);
 
     try {
-      topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, Optional.empty());
+      topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected

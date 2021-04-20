@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -100,7 +101,7 @@ public abstract class TopicReplicator {
     int sourcePartitionCount = getTopicManager().getPartitions(sourceTopic).size();
     int destinationPartitionCount = getTopicManager().getPartitions(destinationTopic).size();
     if (sourcePartitionCount != destinationPartitionCount){
-      throw new PartitionMismatchException(errorPrefix + " topic " + sourceTopic + " has " + sourcePartitionCount + " partitions"
+      LOGGER.info("Topic " + sourceTopic + " has " + sourcePartitionCount + " partitions"
           + " and topic " + destinationTopic + " has " + destinationPartitionCount + " partitions."  );
     }
     beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, rewindStartTimestamp, nativeReplicationSourceKafkaCluster);
@@ -114,7 +115,7 @@ public abstract class TopicReplicator {
   /**
    * General verification and topic creation for any {@link TopicReplicator} implementation used for hybrid stores.
    */
-  protected void checkPreconditions(String srcTopicName, String destTopicName, Optional<HybridStoreConfig> hybridStoreConfig) {
+  protected void checkPreconditions(String srcTopicName, String destTopicName, Store store, Optional<HybridStoreConfig> hybridStoreConfig) {
     // Carrying on assuming that there needs to be only one and only TopicManager
     if (!hybridStoreConfig.isPresent()) {
       throw new VeniceException("Topic replication is only supported for Hybrid Stores.");
@@ -135,7 +136,13 @@ public abstract class TopicReplicator {
      *       number for it.
      */
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(srcTopicName)) {
-      int partitionCount = getTopicManager().getPartitions(destTopicName).size();
+      int partitionCount;
+      Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(destTopicName));
+      if (version.isPresent()) {
+        partitionCount = version.get().getPartitionCount();
+      } else {
+        partitionCount = store.getPartitionCount();
+      }
       int replicationFactor = getTopicManager().getReplicationFactor(destTopicName);
       getTopicManager().createTopic(srcTopicName,
                                     partitionCount,

@@ -3,6 +3,7 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -59,6 +60,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
     mockStore = Mockito.mock(Store.class);
     Mockito.when(mockConfigLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
     Mockito.when(mockConfigLoader.getStoreConfig(resourceName)).thenReturn(mockStoreConfig);
+    Mockito.when(mockStoreConfig.getStoreName()).thenReturn(resourceName);
     Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName)))
         .thenReturn(mockStore);
     Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
@@ -81,6 +83,13 @@ public class LeaderFollowerParticipantModelFactoryTest {
      * as possible, we shouldn't bind state model creation with the healthiness of other components like ZK.
      */
     String partitionName = HelixUtils.getPartitionName(resourceName, testPartition);
+    StateModel stateModel = factory.createNewStateModel(resourceName, partitionName);
+  }
+
+  @Test
+  public void testLeaderFollowerStateModelCanBeBuiltWhenMetaRepoThrows() {
+    String partitionName = HelixUtils.getPartitionName(resourceName, testPartition);
+    Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName))).thenThrow(new VeniceException());
     StateModel stateModel = factory.createNewStateModel(resourceName, partitionName);
   }
 }

@@ -47,8 +47,8 @@ class IngestionNotificationDispatcher {
 
   private void report(PartitionConsumptionState pcs, String reportType, NotifierFunction function, PreNotificationCheck preCheck) {
     if (null == pcs) {
-      // Problem: calling pcs.getPartition() with pcs null.
-      logger.info("Partition " + pcs.getPartition() + " has been unsubscribed, no need to report " + reportType);
+      // Problem: calling pcs.getUserPartition() with pcs null.
+      logger.info("Partition " + pcs.getUserPartition() + " has been unsubscribed, no need to report " + reportType);
       return;
     }
     if (!preCheck.apply()) {
@@ -84,18 +84,18 @@ class IngestionNotificationDispatcher {
   }
 
   void reportStarted(PartitionConsumptionState pcs) {
-    report(pcs, ExecutionStatus.STARTED, notifier -> notifier.started(topic, pcs.getPartition()));
+    report(pcs, ExecutionStatus.STARTED, notifier -> notifier.started(topic, pcs.getUserPartition()));
   }
 
 
   void reportRestarted(PartitionConsumptionState pcs) {
-    report(pcs, ExecutionStatus.STARTED, notifier -> notifier.restarted(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
+    report(pcs, ExecutionStatus.STARTED, notifier -> notifier.restarted(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
   void reportCatchUpBaseTopicOffsetLag(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG,
         notifier -> {
-          notifier.catchUpBaseTopicOffsetLag(topic, pcs.getPartition());
+          notifier.catchUpBaseTopicOffsetLag(topic, pcs.getUserPartition());
           pcs.releaseLatch();
         });
   }
@@ -114,14 +114,14 @@ class IngestionNotificationDispatcher {
   void reportCompleted(PartitionConsumptionState pcs, boolean forceCompletion) {
     report(pcs, ExecutionStatus.COMPLETED,
         notifier -> {
-          notifier.completed(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset());
+          notifier.completed(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset());
           pcs.releaseLatch();
           pcs.completionReported();
         }, () -> {
           if (pcs.isErrorReported()) {
             // Notifiers will not be sent a completion notification, they should only
             // receive the previously-sent error notification.
-            logger.error("Processing completed WITH ERRORS for Partition: " + pcs.getPartition() +
+            logger.error("Processing completed WITH ERRORS for Partition: " + pcs.getUserPartition() +
                 ", Last Offset: " + pcs.getOffsetRecord().getOffset());
             return false;
           }
@@ -141,18 +141,18 @@ class IngestionNotificationDispatcher {
 
   void reportQuotaNotViolated(PartitionConsumptionState pcs) {
     report(pcs, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED,
-        notifier -> notifier.quotaNotViolated(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
+        notifier -> notifier.quotaNotViolated(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
   void reportQuotaViolated(PartitionConsumptionState pcs) {
     report(pcs, HybridStoreQuotaStatus.QUOTA_VIOLATED,
-        notifier -> notifier.quotaViolated(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset())
+        notifier -> notifier.quotaViolated(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset())
     );
   }
 
   void reportProgress(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.PROGRESS,
-        notifier -> notifier.progress(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()),
+        notifier -> notifier.progress(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()),
         () -> {
 
           // Progress reporting happens too frequently for each Kafka Pull,
@@ -185,29 +185,29 @@ class IngestionNotificationDispatcher {
 
   void reportEndOfPushReceived(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.END_OF_PUSH_RECEIVED,
-        notifier -> notifier.endOfPushReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
+        notifier -> notifier.endOfPushReceived(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
   void reportStartOfIncrementalPushReceived(PartitionConsumptionState pcs, String version) {
     report(pcs, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
         notifier ->
-            notifier.startOfIncrementalPushReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset(), version));
+            notifier.startOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset(), version));
   }
 
   void reportEndOfIncrementalPushRecived(PartitionConsumptionState pcs, String version) {
     report(pcs, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
         notifier ->
-            notifier.endOfIncrementalPushReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset(), version));
+            notifier.endOfIncrementalPushReceived(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset(), version));
   }
 
   void reportStartOfBufferReplayReceived(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED,
-        notifier -> notifier.startOfBufferReplayReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
+        notifier -> notifier.startOfBufferReplayReceived(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
   void reportTopicSwitchReceived(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.TOPIC_SWITCH_RECEIVED,
-        notifier -> notifier.topicSwitchReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
+        notifier -> notifier.topicSwitchReceived(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
   void reportError(int partition, String message, Exception consumerEx) {
@@ -226,10 +226,10 @@ class IngestionNotificationDispatcher {
     for(PartitionConsumptionState pcs: pcsList) {
       report(pcs, ExecutionStatus.ERROR,
           notifier -> {
-            notifier.error(topic, pcs.getPartition(), message, consumerEx);
+            notifier.error(topic, pcs.getUserPartition(), message, consumerEx);
             pcs.errorReported();
           }, () -> {
-            String logMessage = "Partition: " + pcs.getPartition() + " has already been ";
+            String logMessage = "Partition: " + pcs.getUserPartition() + " has already been ";
             boolean report = true;
 
             if (pcs.isComplete()) {
@@ -257,16 +257,16 @@ class IngestionNotificationDispatcher {
   void reportKilled(Collection<PartitionConsumptionState> pcsList, VeniceIngestionTaskKilledException ke) {
     for (PartitionConsumptionState pcs : pcsList) {
       report(pcs, ExecutionStatus.ERROR, notifier -> {
-        notifier.error(topic, pcs.getPartition(), ke.getMessage(), ke);
+        notifier.error(topic, pcs.getUserPartition(), ke.getMessage(), ke);
         pcs.errorReported();
       }, () -> {
         if (pcs.isErrorReported()) {
-          logger.warn("Partition:" + pcs.getPartition() + " has been reported as error before.");
+          logger.warn("Partition:" + pcs.getUserPartition() + " has been reported as error before.");
           return false;
         }
         // Once a replica is completed, there is not need to kill the state transition.
         if (pcs.isCompletionReported()) {
-          logger.warn("Partition:" + pcs.getPartition()
+          logger.warn("Partition:" + pcs.getUserPartition()
               + " has been marked as completed, so an error will not be reported...");
           return false;
         }
@@ -278,7 +278,7 @@ class IngestionNotificationDispatcher {
   void reportStopped(PartitionConsumptionState pcs) {
     report(pcs, "STOPPED",
         notifier -> {
-          notifier.stopped(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset());
+          notifier.stopped(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset());
         },
         () -> true);
   }
