@@ -27,7 +27,7 @@ def get_queued_build(build_url, params):
     response = run_command("curl -fs '{0}api/json' -u $(whoami):{apiToken}"
       .format(build_url, **params))
     build = json.loads(response)
-    if ("executable" in build) or build["blocked"]:
+    if ("executable" in build) or build["blocked"] or build["buildable"]:
       return build
     time.sleep(1)
 
@@ -74,4 +74,9 @@ if __name__ == "__main__":
 
   build_url = re.findall("< Location: (https?://.+)", response)[0]
   build = get_queued_build(build_url, params)
-  print(build["task"]["url"] if build["blocked"] else build["executable"]["url"])
+  if build.get("cancelled"):
+    print("Build cancelled")
+  elif build["blocked"] or build["buildable"]:
+    print(build["task"]["url"])
+  else:
+    print(build["executable"]["url"])
