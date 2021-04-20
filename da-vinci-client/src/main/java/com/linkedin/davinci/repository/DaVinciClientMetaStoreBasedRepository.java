@@ -101,8 +101,8 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
       value = getDaVinciClientForMetaStore(storeName).get(key).get();
     } catch (InterruptedException | ExecutionException e) {
       throw new VeniceException(
-          "Failed to get data from DaVinci client backed meta store for store: " + storeName + " with key: "
-              + key.toString());
+          "Failed to get metadata from meta system store with DaVinci client for store: " + storeName + " with key: "
+              + key.toString(), e);
     }
     if (value == null) {
       throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());
@@ -251,8 +251,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   }
 
   @Override
-  protected StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key)
-      throws ExecutionException, InterruptedException {
+  protected StoreMetadataValue getStoreMetadata(String storeName, StoreMetadataKey key) {
     throw new UnsupportedOperationException(
         "getStoreMetadata for store: " + storeName + " and key: " + key.toString() + " is not supported in "
             + this.getClass().getSimpleName());

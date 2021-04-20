@@ -43,6 +43,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.ComplementSet;
@@ -91,7 +92,8 @@ public class DaVinciBackend implements Closeable {
 
   private final IngestionBackend ingestionBackend;
 
-  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, Optional<Set<String>> managedClients) {
+  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, Optional<Set<String>> managedClients,
+      ICProvider icProvider) {
     VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
     this.configLoader = configLoader;
     metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
@@ -102,7 +104,7 @@ public class DaVinciBackend implements Closeable {
     if (backendProps.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false)) {
       logger.info("Initializing DaVinciBackend repositories with " + NativeMetadataRepository.class.getSimpleName());
       NativeMetadataRepository
-          metadataStoreBasedStoreRepository = NativeMetadataRepository.getInstance(clientConfig, backendProps);
+          metadataStoreBasedStoreRepository = NativeMetadataRepository.getInstance(clientConfig, backendProps, icProvider);
       clusterInfoProvider = metadataStoreBasedStoreRepository;
       storeRepository = metadataStoreBasedStoreRepository;
       schemaRepository = metadataStoreBasedStoreRepository;

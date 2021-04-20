@@ -2,6 +2,7 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
@@ -19,8 +20,9 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
-      Optional<Set<String>> managedClients) {
-    super(daVinciConfig, clientConfig, backendConfig, managedClients);
+      Optional<Set<String>> managedClients,
+      ICProvider icProvider) {
+    super(daVinciConfig, clientConfig, backendConfig, managedClients, icProvider);
 
     Class<V> valueClass = clientConfig.getSpecificValueClass();
     FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
