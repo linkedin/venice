@@ -64,8 +64,9 @@ public class KafkaTopicDumper {
   private long messageCount;
   private long endOffset;
   private int max_consume_attempts;
+  private boolean logMetadataOnly;
 
-  public KafkaTopicDumper(ControllerClient controllerClient, Properties consumerProps, String topic, int partitionNumber,  int startingOffset, int messageCount, String parentDir, int maxConsumeAttempts) {
+  public KafkaTopicDumper(ControllerClient controllerClient, Properties consumerProps, String topic, int partitionNumber,  int startingOffset, int messageCount, String parentDir, int maxConsumeAttempts, boolean logMetadataOnly) {
     this.max_consume_attempts = maxConsumeAttempts;
     if (Version.isVersionTopic(topic)) {
       this.storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -75,15 +76,22 @@ public class KafkaTopicDumper {
     this.topicName = topic;
     this.partition = partitionNumber;
     this.parentDirectory = parentDir;
-    this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
-    MultiSchemaResponse.Schema[] schemas = controllerClient.getAllValueSchema(storeName).getSchemas();
-    logger.info("Found " + schemas.length + " value schemas for store " + storeName);
-    this.latestValueSchemaStr = schemas[schemas.length - 1].getSchemaStr();
-    allValueSchemas = new Schema[schemas.length];
-    int i = 0;
-    for (MultiSchemaResponse.Schema valueSchema : schemas) {
-      this.allValueSchemas[i] = Schema.parse(valueSchema.getSchemaStr());
-      i++;
+    this.logMetadataOnly = logMetadataOnly;
+    if (logMetadataOnly) {
+      this.keySchemaStr = null;
+      this.latestValueSchemaStr = null;
+      allValueSchemas = null;
+    } else {
+      this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
+      MultiSchemaResponse.Schema[] schemas = controllerClient.getAllValueSchema(storeName).getSchemas();
+      logger.info("Found " + schemas.length + " value schemas for store " + storeName);
+      this.latestValueSchemaStr = schemas[schemas.length - 1].getSchemaStr();
+      allValueSchemas = new Schema[schemas.length];
+      int i = 0;
+      for (MultiSchemaResponse.Schema valueSchema : schemas) {
+        this.allValueSchemas[i] = Schema.parse(valueSchema.getSchemaStr());
+        i++;
+      }
     }
     this.consumer = new KafkaConsumer(consumerProps);
 
@@ -125,7 +133,7 @@ public class KafkaTopicDumper {
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iter.next();
         KafkaMessageEnvelope envelope = record.value();
         lastProcessRecord = record;
-        if (MessageType.valueOf(envelope) != MessageType.CONTROL_MESSAGE) {
+        if (logMetadataOnly || MessageType.valueOf(envelope) != MessageType.CONTROL_MESSAGE) {
           this.kafkaRecordList.add(record);
         }
       }

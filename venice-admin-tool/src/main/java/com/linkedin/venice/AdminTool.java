@@ -986,10 +986,12 @@ public class AdminTool {
       maxConsumeAttempts = Integer.valueOf(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
     }
 
+    boolean logMetadataOnly = cmd.hasOption(Arg.LOG_METADATA.toString());
     KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
-        controllerClient, consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount, parentDir, maxConsumeAttempts)
+        controllerClient, consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount, parentDir,
+        maxConsumeAttempts, logMetadataOnly)
         .fetch();
-    if (cmd.hasOption(Arg.LOG_METADATA.toString())) {
+    if (logMetadataOnly) {
       kafkaTopicDumper.logMetadata();
     } else {
       kafkaTopicDumper.dumpToFile();
