@@ -379,7 +379,7 @@ public class SystemStoreTest {
       // New push to the Venice store should be reflected in the corresponding metadata store
       VersionCreationResponse newVersionResponse = parentControllerClient.requestTopicForWrites(regularVeniceStoreName,
           1024, Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, false, false,
-          Optional.empty(), Optional.empty(), Optional.empty());
+          Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
       assertFalse(newVersionResponse.isError());
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
         assertFalse(((CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion)
@@ -673,7 +673,7 @@ public class SystemStoreTest {
     }
     return parentControllerClient.requestTopicForWrites(storeName, 1024,
         Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, false,
-        Optional.empty(), Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty(), false, -1);
   }
 
 

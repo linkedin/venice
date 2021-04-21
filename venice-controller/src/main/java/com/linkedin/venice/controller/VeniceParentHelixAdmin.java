@@ -603,9 +603,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
-      int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
+      int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride) {
     Version version = veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-        remoteKafkaBootstrapServers);
+        remoteKafkaBootstrapServers, rewindTimeInSecondsOverride);
     acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType);
@@ -848,8 +848,8 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
-      boolean sorted, String compressionDictionary, Optional<String> batchStartingFabric, Optional<String> optionalRequesterPrincipalId) {
-
+      boolean sorted, String compressionDictionary, Optional<String> batchStartingFabric,
+      Optional<String> optionalRequesterPrincipalId, long rewindTimeInSecondsOverride) {
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
@@ -887,7 +887,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     Version newVersion = pushType.isIncremental() ? veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName)
         : veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            sendStartOfPush, sorted, pushType, compressionDictionary, null, batchStartingFabric);
+            sendStartOfPush, sorted, pushType, compressionDictionary, null, batchStartingFabric, rewindTimeInSecondsOverride);
     if (!pushType.isIncremental()) {
       acquireAdminMessageLock(clusterName, storeName);
       try {
@@ -928,6 +928,12 @@ public class VeniceParentHelixAdmin implements Admin {
     // Check whether native replication is enabled
     if (version.isNativeReplicationEnabled()) {
       addVersion.pushStreamSourceAddress = version.getPushStreamSourceAddress();
+    }
+    if (version.getHybridStoreConfig() != null) {
+      addVersion.rewindTimeInSecondsOverride = version.getHybridStoreConfig().getRewindTimeInSeconds();
+    } else {
+      // Default value, unused for non hybrid store
+      addVersion.rewindTimeInSecondsOverride = -1;
     }
     return addVersion;
   }

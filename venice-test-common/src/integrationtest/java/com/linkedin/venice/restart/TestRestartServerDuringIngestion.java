@@ -126,7 +126,7 @@ public abstract class TestRestartServerDuringIngestion {
       versionCreationResponse =
           controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
               Version.guidBasedDummyPushId(), false, true, false, Optional.empty(),
-              Optional.empty(), Optional.empty());
+              Optional.empty(), Optional.empty(), false, -1);
     }
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();

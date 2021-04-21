@@ -326,7 +326,7 @@ public class TestVenicePushJobWithReporterCounters {
     when(controllerClient.getKeySchema(anyString())).thenReturn(keySchemaResponse);
     when(controllerClient.getValueSchemaID(anyString(), anyString())).thenReturn(valueSchemaResponse);
     when(controllerClient.requestTopicForWrites(anyString(), anyLong(), any(),
-        anyString(), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), anyBoolean())).thenReturn(versionCreationResponse);
+        anyString(), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), anyBoolean(), anyLong())).thenReturn(versionCreationResponse);
     JobStatusQueryResponse jobStatusQueryResponse = createJobStatusQueryResponseMock();
     when(controllerClient.queryOverallJobStatus(anyString(), any())).thenReturn(jobStatusQueryResponse);
 

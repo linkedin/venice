@@ -519,11 +519,12 @@ public class AdminExecutionTask implements Callable<Void> {
     int numberOfPartitions = message.numberOfPartitions;
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
     String remoteKafkaBootstrapServers = message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
+    long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating
         admin.replicateAddVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-            pushType, remoteKafkaBootstrapServers);
+            pushType, remoteKafkaBootstrapServers, rewindTimeInSecondsOverride);
       }
     } else {
       if (VeniceSystemStoreUtils.isStoreHostingSharedMetadata(clusterName, storeName)) {
@@ -538,7 +539,7 @@ public class AdminExecutionTask implements Callable<Void> {
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-            remoteKafkaBootstrapServers);
+            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride);
       }
     }
   }

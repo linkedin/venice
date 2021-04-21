@@ -735,7 +735,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       VersionCreationResponse newVersion =
           controllerClient.requestTopicForWrites(storeName, storeSize, Version.PushType.BATCH,
               Version.guidBasedDummyPushId(), false, false, false, Optional.empty(),
-              Optional.empty(), Optional.empty());
+              Optional.empty(), Optional.empty(), false, -1);
       if (newVersion.isError()) {
         throw new VeniceException(newVersion.getError());
       }
@@ -770,7 +770,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               false,
               Optional.empty(),
               Optional.empty(),
-              Optional.empty());
+              Optional.empty(),
+              false,
+              -1);
       if (newVersion.isError()) {
         throw new VeniceException(newVersion.getError());
       }
@@ -850,7 +852,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           false,
           Optional.empty(),
           Optional.empty(),
-          Optional.empty());
+          Optional.empty(),
+          false,
+          -1);
       if (response.isError()) {
         throw new VeniceException(response.getError());
       }

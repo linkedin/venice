@@ -143,6 +143,32 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
+  /**
+   * Optional.
+   * If we want to use a different rewind time from the default store-level rewind time config for Kafka Input re-push,
+   * the following property needs to specified explicitly.
+   *
+   * This property comes to play when the default rewind time configured in store-level is too short or too long.
+   * 1. If the default rewind time config is too short (for example 0 or several mins), it could cause data gap with
+   * re-push since the push job itself could take several hours, and we would like to make sure the re-pushed version
+   * will contain the same dataset as the source version.
+   * 2. If the default rewind time config is too long (such as 28 days), it will be a big waste to rewind so much time
+   * since the time gap between the source version and the re-push version should be comparable to the re-push time
+   * if the whole ingestion pipeline is not lagging.
+   *
+   * There are some challenges to automatically detect the right rewind time for re-push because of the following reasons:
+   * 1. For Venice Aggregate use case, some colo could be lagging behind other prod colos, so if the re-push source is
+   * from a fast colo, too short rewind time could cause a data gap in the slower colos. Ideally, it is good to use
+   * the slowest colo as the re-push source.
+   * 2. For Venice non-Aggregate use case, the ingestion pipeline will include the following several phases:
+   * 2.1 Customer's Kafka aggregation and mirroring pipeline to replicate the same data to all prod colos.
+   * 2.2 Venice Ingestion pipeline to consume the local real-time topic.
+   * We have visibility to 2.2, but not 2.1, so we may need to work with customer to understand how 2.1 can be measured
+   * or use a long enough rewind time to mitigate all the potential issues.
+   *
+   * Make this property available in generic since it should be useful for ETL+VPJ use case as well.
+   */
+  public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind.time.in.seconds.override";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -327,6 +353,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     boolean isSourceKafka;
     String kafkaInputBrokerUrl;
     String kafkaInputTopic;
+    long rewindTimeInSecondsOverride;
   }
   protected PushJobSetting pushJobSetting;
 
@@ -517,10 +544,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       pushJobSetting.kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
       pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(props.getString(VENICE_STORE_NAME_PROP), clusterName, props);
       pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
-
     } else {
       pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     }
+    pushJobSetting.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, -1);
+
 
     if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -1432,7 +1460,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         setting.controllerRetries,
         c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
             askControllerToSendControlMessage, SORTED, finalWriteComputeEnabled, partitioners, dictionary,
-            Optional.ofNullable(setting.batchStartingFabric), jobHeartbeatEnabled)
+            Optional.ofNullable(setting.batchStartingFabric), jobHeartbeatEnabled, setting.rewindTimeInSecondsOverride)
     );
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl

@@ -56,7 +56,9 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
                     false,
                     Optional.empty(),
                     Optional.empty(),
-                    Optional.empty()
+                    Optional.empty(),
+                false,
+                -1
             ));
     LOGGER.info("Got [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: " + versionCreationResponse);
     String heartbeatKafkaTopicName = versionCreationResponse.getKafkaTopic();

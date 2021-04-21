@@ -136,34 +136,30 @@ public class ControllerClient implements Closeable {
    * @param compressionDictionary Base64 encoded dictionary to be used to perform dictionary compression
    * @param batchStartingFabric An identifier of the data center which is used in native replication to determine
    *                       the Kafka URL
+   * @param batchJobHeartbeatEnabled whether batch push job enables the heartbeat
+   * @param rewindTimeInSecondsOverride if a valid value is specified (>=0) for hybrid store, this param will override
+   *                                       the default store-level rewindTimeInSeconds config.
+   *
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(
           String storeName, long storeSize, PushType pushType, String pushJobId, boolean sendStartOfPush,
           boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary,
-          Optional<String> batchStartingFabric
-  ) {
-    return requestTopicForWrites(storeName, storeSize, pushType, pushJobId, sendStartOfPush, sorted, wcEnabled,
-            partitioners, compressionDictionary, batchStartingFabric, false);
-  }
-
-  public VersionCreationResponse requestTopicForWrites(
-          String storeName, long storeSize, PushType pushType, String pushJobId, boolean sendStartOfPush,
-          boolean sorted, boolean wcEnabled, Optional<String> partitioners, Optional<String> compressionDictionary,
-          Optional<String> batchStartingFabric, boolean batchJobHeartbeatEnabled
+          Optional<String> batchStartingFabric, boolean batchJobHeartbeatEnabled, long rewindTimeInSecondsOverride
   ) {
     QueryParams params = newParams()
-            .add(NAME, storeName)
-            .add(STORE_SIZE, Long.toString(storeSize))
-            .add(PUSH_JOB_ID, pushJobId)
-            .add(PUSH_TYPE, pushType.toString())
-            .add(SEND_START_OF_PUSH, sendStartOfPush)
-            .add(PUSH_IN_SORTED_ORDER, sorted)
-            .add(IS_WRITE_COMPUTE_ENABLED, wcEnabled)
-            .add(PARTITIONERS, partitioners)
-            .add(COMPRESSION_DICTIONARY, compressionDictionary)
-            .add(BATCH_STARTING_FABRIC, batchStartingFabric)
-            .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled);
+        .add(NAME, storeName)
+        .add(STORE_SIZE, Long.toString(storeSize))
+        .add(PUSH_JOB_ID, pushJobId)
+        .add(PUSH_TYPE, pushType.toString())
+        .add(SEND_START_OF_PUSH, sendStartOfPush)
+        .add(PUSH_IN_SORTED_ORDER, sorted)
+        .add(IS_WRITE_COMPUTE_ENABLED, wcEnabled)
+        .add(PARTITIONERS, partitioners)
+        .add(COMPRESSION_DICTIONARY, compressionDictionary)
+        .add(BATCH_STARTING_FABRIC, batchStartingFabric)
+        .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
+        .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride);
 
     return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
   }
@@ -180,13 +176,14 @@ public class ControllerClient implements Closeable {
    * @return
    */
   public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version,
-      int partitionCount, Version.PushType pushType, String remoteKafkaBootstrapServers) {
+      int partitionCount, Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(PUSH_JOB_ID, pushJobId)
         .add(VERSION, version)
         .add(PARTITION_COUNT, partitionCount)
-        .add(PUSH_TYPE, pushType.toString());
+        .add(PUSH_TYPE, pushType.toString())
+        .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride);
     if (remoteKafkaBootstrapServers != null) {
       params.add(REMOTE_KAFKA_BOOTSTRAP_SERVERS, remoteKafkaBootstrapServers);
     }
