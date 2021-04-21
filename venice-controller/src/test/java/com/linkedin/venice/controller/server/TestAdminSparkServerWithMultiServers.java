@@ -104,6 +104,44 @@ public class TestAdminSparkServerWithMultiServers {
     }
   }
 
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientShouldCreateStoreWithParametersAndNotDeleteItIfItExists() {
+    String storeName = TestUtils.getUniqueString("venice-store");
+    try {
+      UpdateStoreQueryParams updateStore = new UpdateStoreQueryParams()
+              .setHybridRewindSeconds(1000)
+              .setHybridOffsetLagThreshold(1000)
+              .setHybridStoreOverheadBypass(true)
+              .setEnableWrites(true)
+              .setOwner("Napolean");
+      ControllerResponse response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"",
+              updateStore, "coolPushId", 10000);
+      Assert.assertFalse(response.isError(), "Received error response on store creation:" + response.getError());
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      Assert.assertEquals(store.getOwner(), "Napolean");
+      Assert.assertEquals(store.getHybridStoreConfig().getRewindTimeInSeconds(), 1000);
+
+      // Create it again, and check to make sure it exists
+      updateStore = new UpdateStoreQueryParams()
+              .setHybridRewindSeconds(1000)
+              .setHybridOffsetLagThreshold(1000)
+              .setHybridStoreOverheadBypass(true)
+              .setEnableWrites(true)
+              .setOwner("Napolean");
+      response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"",
+              updateStore, "coolPushId", 10000);
+      Assert.assertTrue(response.isError(), "No Error Received!!!!!");
+      store = controllerClient.getStore(storeName).getStore();
+      Assert.assertNotNull(store, "Store unreadable!!  It may no longer exist!");
+      Assert.assertEquals(store.getOwner(), "Napolean");
+      Assert.assertEquals(store.getHybridStoreConfig().getRewindTimeInSeconds(), 1000);
+
+    } catch(Exception e) {
+      Assert.fail("Could not create new Store with Exception!!", e);
+    }
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void requestTopicIsIdempotent() {
     HashMap<String, Version.PushType> storeToType = new HashMap<>(2);

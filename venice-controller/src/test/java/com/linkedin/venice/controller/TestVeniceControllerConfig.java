@@ -1,11 +1,15 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.*;
 
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class TestVeniceControllerConfig {
@@ -38,6 +42,23 @@ public class TestVeniceControllerConfig {
     Map<String, String> map = VeniceControllerConfig.parseClusterMap(builder.build(), WHITE_LIST, true);
     Assert.assertEquals(map.get("dc1").split(DELIMITER).length, 1);
     Assert.assertTrue(map.get("dc2").split(DELIMITER)[0].equals("zkAddress2"));
+  }
+
+  @Test
+  public void canParseBannedPaths() {
+    PropertyBuilder builder = new PropertyBuilder();
+    // Add some stuff.  why not
+    builder.put("child.cluster.d2.zkHost.dc1", "zkAddress1")
+            .put("child.cluster.d2.zkHost.dc2", "zkAddress2");
+
+    // Add the list of disabled endpoints, '/' are optional, and will be ignored.  Invalid values will be filtered
+    builder.put(CONTROLLER_DISABLED_ROUTES, "request_topic, /discover_cluster, foo,bar");
+    List<ControllerRoute> parsedRoutes = VeniceControllerConfig.parseControllerRoutes(builder.build(), CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
+
+    // Make sure it looks right.
+    Assert.assertEquals(parsedRoutes.size(), 2);
+    Assert.assertTrue(parsedRoutes.contains(ControllerRoute.REQUEST_TOPIC));
+    Assert.assertTrue(parsedRoutes.contains(ControllerRoute.CLUSTER_DISCOVERY));
   }
 
   @Test(expectedExceptions = VeniceException.class)

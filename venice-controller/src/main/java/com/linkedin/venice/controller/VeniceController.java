@@ -109,7 +109,8 @@ public class VeniceController {
         multiClusterConfigs.isControllerEnforceSSLOnly(),
         Optional.empty(),
         false,
-        Optional.empty());
+        Optional.empty(),
+        multiClusterConfigs.getDisabledRoutes());
     if (sslEnabled) {
       /**
        * SSL enabled AdminSparkServer uses a different port number than the regular service.
@@ -122,7 +123,8 @@ public class VeniceController {
           true,
           multiClusterConfigs.getSslConfig(),
           multiClusterConfigs.adminCheckReadMethodForKafka(),
-          accessController);
+          accessController,
+          multiClusterConfigs.getDisabledRoutes());
     }
     storeBackupVersionCleanupService = Optional.empty();
     if (multiClusterConfigs.isParent()) {

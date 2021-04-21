@@ -16,10 +16,12 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
@@ -51,7 +53,8 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
-    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(admin, "clustername");
+    // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be accessible
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
     int port = server.getPort();
 
     //build request
@@ -79,5 +82,45 @@ public class TestAdminSparkWithMocks {
     Assert.assertEquals(responseObject.getKafkaTopic(), "store_rt");
 
     server.stop();
+  }
+
+  @Test
+  public void testBannedRoutesAreRejected() throws Exception {
+    //setup server with mock admin, note returns topic "store_rt"
+    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
+    Store mockStore = new ZKStore("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 1);
+    mockStore.setHybridStoreConfig(new HybridStoreConfigImpl(25L, 100L, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    doReturn(mockStore).when(admin).getStore(anyString(), anyString());
+    doReturn(true).when(admin).isMasterController(anyString());
+    doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
+    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
+    doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.REQUEST_TOPIC));
+    int port = server.getPort();
+
+    //build request
+    List<NameValuePair> params = new ArrayList<>();
+    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, "clustername"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "localhost"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.NAME, "storename"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
+    params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
+    final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath()+"?query=foo");
+
+    post.setEntity(new UrlEncodedFormEntity(params));
+
+    //make request, parse response
+    VersionCreationResponse responseObject;
+    try (CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1,1, Optional.of(SslUtils.getLocalSslFactory()))) {
+      httpClient.start();
+      HttpResponse response = httpClient.execute(post, null).get();
+
+      // Make sure we got banned
+      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_FORBIDDEN);
+    } finally {
+      server.stop();
+    }
   }
 }

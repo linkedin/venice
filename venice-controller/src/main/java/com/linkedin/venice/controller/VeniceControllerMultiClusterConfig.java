@@ -1,11 +1,13 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -177,6 +179,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public VeniceControllerConfig getCommonConfig() {
     return clusterToConfigMap.values().iterator().next();
+  }
+
+  public List<ControllerRoute> getDisabledRoutes() {
+    return getCommonConfig().getDisabledRoutes();
   }
 
   public Set<String> getClusters() {

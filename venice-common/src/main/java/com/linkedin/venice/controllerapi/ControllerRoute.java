@@ -129,6 +129,15 @@ public enum ControllerRoute {
     return path;
   }
 
+  public static ControllerRoute valueOfPath(String path) {
+    for (ControllerRoute route : values()) {
+      if (route.pathEquals(path)) {
+        return route;
+      }
+    }
+    return null;
+  }
+
   public boolean pathEquals(String uri) {
     // strips slashes from beginning and end of passed in uri and does a string comparison
     if(uri == null) {
