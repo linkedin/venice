@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -332,7 +333,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
         daVinciBackend = null;
         backend.close();
       });
-    } else {
+    } else if (VeniceSystemStoreType.getSystemStoreType(clientConfig.getStoreName()) != VeniceSystemStoreType.META_STORE) {
+      // Do not increment DaVinciBackend reference count for meta system store da-vinci clients. Once the last user da-vinci
+      // client is released the backend can be safely deleted since meta system stores are meaningless without user stores
+      // and they are cheap to re-bootstrap.
       daVinciBackend.retain();
     }
   }

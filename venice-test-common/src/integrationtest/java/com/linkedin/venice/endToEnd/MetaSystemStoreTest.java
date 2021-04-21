@@ -252,6 +252,7 @@ public class MetaSystemStoreTest {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
     addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
     D2Client d2Client = null;
+    NativeMetadataRepository nativeMetadataRepository = null;
     try {
       d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
       ClientConfig<StoreMetaValue> clientConfig = getClientConfig(regularVeniceStoreName, d2Client);
@@ -260,14 +261,19 @@ public class MetaSystemStoreTest {
           .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
           .build();
-      NativeMetadataRepository nativeMetadataRepository =
-          NativeMetadataRepository.getInstance(clientConfig, backendConfig);
+      nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);
       // ThinClientMetaStoreBasedRepository implementation should be used since CLIENT_USE_META_SYSTEM_STORE_REPOSITORY is set to true without enabling other feature flags.
       Assert.assertTrue(nativeMetadataRepository instanceof ThinClientMetaStoreBasedRepository);
       verifyRepository(nativeMetadataRepository, regularVeniceStoreName);
     } finally {
       if (d2Client != null) {
         D2ClientUtils.shutdownClient(d2Client);
+      }
+      if (nativeMetadataRepository != null) {
+        // Calling clear explicitly here because if the NativeMetadataRepository implementation used happens to initialize
+        // a new DaVinciBackend then calling clear will trigger the cleanup logic to ensure the DaVinciBackend is not leaked
+        // into other tests.
+        nativeMetadataRepository.clear();
       }
     }
   }
@@ -277,6 +283,7 @@ public class MetaSystemStoreTest {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
     addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
     D2Client d2Client = null;
+    NativeMetadataRepository nativeMetadataRepository = null;
     try {
       d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
       ClientConfig<StoreMetaValue> clientConfig = getClientConfig(regularVeniceStoreName, d2Client);
@@ -285,14 +292,16 @@ public class MetaSystemStoreTest {
           .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
           .build();
-      NativeMetadataRepository nativeMetadataRepository =
-          NativeMetadataRepository.getInstance(clientConfig, backendConfig);
+      nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);
       // DaVinciClientMetaStoreBasedRepository implementation should be used since CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY is set to true.
       Assert.assertTrue(nativeMetadataRepository instanceof DaVinciClientMetaStoreBasedRepository);
       verifyRepository(nativeMetadataRepository, regularVeniceStoreName);
     } finally {
       if (d2Client != null) {
         D2ClientUtils.shutdownClient(d2Client);
+      }
+      if (nativeMetadataRepository != null) {
+        nativeMetadataRepository.clear();
       }
     }
   }

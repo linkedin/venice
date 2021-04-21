@@ -164,14 +164,10 @@ public class DaVinciClientBasedMetadataTest {
   @AfterClass
   public void cleanUp() {
     IOUtils.closeQuietly(daVinciClientBasedMetadata);
+    IOUtils.closeQuietly(daVinciClientForMetaStore);
+    IOUtils.closeQuietly(daVinciClientFactory);
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
-    }
-    if (daVinciClientForMetaStore != null) {
-      daVinciClientForMetaStore.close();
-    }
-    if (daVinciClientFactory != null) {
-      daVinciClientFactory.close();
     }
     if (r2Client != null) {
       r2Client.shutdown(null);
