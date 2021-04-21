@@ -402,12 +402,12 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   }
 
   // Visible for testing
-  VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient) {
+  public VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient) {
     this(jobId, vanillaProps, controllerClient, null);
   }
 
   // Visible for testing
-  VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient, ControllerClient clusterDiscoveryControllerClient) {
+  public VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient, ControllerClient clusterDiscoveryControllerClient) {
     this.controllerClient = controllerClient;
     this.clusterDiscoveryControllerClient = clusterDiscoveryControllerClient;
     this.jobId = jobId;
