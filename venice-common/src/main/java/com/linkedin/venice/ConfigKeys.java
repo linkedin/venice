@@ -182,6 +182,10 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   /** Cluster name for all parent controllers */
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
+
+  /** List of forbidden admin paths */
+  public static final String CONTROLLER_DISABLED_ROUTES = "controller.cluster.disabled.routes";
+
   /**
    * The retention policy for deprecated topics, which includes topics for both failed jobs and retired store versions.
    */

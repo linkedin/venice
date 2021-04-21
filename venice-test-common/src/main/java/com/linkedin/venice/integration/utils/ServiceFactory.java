@@ -5,6 +5,7 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.replication.TopicReplicator;
@@ -27,6 +28,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -286,7 +288,17 @@ public class ServiceFactory {
     return getService("MockAdminSparkServer", (serviceName) -> {
       Set<String> clusters = new HashSet<String>();
       clusters.add(cluster);
-      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty());
+      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), Collections.emptyList());
+      server.start();
+      return server;
+    });
+  }
+
+  public static AdminSparkServer getMockAdminSparkServer(Admin admin, String cluster, List<ControllerRoute> bannedRoutes) {
+    return getService("MockAdminSparkServer", (serviceName) -> {
+      Set<String> clusters = new HashSet<String>();
+      clusters.add(cluster);
+      AdminSparkServer server = new AdminSparkServer(Utils.getFreePort(), admin, new MetricsRepository(), clusters, false, Optional.empty(), false, Optional.empty(), bannedRoutes);
       server.start();
       return server;
     });

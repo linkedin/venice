@@ -274,13 +274,13 @@ public class ControllerClient implements Closeable {
     ControllerResponse updateResponse = null;
     ControllerResponse pushResponse = null;
 
-    try {
       creationResponse = this.createNewStore(storeName, owner, keySchema, valueSchema);
-
       if(creationResponse.isError()) {
         // Return the error
         return creationResponse;
       }
+
+    try {
 
       updateResponse = updateStore(storeName, updateStoreQueryParams);
       if(updateResponse.isError()) {

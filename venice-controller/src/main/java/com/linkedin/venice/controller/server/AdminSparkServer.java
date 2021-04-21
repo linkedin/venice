@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.stats.SparkServerStats;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -54,9 +55,11 @@ public class AdminSparkServer extends AbstractVeniceService {
   // In order to build multiple controller in a single JVM, we create a new http service instance for each of AdminSparkServer instance.
   private final Service httpService;
 
+  private final List<ControllerRoute> disabledRoutes;
+
 
   public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters, boolean enforceSSL,
-      Optional<SSLConfig> sslConfig, boolean checkReadMethodForKafka, Optional<DynamicAccessController> accessController) {
+      Optional<SSLConfig> sslConfig, boolean checkReadMethodForKafka, Optional<DynamicAccessController> accessController, List<ControllerRoute> disabledRoutes) {
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
@@ -73,6 +76,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     }
     nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
     httpService = Service.ignite();
+    this.disabledRoutes = disabledRoutes;
   }
 
   @Override
@@ -118,6 +122,13 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
       request.attribute(REQUEST_START_TIME, System.currentTimeMillis());
       request.attribute(REQUEST_SUCCEED, true);
+    });
+
+    // filter for blocked api calls
+    httpService.before((request, response) -> {
+      if(disabledRoutes.contains(ControllerRoute.valueOfPath(request.uri()))) {
+        httpService.halt(403, String.format("Route %s has been disabled in venice controller config!!", request.uri()));
+      }
     });
 
     httpService.after((request, response) -> {

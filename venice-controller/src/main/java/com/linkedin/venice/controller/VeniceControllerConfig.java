@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -13,9 +14,11 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -79,6 +82,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean enforceSSLOnly;
   private final long terminalStateTopicCheckerDelayMs;
   private final boolean isMetadataSystemStoreAutoMaterializeEnabled;
+  private final List<ControllerRoute> disabledRoutes;
   /**
    * Test only config used to disable parent topic truncation upon job completion. This is needed because kafka cluster
    * in test environment is shared between parent and child controllers. Truncating topic upon completion will confuse
@@ -217,6 +221,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
     this.regionName = props.getString(LOCAL_REGION_NAME, "");
+    this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
   }
 
   public int getAdminPort() {
@@ -441,6 +446,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getRegionName() {
     return regionName;
+  }
+
+  public List<ControllerRoute> getDisabledRoutes() {
+    return disabledRoutes;
+  }
+
+  public static List<ControllerRoute> parseControllerRoutes(VeniceProperties clusterProps, String property, List<String> defaultValue) {
+    return clusterProps.getList(property, defaultValue)
+            .stream()
+            .map(ControllerRoute::valueOfPath)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
   }
 
   /**
