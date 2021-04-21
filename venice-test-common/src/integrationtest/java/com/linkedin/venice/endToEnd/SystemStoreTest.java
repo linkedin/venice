@@ -24,7 +24,6 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
@@ -59,7 +58,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -268,10 +266,6 @@ public class SystemStoreTest {
     verifyKillMessageInParticipantStore(topicNameForOnlineVersion, true);
   }
 
-  /**
-   * Alternatively, to break the test into smaller ones is to enforce execution order or dependency of tests since if
-   * the Zk shared store tests fail then tests related to materializing the metadata store will definitely fail as well.
-   */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testMetadataStore() throws Exception {
     // Create a new Venice store and materialize the corresponding metadata system store
@@ -419,7 +413,6 @@ public class SystemStoreTest {
       assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
       assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
     });
-
   }
 
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
@@ -479,11 +472,6 @@ public class SystemStoreTest {
     metricsRepository = new MetricsRepository();
     daVinciConfig = new DaVinciConfig();
     daVinciConfig.setMemoryLimit(memoryLimit);
-    /**
-     * N.B.: Need to re-create a D2 client here, since the previous one was closed as a side-effect of closing the
-     *       {@link CachingDaVinciClientFactory} it was passed into. We also cannot reuse the factory, since it
-     *       needs to be created with different properties.
-     */
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<String, GenericRecord> client = factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
       client.subscribeAll().get();

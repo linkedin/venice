@@ -1,6 +1,5 @@
 package com.linkedin.davinci.client.factory;
 
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -13,6 +12,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import java.io.Closeable;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.log4j.Logger;
 
@@ -24,7 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 
 
-public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCloseable {
+public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCloseable, Closeable {
   private static final Logger logger = Logger.getLogger(CachingDaVinciClientFactory.class);
 
   protected boolean closed;
