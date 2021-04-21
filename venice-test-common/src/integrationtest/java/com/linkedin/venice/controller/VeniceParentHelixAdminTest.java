@@ -15,6 +15,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -72,6 +73,73 @@ public class VeniceParentHelixAdminTest {
 
     parentControllerClient.close();
     parentController.close();
+  }
+
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT)
+  public void testAddVersion() {
+    try (VeniceControllerWrapper parentControllerWrapper =
+        ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
+            new VeniceControllerWrapper[]{venice.getMasterVeniceController()},false)) {
+      String parentControllerUrl = parentControllerWrapper.getControllerUrl();
+      String childControllerUrl = venice.getMasterVeniceController().getControllerUrl();
+      // Adding store
+      String storeName = "test_store";
+      String owner = "test_owner";
+      String keySchemaStr = "\"long\"";
+      String proxyUser = "test_user";
+      Schema valueSchema = generateSchema(false);
+      try (ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentControllerUrl);
+      ControllerClient childControllerClient = new ControllerClient(venice.getClusterName(), childControllerUrl)) {
+        parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+
+        // Configure the store to hybrid
+        UpdateStoreQueryParams params =
+            new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000);
+        ControllerResponse parentControllerResponse = parentControllerClient.updateStore(storeName, params);
+        Assert.assertFalse(parentControllerResponse.isError());
+        HybridStoreConfig hybridStoreConfig = parentControllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+        Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
+        Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
+        // Check the store config in Child Colo
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponseFromChild = childControllerClient.getStore(storeName);
+          Assert.assertNotNull(storeResponseFromChild.getStore());
+          Assert.assertNotNull(storeResponseFromChild.getStore().getHybridStoreConfig());
+          Assert.assertEquals(storeResponseFromChild.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 600);
+        });
+
+        // Test add version without rewind time override
+        parentControllerResponse = parentControllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
+            Version.numberBasedDummyPushId(1), false, true, false, Optional.empty(),
+            Optional.empty(), Optional.empty(), false, -1);
+        Assert.assertFalse(parentControllerResponse.isError());
+        // Check version-level rewind time config
+        Optional<Version> versionFromParent = parentControllerClient.getStore(storeName).getStore().getVersion(1);
+        assertTrue(versionFromParent.isPresent() && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
+        // Validate version-level rewind time config in child
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Optional<Version> versionFromChild = childControllerClient.getStore(storeName).getStore().getVersion(1);
+          assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 600);
+        });
+
+        // Need to skill the current version since it is not allowed to have multiple ongoing versions.
+        parentControllerResponse = parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
+        Assert.assertFalse(parentControllerResponse.isError(), parentControllerResponse.getError());
+        // Test add version with rewind time override
+        parentControllerResponse = parentControllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
+            Version.numberBasedDummyPushId(2), false, true, false, Optional.empty(),
+            Optional.empty(), Optional.empty(), false, 1000);
+        Assert.assertFalse(parentControllerResponse.isError(), parentControllerResponse.getError());
+        // Check version-level rewind time config
+        versionFromParent = parentControllerClient.getStore(storeName).getStore().getVersion(2);
+        assertTrue(versionFromParent.isPresent() && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
+        // Validate version-level rewind time config in child
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Optional<Version> versionFromChild = childControllerClient.getStore(storeName).getStore().getVersion(2);
+          assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
+        });
+      }
+    }
   }
 
 

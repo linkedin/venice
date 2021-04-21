@@ -112,7 +112,7 @@ public interface Admin extends AutoCloseable, Closeable {
      * This method behaves differently in {@link VeniceHelixAdmin} and {@link VeniceParentHelixAdmin}.
      */
     void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
-        int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers);
+        int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride);
 
     default boolean hasWritePermissionToBatchJobHeartbeatStore(String principalId) {
         return false;
@@ -128,12 +128,12 @@ public interface Admin extends AutoCloseable, Closeable {
     default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor) {
         return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty());
+            Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1);
     }
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary,
-        Optional<String> batchStartingFabric, Optional<String> optionalRequesterPrincipalId);
+        Optional<String> batchStartingFabric, Optional<String> optionalRequesterPrincipalId, long rewindTimeInSecondsOverride);
 
     String getRealTimeTopic(String clusterName, String storeName);
 

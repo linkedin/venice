@@ -223,7 +223,9 @@ public class VeniceSystemProducer implements SystemProducer {
             false,
             partitioners,
             Optional.empty(),
-            Optional.ofNullable(runningFabric)
+            Optional.ofNullable(runningFabric),
+            false,
+            -1
         )
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + versionCreationResponse);

@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
@@ -51,11 +50,19 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(Pair.class));
     veniceAdmin.setTopicManagerRepository(mockedTopicManageRepository);
     String storeName = TestUtils.getUniqueString("test-store");
+    String pushJobId1 = "test-push-job-id-1";
     /**
      * Do not enable any store-level config for leader/follower mode or native replication feature.
      */
     veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
 
+    /**
+     * Add a version
+     */
+    veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
+        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1);
+    // Version 1 should exist.
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // L/F should be enabled by cluster-level config
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isLeaderFollowerModelEnabled(), true);
     // native replication should be enabled by cluster-level config

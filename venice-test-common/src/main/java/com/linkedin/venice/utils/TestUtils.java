@@ -211,7 +211,9 @@ public class TestUtils {
         false,
         Optional.empty(),
         Optional.empty(),
-        Optional.empty());
+        Optional.empty(),
+        false,
+        -1);
     assertFalse(response.isError());
     writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId);
     return response;

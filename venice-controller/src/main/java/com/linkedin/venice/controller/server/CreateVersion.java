@@ -167,6 +167,15 @@ public class CreateVersion extends AbstractRoute {
 
         Optional<String> batchStartingFabric = Optional.ofNullable(request.queryParams(BATCH_STARTING_FABRIC));
 
+        /**
+         * Version-level rewind time override, and it is only valid for hybrid stores.
+         */
+        Optional<String> rewindTimeInSecondsOverrideOptional = Optional.ofNullable(request.queryParams(REWIND_TIME_IN_SECONDS_OVERRIDE));
+        long rewindTimeInSecondsOverride = -1;
+        if (rewindTimeInSecondsOverrideOptional.isPresent()) {
+          rewindTimeInSecondsOverride = Long.parseLong(rewindTimeInSecondsOverrideOptional.get());
+        }
+
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
@@ -186,7 +195,8 @@ public class CreateVersion extends AbstractRoute {
             }
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric, Optional.ofNullable(getPrincipalId(request)));
+                   pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric,
+                    Optional.ofNullable(getPrincipalId(request)), rewindTimeInSecondsOverride);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.
@@ -306,7 +316,16 @@ public class CreateVersion extends AbstractRoute {
           remoteKafkaBootstrapServers = request.queryParams(REMOTE_KAFKA_BOOTSTRAP_SERVERS);
         }
 
-        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount, pushType, remoteKafkaBootstrapServers);
+        /**
+         * Version-level rewind time override, and it is only valid for hybrid stores.
+         */
+        Optional<String> rewindTimeInSecondsOverrideOptional = Optional.ofNullable(request.queryParams(REWIND_TIME_IN_SECONDS_OVERRIDE));
+        long rewindTimeInSecondsOverride = -1;
+        if (rewindTimeInSecondsOverrideOptional.isPresent()) {
+          rewindTimeInSecondsOverride = Long.parseLong(rewindTimeInSecondsOverrideOptional.get());
+        }
+        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount, pushType,
+            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);
