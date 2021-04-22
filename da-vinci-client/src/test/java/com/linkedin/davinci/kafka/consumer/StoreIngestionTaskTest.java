@@ -406,6 +406,7 @@ public class StoreIngestionTaskTest {
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(-1).when(mockStore).getCurrentVersion();
+    doReturn(1).when(mockStore).getBootstrapToOnlineTimeoutInHours();
     doReturn(databaseChecksumVerificationEnabled).when(veniceServerConfig).isDatabaseChecksumVerificationEnabled();
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();

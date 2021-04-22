@@ -308,6 +308,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   //Total number of partition for this store version
   private final int storeVersionPartitionCount;
 
+  // Push timeout threshold for the store
+  protected final long bootstrapTimeoutInMs;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -440,6 +443,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
 
     this.storeVersionPartitionCount = storeVersionPartitionCount;
+
+    long pushTimeoutInMs;
+    try {
+      pushTimeoutInMs = HOURS.toMillis(storeRepository.getStoreOrThrow(storeName).getBootstrapToOnlineTimeoutInHours());
+    } catch (Exception e) {
+      logger.warn("Error when getting bootstrap to online timeout config for store " + storeName
+          + ". Will use default timeout threshold which is 24 hours", e);
+      pushTimeoutInMs = HOURS.toMillis(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
+    }
+    this.bootstrapTimeoutInMs = pushTimeoutInMs;
   }
 
   protected void throwIfNotRunning() {

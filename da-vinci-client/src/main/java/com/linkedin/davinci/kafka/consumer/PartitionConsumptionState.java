@@ -72,6 +72,15 @@ public class PartitionConsumptionState {
   private long latestMessageConsumptionTimestampInMs;
 
   /**
+   * An in-memory state to record the ingestion start time of this partition; in O/O state model, the push timeout clock
+   * is reset whenever a new state transition from BOOTSTRAP to ONLINE happens; to achieve a parity feature in L/F state
+   * model, the push timeout clock will also reset when the partition consumption state is created for a new partition
+   * and check timeout in the consumption state check function which runs regularly:
+   * {@link LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()}
+   */
+  private final long consumptionStartTimeInMs;
+
+  /**
    * This hash map will keep a temporary mapping between a key and it's value.
    * get {@link #getTransientRecord(byte[])} and put {@link ##setTransientRecord(long, byte[], byte[], int, int, int)}
    * operation on this map will be invoked from from kafka consumer thread.
@@ -111,7 +120,8 @@ public class PartitionConsumptionState {
      * Initialize the latest consumption time with current time; otherwise, it's 0 by default
      * and leader will be promoted immediately.
      */
-    latestMessageConsumptionTimestampInMs = System.currentTimeMillis();
+    this.latestMessageConsumptionTimestampInMs = System.currentTimeMillis();
+    this.consumptionStartTimeInMs = System.currentTimeMillis();
   }
 
   public int getPartition() {
@@ -318,6 +328,10 @@ public class PartitionConsumptionState {
 
   public void setLatestMessageConsumptionTimestampInMs(long consumptionTimestampInMs) {
     this.latestMessageConsumptionTimestampInMs = consumptionTimestampInMs;
+  }
+
+  public long getConsumptionStartTimeInMs() {
+    return consumptionStartTimeInMs;
   }
 
   public void setTransientRecord(long kafkaConsumedOffset, byte[] key) {
