@@ -1,26 +1,5 @@
 package com.linkedin.davinci;
 
-import com.linkedin.davinci.config.StoreBackendConfig;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.ingestion.IngestionBackend;
-import com.linkedin.davinci.ingestion.IngestionReportListener;
-import com.linkedin.davinci.ingestion.IngestionRequestClient;
-import com.linkedin.davinci.ingestion.IngestionStorageMetadataService;
-import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
-import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.notifier.RelayNotifier;
-import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.repository.NativeMetadataRepository;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
-import com.linkedin.davinci.stats.MetadataUpdateStats;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.storage.StorageEngineMetadataService;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -52,7 +31,31 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import com.linkedin.davinci.config.StoreBackendConfig;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.ingestion.IngestionBackend;
+import com.linkedin.davinci.ingestion.IngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.repository.NativeMetadataRepository;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.MetadataUpdateStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
+
 import java.io.Closeable;
 import java.util.Collections;
 import java.util.Comparator;
@@ -65,8 +68,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static java.lang.Thread.*;
@@ -342,7 +343,7 @@ public class DaVinciBackend implements Closeable {
     return metricsRepository;
   }
 
-  SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
+  public SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
   }
 

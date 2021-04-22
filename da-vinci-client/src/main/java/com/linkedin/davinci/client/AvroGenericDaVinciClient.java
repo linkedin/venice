@@ -9,6 +9,8 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.service.ICProvider;
@@ -109,6 +111,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   public Schema getLatestValueSchema() {
     throwIfNotReady();
     return getBackend().getSchemaRepository().getLatestValueSchema(getStoreName()).getSchema();
+  }
+
+  @Override
+  public int getPartitionCount() {
+    throwIfNotReady();
+    Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+    return store.getVersion(store.getCurrentVersion()).map(Version::getPartitionCount).orElseGet(store::getPartitionCount);
   }
 
   @Override
