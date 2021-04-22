@@ -2194,7 +2194,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String errorMessage = String.format("Fatal data validation problem with topic %s partition %s offset %s, "
           + "but consumption will continue since EOP is already received. ",
           consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset());
-      logger.warn(errorMessage + fatalException.getStackTrace());
+      logger.warn(errorMessage + fatalException.getMessage());
 
       if (fatalException instanceof ImproperlyStartedSegmentException) {
         return Optional.empty();
