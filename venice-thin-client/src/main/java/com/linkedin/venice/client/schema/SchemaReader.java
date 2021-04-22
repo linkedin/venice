@@ -36,7 +36,7 @@ public class SchemaReader implements SchemaRetriever {
     mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
-  private final Logger logger = Logger.getLogger(SchemaReader.class);
+  private final static Logger logger = Logger.getLogger(SchemaReader.class);
   private final Optional<Schema> readerSchema;
   private Schema keySchema;
   private Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();

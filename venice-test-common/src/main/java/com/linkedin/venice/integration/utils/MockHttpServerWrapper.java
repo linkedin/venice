@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 //TODO: The request has no msg at the second time and trigger ""Unknown message type" exception.
 
 public class  MockHttpServerWrapper extends ProcessWrapper {
-  private final Logger logger = Logger.getLogger(MockHttpServerWrapper.class);
+  private static final Logger logger = Logger.getLogger(MockHttpServerWrapper.class);
 
   private ServerBootstrap bootstrap;
   private EventLoopGroup bossGroup;
@@ -120,7 +120,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
 
 
   private static class MockServerHandler extends SimpleChannelInboundHandler {
-    private final Logger logger = Logger.getLogger(MockServerHandler.class);
+    private static final Logger logger = Logger.getLogger(MockServerHandler.class);
     private final Map<String, FullHttpResponse> responseMap;
     private final Map<String, FullHttpResponse> uriPatternToResponseMap;
     private final FullHttpResponse notFoundResponse;

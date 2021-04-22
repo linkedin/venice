@@ -43,7 +43,7 @@ import static com.linkedin.venice.HttpConstants.*;
  * {@link D2Client} based TransportClient implementation.
  */
 public class D2TransportClient extends TransportClient {
-  private Logger logger = Logger.getLogger(D2TransportClient.class);
+  private static final Logger logger = Logger.getLogger(D2TransportClient.class);
 
   private final D2Client d2Client;
 
@@ -341,8 +341,6 @@ public class D2TransportClient extends TransportClient {
   }
 
   private static class D2TransportClientCallback extends TransportClientCallback implements Callback<RestResponse> {
-    private Logger logger = Logger.getLogger(D2TransportClient.class);
-
     public D2TransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
       super(valueFuture);
     }

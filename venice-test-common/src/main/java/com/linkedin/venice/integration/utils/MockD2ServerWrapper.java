@@ -7,7 +7,7 @@ import org.apache.log4j.Logger;
 
 
 public class MockD2ServerWrapper extends MockHttpServerWrapper {
-  private final Logger logger = Logger.getLogger(MockD2ServerWrapper.class);
+  private static final Logger logger = Logger.getLogger(MockD2ServerWrapper.class);
   private ZkServerWrapper zkServer;
   private D2Server d2Server;
 
