@@ -105,7 +105,7 @@ public class KafkaDataIntegrityValidator {
       /**
        * Explicitly suppress UNREGISTERED_PRODUCER DIV error.
        */
-      segment = producerTracker.trackSegment(consumerRecord, true);
+      segment = producerTracker.trackSegment(consumerRecord, true, false);
     } catch (DuplicateDataException duplicate) {
       /**
        * Tolerate a segment rewind and not necessary to validate a previous segment;

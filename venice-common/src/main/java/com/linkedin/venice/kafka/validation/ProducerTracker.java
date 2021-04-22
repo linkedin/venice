@@ -165,7 +165,7 @@ public class ProducerTracker {
   protected Segment validateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
                                     boolean endOfPushReceived, boolean tolerateMissingMsgs) throws DataValidationException {
     boolean hasPreviousSegment = segments.containsKey(consumerRecord.partition());
-    Segment segment = trackSegment(consumerRecord, endOfPushReceived);
+    Segment segment = trackSegment(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
     trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
@@ -188,7 +188,7 @@ public class ProducerTracker {
    */
   protected Segment trackSegment(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      boolean endOfPushReceived)
+      boolean endOfPushReceived, boolean tolerateMissingMsgs)
       throws DuplicateDataException {
     int incomingSegment = consumerRecord.value().producerMetadata.segmentNumber;
     Segment previousSegment = segments.get(consumerRecord.partition());
@@ -197,22 +197,21 @@ public class ProducerTracker {
         handleUnregisteredProducer("track new segment with non-zero incomingSegment=" + incomingSegment, consumerRecord,
             null, endOfPushReceived);
       }
-
       Segment newSegment = initializeNewSegment(consumerRecord, endOfPushReceived, true);
       return newSegment;
     } else {
       int previousSegmentNumber = previousSegment.getSegmentNumber();
       if (incomingSegment == previousSegmentNumber) {
         return previousSegment;
-      } else if (incomingSegment == previousSegmentNumber + 1) {
-        if (previousSegment.isEnded()) {
-          /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
-          return initializeNewSegment(consumerRecord, endOfPushReceived, false);
+      } else if (incomingSegment == previousSegmentNumber + 1 && previousSegment.isEnded()) {
+        /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
+        return initializeNewSegment(consumerRecord, endOfPushReceived, false);
+      } else if (incomingSegment > previousSegmentNumber) {
+        if (tolerateMissingMsgs) {
+          return initializeNewSegment(consumerRecord, endOfPushReceived, true);
         } else {
           throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord);
         }
-      } else if (incomingSegment > previousSegmentNumber + 1) {
-        throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord);
       } else if (incomingSegment < previousSegmentNumber) {
         throw DataFaultType.DUPLICATE.getNewException(previousSegment, consumerRecord);
       } else {
@@ -321,20 +320,15 @@ public class ProducerTracker {
     int incomingSequenceNumber = consumerRecord.value().producerMetadata.messageSequenceNumber;
 
     if (!segment.isStarted()) {
-      if (previousSequenceNumber != 0) {
-        handleUnregisteredProducer(
-            "mark segment as started with non-zero previousSequenceNumber=" + previousSequenceNumber, consumerRecord,
-            segment, endOfPushReceived);
-      }
       segment.start();
     } else if (incomingSequenceNumber == previousSequenceNumber + 1) {
       // Expected case, in steady state
       segment.getAndIncrementSequenceNumber();
     } else if (incomingSequenceNumber <= previousSequenceNumber) {
-      if (!hasPreviousSegment) {
-        // This is the case when SN meets a producer for the first time. For hybrid + L/F case, a follower may never
+      if (!hasPreviousSegment || tolerateMissingMsgs) {
+        // When hasPrevSegment is false, SN meets a producer for the first time. For hybrid + L/F case, a follower may never
         // see the record coming from samza producer before it is promoted to leader. This check prevents the first
-        //message to be considered as "duplicated" and skipped.
+        // message to be considered as "duplicated" and skipped.
         return;
       }
       // This is a duplicate message, which we can safely ignore.
