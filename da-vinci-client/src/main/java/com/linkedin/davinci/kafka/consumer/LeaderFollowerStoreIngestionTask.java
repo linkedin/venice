@@ -15,6 +15,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -56,12 +57,15 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import org.apache.avro.generic.GenericRecord;
@@ -339,10 +343,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected void checkLongRunningTaskState() throws InterruptedException{
+    boolean pushTimeout = false;
+    Set<Integer> timeoutPartitions = null;
     long checkStartTimeInNS = System.nanoTime();
     for (PartitionConsumptionState partitionConsumptionState : partitionConsumptionStateMap.values()) {
       int partition = partitionConsumptionState.getPartition();
 
+      /**
+       * Check whether the push timeout
+       */
+      if (!partitionConsumptionState.isComplete()
+          && LatencyUtils.getElapsedTimeInMs(partitionConsumptionState.getConsumptionStartTimeInMs()) > this.bootstrapTimeoutInMs) {
+        if (!pushTimeout) {
+          pushTimeout = true;
+          timeoutPartitions = new HashSet<>();
+        }
+        timeoutPartitions.add(partition);
+      }
       switch (partitionConsumptionState.getLeaderState()) {
         case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
           Store store = storeRepository.getStoreOrThrow(storeName);
@@ -539,6 +556,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (emitMetrics.get()) {
       storeIngestionStats.recordCheckLongRunningTasksLatency(storeName, LatencyUtils.getLatencyInMS(checkStartTimeInNS));
+    }
+
+    if (pushTimeout) {
+      // Timeout
+      String errorMsg =
+          "After waiting " + TimeUnit.MILLISECONDS.toHours(this.bootstrapTimeoutInMs) + " hours, resource:" + storeName + " partitions:"
+              + timeoutPartitions + " still can not complete ingestion.";
+      logger.error(errorMsg);
+      throw new VeniceTimeoutException(errorMsg);
     }
   }
 
