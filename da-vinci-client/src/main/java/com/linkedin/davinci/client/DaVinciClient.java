@@ -48,4 +48,11 @@ public interface DaVinciClient<K, V> extends AvroGenericStoreClient<K, V> {
    * @throws a VeniceException if cleanup failed for any of the partitions
    */
   void unsubscribe(Set<Integer> partitions);
+
+  /**
+   * Get partition count of a store.
+   *
+   * @return partition count
+   */
+  int getPartitionCount();
 }
