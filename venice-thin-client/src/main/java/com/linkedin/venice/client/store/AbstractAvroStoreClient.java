@@ -71,7 +71,7 @@ import static com.linkedin.venice.streaming.StreamingConstants.*;
 
 
 public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
-  private static Logger logger = Logger.getLogger(AbstractAvroStoreClient.class);
+  private static final Logger logger = Logger.getLogger(AbstractAvroStoreClient.class);
   public static final String TYPE_STORAGE = "storage";
   public static final String TYPE_COMPUTE = "compute";
   public static final String B64_FORMAT = "?f=b64";

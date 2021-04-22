@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 public class AvroSpecificStoreClientImplTest {
-  private Logger logger = Logger.getLogger(AvroSpecificStoreClientImplTest.class);
+  private static Logger logger = Logger.getLogger(AvroSpecificStoreClientImplTest.class);
   private MockD2ServerWrapper routerServer;
   private String routerHost;
   private int port;
