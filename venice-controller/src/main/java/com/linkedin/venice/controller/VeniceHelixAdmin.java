@@ -2536,15 +2536,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             if (incrementalPushEnabled) {
                 // Enabling incremental push
-                store.setLeaderFollowerModelEnabled(config.isLeaderFollowerEnabledForIncrementalPushStores());
+                if (config.isLeaderFollowerEnabledForIncrementalPushStores()) {
+                    store.setLeaderFollowerModelEnabled(true);
+                }
                 store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForIncremental());
             } else {
                 // Disabling incremental push
                 if (store.isHybrid()) {
-                    store.setLeaderFollowerModelEnabled(config.isLeaderFollowerEnabledForHybridStores());
                     store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForHybrid());
                 } else {
-                    store.setLeaderFollowerModelEnabled(config.isLeaderFollowerEnabledForBatchOnlyStores());
                     store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
                 }
             }
@@ -2877,26 +2877,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             store.getVersions().stream().forEach(version ->
                                 onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName()));
                         }
-                        // Disabling hybrid configs for a L/F store
-                        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-                        if (!store.isIncrementalPushEnabled()) {
-                            // Enable/disable native replication for batch-only stores if the cluster level config for new batch stores is on
-                            store.setLeaderFollowerModelEnabled(config.isLeaderFollowerEnabledForBatchOnlyStores());
-                            store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
-                        } else {
-                            store.setLeaderFollowerModelEnabled(config.isLeaderFollowerEnabledForIncrementalPushStores());
-                            store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForIncremental());
+                        if (store.isLeaderFollowerModelEnabled()) {
+                            // Disabling hybrid configs for a L/F store
+                            VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+                            if (!store.isIncrementalPushEnabled()) {
+                                // Enable/disable native replication for batch-only stores if the cluster level config for new batch stores is on
+                                store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
+                            } else {
+                                store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForIncremental());
+                            }
                         }
                     } else {
                         VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-                        if (!store.isHybrid()) {
-                            // This is a new hybrid store.
+                        if (!store.isHybrid() && config.isLeaderFollowerEnabledForHybridStores()) {
+                            // This is a new hybrid store. Enable L/F if the config is set to true.
+                            store.setLeaderFollowerModelEnabled(true);
                             if (!store.isIncrementalPushEnabled()) {
-                                store.setLeaderFollowerModelEnabled(config.isLeaderFollowerEnabledForHybridStores());
                                 // Enable/disable native replication for hybrid stores if the cluster level config for new hybrid stores is on
                                 store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForHybrid());
                             } else {
-                                store.setLeaderFollowerModelEnabled(config.isLeaderFollowerEnabledForIncrementalPushStores());
                                 // The native replication cluster level config for incremental push will cover all incremental push policy
                                 store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForIncremental());
                             }
