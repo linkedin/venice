@@ -228,6 +228,13 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       return ingestionTaskErroredGauge;
     }
 
+    public long getBatchReplicationLag() {
+      if (ingestionTask == null) {
+        return 0;
+      }
+      return ingestionTask.getBatchReplicationLag();
+    }
+
     public long getLeaderOffsetLag() {
       if (ingestionTask == null) {
         return 0;
@@ -362,6 +369,8 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       registerSensor("ingestion_task_errored_gauge", new IngestionStatsGauge(this,
           () -> (double) getStats().getIngestionTaskErroredGauge()));
 
+      registerSensor("batch_replication_lag", new IngestionStatsGauge(this, () ->
+          (double) getStats().getBatchReplicationLag(), 0));
       registerSensor("leader_offset_lag", new IngestionStatsGauge(this, () ->
           (double) getStats().getLeaderOffsetLag(), 0));
       registerSensor("batch_leader_offset_lag", new IngestionStatsGauge(this, () ->
