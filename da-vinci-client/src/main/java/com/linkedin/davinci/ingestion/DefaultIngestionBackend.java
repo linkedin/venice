@@ -1,8 +1,7 @@
-package com.linkedin.davinci;
+package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
-import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -16,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * DefaultIngestionBackend is the default ingestion backend implementation. Ingestion will be done in the same JVM as the application.
  */
-public class DefaultIngestionBackend implements IngestionBackend {
+public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private final StorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;

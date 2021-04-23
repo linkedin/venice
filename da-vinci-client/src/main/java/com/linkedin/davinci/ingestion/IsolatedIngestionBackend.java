@@ -23,7 +23,7 @@ import org.apache.log4j.Logger;
  * in the isolated ingestion process with different JVM before COMPLETED state. After COMPLETED state, ingestion will continue
  * in application JVM.
  */
-public class IsolatedIngestionBackend implements IngestionBackend {
+public class IsolatedIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private static final Logger logger = Logger.getLogger(IsolatedIngestionBackend.class);
   private final IngestionStorageMetadataService storageMetadataService;
   private final StorageService storageService;

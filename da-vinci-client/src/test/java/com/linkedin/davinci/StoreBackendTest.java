@@ -1,7 +1,9 @@
 package com.linkedin.davinci;
 
-import com.linkedin.davinci.ingestion.IngestionBackend;
-import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.ingestion.DaVinciIngestionBackend;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -18,18 +20,8 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.storage.StorageService;
-
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.commons.io.FileUtils;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
-
 import java.io.File;
 import java.time.Duration;
 import java.util.Collections;
@@ -40,6 +32,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.io.FileUtils;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import static org.mockito.AdditionalAnswers.*;
 import static org.mockito.Mockito.*;
@@ -56,7 +51,7 @@ public class StoreBackendTest {
   Map<String, VersionBackend> versionMap;
   MetricsRepository metricsRepository;
   StorageService storageService;
-  IngestionBackend ingestionBackend;
+  DaVinciIngestionBackend ingestionBackend;
 
   @BeforeMethod
   void setup() {
@@ -75,7 +70,7 @@ public class StoreBackendTest {
     versionMap = new HashMap<>();
     metricsRepository = new MetricsRepository();
     storageService = mock(StorageService.class);
-    ingestionBackend = mock(IngestionBackend.class);
+    ingestionBackend = mock(DaVinciIngestionBackend.class);
     when(ingestionBackend.getStorageService()).thenReturn(storageService);
     backend = mock(DaVinciBackend.class);
     when(backend.getExecutor()).thenReturn(executor);
