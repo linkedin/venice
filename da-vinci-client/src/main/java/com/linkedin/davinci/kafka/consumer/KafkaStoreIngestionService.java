@@ -8,6 +8,7 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -103,6 +104,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final AggStoreIngestionStats ingestionStats;
 
   private final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
+
+  private final AggLagStats aggLagStats;
 
   /**
    * Store buffer service to persist data into local bdb for all the stores.
@@ -254,6 +257,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     new StoreBufferServiceStats(metricsRepository, this.storeBufferService);
 
+    this.aggLagStats = new AggLagStats(metricsRepository);
+
     if (clientConfig.isPresent()) {
       String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
       participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(
@@ -332,6 +337,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStoreIngestionStats(ingestionStats)
         .setVersionedDIVStats(versionedDIVStats)
         .setVersionedStorageIngestionStats(versionedStorageIngestionStats)
+        .setAggLagStats(aggLagStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -146,6 +147,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
+      AggLagStats aggLagStats,
       StoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
@@ -184,6 +186,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         storeIngestionStats,
         versionedDIVStats,
         versionedStorageIngestionStats,
+        aggLagStats,
         storeBufferService,
         isCurrentVersion,
         hybridStoreConfig,
@@ -1406,6 +1409,57 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  //calculate the the replication once per partition, checking Leader instance will make sure we calculate it just once per partiton.
+  private static final Predicate<? super PartitionConsumptionState> BATCH_REPLICATION_LAG_FILTER =
+      pcs -> !pcs.isEndOfPushReceived() && pcs.consumeRemotely() && pcs.getLeaderState().equals(LEADER);
+
+  private long getReplicationLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
+    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+    if (!svs.isPresent()) {
+      /**
+       * Store version metadata is created for the first time when the first START_OF_PUSH message is processed;
+       * however, the ingestion stat is created the moment an ingestion task is created, so there is a short time
+       * window where there is no version metadata, which is not an error.
+       */
+      return 0;
+    }
+
+    if (partitionConsumptionStateMap.isEmpty()) {
+      /**
+       * Partition subscription happens after the ingestion task and stat are created, it's not an error.
+       */
+      return 0;
+    }
+
+    long replicationLag = partitionConsumptionStateMap.values().stream().filter(partitionConsumptionStateFilter)
+        //the lag is (latest VT offset in remote kafka - latest VT offset in local kafka)
+        .mapToLong((pcs) -> {
+          String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();
+          if (currentLeaderTopic == null || currentLeaderTopic.isEmpty()) {
+            currentLeaderTopic = kafkaVersionTopic;
+          }
+          return (cachedKafkaMetadataGetter.getOffsetFromRemoteKafka(nativeReplicationSourceAddress, currentLeaderTopic,
+              pcs.getPartition()) - 1) - (cachedKafkaMetadataGetter.getOffset(currentLeaderTopic, pcs.getPartition())
+              - 1);
+        }).sum();
+
+    return minZeroLag(replicationLag);
+  }
+
+  @Override
+  public long getBatchReplicationLag() {
+    long batchReplicationLag = getReplicationLag(BATCH_REPLICATION_LAG_FILTER);
+
+    //if this task is for future version then update the aggregrated lag here
+    if (versionedStorageIngestionStats.isFutureVersion(storeName, versionNumber)) {
+      aggLagStats.addAggBatchReplicationLagFuture(batchReplicationLag);
+    }
+
+    return batchReplicationLag;
+  }
+
+
+
   private static final Predicate<? super PartitionConsumptionState> LEADER_OFFSET_LAG_FILTER = pcs -> pcs.getLeaderState().equals(LEADER);
   private static final Predicate<? super PartitionConsumptionState> BATCH_LEADER_OFFSET_LAG_FILTER = pcs ->
       !pcs.isEndOfPushReceived() && pcs.getLeaderState().equals(LEADER);
@@ -1461,7 +1515,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public long getBatchLeaderOffsetLag() {
-    return getLeaderOffsetLag(BATCH_LEADER_OFFSET_LAG_FILTER);
+    long batchLeaderOffsetLag = getLeaderOffsetLag(BATCH_LEADER_OFFSET_LAG_FILTER);
+
+    //if this task is for future version then update the aggregrated lag here
+    if (versionedStorageIngestionStats.isFutureVersion(storeName, versionNumber)) {
+      aggLagStats.addAggLeaderOffsetLagFuture(batchLeaderOffsetLag);
+    }
+
+    return batchLeaderOffsetLag;
   }
 
   @Override
@@ -1514,13 +1575,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public long getBatchFollowerOffsetLag() {
-    return getFollowerOffsetLag(BATCH_FOLLOWER_OFFSET_LAG_FILTER);
+    long batchFollowerOffsetLag = getFollowerOffsetLag(BATCH_FOLLOWER_OFFSET_LAG_FILTER);
+
+    //if this task is for future version then update the aggregrated lag here
+    if (versionedStorageIngestionStats.isFutureVersion(storeName, versionNumber)) {
+      aggLagStats.addAggFollowerOffsetLagFuture(batchFollowerOffsetLag);
+    }
+
+    return batchFollowerOffsetLag;
   }
 
   @Override
   public long getHybridFollowerOffsetLag() {
     return getFollowerOffsetLag(HYBRID_FOLLOWER_OFFSET_LAG_FILTER);
   }
+
+
 
   /**
    * Unsubscribe from all the topics being consumed for the partition in partitionConsumptionState

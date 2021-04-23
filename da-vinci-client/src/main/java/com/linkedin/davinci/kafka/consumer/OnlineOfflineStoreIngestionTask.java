@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -64,6 +65,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
+      AggLagStats aggLagStats,
       StoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
@@ -99,6 +101,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         storeIngestionStats,
         versionedDIVStats,
         versionedStorageIngestionStats,
+        aggLagStats,
         storeBufferService,
         isCurrentVersion,
         hybridStoreConfig,
@@ -266,6 +269,11 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
      * O/O replica will always be consuming from one topic only, which is the local version topic.
      */
     consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
+  }
+
+  @Override
+  public long getBatchReplicationLag() {
+    return StatsErrorCode.METRIC_ONLY_AVAILABLE_FOR_LEADER_FOLLOWER_STORES.code;
   }
 
   @Override

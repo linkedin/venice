@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -170,6 +171,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AggStoreIngestionStats storeIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
+  protected final AggLagStats aggLagStats;
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final IngestionNotificationDispatcher notificationDispatcher;
@@ -324,6 +326,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
+      AggLagStats aggLagStats,
       StoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
@@ -377,7 +380,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
     this.versionedStorageIngestionStats = versionedStorageIngestionStats;
-
+    this.aggLagStats = aggLagStats;
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
 
@@ -1758,6 +1761,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     return minZeroLag(offsetLag);
   }
+
+  public abstract long getBatchReplicationLag();
+
 
   public abstract long getLeaderOffsetLag();
 
