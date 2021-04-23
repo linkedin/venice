@@ -153,8 +153,8 @@ public class MetadataStoreWriter implements Closeable {
       throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
     }
     storeMetadataSchemaIdMap.computeIfAbsent(clusterName, k -> {
-      int storeMetadataSchemaId = admin.getValueSchemaId(clusterName, METADATA_STORE.getPrefix(),
-          StoreMetadataValue.SCHEMA$.toString());
+      int storeMetadataSchemaId = admin.getVeniceHelixResource(clusterName).getSchemaRepository().getValueSchemaId(
+          METADATA_STORE.getPrefix(), StoreMetadataValue.SCHEMA$.toString());
       if (storeMetadataSchemaId == INVALID_VALUE_SCHEMA_ID) {
         throw new VeniceException("Invalid value schema for " + METADATA_STORE.getPrefix()
             + ", please make sure new value schemas are added to the store");
