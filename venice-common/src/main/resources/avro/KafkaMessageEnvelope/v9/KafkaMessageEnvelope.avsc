@@ -39,6 +39,12 @@
             "doc": "this field is deprecated and superseded by the field inside the LeaderMetadata. TODO: Remove this field in the future.",
             "type": "long",
             "default": -1
+          },
+          {
+            "name": "logicalTimestamp",
+            "doc": "This timestamp may be specified by the user. Sentinel value of -1 => apps are not using latest lib, -2 => apps have not specified the time. In case of negative values messageTimestamp field will be used for Timestamp Metadata.",
+            "type": "long",
+            "default": -1
           }
         ]
       }
@@ -52,13 +58,23 @@
           "type": "record",
           "fields": [
             {
-              "name": "schemaId",
-              "doc": "An identifier used to determine how the PutValue can be deserialized.",
-              "type": "int"
-            }, {
               "name": "putValue",
               "doc": "The record's value to be persisted in the storage engine.",
               "type": "bytes"
+            }, {
+              "name": "schemaId",
+              "doc": "An identifier used to determine how the PutValue can be deserialized. Also used, in conjunction with the metadataVersionId, to deserialize the metadataPayload.",
+              "type": "int"
+            }, {
+              "name": "metadataVersionId",
+              "doc": "The A/A metadata schema version ID that will be used to deserialize metadataPayload.",
+              "type": "int",
+              "default": -1
+            }, {
+              "name": "metadataPayload",
+              "doc": "The serialized value of the metadata schema.",
+              "type": "bytes",
+              "default": ""
             }
           ]
         }, {
@@ -82,9 +98,26 @@
           ]
         }, {
           "name": "Delete",
-          "doc": "Delete payloads contain no extra fields.",
+          "doc": "Delete payloads contain fields related to metadata of the record.",
           "type": "record",
-          "fields": []
+          "fields": [
+            {
+              "name": "schemaId",
+              "doc": "An identifier used, in conjunction with the metadataVersionId, to deserialize the metadataPayload.",
+              "type": "int",
+              "default": -1
+            }, {
+              "name": "metadataVersionId",
+              "doc": "The A/A metadata schema version ID that will be used to deserialize metadataPayload.",
+              "type": "int",
+              "default": -1
+            }, {
+              "name": "metadataPayload",
+              "doc": "The serialized value of the metadata schema.",
+              "type": "bytes",
+              "default": ""
+            }
+          ]
         }, {
           "name": "ControlMessage",
           "doc": "ControlMessage payloads contain metadata about the stream of data, for validation and debuggability purposes.",
@@ -130,6 +163,11 @@
                       "doc": "The raw bytes of dictionary used to compress/decompress records.",
                       "type": ["null", "bytes"],
                       "default": null
+                    }, {
+                      "name": "timestampPolicy",
+                      "doc": "The policy to determine timestamps of batch push records. 0 => no per record timestamp metadata is stored, hybrid writes always win over batch, 1 => no per record timestamp metadata is stored, Start-Of-Push Control message's logicalTimestamp is treated as last update timestamp for all batch record, and hybrid writes wins only when their own logicalTimestamp are higher, 2 => per record timestamp metadata is provided by the push job and stored for each key, enabling full conflict resolution granularity on a per field basis, just like when merging concurrent update operations.",
+                      "type": "int",
+                      "default": 0
                     }
                   ]
                 }, {
