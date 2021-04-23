@@ -2287,9 +2287,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Close a DIV segment for a version topic partition.
    */
   protected void endSegment(int partition) {
-    /**
-     * If the VeniceWriter doesn't exist, no need to explicitly create a VeniceWriter first and end a segment that doesn't exist
-     */
+    // If the VeniceWriter doesn't exist, no need to explicitly create a VeniceWriter first and end a segment that doesn't exist
     if (null != veniceWriter) {
       veniceWriter.endSegment(partition, true);
     }

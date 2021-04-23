@@ -39,6 +39,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
@@ -122,6 +123,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * newer version.
    */
   public static final long DEFAULT_UPSTREAM_OFFSET = ProducerMetadata.SCHEMA$.getField("upstreamOffset").defaultValue().asLong();
+
+  /**
+   * A static counter shared by all VeniceWriter instances to track the number of active VeniceWriter
+   */
+  public static final AtomicLong OPEN_VENICE_WRITER_COUNT = new AtomicLong(0);
+
+  /**
+   * A static counter shared by all VeniceWriter instances to track the number of VeniceWriter that fails to close
+   */
+  public static final AtomicLong VENICE_WRITER_CLOSE_FAILED_COUNT = new AtomicLong(0);
 
   private static final long DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS = TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES);
 
@@ -228,6 +239,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
       this.producerGUID = GuidUtils.getGUID(props);
       this.logger = Logger.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
+      OPEN_VENICE_WRITER_COUNT.incrementAndGet();
     } catch (Exception e) {
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName + ", props: " + props.toString(), e);
     }
@@ -265,8 +277,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         endAllSegments(true);
       }
       producer.close(closeTimeOut);
+      OPEN_VENICE_WRITER_COUNT.decrementAndGet();
     } catch (Exception e) {
       logger.warn("Swallowed an exception while trying to close the VeniceWriter for " + topicName, e);
+      VENICE_WRITER_CLOSE_FAILED_COUNT.incrementAndGet();
     }
   }
 

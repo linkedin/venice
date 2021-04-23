@@ -47,6 +47,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.DiskHealthStats;
+import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
@@ -89,6 +90,7 @@ public class VeniceServer {
   private HelixReadOnlyZKSharedSchemaRepository readOnlyZKSharedSchemaRepository;
   private ZkClient zkClient;
   private VeniceJVMStats jvmStats;
+  private KafkaClientStats kafkaClientStats;
   private ICProvider icProvider;
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
@@ -155,6 +157,9 @@ public class VeniceServer {
 
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
+
+    // Create Kafka client stats
+    kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats");
 
     Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName())));
