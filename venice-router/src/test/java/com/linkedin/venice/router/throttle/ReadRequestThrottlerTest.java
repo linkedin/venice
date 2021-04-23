@@ -266,9 +266,15 @@ public class ReadRequestThrottlerTest {
         .subscribeRoutingDataChange(Mockito.eq(Version.composeKafkaTopic(store.getName(), newCurrentVersion)),
             Mockito.eq(throttler));
 
+    store.setCurrentVersion(101);
+    throttler.handleStoreChanged(store);
+    Mockito.verify(routingDataRepository, Mockito.times(1))
+        .unSubscribeRoutingDataChange(Mockito.eq(topicName), Mockito.eq(throttler));
+
+    // Verify no call to unSubscribeRoutingDataChange on non-existing version.
     store.setCurrentVersion(Store.NON_EXISTING_VERSION);
     throttler.handleStoreChanged(store);
-    Mockito.verify(routingDataRepository, Mockito.atLeastOnce())
+    Mockito.verify(routingDataRepository, Mockito.times(1))
         .unSubscribeRoutingDataChange(Mockito.eq(topicName), Mockito.eq(throttler));
   }
 

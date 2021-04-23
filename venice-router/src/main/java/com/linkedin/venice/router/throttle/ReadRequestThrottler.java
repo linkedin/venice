@@ -200,7 +200,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     List<Store> allStores = storeRepository.getAllStores();
     ConcurrentMap<String, StoreReadThrottler> newStoreThrottlers = new ConcurrentHashMap<>();
     for (Store store : allStores) {
-      if (store.getCurrentVersion() == NON_EXISTING_VERSION) {
+      if (storeHasNoValidVersion(store)) {
         continue;
       }
       newStoreThrottlers.put(VeniceSystemStoreUtils.getZkStoreName(store.getName()), buildStoreReadThrottler(store.getName(), store.getCurrentVersion(),
@@ -248,6 +248,9 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
 
   @Override
   public void handleStoreCreated(Store store) {
+    if (storeHasNoValidVersion(store)) {
+      return;
+    }
     updateStoreThrottler(() -> {
       long storeQuotaPerRouter = calculateStoreQuotaPerRouter(store.getReadQuotaInCU());
       logger.info("Store: " + store.getName() + " is created. Add a throttler with quota:" + storeQuotaPerRouter
@@ -297,6 +300,9 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
 
   @Override
   public void handleStoreChanged(Store store) {
+    if (storeHasNoValidVersion(store)) {
+      return;
+    }
     updateStoreThrottler(() -> {
       StoreReadThrottler storeReadThrottler =
           storesThrottlers.get().get(VeniceSystemStoreUtils.getZkStoreName(store.getName()));
@@ -341,6 +347,10 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
         }
       }
     });
+  }
+
+  private boolean storeHasNoValidVersion(Store store) {
+    return store.getCurrentVersion() == NON_EXISTING_VERSION;
   }
 
   @Override

@@ -21,6 +21,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
@@ -203,6 +204,45 @@ public class SystemStoreTest {
     // One from the server stats and the other from the client stats.
     assertTrue(metrics.get("." + requestMetricExample).value() > 0);
     assertTrue(metrics.get(".venice-client." + requestMetricExample).value() > 0);
+  }
+
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testParticipantStoreThrottlerRestartRouter() {
+    VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient, true);
+    assertFalse(versionCreationResponse.isError());
+    String topicName = versionCreationResponse.getKafkaTopic();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Verify the push job is STARTED.
+      assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
+    });
+    ControllerResponse response = parentControllerClient.killOfflinePushJob(topicName);
+    assertFalse(response.isError());
+    verifyKillMessageInParticipantStore(topicName, true);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Poll job status to verify the job is indeed killed
+      assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.ERROR.toString());
+    });
+
+    // restart routers to discard in-memory throttler info
+    for (VeniceRouterWrapper router : venice.getVeniceRouters()) {
+      venice.stopVeniceRouter(router.getPort());
+      venice.restartVeniceRouter(router.getPort());
+    }
+    // Verify still can read from participant stores.
+    ParticipantMessageKey key = new ParticipantMessageKey();
+    key.resourceName = topicName;
+    key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
+    try (AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> client =
+        ClientFactory.getAndStartSpecificAvroClient(
+            ClientConfig.defaultSpecificClientConfig(participantMessageStoreName,
+                ParticipantMessageValue.class).setVeniceURL(venice.getRandomRouterURL()))) {
+      try {
+        client.get(key).get();
+      } catch (Exception e) {
+        fail("Should be able to query participant store successfully");
+      }
+    }
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
