@@ -2284,6 +2284,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Close a DIV segment for a version topic partition.
+   */
+  protected void endSegment(int partition) {
+    /**
+     * If the VeniceWriter doesn't exist, no need to explicitly create a VeniceWriter first and end a segment that doesn't exist
+     */
+    if (null != veniceWriter) {
+      veniceWriter.endSegment(partition, true);
+    }
+  }
+
+  /**
    * All the subscriptions belonging to the same {@link StoreIngestionTask} SHOULD use this function instead of
    * {@link KafkaConsumerWrapper#subscribe} directly since we need to let {@link KafkaConsumerService} knows which
    * {@link StoreIngestionTask} to use when receiving result for any specific topic.
