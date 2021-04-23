@@ -343,6 +343,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
             .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
                 daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
+            .put(INGESTION_USE_DA_VINCI_CLIENT, true)
             .build();
     logger.info("backendConfig=" + config.toString(true));
     return new VeniceConfigLoader(config, config);
