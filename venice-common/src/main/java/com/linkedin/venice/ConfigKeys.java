@@ -485,6 +485,12 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_MODE = "server.ingestion.mode";
 
   /**
+   * A boolean config to specify if we are using Da Vinci client for ingestion. This config will be parsed by
+   * isDaVinciConfig variable in VeniceServerConfig. By default it is false (use Venice Server)
+   */
+  public static final String INGESTION_USE_DA_VINCI_CLIENT = "ingestion.use.da.vinci.client";
+
+  /**
    * Port number for ingestion listener. For Parent/Child mode, it will be used by child process. For SplitService mode,
    * it will be used by IngestionService.
    */

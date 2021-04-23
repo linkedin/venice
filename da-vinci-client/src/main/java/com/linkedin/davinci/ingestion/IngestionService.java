@@ -12,6 +12,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -71,7 +72,7 @@ public class IngestionService extends AbstractVeniceService {
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
   private VeniceConfigLoader configLoader = null;
-  private SubscriptionBasedReadOnlyStoreRepository storeRepository = null;
+  private ReadOnlyStoreRepository storeRepository = null;
   private StorageService storageService = null;
   private KafkaStoreIngestionService storeIngestionService = null;
   private StorageMetadataService storageMetadataService = null;
@@ -173,7 +174,7 @@ public class IngestionService extends AbstractVeniceService {
     this.configLoader = configLoader;
   }
 
-  public void setStoreRepository(SubscriptionBasedReadOnlyStoreRepository storeRepository) {
+  public void setStoreRepository(ReadOnlyStoreRepository storeRepository) {
     this.storeRepository = storeRepository;
   }
 
@@ -234,7 +235,7 @@ public class IngestionService extends AbstractVeniceService {
     return storageMetadataService;
   }
 
-  public SubscriptionBasedReadOnlyStoreRepository getStoreRepository() {
+  public ReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
   }
 

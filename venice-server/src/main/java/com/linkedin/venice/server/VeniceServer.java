@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
@@ -21,17 +22,10 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.WhitelistAccessor;
-import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -50,7 +44,6 @@ import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
-import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -87,7 +80,7 @@ public class VeniceServer {
   private MetricsRepository metricsRepository;
   private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
-  private HelixReadOnlyZKSharedSchemaRepository readOnlyZKSharedSchemaRepository;
+  private Optional<HelixReadOnlyZKSharedSchemaRepository> readOnlyZKSharedSchemaRepository;
   private ZkClient zkClient;
   private VeniceJVMStats jvmStats;
   private KafkaClientStats kafkaClientStats;
@@ -174,7 +167,11 @@ public class VeniceServer {
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
 
     // Create ReadOnlyStore/SchemaRepository
-    createHelixStoreAndSchemaRepository(clusterConfig, metricsRepository);
+    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(veniceConfigLoader, clientConfigForConsumer.orElse(null), metricsRepository, icProvider, false);
+    zkClient = veniceMetadataRepositoryBuilder.getZkClient();
+    metadataRepo = veniceMetadataRepositoryBuilder.getStoreRepo();
+    schemaRepo = veniceMetadataRepositoryBuilder.getSchemaRepo();
+    readOnlyZKSharedSchemaRepository = veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
 
     // TODO: It would be cleaner to come up with a storage engine metric abstraction so we're not passing around so
     // many objects in constructors
@@ -213,7 +210,7 @@ public class VeniceServer {
         kafkaMessageEnvelopeSchemaReader,
         clientConfigForConsumer,
         partitionStateSerializer,
-        Optional.of(this.readOnlyZKSharedSchemaRepository),
+        readOnlyZKSharedSchemaRepository,
         icProvider);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
@@ -284,36 +281,6 @@ public class VeniceServer {
      */
 
     return Collections.unmodifiableList(services);
-  }
-
-  private void createHelixStoreAndSchemaRepository(VeniceClusterConfig clusterConfig, MetricsRepository metricsRepository) {
-    zkClient = ZkClientFactory.newZkClient(clusterConfig.getZookeeperAddress());
-    zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "server-zk-client"));
-    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    String clusterName = clusterConfig.getClusterName();
-
-    String systemSchemaClusterName = veniceConfigLoader.getVeniceServerConfig().getSystemSchemaClusterName();
-    HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
-        new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, systemSchemaClusterName);
-
-    HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
-;
-    this.metadataRepo = new HelixReadOnlyStoreRepositoryAdapter(
-        readOnlyZKSharedSystemStoreRepository,
-        readOnlyStoreRepository
-    );
-    // Load existing store config and setup watches
-    metadataRepo.refresh();
-
-    this.readOnlyZKSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(readOnlyZKSharedSystemStoreRepository, zkClient, adapter, systemSchemaClusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
-    this.schemaRepo = new HelixReadOnlySchemaRepositoryAdapter(
-        this.readOnlyZKSharedSchemaRepository,
-        new HelixReadOnlySchemaRepository(readOnlyStoreRepository, zkClient, adapter, clusterName,
-            clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs())
-    );
-    schemaRepo.refresh();
   }
 
   public StorageService getStorageService() {

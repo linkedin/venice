@@ -10,7 +10,7 @@ import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.repository.NativeMetadataRepository;
+import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -24,16 +24,12 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
-import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.StaticClusterInfoProvider;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
@@ -43,7 +39,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
@@ -95,32 +90,20 @@ public class DaVinciBackend implements Closeable {
     VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
     this.configLoader = configLoader;
     metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
-                            .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
+                            .orElse(TehutiUtils.getMetricsRepository("da-vinci-client"));
 
-    ClusterInfoProvider clusterInfoProvider;
-    VeniceProperties backendProps = backendConfig.getClusterProperties();
-    if (backendProps.getBoolean(CLIENT_USE_SYSTEM_STORE_REPOSITORY, false)) {
-      logger.info("Initializing DaVinciBackend repositories with " + NativeMetadataRepository.class.getSimpleName());
-      NativeMetadataRepository
-          metadataStoreBasedStoreRepository = NativeMetadataRepository.getInstance(clientConfig, backendProps, icProvider);
-      clusterInfoProvider = metadataStoreBasedStoreRepository;
-      storeRepository = metadataStoreBasedStoreRepository;
-      schemaRepository = metadataStoreBasedStoreRepository;
-      zkClient = null;
-    } else {
-      String clusterName = backendConfig.getClusterName();
-      clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
-
-      HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-      zkClient = ZkClientFactory.newZkClient(backendConfig.getZookeeperAddress());
-      zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, ".davinci-zk-client"));
-
-      storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
-      storeRepository.refresh();
-
-      schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
-      schemaRepository.refresh();
+    VeniceMetadataRepositoryBuilder
+        veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
+    ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
+    ReadOnlyStoreRepository readOnlyStoreRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
+    if (!(readOnlyStoreRepository instanceof SubscriptionBasedReadOnlyStoreRepository)) {
+      throw new VeniceException("Da Vinci backend expects " + SubscriptionBasedReadOnlyStoreRepository.class.getName() + " for store repository!");
     }
+    storeRepository = (SubscriptionBasedReadOnlyStoreRepository) readOnlyStoreRepository;
+    schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
+    zkClient = veniceMetadataRepositoryBuilder.getZkClient();
+
+    VeniceProperties backendProps = backendConfig.getClusterProperties();
 
     SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)

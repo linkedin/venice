@@ -9,7 +9,7 @@ import com.linkedin.davinci.ingestion.IngestionService;
 import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.repository.NativeMetadataRepository;
+import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
@@ -21,10 +21,7 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
-import com.linkedin.venice.helix.ZkClientFactory;
+import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
@@ -41,7 +38,7 @@ import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.StaticClusterInfoProvider;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -50,7 +47,6 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -62,10 +58,8 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Optional;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.IngestionUtils.*;
@@ -76,7 +70,6 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionServiceTaskHandler.class);
 
-  private static final byte[] dummyContent = new byte[0];
   private final IngestionService ingestionService;
 
   public IngestionServiceTaskHandler(IngestionService ingestionService) {
@@ -212,32 +205,17 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     MetricsRepository metricsRepository = new MetricsRepository();
     ingestionService.setMetricsRepository(metricsRepository);
 
-    // Create ZkClient
-    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    ZkClient zkClient = ZkClientFactory.newZkClient(configLoader.getVeniceClusterConfig().getZookeeperAddress());
-    zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, ".ingestion-service-zk-client"));
-
-    // Create StoreRepository and SchemaRepository
-    SubscriptionBasedReadOnlyStoreRepository storeRepository;
-    ReadOnlySchemaRepository schemaRepository;
-    boolean useSystemStore = veniceProperties.getBoolean(ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY, false);
-    logger.info("Isolated ingestion service uses system store repository: " + useSystemStore);
-    ClusterInfoProvider clusterInfoProvider;
-    if (useSystemStore) {
-      logger.info("Initializing IngestionServiceTaskHandler with " + NativeMetadataRepository.class.getSimpleName());
-      NativeMetadataRepository
-          systemStoreBasedRepository = NativeMetadataRepository.getInstance(clientConfig, veniceProperties);
-      systemStoreBasedRepository.refresh();
-      clusterInfoProvider = systemStoreBasedRepository;
-      storeRepository = systemStoreBasedRepository;
-      schemaRepository = systemStoreBasedRepository;
-    } else {
-      clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
-      storeRepository = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
-      storeRepository.refresh();
-      schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
-      schemaRepository.refresh();
-    }
+    // Initialize store/schema repositories.
+    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(
+        configLoader,
+        clientConfig,
+        metricsRepository,
+        null,
+        true);
+    ReadOnlyStoreRepository storeRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
+    ReadOnlySchemaRepository schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
+    Optional<HelixReadOnlyZKSharedSchemaRepository> helixReadOnlyZKSharedSchemaRepository = veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
+    ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
     ingestionService.setStoreRepository(storeRepository);
 
     SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
@@ -298,8 +276,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         metricsRepository,
         rocksDBMemoryStats,
         Optional.of(kafkaMessageEnvelopeSchemaReader),
-        Optional.empty(),
-        partitionStateSerializer);
+        veniceMetadataRepositoryBuilder.isDaVinciClient() ? Optional.empty() : Optional.of(clientConfig),
+        partitionStateSerializer,
+        helixReadOnlyZKSharedSchemaRepository,
+        null);
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);
     ingestionService.setStoreIngestionService(storeIngestionService);
@@ -337,7 +317,12 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           if (!ingestionMode.equals(IngestionMode.ISOLATED)) {
             throw new VeniceException("Ingestion isolation is not enabled.");
           }
-          ingestionService.getStoreRepository().subscribe(storeName);
+          ReadOnlyStoreRepository storeRepository = ingestionService.getStoreRepository();
+          // For subscription based store repository, we will need to subscribe to the store explicitly.
+          if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
+            logger.info("Ingestion Service subscribing to store: " + storeName);
+            ((SubscriptionBasedReadOnlyStoreRepository)storeRepository).subscribe(storeName);
+          }
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
 
           storageService.openStoreForNewPartition(storeConfig, partitionId);
