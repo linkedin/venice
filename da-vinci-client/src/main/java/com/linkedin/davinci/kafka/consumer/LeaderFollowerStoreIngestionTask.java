@@ -318,7 +318,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * Close the writer to make sure the current segment is closed after the leader is demoted to standby.
          */
-        getVeniceWriter().endSegment(partition, true);
+        endSegment(partition);
         break;
       default:
         processCommonConsumerAction(operation, topic, partition);
