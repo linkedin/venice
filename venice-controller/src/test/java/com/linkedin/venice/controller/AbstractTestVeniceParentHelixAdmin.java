@@ -5,6 +5,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
@@ -122,10 +123,12 @@ public class AbstractTestVeniceParentHelixAdmin {
     parentAdmin =
         new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config), false,
             Optional.empty(), authorizerService);
+    ControllerClient mockControllerClient = mock(ControllerClient.class);
+    doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()
-        .put(coloName, mock(ControllerClient.class));
+        .put(coloName, mockControllerClient);
     parentAdmin.setOfflinePushAccessor(accessor);
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
   }

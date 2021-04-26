@@ -785,6 +785,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER, params, ControllerResponse.class);
   }
 
+  public ControllerResponse checkResourceCleanupForStoreCreation(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION, params, ControllerResponse.class);
+  }
+
   protected static QueryParams getQueryParamsToDiscoverCluster(String storeName) {
     return new QueryParams()
         // Cluster name is not required for cluster discovery request. But could not null otherwise an exception will be

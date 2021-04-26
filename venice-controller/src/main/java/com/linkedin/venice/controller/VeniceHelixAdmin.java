@@ -148,6 +148,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -288,6 +289,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // This map stores the time when topics were created. It only contains topics whose information has not yet been persisted to Zk.
     private final Map<String, Long> topicToCreationTime = new VeniceConcurrentHashMap<>();
+
+    /**
+     * Controller Client Map per cluster per colo
+     */
+    private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap = new VeniceConcurrentHashMap<>();
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
@@ -526,6 +532,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private boolean isResourceStillAlive(String clusterName, String resourceName) {
         String externalViewPath = "/" + clusterName + "/EXTERNALVIEW/" + resourceName;
         return zkClient.exists(externalViewPath);
+    }
+
+    List<String> getAllLiveHelixResources(String clusterName) {
+        return zkClient.getChildren("/" + clusterName + "/EXTERNALVIEW");
     }
 
     @Override
@@ -1049,15 +1059,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceUnsupportedOperationException("getControllerClientMap");
         }
 
-        Map<String, ControllerClient> controllerClients = new HashMap<>();
-        VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getConfigForCluster(clusterName);
-        veniceControllerConfig.getChildDataCenterControllerUrlMap().entrySet().
-            forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue(), sslFactory)));
-        veniceControllerConfig.getChildDataCenterControllerD2Map().entrySet().
-            forEach(entry -> controllerClients.put(entry.getKey(),
-                new D2ControllerClient(veniceControllerConfig.getD2ServiceName(), clusterName, entry.getValue(), sslFactory)));
-
-        return controllerClients;
+        return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
+            Map<String, ControllerClient> controllerClients = new HashMap<>();
+            VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getConfigForCluster(clusterName);
+            veniceControllerConfig.getChildDataCenterControllerUrlMap().entrySet().
+                forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue(), sslFactory)));
+            veniceControllerConfig.getChildDataCenterControllerD2Map().entrySet().
+                forEach(entry -> controllerClients.put(entry.getKey(),
+                    new D2ControllerClient(veniceControllerConfig.getD2ServiceName(), clusterName, entry.getValue(), sslFactory)));
+            return controllerClients;
+        });
     }
 
     @Override
@@ -4431,6 +4442,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         IOUtils.closeQuietly(topicManagerRepository);
         pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
         pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
+        clusterControllerClientPerColoMap.forEach((clusterName, controllerClientMap) -> controllerClientMap.values().forEach(c -> IOUtils.closeQuietly(c)));
     }
 
     /**
@@ -4869,6 +4881,59 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
                 }
             });
+        }
+    }
+
+    @Override
+    public void checkResourceCleanupBeforeStoreCreation(String clusterName, String storeName) {
+        checkResourceCleanupBeforeStoreCreation(clusterName, storeName, true);
+    }
+
+    protected ZkStoreConfigAccessor getStoreConfigAccessor(String clusterName) {
+        return getVeniceHelixResource(clusterName).getStoreConfigAccessor();
+    }
+
+    protected ReadWriteStoreRepository getMetadataRepository(String clusterName) {
+        return getVeniceHelixResource(clusterName).getMetadataRepository();
+    }
+
+    protected void checkResourceCleanupBeforeStoreCreation(String clusterName, String storeName, boolean checkHelixResource) {
+        checkControllerMastership(clusterName);
+        ZkStoreConfigAccessor storeConfigAccess = getStoreConfigAccessor(clusterName);
+        StoreConfig storeConfig = storeConfigAccess.getStoreConfig(storeName);
+        if (storeConfig != null) {
+            throw new VeniceException("Store: " + storeName + " still exists in cluster: " + storeConfig.getCluster());
+        }
+        ReadWriteStoreRepository repository = getMetadataRepository(clusterName);
+        Store store = repository.getStore(storeName);
+        if (store != null) {
+            throw new VeniceException("Store: " + storeName + " still exists in cluster: " + clusterName);
+        }
+
+        Set<String> relevantStores = new HashSet<>();
+        relevantStores.add(storeName);
+        Arrays.stream(VeniceSystemStoreType.values()).forEach(s -> relevantStores.add(s.getSystemStoreName(storeName)));
+
+        BiFunction<String, String, Void> resourceCheckFunc = (resourceName, resourceType) -> {
+            String storeNameForTopic = null;
+            if (Version.isRealTimeTopic(resourceName)) {
+                storeNameForTopic = Version.parseStoreFromRealTimeTopic(resourceName);
+            } else if (Version.isVersionTopicOrStreamReprocessingTopic(resourceName)) {
+                storeNameForTopic = Version.parseStoreFromKafkaTopicName(resourceName);
+            }
+            if (storeNameForTopic != null && relevantStores.contains(storeNameForTopic)) {
+                throw new VeniceException(resourceType + ": " + resourceName + " still exists for store: " + storeName +
+                    ", please make sure all the resources are removed before store re-creation");
+            }
+            return null;
+        };
+        // Check all the topics belonging to this store.
+        Set<String> topics = getTopicManager().listTopics();
+        topics.forEach(topic -> resourceCheckFunc.apply(topic, "Topic"));
+        // Check all the helix resources.
+        if (checkHelixResource) {
+            List<String> helixAliveResources = getAllLiveHelixResources(clusterName);
+            helixAliveResources.forEach(resource -> resourceCheckFunc.apply(resource, "Helix Resource"));
         }
     }
 
