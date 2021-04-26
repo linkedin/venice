@@ -77,9 +77,8 @@ public class VeniceParentHelixAdminTest {
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT)
   public void testAddVersion() {
-    try (VeniceControllerWrapper parentControllerWrapper =
-        ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
-            new VeniceControllerWrapper[]{venice.getMasterVeniceController()},false)) {
+    try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
+        new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false)) {
       String parentControllerUrl = parentControllerWrapper.getControllerUrl();
       String childControllerUrl = venice.getMasterVeniceController().getControllerUrl();
       // Adding store
@@ -89,7 +88,7 @@ public class VeniceParentHelixAdminTest {
       String proxyUser = "test_user";
       Schema valueSchema = generateSchema(false);
       try (ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentControllerUrl);
-      ControllerClient childControllerClient = new ControllerClient(venice.getClusterName(), childControllerUrl)) {
+          ControllerClient childControllerClient = new ControllerClient(venice.getClusterName(), childControllerUrl)) {
         parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
 
         // Configure the store to hybrid
@@ -97,7 +96,8 @@ public class VeniceParentHelixAdminTest {
             new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000);
         ControllerResponse parentControllerResponse = parentControllerClient.updateStore(storeName, params);
         Assert.assertFalse(parentControllerResponse.isError());
-        HybridStoreConfig hybridStoreConfig = parentControllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+        HybridStoreConfig hybridStoreConfig =
+            parentControllerClient.getStore(storeName).getStore().getHybridStoreConfig();
         Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
         Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
         // Check the store config in Child Colo
@@ -110,8 +110,8 @@ public class VeniceParentHelixAdminTest {
 
         // Test add version without rewind time override
         parentControllerResponse = parentControllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
-            Version.numberBasedDummyPushId(1), false, true, false, Optional.empty(),
-            Optional.empty(), Optional.empty(), false, -1);
+            Version.numberBasedDummyPushId(1), false, true, false, Optional.empty(), Optional.empty(), Optional.empty(),
+            false, -1);
         Assert.assertFalse(parentControllerResponse.isError());
         // Check version-level rewind time config
         Optional<Version> versionFromParent = parentControllerClient.getStore(storeName).getStore().getVersion(1);
@@ -127,8 +127,8 @@ public class VeniceParentHelixAdminTest {
         Assert.assertFalse(parentControllerResponse.isError(), parentControllerResponse.getError());
         // Test add version with rewind time override
         parentControllerResponse = parentControllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
-            Version.numberBasedDummyPushId(2), false, true, false, Optional.empty(),
-            Optional.empty(), Optional.empty(), false, 1000);
+            Version.numberBasedDummyPushId(2), false, true, false, Optional.empty(), Optional.empty(), Optional.empty(),
+            false, 1000);
         Assert.assertFalse(parentControllerResponse.isError(), parentControllerResponse.getError());
         // Check version-level rewind time config
         versionFromParent = parentControllerClient.getStore(storeName).getStore().getVersion(2);
@@ -140,6 +140,38 @@ public class VeniceParentHelixAdminTest {
         });
       }
     }
+  }
+
+  @Test
+  public void testResourceCleanupCheckForStoreRecreation() {
+    Properties properties = new Properties();
+    properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+    properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
+    VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(venice.getClusterName(),
+        zkServerWrapper.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
+        new VeniceProperties(properties), false);
+    ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+
+    String storeName = TestUtils.getUniqueString("testStore");
+    assertFalse(parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
+        "Failed to create test store");
+    // Trying to create the same store will fail
+    assertTrue(parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"").isError(),
+        "Trying to create an existing store should fail");
+    // Empty push without checking its push status
+    VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
+    assertFalse(response.isError(), "Failed to perform empty push on test store");
+    // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
+    // the TerminalStateTopicCheckerForParentController.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+        () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
+    assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
+
+    // re-create the same store right away will fail.
+    ControllerResponse controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
+    assertTrue(controllerResponse.isError(), "Trying to re-create the store with lingering resource should fail");
+    parentControllerClient.close();
+    parentController.close();
   }
 
 

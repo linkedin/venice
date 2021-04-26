@@ -4,6 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AclResponse;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import java.util.Optional;
 import spark.Request;
@@ -110,6 +111,25 @@ public class CreateStore extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route checkResourceCleanupForStoreCreation(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse controllerResponse = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        AdminSparkServer.validateParams(request, GET_ACL.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        controllerResponse.setCluster(cluster);
+        controllerResponse.setName(storeName);
+        admin.checkResourceCleanupBeforeStoreCreation(cluster, storeName);
+      } catch (Throwable e) {
+        controllerResponse.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
     };
   }
 

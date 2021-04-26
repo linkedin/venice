@@ -601,4 +601,10 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     void configureNativeReplication(String cluster, VeniceUserStoreType storeType, Optional<String> storeName,
         boolean enableNativeReplicationForCluster, Optional<String> newSourceFabric, Optional<String> fabricsFilter);
+
+    /**
+     * Check whether there are any resource left for the store creation in cluster: {@param clusterName}
+     * If there is any, this function should throw Exception.
+     */
+    void checkResourceCleanupBeforeStoreCreation(String clusterName, String storeName);
 }

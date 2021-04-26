@@ -48,6 +48,7 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -537,6 +538,12 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
+      /**
+       * Check whether there are still resources left for the requested store in case the store just gets deleted.
+       * This is used to avoid the potential race conditions between the previously deleted store and the new created
+       * store with the same store name.
+       */
+      checkResourceCleanupBeforeStoreCreation(clusterName, storeName);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
       //Provisioning ACL needs to be the first step in store creation process.
@@ -2700,6 +2707,30 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, null, message);
     } finally {
       releaseAdminMessageLock(clusterName);
+    }
+  }
+
+  /**
+   * This function will check whether there are still resources left for the requested store in the requested
+   * cluster.
+   * This function will check both parent colo and all prod colos.
+   */
+  @Override
+  public void checkResourceCleanupBeforeStoreCreation(String clusterName, String storeName) {
+    try {
+      // Check local parent colo first
+      veniceHelixAdmin.checkResourceCleanupBeforeStoreCreation(clusterName, storeName, false);
+      // Check all the prod colos to see whether there are still resources left from the previous store.
+      Map<String, ControllerClient> controllerClientMap = veniceHelixAdmin.getControllerClientMap(clusterName);
+      controllerClientMap.forEach((coloName, cc) -> {
+        ControllerResponse controllerResponse = cc.checkResourceCleanupForStoreCreation(storeName);
+        if (controllerResponse.isError()) {
+          throw new VeniceException(controllerResponse.getError() + " in colo: " + coloName);
+        }
+      });
+    } catch (VeniceException e) {
+      throw new VeniceException("Encountered the following error during re-creation check, please try to recreate"
+          + " your store later: " + e.getMessage());
     }
   }
 
