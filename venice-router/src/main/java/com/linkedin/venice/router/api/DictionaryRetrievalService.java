@@ -13,8 +13,9 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.VeniceRouterConfig;
-import com.linkedin.venice.router.httpclient.HttpClientUtils;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -38,7 +39,6 @@ import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.log4j.Logger;
 
 import static org.apache.http.HttpStatus.*;
@@ -59,13 +59,13 @@ import static org.apache.http.HttpStatus.*;
  */
 public class DictionaryRetrievalService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(DictionaryRetrievalService.class);
-  private static final int DEFAULT_DICTIONARY_DOWNLOAD_INTERNAL_IN_MS = 100;
+  private static final int DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS = 100;
   private final OnlineInstanceFinder onlineInstanceFinder;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final ReadOnlyStoreRepository metadataRepository;
   private final Thread dictionaryRetrieverThread;
   private final ScheduledExecutorService executor;
-  private final CloseableHttpAsyncClient httpClient;
+  private final StorageNodeClient storageNodeClient;
 
   // Shared queue between producer and consumer where topics whose dictionaries have to be downloaded are put in.
   private BlockingQueue<String> dictionaryDownloadCandidates = new LinkedBlockingQueue<>();
@@ -129,13 +129,12 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
    * @param sslFactory if provided, the request will attempt to use ssl when fetching dictionary from the storage nodes
    */
   public DictionaryRetrievalService(OnlineInstanceFinder onlineInstanceFinder, VeniceRouterConfig routerConfig,
-      Optional<SSLEngineComponentFactory> sslFactory, ReadOnlyStoreRepository metadataRepository){
+      Optional<SSLEngineComponentFactory> sslFactory, ReadOnlyStoreRepository metadataRepository,
+      StorageNodeClient storageNodeClient){
     this.onlineInstanceFinder = onlineInstanceFinder;
     this.sslFactory = sslFactory;
     this.metadataRepository = metadataRepository;
-
-    int maxConnectionsPerRoute = 2;
-    int maxConnections = 100;
+    this.storageNodeClient = storageNodeClient;
 
     // How long of a timeout we allow for a node to respond to a dictionary request
     dictionaryRetrievalTimeMs = routerConfig.getDictionaryRetrievalTimeMs();
@@ -143,18 +142,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     // How long of a timeout we allow for a node to respond to a dictionary request
     int numThreads = routerConfig.getRouterDictionaryProcessingThreads();
 
-    /**
-     * Cached dns resolver is empty because we would like to the unhealthy node to be reported correctly
-     */
-    httpClient = HttpClientUtils.getMinimalHttpClient(1,
-        maxConnectionsPerRoute,
-        maxConnections,
-        dictionaryRetrievalTimeMs,
-        dictionaryRetrievalTimeMs,
-        sslFactory,
-        Optional.empty(),
-        Optional.empty()
-    );
 
     // This thread is the consumer and it waits for an item to be put in the "dictionaryDownloadCandidates" queue.
     Runnable runnable = () -> {
@@ -203,7 +190,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     logger.info("Downloading dictionary for resource: " + kafkaTopic + " from: " + instanceUrl);
 
     final HttpGet get = new HttpGet(instanceUrl + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + store + "/" + version);
-    Future<HttpResponse> responseFuture = httpClient.execute(get, null);
+    Future<HttpResponse> responseFuture = storageNodeClient.getHttpClientForHost(instance.getNodeId()).execute(get, null);
 
     return CompletableFuture.supplyAsync(() -> {
       VeniceException exception = null;
@@ -326,10 +313,17 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
           } else {
             logger.warn("Exception encountered when asynchronously downloading dictionary for resource: " + kafkaTopic +
                 " : " + exception.getMessage());
-            downloadingDictionaryFutures.remove(kafkaTopic);
+
+            // Wait for future to be added before removing it
+            while (downloadingDictionaryFutures.remove(kafkaTopic) != null) {
+              if (!Utils.sleep(DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS)) {
+                logger.warn("Got InterruptedException. Will not retry dictionary download.");
+                return null;
+              }
+            }
 
             executor.schedule(() -> dictionaryDownloadCandidates.add(kafkaTopic),
-                DEFAULT_DICTIONARY_DOWNLOAD_INTERNAL_IN_MS, TimeUnit.MILLISECONDS);
+                DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS, TimeUnit.MILLISECONDS);
           }
         } else {
           logger.info("Dictionary downloaded asynchronously for resource: " + kafkaTopic);
@@ -365,7 +359,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() {
-    httpClient.start();
     metadataRepository.registerStoreDataChangedListener(storeChangeListener);
     // Dictionary warmup
     boolean success = getAllDictionaries();
@@ -382,6 +375,5 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     dictionaryRetrieverThread.interrupt();
     executor.shutdownNow();
     downloadingDictionaryFutures.forEach((topic, future) -> future.completeExceptionally(new InterruptedException("Dictionary download thread stopped")));
-    httpClient.close();
   }
 }
