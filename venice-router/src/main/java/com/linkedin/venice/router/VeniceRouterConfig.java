@@ -73,7 +73,6 @@ public class VeniceRouterConfig {
   private int socketTimeout;
   private int connectionTimeout;
   private boolean statefulRouterHealthCheckEnabled;
-  private boolean routerConnManagerPendingCounterEnabled;
   private int routerUnhealthyPendingConnThresholdPerRoute;
   private int routerPendingConnResumeThresholdPerRoute;
   private boolean perNodeClientAllocationEnabled;
@@ -194,8 +193,6 @@ public class VeniceRouterConfig {
     connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 5000); // 5s
 
     statefulRouterHealthCheckEnabled = props.getBoolean(ROUTER_STATEFUL_HEALTHCHECK_ENABLED, true);
-    routerConnManagerPendingCounterEnabled = props.getBoolean(ROUTER_CONN_MANAGER_PENDING_COUNTER_ENABLED, false);
-
     routerUnhealthyPendingConnThresholdPerRoute = props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 500);
     routerPendingConnResumeThresholdPerRoute = props.getInt(ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE, 15);
 
@@ -459,10 +456,6 @@ public class VeniceRouterConfig {
 
   public boolean isStatefulRouterHealthCheckEnabled() {
     return statefulRouterHealthCheckEnabled;
-  }
-
-  public boolean isRouterConnManagerPendingCounterEnabled() {
-    return routerConnManagerPendingCounterEnabled;
   }
 
   public int getRouterUnhealthyPendingConnThresholdPerRoute() {

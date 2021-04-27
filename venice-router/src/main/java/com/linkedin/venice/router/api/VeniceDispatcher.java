@@ -61,7 +61,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    */
   private final VeniceConcurrentHashMap<Long, TimedCompletableFuture> responseFutureMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, ReentrantLock> storageNodeLockMap = new VeniceConcurrentHashMap<>();
-
   private final AtomicLong uniqueRequestId = new AtomicLong(0);
 
   private static final Set<Integer> PASS_THROUGH_ERROR_CODES = Utils.setOf(TOO_MANY_REQUESTS.code());
@@ -206,6 +205,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     lock.lock();
     try {
       long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(storageNode.getNodeId());
+
       if (isStateFullHealthCheckEnabled && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
         isRequestThrottled = true;
         // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which increases the unhealthy request metric.

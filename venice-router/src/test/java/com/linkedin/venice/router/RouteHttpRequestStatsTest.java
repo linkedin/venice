@@ -22,7 +22,7 @@ public class RouteHttpRequestStatsTest {
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
 
-    stats = new RouteHttpRequestStats(metrics, mock(StorageNodeClient.class), false);
+    stats = new RouteHttpRequestStats(metrics, mock(StorageNodeClient.class));
   }
 
   @Test

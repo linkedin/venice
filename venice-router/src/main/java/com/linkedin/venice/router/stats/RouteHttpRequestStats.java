@@ -23,13 +23,11 @@ import java.util.concurrent.atomic.AtomicLong;
 public class RouteHttpRequestStats {
   private final MetricsRepository metricsRepository;
   private final StorageNodeClient storageNodeClient;
-  private final boolean isConnManagerPendingConnEnabled;
   private final Map<String, InternalHostStats> routeStatsMap = new VeniceConcurrentHashMap<>();
 
-  public RouteHttpRequestStats(MetricsRepository metricsRepository, StorageNodeClient storageNodeClient, boolean isConnManagerPendingConnEnabled) {
+  public RouteHttpRequestStats(MetricsRepository metricsRepository, StorageNodeClient storageNodeClient) {
       this.metricsRepository = metricsRepository;
       this.storageNodeClient = storageNodeClient;
-      this.isConnManagerPendingConnEnabled = isConnManagerPendingConnEnabled;
     }
 
   public void recordPendingRequest(String hostName) {
@@ -48,9 +46,6 @@ public class RouteHttpRequestStats {
   }
 
   public long getPendingRequestCount(String hostName) {
-    if (isConnManagerPendingConnEnabled) {
-      return storageNodeClient.getPoolStatsPendingConnection(hostName);
-    }
     InternalHostStats stat = routeStatsMap.get(hostName);
     if (stat == null) {
       return 0;

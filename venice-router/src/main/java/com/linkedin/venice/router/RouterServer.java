@@ -390,8 +390,7 @@ public class RouterServer extends AbstractVeniceService {
         throw new VeniceException("Router client type " + config.getStorageNodeClientType().toString() + " is not supported!");
     }
 
-    RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository,storageNodeClient,
-        config.isRouterConnManagerPendingCounterEnabled());
+    RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository,storageNodeClient);
 
     VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, storageNodeClient, config,
         routeHttpRequestStats, aggHostHealthStats);
