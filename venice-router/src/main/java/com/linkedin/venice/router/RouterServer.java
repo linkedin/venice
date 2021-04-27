@@ -420,7 +420,8 @@ public class RouterServer extends AbstractVeniceService {
         new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository,
             partitionStatusOnlineInstanceFinder, config.isHelixOfflinePushEnabled());
 
-    dictionaryRetrievalService = new DictionaryRetrievalService(onlineInstanceFinder, config, sslFactoryForRequests, metadataRepository);
+    dictionaryRetrievalService = new DictionaryRetrievalService(onlineInstanceFinder, config, sslFactoryForRequests,
+        metadataRepository, storageNodeClient);
 
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, storeConfigRepository,
