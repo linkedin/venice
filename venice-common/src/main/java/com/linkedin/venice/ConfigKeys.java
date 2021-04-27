@@ -1198,8 +1198,6 @@ public class ConfigKeys {
 
   public static final String ROUTER_STATEFUL_HEALTHCHECK_ENABLED = "router.stateful.healthcheck.enabled";
 
-  public static final String ROUTER_CONN_MANAGER_PENDING_COUNTER_ENABLED = "router.conn.manager.pending.counter.enabled";
-
   /**
   * Maximum number of pending router request per storage node after which router concludes that host to be unhealthy
   * and stops sending further request to it..

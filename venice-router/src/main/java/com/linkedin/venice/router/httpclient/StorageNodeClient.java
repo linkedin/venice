@@ -43,10 +43,6 @@ public interface StorageNodeClient extends Closeable {
     return true;
   }
 
-  default long getPoolStatsPendingConnection(String insanceId) {
-    return 0;
-  }
-
   default CloseableHttpAsyncClient getHttpClientForHost(String host) {
     return null;
   }
