@@ -315,7 +315,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
                 " : " + exception.getMessage());
 
             // Wait for future to be added before removing it
-            while (downloadingDictionaryFutures.remove(kafkaTopic) != null) {
+            while (downloadingDictionaryFutures.remove(kafkaTopic) == null) {
               if (!Utils.sleep(DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS)) {
                 logger.warn("Got InterruptedException. Will not retry dictionary download.");
                 return null;
