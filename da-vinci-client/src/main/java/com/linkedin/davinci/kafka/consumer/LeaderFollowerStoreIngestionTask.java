@@ -376,6 +376,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            */
           long lastTimestamp = getLastConsumedMessageTimestamp(kafkaVersionTopic, partition);
           if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
+            logger.info(consumerTaskId + " start promoting to leader for partition " + partition
+                + " unsubscribing from current topic: " + kafkaVersionTopic);
             /**
              * There isn't any new message from the old leader for at least {@link newLeaderInactiveTime} minutes,
              * this replica can finally be promoted to leader.
@@ -383,6 +385,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // unsubscribe from previous topic/partition
             consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
 
+            logger.info(consumerTaskId + " start promoting to leader for partition " + partition
+                + ", unsubscribed from current topic: " + kafkaVersionTopic);
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
             if (null == offsetRecord.getLeaderTopic()) {
               /**
