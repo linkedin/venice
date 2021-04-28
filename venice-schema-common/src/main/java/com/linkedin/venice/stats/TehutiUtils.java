@@ -54,6 +54,15 @@ public class TehutiUtils {
   /**
    * Generate a histogram stat that emits P50, P95, and P99 values.
    * @param name
+   * @return 3 sub stats that emit p50, P95, and P99 values.
+   */
+  public static Percentiles getPercentileStat(String name) {
+    return getPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE, DEFAULT_HISTOGRAM_PERCENTILES);
+  }
+
+  /**
+   * Generate a histogram stat that emits P50, P95, and P99 values.
+   * @param name
    * @param sizeInBytes Histogram's memory consumption
    * @param max Histogram's max value
    * @return 3 sub stats that emit p50, P95, and P99 values.

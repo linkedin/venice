@@ -137,11 +137,11 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
     String keySizeSensorName = "record_key_size_in_bytes";
     keySizeSensor = registerSensor(keySizeSensorName, new Avg(), new Min(), new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + keySizeSensorName, 40000, 1000000));
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + keySizeSensorName));
 
     String valueSizeSensorName = "record_value_size_in_bytes";
     valueSizeSensor = registerSensor(valueSizeSensorName, new Avg(), new Min(), new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName, 40000, 1000000));
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
 
     unexpectedMessageSensor = registerSensor("unexpected_message", new Rate());
     inconsistentStoreMetadataSensor = registerSensor("inconsistent_store_metadata", new Count());
@@ -159,8 +159,12 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     processConsumerActionLatencySensor = registerSensor("process_consumer_actions_latency", new Avg(), new Max());
     checkLongRunningTasksLatencySensor = registerSensor("check_long_running_task_latency", new Avg(), new Max());
     quotaEnforcementLatencySensor = registerSensor("hybrid_quota_enforcement_latency", new Avg(), new Max());
+
     consumerToQueueLatencySensor = registerSensor("consumer_to_queue_latency", new Avg(), new Max());
-    storageEnginePutLatencySensor = registerSensor("storage_engine_put_latency", new Avg(), new Max());
+
+    String storageEnginePutLatencySensorName = "storage_engine_put_latency";
+    storageEnginePutLatencySensor = registerSensor(storageEnginePutLatencySensorName, new Avg(), new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEnginePutLatencySensorName));
     produceToDrainerQueueCallCountSensor = registerSensor("produce_to_drainer_queue_call_count", new Rate());
     produceToDrainerQueueRecordNumSensor = registerSensor("produce_to_drainer_queue_record_num", new Avg(), new Max());
 
