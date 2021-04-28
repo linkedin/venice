@@ -52,6 +52,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
@@ -128,9 +129,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final GenericRecordChunkingAdapter chunkingAdapter;
 
   private final VeniceWriterFactory veniceWriterFactory;
-  // Non-final
-  /** Should never be accessed directly. Always use {@link #getVeniceWriter()} instead, so that lazy init can occur. */
-  private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
+
+  /**
+   * N.B.:
+   *    With L/F+native replication and many Leader partitions getting assigned to a single SN this {@link VeniceWriter}
+   *    may be called from multiple thread simultaneously, during start of batch push. Therefore, we wrap it in
+   *    {@link Lazy} to initialize it in a thread safe way and to ensure that only one instance is created for the
+   *    entire ingestion task.
+   */
+  private final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
 
   /**
    * A set of boolean that check if partitions owned by this task have released the latch.
@@ -236,57 +243,37 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.chunkingAdapter = chunkingAdapter;
 
     this.veniceWriterFactory = writerFactory;
+    this.veniceWriter = Lazy.of(() -> {
+      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+      if (storeVersionState.isPresent()) {
+        return veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner,
+            Optional.of(storeVersionPartitionCount * amplificationFactor));
+      } else {
+        /**
+         * In general, a partition in version topic follows this pattern:
+         * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
+         * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
+         * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
+         *
+         * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
+         * different in some test cases which reuse the same VeniceWriter.
+         */
+        return veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner, Optional.of(storeVersionPartitionCount));
+      }
+    });
   }
 
   @Override
   protected void closeProducers() {
-    if (veniceWriter != null) {
-      veniceWriter.close();
-    }
-  }
-
-  /**
-   * N.B.:
-   *    With L/F+native replication and many Leader partitions getting assigned to a single SN this function may be called
-   *    from multiple thread simultaneously to initialize the veniceWriter during start of batch push. So it needs to be thread safe
-   *    and provide initialization guarantee that only one instance of veniceWriter is created for the entire ingestion task.
-   *
-   * @return the instance of {@link VeniceWriter}, lazily initialized if necessary.
-   */
-  private VeniceWriter getVeniceWriter() {
-    if (null == veniceWriter) {
-      synchronized (this) {
-        if (null == veniceWriter) {
-          Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-          if (storeVersionState.isPresent()) {
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner,
-                Optional.of(storeVersionPartitionCount * amplificationFactor));
-          } else {
-            /**
-             * In general, a partition in version topic follows this pattern:
-             * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
-             * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
-             * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
-             *
-             * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
-             * different in some test cases which reuse the same VeniceWriter.
-             */
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner, Optional.of(storeVersionPartitionCount));
-          }
-        }
-      }
-    }
-    return veniceWriter;
+    veniceWriter.ifPresent(VeniceWriter::close);
   }
 
   /**
    * Close a DIV segment for a version topic partition.
    */
   private void endSegment(int partition) {
-    // If the VeniceWriter doesn't exist, no need to explicitly create a VeniceWriter first and end a segment that doesn't exist
-    if (null != veniceWriter) {
-      veniceWriter.endSegment(partition, true);
-    }
+    // If the VeniceWriter doesn't exist, then no need to end any segment, and this function becomes a no-op
+    veniceWriter.ifPresent(vw -> vw.endSegment(partition, true));
   }
 
   @Override
@@ -296,8 +283,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     super.processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
 
     // Update chunking flag in VeniceWriter
-    if (startOfPush.chunked && veniceWriter != null) {
-      veniceWriter.updateChunckingEnabled(startOfPush.chunked);
+    if (startOfPush.chunked) {
+      veniceWriter.ifPresent(vw -> vw.updateChunckingEnabled(startOfPush.chunked));
     }
   }
 
@@ -1260,7 +1247,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         switch (controlMessageType) {
           case START_OF_PUSH:
             /**
-             * N.B.: This is expected to be the first time time we call {@link #getVeniceWriter()}. During this time
+             * N.B.: This is expected to be the first time time we call {@link veniceWriter#get()}. During this time
              *       since startOfPush has not been processed yet, {@link StoreVersionState} is not created yet (unless
              *       this is a server restart scenario). So the {@link com.linkedin.venice.writer.VeniceWriter#isChunkingEnabled} field
              *       will not be set correctly at this point. This is fine as chunking is mostly not applicable for control messages.
@@ -1269,7 +1256,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              *       which will be called when this message gets processed in drainer thread after successfully producing
              *       to kafka.
              *
-             * Note update: the first time we call {@link #getVeniceWriter()} is different in various use cases:
+             * Note update: the first time we call {@link veniceWriter#get()} is different in various use cases:
              * 1. For hybrid store with L/F enabled, the first time a VeniceWriter is created is after leader switches to RT and
              *    consumes the first message; potential message type: SOS, EOS, data message.
              * 2. For store version generated by stream reprocessing push type, the first time is after leader switches to
@@ -1283,7 +1270,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * after successfully producing to kafka.
              */
             produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(),
+                (callback, sourceTopicOffset) -> veniceWriter.get().put(consumerRecord.key(), consumerRecord.value(),
                     callback, consumerRecord.partition(), sourceTopicOffset));
             break;
           case START_OF_SEGMENT:
@@ -1303,7 +1290,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             if (!Version.isRealTimeTopic(consumerRecord.topic())) {
               produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                  (callback, sourceTopicOffset) -> getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(),
+                  (callback, sourceTopicOffset) -> veniceWriter.get().put(consumerRecord.key(), consumerRecord.value(),
                       callback, consumerRecord.partition(), sourceTopicOffset));
             } else {
               /**
@@ -1341,7 +1328,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * allow that.
              */
             produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> getVeniceWriter().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
+                (callback, sourceTopicOffset) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
                     new HashMap<>(), callback, sourceTopicOffset));
             break;
           case TOPIC_SWITCH:
@@ -1352,7 +1339,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             producedRecord = ProducedRecord.newControlMessageRecord(-1, kafkaKey.getKey(), controlMessage);
             produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> getVeniceWriter().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
+                (callback, sourceTopicOffset) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
                     new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET));
             break;
         }
@@ -1405,7 +1392,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                    */
 
                   if (!partitionConsumptionState.isEndOfPushReceived()) {
-                    return getVeniceWriter().put(kafkaKey, kafkaValue, callback, consumerRecord.partition(), sourceTopicOffset);
+                    return veniceWriter.get().put(kafkaKey, kafkaValue, callback, consumerRecord.partition(), sourceTopicOffset);
                   }
 
                   /**
@@ -1414,7 +1401,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                    * For details about how VenicePartitioner find the correct subPartition,
                    * please check {@link com.linkedin.venice.partitioner.UserPartitionAwarePartitioner}
                    */
-                  return getVeniceWriter().put(keyBytes, ByteUtils.extractByteArray(putValue), put.schemaId, callback,
+                  return veniceWriter.get().put(keyBytes, ByteUtils.extractByteArray(putValue), put.schemaId, callback,
                       sourceTopicOffset);
                 });
             break;
@@ -1491,7 +1478,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes);
               producedRecord = ProducedRecord.newDeleteRecord(consumerRecord.offset(), keyBytes);
               produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                  (callback, sourceTopicOffset) -> getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset));
+                  (callback, sourceTopicOffset) -> veniceWriter.get().delete(keyBytes, callback, sourceTopicOffset));
             } else {
               int valueLen = updatedValueBytes.length;
               partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
@@ -1516,7 +1503,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               }
               producedRecord = ProducedRecord.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
               produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                  (callback, sourceTopicOffset) -> getVeniceWriter().put(keyBytes, updatedValueBytes, valueSchemaId,
+                  (callback, sourceTopicOffset) -> veniceWriter.get().put(keyBytes, updatedValueBytes, valueSchemaId,
                       callback, sourceTopicOffset));
             }
             break;
@@ -1530,7 +1517,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
             producedRecord = ProducedRecord.newDeleteRecord(consumerRecord.offset(), keyBytes);
             produceToLocalKafka(consumerRecord, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset));
+                (callback, sourceTopicOffset) -> veniceWriter.get().delete(keyBytes, callback, sourceTopicOffset));
             break;
 
           default:
