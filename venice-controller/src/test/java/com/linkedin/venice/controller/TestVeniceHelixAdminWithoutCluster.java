@@ -119,7 +119,11 @@ public class TestVeniceHelixAdminWithoutCluster {
     );
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Topic.*still exists for store.*")
+  /**
+   * Right now, version topic check is ignored since today, Venice is still keeping a couple of latest deprecated
+   * version topics to avoid KMM crash.
+   */
+  @Test
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeVersionTopicStillExists() {
     String clusterName = "cluster1";
     String storeName = TestUtils.getUniqueString("test_store_recreation");

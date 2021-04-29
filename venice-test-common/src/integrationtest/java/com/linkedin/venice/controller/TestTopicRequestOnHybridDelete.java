@@ -112,6 +112,12 @@ public class TestTopicRequestOnHybridDelete {
       }
 
       Assert.assertTrue(finalControllerClient.getStore(storeName).isError());
+      /**
+       * Wait for resource cleanup before the store re-creation.
+       */
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertFalse(finalControllerClient.checkResourceCleanupForStoreCreation(storeName).isError());
+      });
 
       //recreate store
       venice.getNewStore(storeName);

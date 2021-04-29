@@ -537,7 +537,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isSystemStore, Optional<String> accessPermissions) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
+      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, false);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
       //Provisioning ACL needs to be the first step in store creation process.

@@ -233,7 +233,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     verify(internalAdmin)
-        .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false);
+        .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(1))
@@ -311,7 +311,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       parentAdmin.addStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
 
       verify(internalAdmin)
-          .checkPreConditionForAddStore(cluster, storeName, keySchemaStr, valueSchemaStr, false);
+          .checkPreConditionForAddStore(cluster, storeName, keySchemaStr, valueSchemaStr, false, false);
       verify(veniceWriter)
           .put(any(), any(), anyInt());
       verify(zkClient, times(1))
@@ -344,7 +344,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     doThrow(new VeniceStoreAlreadyExistsException(storeName, clusterName))
-        .when(internalAdmin).checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false);
+        .when(internalAdmin).checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null);
     parentAdmin.start(clusterName);

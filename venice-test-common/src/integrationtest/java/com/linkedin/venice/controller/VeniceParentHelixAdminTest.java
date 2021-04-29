@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -25,6 +26,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -34,13 +36,17 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.*;
 
 public class VeniceParentHelixAdminTest {
+  private static Logger LOGGER = Logger.getLogger(VeniceParentHelixAdminTest.class);
   private static final long DEFAULT_TEST_TIMEOUT = 30000;
   VeniceClusterWrapper venice;
   ZkServerWrapper zkServerWrapper;
 
   @BeforeClass
   public void setup() {
-    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 100000, false, false);
+    Properties properties = new Properties();
+    // Disable topic deletion
+    properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 100000, false, false, properties);
     zkServerWrapper = ServiceFactory.getZkServer();
   }
 
@@ -142,7 +148,7 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
-  @Test
+  @Test (timeOut = DEFAULT_TEST_TIMEOUT * 2)
   public void testResourceCleanupCheckForStoreRecreation() {
     Properties properties = new Properties();
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
@@ -166,10 +172,25 @@ public class VeniceParentHelixAdminTest {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
         () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
     assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
-
-    // re-create the same store right away will fail.
     ControllerResponse controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
-    assertTrue(controllerResponse.isError(), "Trying to re-create the store with lingering resource should fail");
+    assertFalse(controllerResponse.isError(), "Trying to re-create the store with lingering version topics should succeed");
+
+    // Enabling meta system store by triggering an empty push to the corresponding meta system store
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    VersionCreationResponse versionCreationResponseForMetaSystemStore =
+        parentControllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push_1", 10000);
+    assertFalse(versionCreationResponseForMetaSystemStore.isError(),
+        "New version creation for meta system store: " + metaSystemStoreName + " should success, but got error: "
+            + versionCreationResponseForMetaSystemStore.getError());
+    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForMetaSystemStore.getKafkaTopic(),
+        parentControllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
+    /**
+     * Delete the store and try re-creation.
+     */
+    assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
+    // re-create the same store right away will fail because of lingering system store resources
+    controllerResponse = parentControllerClient.createNewStore(storeName,"test", "\"string\"", "\"string\"");
+    assertTrue(controllerResponse.isError(), "Trying to re-create the store with lingering system store resource should fail");
     parentControllerClient.close();
     parentController.close();
   }
