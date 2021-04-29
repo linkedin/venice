@@ -292,6 +292,9 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     updateStoreThrottler(() -> {
       logger.info("Store: " + storeName + " has been deleted. Remove the throttler for this store.");
       StoreReadThrottler throttler = storesThrottlers.get().remove(VeniceSystemStoreUtils.getZkStoreName(storeName));
+      if (throttler == null) {
+        return;
+      }
       stats.recordQuota(storeName, 0);
       routingDataRepository.unSubscribeRoutingDataChange(
           Version.composeKafkaTopic(storeName, throttler.getCurrentVersion()), this);

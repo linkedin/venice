@@ -594,7 +594,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         logger.info("Start creating store: " + storeName);
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-            checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
+            checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore, true);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             Store newStore = new ZKStore(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
                 config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy(),
@@ -1114,8 +1114,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         logger.info("Store " + storeName + " now belongs to cluster " + newCluster + " instead of " + oldCluster);
     }
 
+    /**
+     * Check whether Controller should block the incoming store creation.
+     * Inside this function, there is a logic to check whether there are any lingering resources since the requested
+     * store could be just deleted recently.
+     * This check should be skipped in Child Controller, but only enabled in Parent Controller because of the following
+     * reasons:
+     * 1. Parent Controller has the strict order that the system store must be created before the host Venice store.
+     * 2. Child Controller doesn't have this strict order since the admin messages of Child Controller could be executed
+     * in parallel since they are different store names. So when such kind of race condition happens, it will cause a
+     * dead loop:
+     *   a. The version creation of system store will create a RT topic in Parent Cluster.
+     *   b. The RT topic will be mirrored by KMM to the Child Cluster.
+     *   c. The version creation admin message of system store will be blocked in Child Controller since the host Venice
+     *   store doesn't exist.
+     *   d. The store creation admin message of the host Venice store will be blocked in Child Controller because of
+     *   lingering resource check (RT topic of its system store already exists, which is created by KMM).
+     *
+     * In the future, once Venice gets rid of KMM, the topic won't be automatically created by KMM, and this race condition
+     * will be addressed.
+     * So far, Child Controller will skip lingering resource check when handling store creation admin message.
+     */
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema,
-        String valueSchema, boolean allowSystemStore) {
+        String valueSchema, boolean allowSystemStore, boolean skipLingeringResourceCheck) {
         if (!Store.isValidStoreName(storeName)) {
             throw new VeniceException("Invalid store name " + storeName + ". Only letters, numbers, underscore or dash");
         }
@@ -1133,7 +1154,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * 1. The store is migrating, and the cluster name is equal to the migrating destination cluster.
          * 2. The legacy store.
          */
-        boolean skipLingeringResourceCheck = false;
         ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(clusterName).getStoreConfigAccessor();
         if (storeConfigAccessor.containsConfig(storeName)) {
             StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
@@ -4923,30 +4943,47 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException("Store: " + storeName + " still exists in cluster: " + clusterName);
         }
 
-        Set<String> relevantStores = new HashSet<>();
-        relevantStores.add(storeName);
-        Arrays.stream(VeniceSystemStoreType.values()).forEach(s -> relevantStores.add(s.getSystemStoreName(storeName)));
+        Set<String> allRelevantStores = new HashSet<>();
+        Arrays.stream(VeniceSystemStoreType.values()).forEach(s -> allRelevantStores.add(s.getSystemStoreName(storeName)));
+        allRelevantStores.add(storeName);
 
-        BiFunction<String, String, Void> resourceCheckFunc = (resourceName, resourceType) -> {
-            String storeNameForTopic = null;
-            if (Version.isRealTimeTopic(resourceName)) {
-                storeNameForTopic = Version.parseStoreFromRealTimeTopic(resourceName);
-            } else if (Version.isVersionTopicOrStreamReprocessingTopic(resourceName)) {
-                storeNameForTopic = Version.parseStoreFromKafkaTopicName(resourceName);
-            }
-            if (storeNameForTopic != null && relevantStores.contains(storeNameForTopic)) {
-                throw new VeniceException(resourceType + ": " + resourceName + " still exists for store: " + storeName +
-                    ", please make sure all the resources are removed before store re-creation");
-            }
-            return null;
-        };
         // Check all the topics belonging to this store.
         Set<String> topics = getTopicManager().listTopics();
-        topics.forEach(topic -> resourceCheckFunc.apply(topic, "Topic"));
+        /**
+         * So far, there is still a policy for Venice Store to keep the latest couple of topics to avoid KMM crash, so
+         * this function will skip the Version Topic check for now.
+         * Once Venice gets rid of KMM, we could consider to remove all the deprecated version topics.
+         * So for topic check, we will ensure the RT topic for the Venice store will be deleted, and all other system
+         * store topics.
+         */
+        topics.forEach(topic -> {
+            String storeNameForTopic = null;
+            if (Version.isRealTimeTopic(topic)) {
+                storeNameForTopic = Version.parseStoreFromRealTimeTopic(topic);
+            } else if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
+                storeNameForTopic = Version.parseStoreFromKafkaTopicName(topic);
+                if (storeNameForTopic.equals(storeName)) {
+                    /** Skip Version Topic Check */
+                    storeNameForTopic = null;
+                }
+            }
+            if (storeNameForTopic != null && allRelevantStores.contains(storeNameForTopic)) {
+                throw new VeniceException("Topic: " + ": " + topic + " still exists for store: " + storeName +
+                    ", please make sure all the resources are removed before store re-creation");
+            }
+        });
         // Check all the helix resources.
         if (checkHelixResource) {
             List<String> helixAliveResources = getAllLiveHelixResources(clusterName);
-            helixAliveResources.forEach(resource -> resourceCheckFunc.apply(resource, "Helix Resource"));
+            helixAliveResources.forEach(resource -> {
+                if (Version.isVersionTopic(resource)) {
+                    String storeNameForResource = Version.parseStoreFromKafkaTopicName(resource);
+                    if (allRelevantStores.contains(storeNameForResource)) {
+                        throw new VeniceException("Helix Resource: " + ": " + resource + " still exists for store: " + storeName +
+                            ", please make sure all the resources are removed before store re-creation");
+                    }
+                }
+            });
         }
     }
 
