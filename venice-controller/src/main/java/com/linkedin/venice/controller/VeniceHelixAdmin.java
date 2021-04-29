@@ -1128,6 +1128,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // TODO so we need a way to sync up the data. For example, while we loading all stores from ZK for a cluster,
         // TODO put them into global store configs.
         boolean isLagecyStore = false;
+        /**
+         * In the following situation, we will skip the lingering resource check for the new store request:
+         * 1. The store is migrating, and the cluster name is equal to the migrating destination cluster.
+         * 2. The legacy store.
+         */
+        boolean skipLingeringResourceCheck = false;
         ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(clusterName).getStoreConfigAccessor();
         if (storeConfigAccessor.containsConfig(storeName)) {
             StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
@@ -1139,9 +1145,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // It is ok to create the same store in destination cluster during store migration.
                 if (!clusterName.equals(storeConfig.getMigrationDestCluster())) {
                     throw new VeniceStoreAlreadyExistsException(storeName);
+                } else {
+                    skipLingeringResourceCheck = true;
                 }
             } else {
                 isLagecyStore = true;
+                skipLingeringResourceCheck = true;
             }
         }
 
@@ -1159,6 +1168,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (zkSharedMetadataStore != null) {
                 checkPreviouslyMaterializedMetadataTopics(storeName, zkSharedMetadataStore.getCurrentVersion());
             }
+        }
+
+        if (!skipLingeringResourceCheck) {
+            checkResourceCleanupBeforeStoreCreation(clusterName, storeName, !multiClusterConfigs.isParent());
         }
 
         // Check whether the schema is valid or not

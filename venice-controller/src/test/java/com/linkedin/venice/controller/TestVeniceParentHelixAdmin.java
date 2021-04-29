@@ -261,13 +261,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
   }
 
-  @DataProvider
-  private Object[][] testAddStoreForMultiClusterParamProvider() {
-    return new Object[][]{new Object[]{true}, new Object[]{false}};
-  }
-
-  @Test (dataProvider = "testAddStoreForMultiClusterParamProvider")
-  public void testAddStoreForMultiCluster(boolean whetherFailCheckResourceCleanupForStoreCreation) {
+  @Test
+  public void testAddStoreForMultiCluster() {
     String secondCluster = "testAddStoreForMultiCluster";
     VeniceControllerConfig configForSecondCluster = mockConfig(secondCluster);
     mockResources(configForSecondCluster, secondCluster);
@@ -278,11 +273,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, VeniceWriter> writerMap = new HashMap<>();
     for(String cluster : configMap.keySet()) {
       ControllerClient mockControllerClient = mock(ControllerClient.class);
-      ControllerResponse controllerResponse = new ControllerResponse();
-      if (whetherFailCheckResourceCleanupForStoreCreation) {
-        controllerResponse.setError("Dummy resource left in cluster: " + cluster);
-      }
-      doReturn(controllerResponse).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
+      doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
 
       parentAdmin.getAdminCommandExecutionTracker(cluster).get().getFabricToControllerClientsMap()
           .put("test-fabric", mockControllerClient);
@@ -317,19 +308,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         return future;
       });
 
-      if (whetherFailCheckResourceCleanupForStoreCreation) {
-        try {
-          parentAdmin.addStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
-          Assert.fail("A VeniceException should be thrown");
-        } catch (VeniceException e) {
-          Assert.assertTrue(e.getMessage().contains("Dummy resource left"));
-        } catch (Throwable t) {
-          Assert.fail("Only VeniceException should be thrown, but got" + t.getClass());
-        }
-        return;
-      } else {
-        parentAdmin.addStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
-      }
+      parentAdmin.addStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
 
       verify(internalAdmin)
           .checkPreConditionForAddStore(cluster, storeName, keySchemaStr, valueSchemaStr, false);
