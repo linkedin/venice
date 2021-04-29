@@ -27,6 +27,7 @@ public class KafkaInputUtils {
       SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(config.get(SSL_CONFIGURATOR_CLASS_CONFIG));
       try {
         sslProperties = configurator.setupSSLConfig(HadoopUtils.getProps(config), UserCredentialsFactory.getHadoopUserCredentials());
+        sslProperties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential", e);
       }

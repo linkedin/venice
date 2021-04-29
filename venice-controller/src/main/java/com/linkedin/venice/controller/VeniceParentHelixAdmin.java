@@ -538,12 +538,6 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
-      /**
-       * Check whether there are still resources left for the requested store in case the store just gets deleted.
-       * This is used to avoid the potential race conditions between the previously deleted store and the new created
-       * store with the same store name.
-       */
-      checkResourceCleanupBeforeStoreCreation(clusterName, storeName);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
       //Provisioning ACL needs to be the first step in store creation process.
