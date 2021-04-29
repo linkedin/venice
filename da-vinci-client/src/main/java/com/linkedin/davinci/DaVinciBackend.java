@@ -82,18 +82,20 @@ public class DaVinciBackend implements Closeable {
   private final StorageMetadataService storageMetadataService;
   private final PushStatusStoreWriter pushStatusStoreWriter;
   private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
-
   private final DaVinciIngestionBackend ingestionBackend;
 
-  public DaVinciBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader, Optional<Set<String>> managedClients,
+  public DaVinciBackend(
+      ClientConfig clientConfig,
+      VeniceConfigLoader configLoader,
+      Optional<Set<String>> managedClients,
       ICProvider icProvider) {
     VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
     this.configLoader = configLoader;
     metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
-                            .orElse(TehutiUtils.getMetricsRepository("da-vinci-client"));
+                            .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
 
-    VeniceMetadataRepositoryBuilder
-        veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
+    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
+        new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
     ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
     ReadOnlyStoreRepository readOnlyStoreRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
     if (!(readOnlyStoreRepository instanceof SubscriptionBasedReadOnlyStoreRepository)) {
@@ -151,7 +153,6 @@ public class DaVinciBackend implements Closeable {
         partitionStateSerializer);
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
-
 
     /**
      * In order to make bootstrap logic compatible with ingestion isolation, we first scan all local storage engines,
