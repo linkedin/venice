@@ -37,7 +37,6 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.meta.systemstore.schemas.StoreValueSchemas;
-import com.linkedin.venice.meta.systemstore.schemas.TargetVersionStates;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
@@ -345,7 +344,6 @@ public class SystemStoreTest {
     assertListenerCounts(testListener, creationCount.addAndGet(1), changeCount.get(), deletionCount.get(), "store creations");
 
     StoreMetadataKey storeAttributesKey = MetadataStoreUtils.getStoreAttributesKey(regularVeniceStoreName);
-    StoreMetadataKey storeTargetVersionStatesKey = MetadataStoreUtils.getTargetVersionStatesKey(regularVeniceStoreName);
     StoreMetadataKey storeCurrentStatesKey = MetadataStoreUtils.getCurrentStoreStatesKey(regularVeniceStoreName, clusterName);
     StoreMetadataKey storeCurrentVersionStatesKey = MetadataStoreUtils.getCurrentVersionStatesKey(regularVeniceStoreName, clusterName);
     StoreMetadataKey storeKeySchemasKey = MetadataStoreUtils.getStoreKeySchemasKey(regularVeniceStoreName);
@@ -367,9 +365,6 @@ public class SystemStoreTest {
       // Perform some checks to ensure the metadata store values are populated
       StoreAttributes storeAttributes  = (StoreAttributes) client.get(storeAttributesKey).get().metadataUnion;
       assertEquals(storeAttributes.sourceCluster.toString(), clusterName, "Unexpected sourceCluster");
-      TargetVersionStates targetVersionStates =
-          (TargetVersionStates) client.get(storeTargetVersionStatesKey).get().metadataUnion;
-      assertTrue(targetVersionStates.targetVersionStates.isEmpty(), "targetVersionStates should be empty");
       CurrentStoreStates currentStoreStates = (CurrentStoreStates) client.get(storeCurrentStatesKey).get().metadataUnion;
       assertEquals(currentStoreStates.states.name.toString(), regularVeniceStoreName, "Unexpected store name");
       CurrentVersionStates currentVersionStates =

@@ -635,7 +635,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             schemaRepo.initKeySchema(storeName, keySchema);
             schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
             // Write store schemas to metadata store.
-            if (newStore.isStoreMetadataSystemStoreEnabled()) {
+            if (newStore.isStoreMetadataSystemStoreEnabled() && !multiClusterConfigs.isParent()) {
                 Collection<SchemaEntry> keySchemas = new HashSet<>();
                 keySchemas.add(schemaRepo.getKeySchema(storeName));
                 metadataStoreWriter.writeStoreKeySchemas(clusterName, storeName, keySchemas);
@@ -1392,9 +1392,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 repository.updateStore(store);
                 logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
             }
-            if (store.isStoreMetadataSystemStoreEnabled()) {
+            if (store.isStoreMetadataSystemStoreEnabled() && !multiClusterConfigs.isParent()) {
                 metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
-                metadataStoreWriter.writeTargetVersionStates(clusterName, storeName, store.getVersions());
+                metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
+                metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
+                    store.getCurrentVersion());
             }
         }
         return version;
@@ -1575,15 +1577,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
                 store.setPersistenceType(PersistenceType.ROCKS_DB);
                 repository.updateStore(store);
-                if (store.isStoreMetadataSystemStoreEnabled()) {
-                    if (multiClusterConfigs.isParent()) {
-                        metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
-                        metadataStoreWriter.writeTargetVersionStates(clusterName, storeName, store.getVersions());
-                    } else {
-                        metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
-                        metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
-                            store.getCurrentVersion());
-                    }
+                if (store.isStoreMetadataSystemStoreEnabled() && !multiClusterConfigs.isParent()) {
+                    metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
+                    metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
+                    metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
+                        store.getCurrentVersion());
                 }
                 logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
 
@@ -2176,7 +2174,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (!deletedVersion.isPresent()) {
                 logger.warn("Can not find version: " + versionNumber + " in store: " + storeName + ".  It has probably already been deleted");
             }
-            if (store.isStoreMetadataSystemStoreEnabled()) {
+            if (store.isStoreMetadataSystemStoreEnabled() && !multiClusterConfigs.isParent()) {
                 metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
                 metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
                     store.getCurrentVersion());
@@ -3219,12 +3217,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             Store store = repository.getStore(storeName);
             Store updatedStore = operation.update(store);
             repository.updateStore(updatedStore);
-            if (updatedStore.isStoreMetadataSystemStoreEnabled()) {
-                if (multiClusterConfigs.isParent()) {
-                    metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
-                } else {
-                    metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
-                }
+            if (updatedStore.isStoreMetadataSystemStoreEnabled() && !multiClusterConfigs.isParent()) {
+                metadataStoreWriter.writeStoreAttributes(clusterName, storeName, store);
+                metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, store);
             }
         } catch (Exception e) {
             logger.error("Failed to execute StoreMetadataOperation.", e);
@@ -3397,7 +3392,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
         // Write store schemas to metadata store.
         Store store = getStore(clusterName, storeName);
-        if (store.isStoreMetadataSystemStoreEnabled()) {
+        if (store.isStoreMetadataSystemStoreEnabled() && !multiClusterConfigs.isParent()) {
             metadataStoreWriter.writeStoreValueSchemas(clusterName, storeName, schemaRepository.getValueSchemas(storeName));
         }
 
@@ -3425,7 +3420,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
         // Write store schemas to metadata store.
         Store store = getStore(clusterName, storeName);
-        if (store.isStoreMetadataSystemStoreEnabled()) {
+        if (store.isStoreMetadataSystemStoreEnabled() && !multiClusterConfigs.isParent()) {
             metadataStoreWriter.writeStoreValueSchemas(clusterName, storeName, schemaRepository.getValueSchemas(storeName));
         }
         return schemaEntry;
@@ -4628,6 +4623,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             writeEndOfPush(clusterName, metadataStoreName, metadataStoreVersionNumber, true);
         }
         getRealTimeTopic(clusterName, metadataStoreName);
+        metadataStoreWriter.writeStoreAttributes(clusterName, storeName, veniceStore);
         metadataStoreWriter.writeCurrentStoreStates(clusterName, storeName, veniceStore);
         metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, veniceStore.getVersions(),
             veniceStore.getCurrentVersion());
