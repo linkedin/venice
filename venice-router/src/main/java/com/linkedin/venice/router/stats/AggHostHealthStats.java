@@ -24,11 +24,6 @@ public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> 
     getHostStats(hostName).recordUnhealthyHostOfflineInstance();
   }
 
-  public void recordUnhealthyHostSlowPartition(String hostName) {
-    totalStats.recordUnhealthyHostSlowPartition();
-    getHostStats(hostName).recordUnhealthyHostSlowPartition();
-  }
-
   public void recordUnhealthyHostTooManyPendingRequest(String hostName) {
     totalStats.recordUnhealthyHostTooManyPendingRequest();
     getHostStats(hostName).recordUnhealthyHostTooManyPendingRequest();

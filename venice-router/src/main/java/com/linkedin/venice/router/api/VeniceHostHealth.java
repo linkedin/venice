@@ -21,7 +21,6 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   private final int routerPendingConnResumeThreshold;
   private final boolean statefulRouterHealthCheckEnabled;
   private final long fullPendingQueueServerOORMs;
-  private Set<String> slowPartitionHosts = new ConcurrentSkipListSet<>();
   protected Set<String> unhealthyHosts = new ConcurrentSkipListSet<>();
   private Map<String, Long> pendingRequestUnhealthyTimeMap = new VeniceConcurrentHashMap<>();
 
@@ -44,25 +43,12 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   }
 
   /**
-   * Indicate that a partition on a host has fallen behind in consumption and should not be used
-   * for queries for that partition.
-   *
-   * @param hostName
-   * @param partitionName
-   */
-  public void setPartitionAsSlow(Instance hostName, String partitionName){
-    String identifier = hostPartitionString(hostName, partitionName);
-    slowPartitionHosts.add(identifier);
-    logger.info(identifier + " is slow, marking as unhealthy until it passes the next health check.");
-  }
-
-  /**
    * Mark that something is wrong with an entire host and it should not be used for queries.
    *
    * @param instance
    */
   public void setHostAsUnhealthy(Instance instance){
-    String identifier = instance.getUrl();
+    String identifier = instance.getNodeId();
     unhealthyHosts.add(identifier);
     logger.info("Marking " + identifier + " as unhealthy until it passes the next health check.");
     aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
@@ -75,7 +61,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
    * @param hostname
    */
   public void setHostAsHealthy(Instance hostname) {
-    String identifier = hostname.getUrl();
+    String identifier = hostname.getNodeId();
     if (unhealthyHosts.contains(identifier)) {
       unhealthyHosts.remove(identifier);
       logger.info("Marking " + identifier + " back to healthy host");
@@ -91,18 +77,13 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
       return false;
     }
 
-    if (unhealthyHosts.contains(instance.getUrl())) {
+    if (unhealthyHosts.contains(instance.getNodeId())) {
       aggHostHealthStats.recordUnhealthyHostHeartBeatFailure(instance.getNodeId());
       return false;
     }
 
     if (!storageNodeClient.isInstanceReadyToServe(nodeId)) {
       aggHostHealthStats.recordUnhealthyHostDelayJoin(nodeId);
-      return false;
-    }
-
-    if (slowPartitionHosts.contains(hostPartitionString(instance, partitionName))) {
-      aggHostHealthStats.recordUnhealthyHostSlowPartition(nodeId);
       return false;
     }
 
@@ -144,9 +125,5 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
       return true;
     }
     return false;
-  }
-
-  private static String hostPartitionString(Instance host, String partition){
-    return host.getHost() + ":" + host.getPort() + "_" + partition;
   }
 }

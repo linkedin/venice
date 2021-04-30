@@ -18,7 +18,6 @@ import java.util.Optional;
  */
 public class HostHealthStats extends AbstractVeniceStats {
   private final Sensor unhealthyHostOfflineInstance;
-  private final Sensor unhealthyHostSlowPartition;
   private final Sensor unhealthyHostTooManyPendingRequest;
   private final Sensor unhealthyHostHeartBeatFailure;
   private final Sensor pendingRequestCount;
@@ -34,7 +33,6 @@ public class HostHealthStats extends AbstractVeniceStats {
     super(metricsRepository, name);
 
     this.unhealthyHostOfflineInstance = registerSensor("unhealthy_host_offline_instance", new Count());
-    this.unhealthyHostSlowPartition = registerSensor("unhealthy_host_slow_partition", new Count());
     this.unhealthyHostTooManyPendingRequest = registerSensor("unhealthy_host_too_many_pending_request", new Count());
     this.unhealthyHostHeartBeatFailure = registerSensor("unhealthy_host_heart_beat_failure", new Count());
     this.pendingRequestCount = registerSensor("pending_request_count", new Max());
@@ -51,10 +49,6 @@ public class HostHealthStats extends AbstractVeniceStats {
 
   public void recordUnhealthyHostOfflineInstance() {
     unhealthyHostOfflineInstance.record();
-  }
-
-  public void recordUnhealthyHostSlowPartition() {
-    unhealthyHostSlowPartition.record();
   }
 
   public void recordUnhealthyHostTooManyPendingRequest() {
