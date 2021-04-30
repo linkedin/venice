@@ -150,6 +150,15 @@ public class ProduceWithSSL {
         int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
         return currentVersion == 1;
       });
+
+      // Try to re-push with Kafka
+      props.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
+      props.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, cluster.getKafka().getSSLAddress());
+      TestPushUtils.runPushJob("Test Kafka re-push job", props);
+      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        return currentVersion == 2;
+      });
     } finally {
       if (isOpenSSLEnabled) {
         cluster.close();

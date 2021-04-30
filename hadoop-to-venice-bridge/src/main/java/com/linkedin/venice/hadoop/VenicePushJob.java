@@ -1821,6 +1821,11 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     if (pushJobSetting.isSourceKafka) {
       // Use some fake value schema id here since it won't be used
       conf.setInt(VALUE_SCHEMA_ID_PROP, -1);
+      /**
+       * Kafka input topic could be inferred from the store name, but absent from the original properties.
+       * So here will set it up from {@link #pushJobSetting}.
+       */
+      conf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, schemaInfo.valueSchemaId);
       conf.setInt(DERIVED_SCHEMA_ID_PROP, schemaInfo.derivedSchemaId);
