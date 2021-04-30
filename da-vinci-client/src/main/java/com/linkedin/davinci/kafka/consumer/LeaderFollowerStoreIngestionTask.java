@@ -171,7 +171,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean isWriteComputationEnabled,
       VenicePartitioner venicePartitioner,
-      int storeVersionPartitionCount) {
+      int storeVersionPartitionCount,
+      boolean isIsolatedIngestion) {
     super(
         writerFactory,
         consumerFactory,
@@ -208,7 +209,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionStateSerializer,
         isWriteComputationEnabled,
         venicePartitioner,
-        storeVersionPartitionCount);
+        storeVersionPartitionCount,
+        isIsolatedIngestion);
     /**
      * We are going to apply fast leader failover for {@link com.linkedin.venice.common.VeniceSystemStoreType#META_STORE}
      * since it is time sensitive, and if the split-brain problem happens in prod, we could design a way to periodically

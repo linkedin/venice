@@ -54,7 +54,8 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isWriteComputationEnabled,
       VenicePartitioner venicePartitioner,
-      int storeVersionPartitionCount
+      int storeVersionPartitionCount,
+      boolean isIsolatedIngestion
   ) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(
@@ -95,7 +96,8 @@ public class StoreIngestionTaskFactory {
           builder.partitionStateSerializer,
           isWriteComputationEnabled,
           venicePartitioner,
-          storeVersionPartitionCount);
+          storeVersionPartitionCount,
+          isIsolatedIngestion);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -132,7 +134,8 @@ public class StoreIngestionTaskFactory {
           builder.startReportingReadyToServeTimestamp,
           builder.partitionStateSerializer,
           venicePartitioner,
-          storeVersionPartitionCount);
+          storeVersionPartitionCount,
+          isIsolatedIngestion);
     }
   }
 
@@ -176,6 +179,7 @@ public class StoreIngestionTaskFactory {
     private ExecutorService cacheWarmingThreadPool;
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+    private boolean isIsolatedIngestion;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -361,6 +365,13 @@ public class StoreIngestionTaskFactory {
     public Builder setPartitionStateSerializer(InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
       if (!built) {
         this.partitionStateSerializer = partitionStateSerializer;
+      }
+      return this;
+    }
+
+    public Builder setIsIsolatedIngestion(boolean isolatedIngestion) {
+      if (!built) {
+        this.isIsolatedIngestion = isolatedIngestion;
       }
       return this;
     }

@@ -82,7 +82,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       long startReportingReadyToServeTimestamp,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       VenicePartitioner venicePartitioner,
-      int storeVersionPartitionCount) {
+      int storeVersionPartitionCount,
+      boolean isIsolatedIngestion) {
     super(
         writerFactory,
         consumerFactory,
@@ -119,7 +120,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         partitionStateSerializer,
         false,
         venicePartitioner,
-        storeVersionPartitionCount);
+        storeVersionPartitionCount,
+        isIsolatedIngestion);
   }
 
   @Override

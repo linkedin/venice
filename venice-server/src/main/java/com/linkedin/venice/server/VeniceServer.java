@@ -211,7 +211,8 @@ public class VeniceServer {
         clientConfigForConsumer,
         partitionStateSerializer,
         readOnlyZKSharedSchemaRepository,
-        icProvider);
+        icProvider,
+        false);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();

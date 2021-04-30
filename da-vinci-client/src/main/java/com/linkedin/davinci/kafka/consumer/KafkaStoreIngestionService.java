@@ -119,7 +119,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * for consuming messages and making changes to the local store accordingly.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
+
   private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
+
+  private final ExecutorService cacheWarmingExecutorService;
+
+  private final MetaStoreWriter metaStoreWriter;
+
+  private final MetaSystemStoreReplicaStatusNotifier metaSystemStoreReplicaStatusNotifier;
+
+  private final StoreIngestionTaskFactory ingestionTaskFactory;
+
+  private final boolean isIsolatedIngestion;
 
   private ExecutorService participantStoreConsumerExecutorService;
 
@@ -127,12 +138,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private ParticipantStoreConsumptionTask participantStoreConsumptionTask;
 
-  private StoreIngestionTaskFactory ingestionTaskFactory;
 
-  private final ExecutorService cacheWarmingExecutorService;
-
-  private final MetaStoreWriter metaStoreWriter;
-  private final MetaSystemStoreReplicaStatusNotifier metaSystemStoreReplicaStatusNotifier;
   private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
@@ -148,7 +154,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this(storageEngineRepository, veniceConfigLoader, storageMetadataService, clusterInfoProvider, metadataRepo, schemaRepo,
         metricsRepository, rocksDBMemoryStats, kafkaMessageEnvelopeSchemaReader, clientConfig, partitionStateSerializer,
-        Optional.empty(), null);
+        Optional.empty(), null, false);
   }
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
@@ -163,11 +169,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     Optional<ClientConfig> clientConfig,
                                     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
                                     Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository,
-                                    ICProvider icProvider) {
+                                    ICProvider icProvider,
+                                    boolean isIsolatedIngestion) {
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
+    this.isIsolatedIngestion = isIsolatedIngestion;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
@@ -346,6 +354,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setCacheWarmingThreadPool(cacheWarmingExecutorService)
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
+        .setIsIsolatedIngestion(isIsolatedIngestion)
         .build();
   }
 
@@ -440,7 +449,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         store.isWriteComputationEnabled(),
         partitioner,
-        version.getPartitionCount());
+        version.getPartitionCount(),
+        isIsolatedIngestion);
   }
 
   private static void shutdownExecutorService(ExecutorService executorService, boolean force) {

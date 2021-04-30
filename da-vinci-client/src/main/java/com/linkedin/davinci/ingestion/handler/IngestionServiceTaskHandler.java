@@ -16,7 +16,6 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.CommonConfigKeys;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -47,6 +46,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -165,10 +165,12 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
      * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
      * should not try to open it. The remaining ingestion tasks will open the storage engines.
      */
-    propertyBuilder.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, "false");
+    propertyBuilder.put(SERVER_RESTORE_DATA_PARTITIONS_ENABLED, "false");
     VeniceProperties veniceProperties = propertyBuilder.build();
     VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties, veniceProperties);
     ingestionService.setConfigLoader(configLoader);
+    ingestionService.setStopConsumptionWaitRetriesNum(configLoader.getCombinedProperties().getInt(
+        SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180));
 
     // Initialize D2Client.
     SSLFactory sslFactory;
@@ -279,7 +281,8 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         veniceMetadataRepositoryBuilder.isDaVinciClient() ? Optional.empty() : Optional.of(clientConfig),
         partitionStateSerializer,
         helixReadOnlyZKSharedSchemaRepository,
-        null);
+        null,
+        true);
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);
     ingestionService.setStoreIngestionService(storeIngestionService);
@@ -346,8 +349,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           break;
         case REMOVE_PARTITION:
           if (storeIngestionService.isPartitionConsuming(storeConfig, partitionId)) {
-            storeIngestionService.stopConsumptionAndWait(storeConfig, partitionId, 1, 30);
-            logger.info("Partition: " + partitionId + " of topic: " + topicName + " has stopped consumption.");
+            long startTimeInMs = System.currentTimeMillis();
+            storeIngestionService.stopConsumptionAndWait(storeConfig, partitionId, 1, ingestionService.getStopConsumptionWaitRetriesNum());
+            logger.info("Partition: " + partitionId + " of topic: " + topicName + " has stopped consumption in " + LatencyUtils.getElapsedTimeInMs(startTimeInMs)
+                + " ms.");
           }
           ingestionService.getStorageService().dropStorePartition(storeConfig, partitionId);
           logger.info("Partition: " + partitionId + " of topic: " + topicName + " has been removed.");

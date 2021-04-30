@@ -4,7 +4,6 @@ import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
-import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.queues.FairBlockingQueue;
@@ -26,7 +25,7 @@ import static com.linkedin.davinci.config.BlockingQueueType.*;
 
 
 /**
- * class that maintains config very specific to a Venice server
+ * VeniceServerConfig maintains configs specific to Venice Server, Da Vinci client and Isolated Ingestion Service.
  */
 public class VeniceServerConfig extends VeniceClusterConfig {
   /**
@@ -219,6 +218,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final boolean enableAutoCompactionForSamzaReprocessingJob;
 
+  /**
+   * Boolean flag indicating if it is a Da Vinci application.
+   */
   private final boolean isDaVinciClient;
 
   private final boolean unsubscribeAfterBatchpushEnabled;
