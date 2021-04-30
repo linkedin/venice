@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
@@ -22,17 +23,25 @@ import static com.linkedin.venice.hadoop.VenicePushJob.*;
 public class KafkaInputUtils {
 
   public static KafkaClientFactory getConsumerFactory(JobConf config) {
-    Properties sslProperties = null;
+    Properties sslProps = null;
     if (config.get(SSL_CONFIGURATOR_CLASS_CONFIG) != null) {
       SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(config.get(SSL_CONFIGURATOR_CLASS_CONFIG));
+
       try {
-        sslProperties = configurator.setupSSLConfig(HadoopUtils.getProps(config), UserCredentialsFactory.getHadoopUserCredentials());
-        sslProperties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+        sslProps = configurator.setupSSLConfig(HadoopUtils.getProps(config), UserCredentialsFactory.getHadoopUserCredentials());
       } catch (IOException e) {
-        throw new VeniceException("Could not get user credential", e);
+        throw new VeniceException("Could not get user credential for job:" + config.getJobName(), e);
       }
     }
-    Properties consumerFactoryProperties = new Properties(sslProperties);
+    Properties consumerFactoryProperties = new Properties();
+    if (sslProps != null) {
+      consumerFactoryProperties.putAll(sslProps);
+    }
+
+    /**
+     * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
+     */
+    consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
     consumerFactoryProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
     /**
      * This is used to bypass the check in {@link VeniceKafkaConsumerFactory#getKafkaZkAddress}.
@@ -47,5 +56,4 @@ public class KafkaInputUtils {
     clonedProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
     return clonedProperties;
   }
-
 }
