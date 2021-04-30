@@ -1623,7 +1623,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     // Overall job details. Stored in memory to avoid printing repetitive details.
     String previousOverallDetails = null;
     // Perform a poll first in case the job has already finished before taking breaks between polls.
-    long pollTime = 0;
+    long nextPollingTime = 0;
     /**
      * The start time when some data centers enter unknown state;
      * if 0, it means no data center is in unknown state.
@@ -1641,12 +1641,12 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
 
     for (;;) {
       long currentTime = System.currentTimeMillis();
-      if (pollTime > currentTime) {
-        if (!Utils.sleep(pollTime - currentTime)) {
+      if (currentTime < nextPollingTime) {
+        if (!Utils.sleep(nextPollingTime - currentTime)) {
           throw new VeniceException("Job status polling was interrupted!");
         }
       }
-      pollTime = currentTime + pushJobSetting.pollJobStatusIntervalMs;
+      nextPollingTime = currentTime + pushJobSetting.pollJobStatusIntervalMs;
 
       JobStatusQueryResponse response = ControllerClient.retryableRequest(
           controllerClient,
@@ -1685,20 +1685,16 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         return;
       }
 
-      if (overallStatus.equals(ExecutionStatus.UNKNOWN)) {
-        if (unknownStateStartTimeMs > pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
-          long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
-          throw new VeniceException("After waiting for " + timeoutMinutes + " minutes; push job is still in unknown state.");
-        }
-
-        if (unknownStateStartTimeMs == 0) {
-          unknownStateStartTimeMs = System.currentTimeMillis();
-        } else {
-          double elapsedMinutes = (double) unknownStateStartTimeMs / Time.MS_PER_SECOND;
-          LOGGER.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
-        }
-      } else {
+      if (!overallStatus.equals(ExecutionStatus.UNKNOWN)) {
         unknownStateStartTimeMs = 0;
+      } else if (unknownStateStartTimeMs == 0) {
+        unknownStateStartTimeMs = System.currentTimeMillis();
+      } else if (System.currentTimeMillis() < unknownStateStartTimeMs + pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
+        double elapsedMinutes = (double) (System.currentTimeMillis() - unknownStateStartTimeMs) / Time.MS_PER_MINUTE;
+        LOGGER.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
+      } else {
+        long timeoutMinutes = pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE;
+        throw new VeniceException("After waiting for " + timeoutMinutes + " minutes; push job is still in unknown state.");
       }
 
       // Only send the push job details after all error checks have passed and job is not completed yet.
