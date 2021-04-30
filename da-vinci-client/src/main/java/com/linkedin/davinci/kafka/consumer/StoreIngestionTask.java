@@ -129,7 +129,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 3;
   private static final int MAX_IDLE_COUNTER  = 100;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
-  private static final long KILL_WAIT_TIME_MS = 5000l;
+  private static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
   private static final int SLOPPY_OFFSET_CATCHUP_THRESHOLD = 100;
 
@@ -312,6 +312,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Push timeout threshold for the store
   protected final long bootstrapTimeoutInMs;
 
+  protected final boolean isIsolatedIngestion;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -348,7 +350,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean isWriteComputationEnabled,
       VenicePartitioner venicePartitioner,
-      int storeVersionPartitionCount) {
+      int storeVersionPartitionCount,
+      boolean isIsolatedIngestion) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -454,6 +457,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       pushTimeoutInMs = HOURS.toMillis(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
     }
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
+
+    this.isIsolatedIngestion = isIsolatedIngestion;
   }
 
   protected void throwIfNotRunning() {
@@ -1635,6 +1640,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (this.suppressLiveUpdates && partitionConsumptionState.isCompletionReported()) {
       msg = "Skipping message as live update suppression is enabled and store: " + kafkaVersionTopic
+          + " partition " + partitionId + " is already ready to serve, these are buffered records in the queue.";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        logger.info(msg);
+      }
+      return false;
+    }
+
+    /**
+     * If ingestion isolation is enabled, when completion is reported for a partition, we don't need to persist the remaining
+     * records in the drainer queue, as per ingestion isolation design, we will unsubscribe topic partition in child process
+     * and re-subscribe it in main process, thus these records can be processed in main process instead without slowing down
+     * the unsubscribe action.
+     */
+    if (this.isIsolatedIngestion && partitionConsumptionState.isCompletionReported()) {
+      msg = "Skipping message as it is using ingestion isolation and store: " + kafkaVersionTopic
           + " partition " + partitionId + " is already ready to serve, these are buffered records in the queue.";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         logger.info(msg);

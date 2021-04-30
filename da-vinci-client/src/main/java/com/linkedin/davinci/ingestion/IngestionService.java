@@ -13,10 +13,10 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -68,6 +68,7 @@ public class IngestionService extends AbstractVeniceService {
   // We should not add leader change message into the queue if we have added UNSUBSCRIBE message to the queue, otherwise it won't get processed.
   // This will help leader promo/demote request from parent process fail out early and avoid race condition.
   private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap = new HashMap<>();
+  private final long heartbeatTimeoutMs;
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
@@ -82,7 +83,7 @@ public class IngestionService extends AbstractVeniceService {
   private boolean isInitiated = false;
   private IngestionRequestClient reportClient;
   private long heartbeatTime = -1;
-  private long heartbeatTimeoutMs;
+  private int stopConsumptionWaitRetriesNum;
 
   public IngestionService(int servicePort, long heartbeatTimeoutMs) {
     this.servicePort = servicePort;
@@ -207,6 +208,10 @@ public class IngestionService extends AbstractVeniceService {
     this.storeVersionStateSerializer = storeVersionStateSerializer;
   }
 
+  public void setStopConsumptionWaitRetriesNum(int numRetries) {
+    this.stopConsumptionWaitRetriesNum = numRetries;
+  }
+
   public IngestionRequestClient getReportClient() {
     return reportClient;
   }
@@ -249,6 +254,10 @@ public class IngestionService extends AbstractVeniceService {
 
   public InternalAvroSpecificSerializer<StoreVersionState> getStoreVersionStateSerializer() {
     return storeVersionStateSerializer;
+  }
+
+  public int getStopConsumptionWaitRetriesNum() {
+    return stopConsumptionWaitRetriesNum;
   }
 
   public void updateHeartbeatTime() {
@@ -331,10 +340,11 @@ public class IngestionService extends AbstractVeniceService {
     return longRunningTaskExecutor.submit(() -> {
       VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
       // Make sure partition is not consuming so we can safely close the rocksdb partition
-      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, 60);
+      long startTimeInMs = System.currentTimeMillis();
+      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum);
       // Close RocksDB partition in Ingestion Service.
       getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(partitionId);
-      logger.info("Partition: " + partitionId + " of topic: " + topicName + " closed.");
+      logger.info("Partition: " + partitionId + " of topic: " + topicName + " closed in " + LatencyUtils.getElapsedTimeInMs(startTimeInMs) + " ms.");
     });
   }
 

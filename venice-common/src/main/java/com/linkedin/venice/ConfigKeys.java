@@ -496,6 +496,11 @@ public class ConfigKeys {
   public static final String INGESTION_USE_DA_VINCI_CLIENT = "ingestion.use.da.vinci.client";
 
   /**
+   * Number of retries allowed for stopConsumptionAndWait() API in StoreIngestionService.
+   */
+  public static final String SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM = "server.stop.consumption.wait.retries.num";
+
+  /**
    * Port number for ingestion listener. For Parent/Child mode, it will be used by child process. For SplitService mode,
    * it will be used by IngestionService.
    */

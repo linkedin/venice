@@ -46,6 +46,7 @@ public class VersionBackend {
   private final boolean suppressLiveUpdates;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
   private final Map<Integer, CompletableFuture> subPartitionFutures = new VeniceConcurrentHashMap<>();
+  private final int stopConsumptionWaitRetriesNum;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -78,6 +79,8 @@ public class VersionBackend {
     this.heartbeatInterval = this.config.getClusterProperties().getInt(
         PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS,
         DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
+    this.stopConsumptionWaitRetriesNum = backend.getConfigLoader().getCombinedProperties().getInt(
+        SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 60);
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
   }
 
@@ -247,7 +250,8 @@ public class VersionBackend {
     }
     completeSubPartition(subPartition);
 
-    backend.getIngestionBackend().unsubscribeTopicPartition(config, subPartition, 30);
+
+    backend.getIngestionBackend().unsubscribeTopicPartition(config, subPartition, stopConsumptionWaitRetriesNum);
     subPartitionFutures.remove(subPartition);
     tryStopHeartbeat();
   }

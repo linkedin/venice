@@ -87,7 +87,7 @@ public class PushTimeoutTest {
         Optional.empty(), false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, mockVeniceStoreConfig, mock(DiskUsage.class),
         mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
-        mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1);
+        mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false);
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     leaderFollowerStoreIngestionTask.run();
 
