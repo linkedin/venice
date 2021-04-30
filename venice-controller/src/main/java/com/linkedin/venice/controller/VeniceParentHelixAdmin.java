@@ -643,10 +643,6 @@ public class VeniceParentHelixAdmin implements Admin {
           .limit(versionCount - STORE_VERSION_RETENTION_COUNT)
           .forEach(v -> store.deleteVersion(v.getNumber()));
       storeRepo.updateStore(store);
-      if (store.isStoreMetadataSystemStoreEnabled()) {
-        veniceHelixAdmin.getMetadataStoreWriter().writeStoreAttributes(clusterName, storeName, store);
-        veniceHelixAdmin.getMetadataStoreWriter().writeTargetVersionStates(clusterName, storeName, store.getVersions());
-      }
     }
   }
 
@@ -2367,8 +2363,6 @@ public class VeniceParentHelixAdmin implements Admin {
     Version version = zkSharedStoreMetadata.getVersion(metadataStoreVersionNumber).get();
     String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
     getRealTimeTopic(clusterName, metadataStoreName);
-    veniceHelixAdmin.getMetadataStoreWriter().writeStoreAttributes(clusterName, storeName, veniceStore);
-    veniceHelixAdmin.getMetadataStoreWriter().writeTargetVersionStates(clusterName, storeName, veniceStore.getVersions());
     veniceHelixAdmin.storeMetadataUpdate(clusterName, storeName, store -> {
       store.setStoreMetadataSystemStoreEnabled(true);
       return store;
