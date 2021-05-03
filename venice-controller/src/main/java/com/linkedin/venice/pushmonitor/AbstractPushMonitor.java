@@ -268,13 +268,11 @@ public abstract class AbstractPushMonitor
   @Override
   public List<String> getTopicsOfOngoingOfflinePushes() {
     List<String> result = new ArrayList<>();
-    try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
-      result.addAll(topicToPushMap.values()
-          .stream()
-          .filter(status -> !status.getCurrentStatus().isTerminal())
-          .map(OfflinePushStatus::getKafkaTopic)
-          .collect(Collectors.toList()));
-    }
+    result.addAll(topicToPushMap.values()
+        .stream()
+        .filter(status -> !status.getCurrentStatus().isTerminal())
+        .map(OfflinePushStatus::getKafkaTopic)
+        .collect(Collectors.toList()));
     return result;
   }
 

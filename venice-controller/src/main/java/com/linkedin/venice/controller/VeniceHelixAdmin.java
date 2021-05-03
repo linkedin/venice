@@ -2385,23 +2385,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public List<Store> getAllStores(String clusterName){
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
-            return resources.getMetadataRepository().getAllStores();
-        }
+        return resources.getMetadataRepository().getAllStores();
     }
 
     @Override
     public Map<String, String> getAllStoreStatuses(String clusterName) {
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
-            List<Store> storeList = resources.getMetadataRepository().getAllStores();
-            RoutingDataRepository routingDataRepository =
-                getVeniceHelixResource(clusterName).getRoutingDataRepository();
-            ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
-            return StoreStatusDecider.getStoreStatues(storeList, resourceAssignment,
-                getVeniceHelixResource(clusterName).getPushMonitor());
-        }
+        List<Store> storeList = resources.getMetadataRepository().getAllStores();
+        RoutingDataRepository routingDataRepository =
+            getVeniceHelixResource(clusterName).getRoutingDataRepository();
+        ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+        return StoreStatusDecider.getStoreStatues(storeList, resourceAssignment,
+            getVeniceHelixResource(clusterName).getPushMonitor());
     }
 
     @Override
