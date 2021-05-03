@@ -14,7 +14,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * Each instance has a pair of cluster-level read/write locks and multiple store-level read/write locks.
  * Every store-level read/write lock will take cluster-level read lock first. Locking on the whole
- * cluster, including whole cluster read/write or controller shutdown, will take the cluster-level write lock.
+ * cluster, including whole cluster write operations or controller shutdown, will take the cluster-level write lock.
  */
 public class ClusterLockManager {
   private final ReentrantReadWriteLock perClusterLock;

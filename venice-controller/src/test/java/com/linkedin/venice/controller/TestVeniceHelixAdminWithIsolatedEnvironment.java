@@ -15,11 +15,14 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -361,5 +364,26 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName3).isLeaderFollowerModelEnabled(),
             "Store3 is a batch store and L/F for all stores config is true. L/F should be enabled.");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
+  public void testGetFutureVersionsNotBlocked() throws InterruptedException {
+    ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
+    String storeName = TestUtils.getUniqueString("test_store");
+    asyncExecutor.submit(() -> {
+      // A time-consuming store operation that holds cluster-level read lock and store-level write lock.
+      VeniceHelixResources resources = veniceAdmin.getVeniceHelixResource(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        try {
+          Thread.sleep(TOTAL_TIMEOUT_FOR_SHORT_TEST);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+      }
+    });
+    // Give some time for above thread to take cluster level read lock.
+    Thread.sleep(1000);
+    // Should not be blocked even though another thread is holding cluster-level read lock.
+    veniceAdmin.getFutureVersion(clusterName, storeName);
   }
 }
