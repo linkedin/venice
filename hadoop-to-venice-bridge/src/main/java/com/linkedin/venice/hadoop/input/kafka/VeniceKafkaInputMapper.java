@@ -27,8 +27,8 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
   @Override
   protected void configureTask(VeniceProperties props, JobConf job) {
     /**
-     * Do nothing for {@link KafkaInputFormat} for now, and if we need to support compression, this function
-     * needs to be changed.
+     * Do nothing for {@link KafkaInputFormat} for now, and if we need to support compression rebuild during re-push,
+     * this function needs to be changed.
      */
   }
 

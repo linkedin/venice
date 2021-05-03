@@ -3,8 +3,12 @@ package com.linkedin.venice.kafka.ssl;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -98,7 +102,7 @@ public class ProduceWithSSL {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 90 * Time.MS_PER_SECOND)
   public void testVenicePushJobSupportSSL(boolean isOpenSSLEnabled)
       throws Exception {
     VeniceClusterWrapper cluster = this.cluster;
@@ -145,19 +149,42 @@ public class ProduceWithSSL {
       String controllerUrl = cluster.getAllControllersURLs();
       ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), controllerUrl);
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 0, "Push has not been start, current should be 0");
+
+      // First push to verify regular push job works fine
       TestPushUtils.runPushJob("Test push job", props);
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
         int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
         return currentVersion == 1;
       });
 
-      // Try to re-push with Kafka
+      // Re-push with Kafka Input Format
       props.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
       props.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, cluster.getKafka().getSSLAddress());
       TestPushUtils.runPushJob("Test Kafka re-push job", props);
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
         int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
         return currentVersion == 2;
+      });
+
+      // Enable dictionary compression and do a regular push
+      ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+          .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
+      props.setProperty(VenicePushJob.SOURCE_KAFKA, "false");
+      TestPushUtils.runPushJob("Test push job with dictionary compression", props);
+      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        return currentVersion == 3;
+      });
+
+      // Re-push with Kafka Input Format and dictionary compression enabled
+      props.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
+      TestPushUtils.runPushJob("Test Kafka re-push job with dictionary compression", props);
+      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        return currentVersion == 4;
       });
     } finally {
       if (isOpenSSLEnabled) {

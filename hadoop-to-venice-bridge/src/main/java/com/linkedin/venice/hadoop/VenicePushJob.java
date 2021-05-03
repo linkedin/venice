@@ -36,6 +36,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -732,7 +733,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
        */
       if (!pushJobSetting.isSourceKafka) {
         // Check data size
-        // TODO: do we actually need this information?
         InputDataInfoProvider.InputDataInfo inputInfo =
             getInputDataInfoProvider().validateInputAndGetInfo(inputDirectory);
         // Get input schema
@@ -987,16 +987,18 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() {
-    if (pushJobSetting.isSourceKafka) {
-      /**
-       * Kafka Input is not supporting dict compression right now.
-       */
-      return Optional.empty();
-    }
     ByteBuffer compressionDictionary = null;
     if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      LOGGER.info("Training Zstd dictionary");
-      compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
+      if (pushJobSetting.isSourceKafka) {
+        LOGGER.info("Reading Ztsd dictionary from input topic");
+        // set up ssl properties and kafka consumer properties
+        Properties kafkaConsumerProperties = getSslProperties();
+        kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, props.getString(KAFKA_INPUT_BROKER_URL));
+        compressionDictionary = DictionaryUtils.readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+      } else {
+        LOGGER.info("Training Zstd dictionary");
+        compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
+      }
       LOGGER.info("Zstd dictionary size = " + compressionDictionary.limit() + " bytes");
     } else {
       LOGGER.info("No compression dictionary is generated with the strategy " + storeSetting.compressionStrategy);
@@ -1382,26 +1384,24 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
          */
         throw new VeniceException("Source version: " + sourceVersionNumber + " with chunking enabled is not supported right now");
       }
-      if (storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-        /**
-         * Dictionary Compression is not supported right now since Kafka Input is doing message pass-through,
-         * and it won't copy the dictionary from the source version to the new version
-         * during re-push.
-         * TODO: We will need to extend the implementation to support compression or re-compression.
-         */
-        throw new VeniceException("Source version: " + sourceVersionNumber + " with ZSTD_WITH_DICT compression strategy is not supported right now");
-      }
       // Skip quota check
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
       /**
        * Chunking should be disabled since Kafka Input is meant to do pass-through.
        */
       storeSetting.isChunkingEnabled = false;
+
       /**
-       * If the source topic is using self-contained compression algorithm, such as Gzip, KafkaInput pass-through will produce
-       * the compressed message to the new topic, so with the following logic, VPJ won't compress it again.
+       * If the source topic is using compression algorithm, we will keep the compression in the new topic. There are two cases:
+       * 1. The source topic uses ZTSD with dictionary, we will copy the dictionary from source topic to new topic and pass-through.
+       * 2. Other compression algos like Gzip, we will pass-through the compressed msgs to new topic.
+       * For both cases, VPJ won't compress it again.
        */
-      storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
+      if (storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+        storeSetting.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
+      } else {
+        storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
+      }
     }
     return storeSetting;
   }
@@ -1586,8 +1586,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       try {
         SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
             props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
-        Properties sslWriterProperties = sslConfigurator.setupSSLConfig(sslProperties,
-            UserCredentialsFactory.getUserCredentialsFromTokenFile());
+        Properties sslWriterProperties = sslConfigurator.setupSSLConfig(sslProperties, UserCredentialsFactory.getUserCredentialsFromTokenFile());
         sslProperties.putAll(sslWriterProperties);
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential for kafka push job for topic" + kafkaTopicInfo.topic);
