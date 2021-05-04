@@ -204,10 +204,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
     this.errorPartitionProcessingCycleDelay = props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
     this.backupVersionDefaultRetentionMs = props.getLong(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7)); // 1 week
-    /**
-     * Competely disable this feature until we fix the deadlock issue in Controller in {@link VeniceHelixAdmin#deleteOneStoreVersion}
-     */
-    this.backupVersionRetentionBasedCleanupEnabled = false;
+    this.backupVersionRetentionBasedCleanupEnabled = props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
     this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure routes
     this.terminalStateTopicCheckerDelayMs = props.getLong(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
     this.disableParentTopicTruncationUponCompletion = props.getBoolean(CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION, false);
