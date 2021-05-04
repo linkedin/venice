@@ -39,7 +39,7 @@ public class PushMonitorDelegator implements PushMonitor {
   private final String clusterName;
   private final ClusterLockManager clusterLockManager;
 
-  private OfflinePushMonitor offlinePushMonitor;
+  private HelixEVBasedPushMonitor helixEVPushMonitor;
   private PartitionStatusBasedPushMonitor partitionStatusBasedPushStatusMonitor;
 
   //Cache the relationship between kafka topic and push monitor here.
@@ -57,7 +57,7 @@ public class PushMonitorDelegator implements PushMonitor {
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
 
-    this.offlinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
+    this.helixEVPushMonitor = new HelixEVBasedPushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
         storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid, onlineOfflineTopicReplicator,
         metadataStoreWriter, clusterLockManager);
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
@@ -97,9 +97,9 @@ public class PushMonitorDelegator implements PushMonitor {
 
       switch (pushMonitorType) {
         case WRITE_COMPUTE_STORE:
-          return store.isWriteComputationEnabled() ? partitionStatusBasedPushStatusMonitor : offlinePushMonitor;
+          return store.isWriteComputationEnabled() ? partitionStatusBasedPushStatusMonitor : helixEVPushMonitor;
         case HYBRID_STORE:
-          return store.isHybrid() ? partitionStatusBasedPushStatusMonitor : offlinePushMonitor;
+          return store.isHybrid() ? partitionStatusBasedPushStatusMonitor : helixEVPushMonitor;
         case PARTITION_STATUS_BASED:
           return partitionStatusBasedPushStatusMonitor;
         default:
@@ -120,7 +120,7 @@ public class PushMonitorDelegator implements PushMonitor {
       List<OfflinePushStatus> legacyPushStatuses = new ArrayList<>();
       offlinePushAccessor.loadOfflinePushStatusesAndPartitionStatuses().forEach(status -> {
         try {
-          if (getPushMonitor(status.getKafkaTopic()).equals(offlinePushMonitor)) {
+          if (getPushMonitor(status.getKafkaTopic()).equals(helixEVPushMonitor)) {
             offlinePushMonitorStatuses.add(status);
           } else {
             partitionStatusBasedPushMonitorStatuses.add(status);
@@ -131,7 +131,7 @@ public class PushMonitorDelegator implements PushMonitor {
         }
       });
 
-      offlinePushMonitor.loadAllPushes(offlinePushMonitorStatuses);
+      helixEVPushMonitor.loadAllPushes(offlinePushMonitorStatuses);
       partitionStatusBasedPushStatusMonitor.loadAllPushes(partitionStatusBasedPushMonitorStatuses);
 
       legacyPushStatuses.forEach(pushStatus -> offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus.getKafkaTopic()));
@@ -154,7 +154,7 @@ public class PushMonitorDelegator implements PushMonitor {
     logger.info("Stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       partitionStatusBasedPushStatusMonitor.stopAllMonitoring();
-      offlinePushMonitor.stopAllMonitoring();
+      helixEVPushMonitor.stopAllMonitoring();
       logger.info("Successfully stopped all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } catch (Exception e) {
       logger.error("Error when stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
@@ -163,7 +163,7 @@ public class PushMonitorDelegator implements PushMonitor {
 
   @Override
   public void cleanupStoreStatus(String storeName) {
-    offlinePushMonitor.cleanupStoreStatus(storeName);
+    helixEVPushMonitor.cleanupStoreStatus(storeName);
     partitionStatusBasedPushStatusMonitor.cleanupStoreStatus(storeName);
   }
 
@@ -179,7 +179,7 @@ public class PushMonitorDelegator implements PushMonitor {
 
   @Override
   public List<String> getTopicsOfOngoingOfflinePushes() {
-    return Stream.concat(offlinePushMonitor.getTopicsOfOngoingOfflinePushes().stream(),
+    return Stream.concat(helixEVPushMonitor.getTopicsOfOngoingOfflinePushes().stream(),
         partitionStatusBasedPushStatusMonitor.getTopicsOfOngoingOfflinePushes().stream()).collect(Collectors.toList());
   }
 

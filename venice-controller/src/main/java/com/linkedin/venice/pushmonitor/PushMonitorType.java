@@ -16,5 +16,8 @@ public enum PushMonitorType {
   HYBRID_STORE,
 
   //All resources are managed by PartitionStatusBasedPushMonitor
-  PARTITION_STATUS_BASED
+  PARTITION_STATUS_BASED,
+
+  //L/F resources will be managed by CVBasedPushMonitor
+  CV_PUSH_MONITOR_FOR_LF_STORE
 }

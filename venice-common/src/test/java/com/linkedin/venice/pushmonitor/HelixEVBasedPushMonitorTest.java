@@ -17,17 +17,17 @@ import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 
-public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
+public class HelixEVBasedPushMonitorTest extends AbstractPushMonitorTest {
   @Override
   protected AbstractPushMonitor getPushMonitor(StoreCleaner storeCleaner) {
-    return new OfflinePushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), storeCleaner,
+    return new HelixEVBasedPushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), storeCleaner,
         getMockStoreRepo(), getMockPushHealthStats(), false, Optional.of(mock(TopicReplicator.class)),
         getMockMetadataStoreWriter(), getClusterLockManager());
   }
 
   @Override
   protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator) {
-    return new OfflinePushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), getMockStoreCleaner(),
+    return new HelixEVBasedPushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), getMockStoreCleaner(),
         getMockStoreRepo(), getMockPushHealthStats(), skipBufferReplayForHybrid, Optional.of(mockReplicator),
         getMockMetadataStoreWriter(), getClusterLockManager());
   }
@@ -130,7 +130,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(expectedStatus, Optional.empty());
     doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
-    ((OfflinePushMonitor) getMonitor()).onExternalViewChange(partitionAssignment);
+    ((HelixEVBasedPushMonitor) getMonitor()).onExternalViewChange(partitionAssignment);
     Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), expectedStatus);
     if (expectedStatus.equals(ExecutionStatus.COMPLETED)) {
       verify(getMockPushHealthStats(), times(1)).recordSuccessfulPush(eq(getStoreName()), anyLong());

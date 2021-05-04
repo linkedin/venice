@@ -10,15 +10,16 @@ import java.util.Optional;
 
 
 /**
- * Push is a task that asynchronously writes data to Venice. Currently, Venice supports 2 kinds of push schemes --
- * pushing from Hadoop(offline) and pushing from Samza(nearline). This interface defines operations that monitors
- * pushes.
+ * In Venice, Push is a task that asynchronously writes data to Venice. Currently, Venice supports 2 kinds of push schemes --
+ * pushing from Hadoop(offline) and pushing from Samza(nearline).
+ *
+ * Push Monitor is a critical component in Venice controller that keeps track of ongoing and finished pushes
+ * in the cluster.
  *
  * Inheritors are expected to be able to:
  * 1. persist recent push history even after restart. This is the first-hand information for debugging push failures
  * 2. Tell what a push's current status is.
  * 3. Switch store's versions when pushes are finished and new data is ready to serve traffic.
- *
  */
 public interface PushMonitor {
   /**
