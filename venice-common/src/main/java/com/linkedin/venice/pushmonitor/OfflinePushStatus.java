@@ -46,7 +46,7 @@ public class OfflinePushStatus {
 
   private Map<String, String> pushProperties;
 
-  private int successfulPushDurationInSecs = 0;
+  private int successfulPushDurationInSecs = -1;
 
   public OfflinePushStatus(String kafkaTopic, int numberOfPartition, int replicationFactor,
       OfflinePushStrategy strategy) {

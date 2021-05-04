@@ -144,7 +144,7 @@ public abstract class AbstractPushMonitor
           OfflinePushStatus currentVersionPushStatus = topicToPushMap.get(Version.composeKafkaTopic(storeName, currentVersion));
           if (currentVersionPushStatus != null) {
             long durationSecs = currentVersionPushStatus.getSuccessfulPushDurationInSecs();
-            if (durationSecs != 0) {
+            if (durationSecs >= 0) {
               aggPushHealthStats.recordSuccessfulPushGauge(storeName, durationSecs);
             }
           }
