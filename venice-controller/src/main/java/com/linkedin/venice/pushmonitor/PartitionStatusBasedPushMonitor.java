@@ -13,7 +13,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Push status monitor based on {@link PartitionStatus} stored in ZK
+ * An implementation of {@link AbstractPushMonitor} that listens to ZK {@link PartitionStatus}
+ * to determine the push status.
  */
 
 public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {

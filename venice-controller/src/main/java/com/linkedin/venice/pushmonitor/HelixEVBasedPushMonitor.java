@@ -13,15 +13,14 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * {@link OfflinePushStatus} watches the changes of {@link RoutingDataRepository}.
- * For batch push, push status is updated according to Helix OfflineOnline state
- * For streaming push, push status is updated according to partition status
+ * An implementation of {@link AbstractPushMonitor} that listens to Helix External
+ * View to determine the push status.
  *
- * TODO: rename this class to HelixBasedPushStatusMonitor as we have move most of the code to {@link AbstractPushMonitor}
+ * This monitor can be only used for O/O resources.
  */
 
-public class OfflinePushMonitor extends AbstractPushMonitor implements RoutingDataRepository.RoutingDataChangedListener {
-  public OfflinePushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
+public class HelixEVBasedPushMonitor extends AbstractPushMonitor implements RoutingDataRepository.RoutingDataChangedListener {
+  public HelixEVBasedPushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
       OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
       MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager) {

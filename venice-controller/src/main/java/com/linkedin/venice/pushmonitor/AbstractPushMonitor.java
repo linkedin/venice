@@ -34,10 +34,9 @@ import org.apache.log4j.Logger;
 
 
 /**
- * PushMonitor is the high level abstract that manage push status {@link OfflinePushStatus}.
- * {@link AbstractPushMonitor} watches changes of {@link PartitionStatus} and Helix external
- * view (a.k.a {@link RoutingDataRepository}). Classes extend from it should implement logic that
- * update {@link OfflinePushStatus} accordingly.
+ * AbstractPushMonitor is a high level abstraction that manages {@link OfflinePushStatus}.
+ * Depending on the implementation, it collects info from different paths and updates push
+ * status accordingly.
  *
  * At present, push status has 1 initial state {@link ExecutionStatus#STARTED} and 2 end states
  * {@link ExecutionStatus#COMPLETED} and {@link ExecutionStatus#ERROR}.
