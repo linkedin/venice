@@ -13,13 +13,13 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.ingestion.IngestionRequestClient;
 import com.linkedin.davinci.ingestion.IngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -183,7 +183,7 @@ public class DaVinciClientTest {
         assertFalse(response.isError(), response.getError());
 
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          assertThrows(VeniceNoStoreException.class, () -> client2.get(KEY_COUNT / 3).get());
+          assertThrows(VeniceClientException.class, () -> client2.get(KEY_COUNT / 3).get());
         });
       }
     }

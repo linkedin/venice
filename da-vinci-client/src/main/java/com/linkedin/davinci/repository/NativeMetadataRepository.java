@@ -620,7 +620,7 @@ public abstract class NativeMetadataRepository
     Store oldStore = subscribedStoreMap.remove(storeName);
     if (oldStore != null) {
       totalStoreReadQuota.addAndGet(-oldStore.getReadQuotaInCU());
-      notifyStoreDeleted(storeName);
+      notifyStoreDeleted(oldStore);
     }
     removeStoreSchema(storeName);
     return oldStore;
@@ -636,12 +636,12 @@ public abstract class NativeMetadataRepository
     }
   }
 
-  protected void notifyStoreDeleted(String storeName) {
+  protected void notifyStoreDeleted(Store store) {
     for (StoreDataChangedListener listener : listeners) {
       try {
-        listener.handleStoreDeleted(storeName);
+        listener.handleStoreDeleted(store);
       } catch (Throwable e) {
-        logger.error("Could not handle store deletion event for store: " + storeName, e);
+        logger.error("Could not handle store deletion event for store: " + store.getName(), e);
       }
     }
   }
