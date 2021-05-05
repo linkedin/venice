@@ -282,6 +282,12 @@ public class MetaSystemStoreTest {
   public void testDaVinciClientMetaStoreBasedRepository() throws InterruptedException {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
     addStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
+    // Perform another empty push to the meta system store to verify StoreStateReader and StoreState endpoint (system store discovery).
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
+    VersionCreationResponse metaSystemStoreNewVersionResponse =
+        controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push", 10000);
+    TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(metaSystemStoreName,
+        metaSystemStoreNewVersionResponse.getVersion()), controllerClient, 30, TimeUnit.SECONDS, Optional.of(LOGGER));
     D2Client d2Client = null;
     NativeMetadataRepository nativeMetadataRepository = null;
     try {

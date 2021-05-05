@@ -16,7 +16,7 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
     this(transportClient, true, clientConfig);
   }
 
-  protected AvroGenericStoreClientImpl(TransportClient transportClient, boolean needSchemaReader, ClientConfig clientConfig) {
+  public AvroGenericStoreClientImpl(TransportClient transportClient, boolean needSchemaReader, ClientConfig clientConfig) {
     super(transportClient, needSchemaReader, clientConfig);
 
     if (isUseFastAvro()) {

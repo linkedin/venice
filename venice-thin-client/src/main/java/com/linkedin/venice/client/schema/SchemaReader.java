@@ -2,6 +2,7 @@ package com.linkedin.venice.client.schema;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.MetadataReader;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -9,15 +10,11 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.io.Closeable;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -26,7 +23,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 /**
  * This class is used to fetch key/value schema for a given store.
  */
-public class SchemaReader implements SchemaRetriever {
+public class SchemaReader extends MetadataReader implements SchemaRetriever {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   private static final ObjectMapper mapper = new ObjectMapper();
@@ -43,7 +40,6 @@ public class SchemaReader implements SchemaRetriever {
   private Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
   private AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
 
-  private final AbstractAvroStoreClient storeClient;
   private final String storeName;
 
   public SchemaReader(AbstractAvroStoreClient client) throws VeniceClientException {
@@ -51,7 +47,7 @@ public class SchemaReader implements SchemaRetriever {
   }
 
   public SchemaReader(AbstractAvroStoreClient client, Optional<Schema> readerSchema) {
-    this.storeClient = client;
+    super(client);
     this.storeName = client.getStoreName();
     this.readerSchema = readerSchema;
     if (readerSchema.isPresent()) {
@@ -183,11 +179,6 @@ public class SchemaReader implements SchemaRetriever {
     return fetchSingleSchema(requestPath, false);
   }
 
-  @Override
-  public void close() {
-    IOUtils.closeQuietly(storeClient);
-  }
-
   void refreshAllValueSchema() throws VeniceClientException {
     String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
     try {
@@ -226,27 +217,6 @@ public class SchemaReader implements SchemaRetriever {
     } catch (Exception e) {
       throw new VeniceClientException("Got exception while trying to fetch single schema. " + getExceptionDetails(requestPath), e);
     }
-  }
-
-  byte[] storeClientGetRawWithRetry(String requestPath) throws ExecutionException, InterruptedException {
-    int attempt = 0;
-    boolean retry = true;
-    byte[] response = null;
-    while (retry) {
-      retry = false;
-      try {
-        Future<byte[]> future = storeClient.getRaw(requestPath);
-        response = future.get();
-      } catch (ExecutionException ee) {
-        if (attempt++ > 3) {
-          throw ee;
-        } else {
-          retry = true;
-          logger.warn("Failed to get from path: " + requestPath + " retrying...", ee);
-        }
-      }
-    }
-    return response;
   }
 
   /**

@@ -1,0 +1,49 @@
+package com.linkedin.venice.helix;
+
+import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.SerializableSystemStore;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
+import java.io.IOException;
+import org.codehaus.jackson.annotate.JsonCreator;
+import org.codehaus.jackson.annotate.JsonProperty;
+
+
+public class SystemStoreJSONSerializer extends VeniceJsonSerializer<SerializableSystemStore> {
+
+  public SystemStoreJSONSerializer() {
+    super(SerializableSystemStore.class);
+    addMixin(ZKStore.class, StoreJSONSerializer.StoreSerializerMixin.class);
+    addMixin(Version.class, StoreJSONSerializer.VersionSerializerMixin.class);
+    addMixin(HybridStoreConfig.class, StoreJSONSerializer.HybridStoreConfigSerializerMixin.class);
+    addMixin(ETLStoreConfig.class, StoreJSONSerializer.ETLStoreConfigSerializerMixin.class);
+    addMixin(PartitionerConfig.class, StoreJSONSerializer.PartitionerConfigSerializerMixin.class);
+    addMixin(SerializableSystemStore.class, SystemStoreSerializerMixin.class);
+  }
+
+
+  public static class SystemStoreSerializerMixin {
+    @JsonCreator
+    public SystemStoreSerializerMixin(
+        @JsonProperty("zkSharedStore") ZKStore zkSharedStore,
+        @JsonProperty("systemStoreType") VeniceSystemStoreType systemStoreType,
+        @JsonProperty("veniceStore") ZKStore veniceStore) {}
+  }
+
+  private void addMixin(Class veniceClass, Class serializerClass) {
+    mapper.getDeserializationConfig().addMixInAnnotations(veniceClass, serializerClass);
+  }
+
+  @Override
+  public byte[] serialize(SerializableSystemStore systemStore, String path) throws IOException {
+    return super.serialize(systemStore, path);
+  }
+
+  @Override
+  public SerializableSystemStore deserialize(byte[] bytes, String path) throws IOException {
+    return mapper.readValue(bytes, SerializableSystemStore.class);
+  }
+}

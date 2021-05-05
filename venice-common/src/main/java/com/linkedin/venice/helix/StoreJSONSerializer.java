@@ -99,7 +99,7 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
          * This function will only serialize {@link ZKStore}.
          */
         if (!(object instanceof ZKStore)) {
-            throw new VeniceException("Only ZKStore type is supported for json serialization");
+            throw new VeniceException("This serializer only supports ZKStore type for json serialization");
         }
         return super.serialize(object, path);
     }
