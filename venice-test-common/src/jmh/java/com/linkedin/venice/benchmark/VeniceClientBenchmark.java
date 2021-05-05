@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,6 +68,9 @@ public class VeniceClientBenchmark {
     for (int i = 0; i < KEY_COUNT; ++i) {
       keys[i] = random.nextInt(RECORD_COUNT);
     }
+
+    // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
+    TestUtils.restoreSystemExit();
   }
 
   @TearDown

@@ -140,6 +140,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final boolean isIsolatedIngestion;
 
+  private final TopicManagerRepository topicManagerRepository;
+  private final TopicManagerRepository topicManagerRepositoryJavaBased;
+
   private ExecutorService participantStoreConsumerExecutorService;
 
   private ExecutorService ingestionExecutorService;
@@ -247,12 +250,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         false,
         EventThrottler.BLOCK_STRATEGY);
 
-    TopicManagerRepository topicManagerRepository = new TopicManagerRepository(
+    this.topicManagerRepository = new TopicManagerRepository(
         veniceConsumerFactory.getKafkaBootstrapServers(),
         veniceConsumerFactory.getKafkaZkAddress(),
         veniceConsumerFactory);
 
-    TopicManagerRepository topicManagerRepositoryJavaBased = new TopicManagerRepository(
+    this.topicManagerRepositoryJavaBased = new TopicManagerRepository(
         veniceConsumerFactory.getKafkaBootstrapServers(),
         veniceConsumerFactory.getKafkaZkAddress(),
         veniceConsumerJavaBasedFactory);
@@ -531,7 +534,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     //close it the very end to make sure all ingestion task have released the shared producers.
     IOUtils.closeQuietly(sharedKafkaProducerService);
-
+    
+    IOUtils.closeQuietly(topicManagerRepository);
+    IOUtils.closeQuietly(topicManagerRepositoryJavaBased);
   }
 
   /**

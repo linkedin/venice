@@ -1,11 +1,14 @@
 package com.linkedin.venice.benchmark;
 
+import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-
-import com.linkedin.davinci.client.DaVinciClient;
-
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -28,11 +31,6 @@ import org.openjdk.jmh.profile.GCProfiler;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.integration.utils.ServiceFactory.*;
 
@@ -85,6 +83,9 @@ public class DaVinciClientBenchmark {
     cluster.getVeniceRouters().forEach(service -> cluster.removeVeniceRouter(service.getPort()));
     cluster.getVeniceServers().forEach(service -> cluster.removeVeniceServer(service.getPort()));
     cluster.getVeniceControllers().forEach(service -> cluster.removeVeniceController(service.getPort()));
+
+    // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
+    TestUtils.restoreSystemExit();
   }
 
   @TearDown

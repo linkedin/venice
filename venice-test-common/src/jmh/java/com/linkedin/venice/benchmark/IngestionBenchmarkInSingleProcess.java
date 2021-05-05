@@ -72,6 +72,9 @@ public class IngestionBenchmarkInSingleProcess {
     } else {
       throw new VeniceException("Value type " + valueType + " is not supported in benchmark.");
     }
+
+    // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
+    TestUtils.restoreSystemExit();
   }
 
   @TearDown
