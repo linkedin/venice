@@ -75,7 +75,6 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
 
   private final DaVinciConfig daVinciConfig = new DaVinciConfig();
   private final CachingDaVinciClientFactory daVinciClientFactory;
-  private final Schema.Parser schemaParser = new Schema.Parser();
   private final SchemaReader metaStoreSchemaReader;
 
   public DaVinciClientMetaStoreBasedRepository(ClientConfig clientConfig, VeniceProperties backendConfig,
@@ -132,7 +131,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   @Override
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
-      return metaStoreSchemaReader.getValueSchemaId(schemaParser.parse(valueSchemaStr));
+      return metaStoreSchemaReader.getValueSchemaId(Schema.parse(valueSchemaStr));
     } else {
       return super.getValueSchemaId(storeName, valueSchemaStr);
     }
