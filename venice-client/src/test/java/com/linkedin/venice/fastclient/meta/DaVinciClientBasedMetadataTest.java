@@ -52,7 +52,6 @@ public class DaVinciClientBasedMetadataTest {
   private static final int KEY_COUNT = 100;
   private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
 
-  private final Schema.Parser parser = new Schema.Parser();
   private final VenicePartitioner defaultPartitioner = new DefaultVenicePartitioner();
 
   private VeniceClusterWrapper veniceCluster;
@@ -94,7 +93,7 @@ public class DaVinciClientBasedMetadataTest {
         VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
         new DaVinciConfig(),
         StoreMetaValue.class);
-    keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(parser.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
+    keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
 
     // Populate required ClientConfig fields for initializing DaVinciClientBasedMetadata
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
