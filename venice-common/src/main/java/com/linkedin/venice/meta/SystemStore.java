@@ -43,6 +43,23 @@ public class SystemStore extends AbstractStore {
     });
   }
 
+  public Store getZkSharedStore() {
+    return zkSharedStore;
+  }
+
+  public VeniceSystemStoreType getSystemStoreType() {
+    return systemStoreType;
+  }
+
+  public SerializableSystemStore getSerializableSystemStore() {
+    Store zkSharedStoreClone = zkSharedStore.cloneStore();
+    Store veniceStoreClone = veniceStore.cloneStore();
+    if (!(zkSharedStoreClone instanceof ZKStore && veniceStoreClone instanceof ZKStore)) {
+      throw new UnsupportedOperationException("SystemStore is only serializable if the underlying Store object is ZKStore");
+    }
+    return new SerializableSystemStore((ZKStore) zkSharedStoreClone, systemStoreType, (ZKStore) veniceStoreClone);
+  }
+
   public Store getVeniceStore() {
     return this.veniceStore;
   }

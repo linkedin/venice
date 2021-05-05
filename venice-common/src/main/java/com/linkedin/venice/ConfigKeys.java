@@ -1440,13 +1440,6 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS = "router.client.ssl.handshake.backoff.ms";
 
   /**
-   * Similar to the CLIENT_METADATA_SYSTEM_STORE_VERSION_MAP but for specifying the current version for the new Meta
-   * store instead.
-   */
-  public static final String CLIENT_META_SYSTEM_STORE_VERSION_MAP = "client.meta.system.store.version.map";
-
-
-  /**
    * Lease timeout for leaving quota disabled for a router. If quota was disabled through an API, it will be reset after
    * lease expiry.
    */

@@ -58,6 +58,9 @@ public class VeniceConstants {
 
   // URI: /stream_reprocessing_hybrid_store_quota/storeName
   public static final String TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA = "stream_reprocessing_hybrid_store_quota";
+
+  // URI: /store_state/storeName
+  public static final String TYPE_STORE_STATE = "store_state";
   // End of router request path
 
   public static final String NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC = "prod-lva1";

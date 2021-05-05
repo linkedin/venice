@@ -116,11 +116,10 @@ public abstract class NativeMetadataRepository
     // Not using a factory pattern here because the different implementations are temporary. Eventually we will only use DaVinciClientMetaStoreBasedRepository.
     // If all feature configs are enabled then:
     // DaVinciClientMetaStoreBasedRepository > ThinClientMetadataStoreBasedRepository.
-    Map<String, String> metaStoreVersions = backendConfig.getMap(CLIENT_META_SYSTEM_STORE_VERSION_MAP, new HashMap<>());
     if (backendConfig.getBoolean(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)) {
       logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
           + DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
-      return new DaVinciClientMetaStoreBasedRepository(clientConfig, backendConfig, metaStoreVersions);
+      return new DaVinciClientMetaStoreBasedRepository(clientConfig, backendConfig);
     } else if (backendConfig.getBoolean(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, false)) {
       logger.info("Initializing " + NativeMetadataRepository.class.getSimpleName() + " with "
           + ThinClientMetaStoreBasedRepository.class.getSimpleName());

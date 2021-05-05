@@ -1,6 +1,7 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -10,22 +11,37 @@ import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.helix.StoreJSONSerializer;
+import com.linkedin.venice.helix.SystemStoreJSONSerializer;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.SerializableSystemStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.SystemStore;
+import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
+import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -38,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -509,5 +526,58 @@ public class TestMetaDataHandler {
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());
+  }
+
+  @Test
+  public void testStoreStateLookup() throws IOException {
+    String storeName = "testStore";
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    HelixReadOnlyStoreRepository mockStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    Store testStore = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    String pushId = "test-push-job-id";
+    testStore.addVersion(new VersionImpl(storeName, 1, pushId));
+    testStore.setCurrentVersion(1);
+    testStore.setEtlStoreConfig(new ETLStoreConfigImpl());
+    SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
+    systemStoreAttributes.setCurrentVersion(2);
+    List<Version> versions = new ArrayList<>();
+    versions.add(new VersionImpl(metaSystemStoreName, 2, pushId));
+    systemStoreAttributes.setVersions(versions);
+    testStore.putSystemStore(VeniceSystemStoreType.META_STORE, systemStoreAttributes);
+    Store zkSharedStore =
+        TestUtils.createTestStore(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(), "test",
+            System.currentTimeMillis());
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(Time.SECONDS_PER_DAY, 1,
+        TimeUnit.MINUTES.toSeconds(1));
+    zkSharedStore.setHybridStoreConfig(hybridStoreConfig);
+    SystemStore systemStore = new SystemStore(zkSharedStore, VeniceSystemStoreType.META_STORE, testStore);
+    Mockito.doReturn(testStore).when(mockStoreRepository).getStore(storeName);
+    Mockito.doReturn(systemStore).when(mockStoreRepository).getStore(metaSystemStoreName);
+
+    FullHttpResponse response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_STORE_STATE + "/"
+            + storeName, null, null, null, Collections.emptyMap(), null, mockStoreRepository);
+    Assert.assertEquals(response.status().code(), 200);
+    StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
+    Store store = storeSerializer.deserialize(response.content().array(), null);
+    Assert.assertEquals(store.getCurrentVersion(), 1);
+    Assert.assertEquals(store.getVersion(1).get().getPushJobId(), pushId);
+
+    response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_STORE_STATE + "/"
+            + metaSystemStoreName, null, null, null, Collections.emptyMap(), null, mockStoreRepository);
+    Assert.assertEquals(response.status().code(), 200);
+    SystemStoreJSONSerializer systemStoreSerializer = new SystemStoreJSONSerializer();
+    SerializableSystemStore serializableSystemStore = systemStoreSerializer.deserialize(response.content().array(), null);
+    Store metaSystemStore = new SystemStore(serializableSystemStore.getZkSharedStore(),
+        serializableSystemStore.getSystemStoreType(), serializableSystemStore.getVeniceStore());
+    Assert.assertEquals(metaSystemStore.getCurrentVersion(), 2);
+    Assert.assertEquals(metaSystemStore.getVersion(2).get().getPushJobId(), pushId);
+    Assert.assertEquals(metaSystemStore.getHybridStoreConfig(), hybridStoreConfig);
+
+    FullHttpResponse notFoundResponse =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_STORE_STATE + "/"
+            + "notFound", null, null, null, Collections.emptyMap(), null, mockStoreRepository);
+    Assert.assertEquals(notFoundResponse.status().code(), 404);
   }
 }

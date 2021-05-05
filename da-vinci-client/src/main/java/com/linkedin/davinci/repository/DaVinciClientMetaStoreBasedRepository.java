@@ -2,26 +2,18 @@ package com.linkedin.davinci.repository;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.StoreStateReader;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStore;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
@@ -40,8 +32,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 
@@ -54,16 +44,11 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.*;
  */
 public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataRepository {
   private static final int KEY_SCHEMA_ID = 1;
-  private static final long OFFSET_LAG_THRESHOLD_FOR_META_STORE = 1;
   private static final long DEFAULT_DA_VINCI_CLIENT_ROCKS_DB_MEMORY_LIMIT = 1024 * 1024 * 1024; // 1GB
-  private static final String MOCKED_PUSH_ID = "mocked_system_store_push_id";
   private static final Logger logger = Logger.getLogger(DaVinciClientMetaStoreBasedRepository.class);
 
   // Map of user store name to their corresponding meta store which is used for finding the correct current version.
   // TODO Store objects in this map are mocked locally based on client.meta.system.store.version.map config.
-
-  // A map of user store name to their corresponding meta store current version provided via configs.
-  private final Map<String, Integer> metaStoreVersions = new VeniceConcurrentHashMap<>();
 
   // A map of user store name to their corresponding daVinci client of the meta store.
   private final Map<String, DaVinciClient<StoreMetaKey, StoreMetaValue>> daVinciClientMap =
@@ -77,12 +62,8 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final SchemaReader metaStoreSchemaReader;
 
-  public DaVinciClientMetaStoreBasedRepository(ClientConfig clientConfig, VeniceProperties backendConfig,
-      Map<String, String> metaStoreVersions) {
+  public DaVinciClientMetaStoreBasedRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
     super(clientConfig, backendConfig);
-    this.metaStoreVersions.putAll(metaStoreVersions.entrySet()
-        .stream()
-        .collect(Collectors.toMap(Map.Entry::getKey, e -> Integer.parseInt(e.getValue()))));
     daVinciClientFactory = new CachingDaVinciClientFactory(clientConfig.getD2Client(),
         Optional.ofNullable(clientConfig.getMetricsRepository())
             .orElse(TehutiUtils.getMetricsRepository("davinci-client")), backendConfig);
@@ -159,8 +140,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   @Override
   public void subscribe(String storeName) throws InterruptedException {
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
-      String regularStoreName = VeniceSystemStoreType.META_STORE.extractRegularStoreName(storeName);
-      metaStoreMap.computeIfAbsent(storeName, k -> getMetaStore(storeName, regularStoreName));
+      metaStoreMap.computeIfAbsent(storeName, k -> getMetaStore(storeName));
     } else {
       super.subscribe(storeName);
     }
@@ -222,31 +202,11 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     return new ZKStore(storeProperties);
   }
 
-  // TODO Get the meta store from an endpoint instead of mocking it locally based on provided configs.
-  private Store getMetaStore(String metaStoreName, String regularStoreName) {
-    Store mockedStore = new ZKStore(metaStoreName, "venice-system", 0, PersistenceType.ROCKS_DB, RoutingStrategy.HASH,
-        ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1); // TODO: figure out how to get hold of a sensible RF value here
-    mockedStore.setPartitionCount(VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
-    mockedStore.setHybridStoreConfig(
-        new HybridStoreConfigImpl(VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_REWIND_SECONDS,
-            OFFSET_LAG_THRESHOLD_FOR_META_STORE, TimeUnit.MINUTES.toSeconds(1)));
-    mockedStore.setLeaderFollowerModelEnabled(true);
-    mockedStore.setWriteComputationEnabled(true);
-    int currentVersionNumber = DEFAULT_SYSTEM_STORE_CURRENT_VERSION;
-    if (metaStoreVersions.containsKey(regularStoreName)) {
-      currentVersionNumber = metaStoreVersions.get(regularStoreName);
-    } else {
-      logger.info("Unable to find corresponding meta store version for store: " + regularStoreName
-          + ". Using the default value of: " + DEFAULT_SYSTEM_STORE_CURRENT_VERSION
-          + " instead. Please use the config: " + ConfigKeys.CLIENT_META_SYSTEM_STORE_VERSION_MAP
-          + " to specify if the default value doesn't work.");
+  private Store getMetaStore(String metaStoreName) {
+    ClientConfig clonedClientConfig = ClientConfig.cloneConfig(clientConfig).setStoreName(metaStoreName);
+    try (StoreStateReader storeStateReader = StoreStateReader.getInstance(clonedClientConfig)) {
+      return storeStateReader.getStore();
     }
-    Version currentVersion = new VersionImpl(metaStoreName, currentVersionNumber, MOCKED_PUSH_ID,
-        VeniceSystemStoreUtils.DEFAULT_SYSTEM_STORE_PARTITION_COUNT);
-    mockedStore.addVersion(currentVersion);
-    mockedStore.setCurrentVersion(currentVersion.getNumber());
-    return mockedStore;
   }
 
   @Override
@@ -263,6 +223,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
 
   private DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore(String storeName) {
     return daVinciClientMap.computeIfAbsent(storeName, k -> {
+      long metaStoreDVCStartTime = System.currentTimeMillis();
       DaVinciClient<StoreMetaKey, StoreMetaValue> client = daVinciClientFactory.getAndStartSpecificAvroClient(
           VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), daVinciConfig, StoreMetaValue.class);
       try {
@@ -270,6 +231,8 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
       } catch (InterruptedException | ExecutionException e) {
         throw new VeniceException("Failed to construct DaVinci client for the meta store of store: " + storeName, e);
       }
+      logger.info(String.format("DaVinci client for the meta store of store: %s constructed, took: %s ms", storeName,
+          System.currentTimeMillis() - metaStoreDVCStartTime));
       return client;
     });
   }

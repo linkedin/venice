@@ -8,14 +8,20 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
+import com.linkedin.venice.helix.StoreJSONSerializer;
+import com.linkedin.venice.helix.SystemStoreJSONSerializer;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.SerializableSystemStore;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
@@ -69,6 +75,8 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger logger = Logger.getLogger(MetaDataHandler.class);
   private static final ObjectMapper mapper = new ObjectMapper();
+  private static final StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
+  private static final SystemStoreJSONSerializer systemStoreSerializer = new SystemStoreJSONSerializer();
   private final RoutingDataRepository routing;
   private final ReadOnlySchemaRepository schemaRepo;
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
@@ -86,8 +94,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,
       OnlineInstanceFinderDelegator onlineInstanceFinder, ReadOnlyStoreRepository storeRepository,
-      Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
-      String clusterName, String zkAddress, String kafkaZkAddress, String kafkaBootstrapServers) {
+      Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository, String clusterName, String zkAddress,
+      String kafkaZkAddress, String kafkaBootstrapServers) {
     super();
     this.routing = routing;
     this.schemaRepo = schemaRepo;
@@ -107,7 +115,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     VenicePathParserHelper helper = parseRequest(req);
 
     String resourceType = helper.getResourceType(); //may be null
-    if (TYPE_MASTER_CONTROLLER.equals(resourceType)){
+    if (TYPE_MASTER_CONTROLLER.equals(resourceType)) {
       // URI: /master_controller
       handleControllerLookup(ctx);
     } else if (TYPE_KEY_SCHEMA.equals(resourceType)) {
@@ -130,8 +138,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       handlePushStatusLookUp(ctx, helper);
     } else if (TYPE_STREAM_HYBRID_STORE_QUOTA.equals(resourceType)) {
       handleStreamHybridStoreQuotaStatusLookup(ctx, helper);
-    } else if (TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA.equals(resourceType)){
+    } else if (TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA.equals(resourceType)) {
       handleStreamReprocessingHybridStoreQuotaStatusLookup(ctx, helper);
+    } else if (TYPE_STORE_STATE.equals(resourceType)) {
+      handleStoreStateLookup(ctx, helper);
     } else {
       // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
       // since we're passing it on to the next handler, we need to retain an extra reference.
@@ -145,7 +155,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     MasterControllerResponse responseObject = new MasterControllerResponse();
     responseObject.setCluster(clusterName);
     responseObject.setUrl(routing.getMasterController().getUrl());
-    logger.info("For cluster " + responseObject.getCluster() + ", the master controller url is " + responseObject.getUrl()
+    logger.info(
+        "For cluster " + responseObject.getCluster() + ", the master controller url is " + responseObject.getUrl()
             + ", last refreshed at " + routing.getMasterControllerChangeTime());
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
@@ -170,8 +181,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void handleValueSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
     checkResourceName(storeName,
-        "/" + TYPE_VALUE_SCHEMA + "/${storeName} or /" + TYPE_VALUE_SCHEMA
-            + "/${storeName}/${valueSchemaId}");
+        "/" + TYPE_VALUE_SCHEMA + "/${storeName} or /" + TYPE_VALUE_SCHEMA + "/${storeName}/${valueSchemaId}");
     String id = helper.getKey();
     if (null == id || id.isEmpty()) {
       // URI: /value_schema/{$storeName}
@@ -203,8 +213,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setName(storeName);
       SchemaEntry valueSchema = schemaRepo.getValueSchema(storeName, Integer.parseInt(id));
       if (null == valueSchema) {
-        byte[] errBody = new String("Value schema doesn't exist for schema id: " + id
-            + " of store: " + storeName).getBytes();
+        byte[] errBody =
+            new String("Value schema doesn't exist for schema id: " + id + " of store: " + storeName).getBytes();
         setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
         return;
       }
@@ -247,7 +257,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setD2Service(d2Service);
       setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
     }
-
   }
 
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
@@ -261,16 +270,15 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
     if (storeRepository.getStore(storeName) == null) {
-      byte[] errBody =
-          ("Cannot fetch the state for resource: " + resourceName + " because the store: " + storeName
-              + " cannot be found in cluster: " + clusterName).getBytes();
+      byte[] errBody = ("Cannot fetch the state for resource: " + resourceName + " because the store: " + storeName
+          + " cannot be found in cluster: " + clusterName).getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
     List<ReplicaState> replicaStates = new ArrayList<>();
     List<ReplicaState> partitionReplicaStates;
     List<Integer> unretrievablePartitions = new ArrayList<>();
-    for (int p = 0; p < onlineInstanceFinder.getNumberOfPartitions(resourceName); p ++) {
+    for (int p = 0; p < onlineInstanceFinder.getNumberOfPartitions(resourceName); p++) {
       try {
         partitionReplicaStates = onlineInstanceFinder.getReplicaStates(resourceName, p);
         if (partitionReplicaStates.isEmpty()) {
@@ -283,16 +291,16 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         return;
       }
       if (isResourceReadyToServe) {
-        isResourceReadyToServe = partitionReplicaStates.stream().filter(ReplicaState::isReadyToServe).count()
-            > (partitionReplicaStates.size() / 2);
+        isResourceReadyToServe = partitionReplicaStates.stream().filter(ReplicaState::isReadyToServe).count() > (
+            partitionReplicaStates.size() / 2);
       }
       replicaStates.addAll(partitionReplicaStates);
     }
     ResourceStateResponse response = new ResourceStateResponse();
     if (!unretrievablePartitions.isEmpty()) {
       response.setUnretrievablePartitions(unretrievablePartitions);
-      response.setError("Unable to retrieve replica states for partition(s): "
-          + Arrays.toString(unretrievablePartitions.toArray()));
+      response.setError(
+          "Unable to retrieve replica states for partition(s): " + Arrays.toString(unretrievablePartitions.toArray()));
       isResourceReadyToServe = false;
     }
     response.setCluster(clusterName);
@@ -310,9 +318,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     checkResourceName(resourceName, "/" + TYPE_PUSH_STATUS + "/${resourceName}");
 
     if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
-      byte[] errBody =
-          ("Cannot fetch the push status for resource: " + resourceName + " because the store: "
-              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+      byte[] errBody = ("Cannot fetch the push status for resource: " + resourceName + " because the store: "
+          + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
@@ -334,13 +341,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   /**
    * Get hybrid store quota status from {@link HelixHybridStoreQuotaRepository} for stores.
    */
-  private void handleStreamHybridStoreQuotaStatusLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+  private void handleStreamHybridStoreQuotaStatusLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper)
+      throws IOException {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + TYPE_STREAM_HYBRID_STORE_QUOTA + "/${storeName}");
     if (!storeConfigRepo.getStoreConfig(storeName).isPresent()) {
       byte[] errBody =
-          ("Cannot fetch the hybrid store quota status for store: " + storeName + " because the store: "
-              + storeName + " cannot be found").getBytes();
+          ("Cannot fetch the hybrid store quota status for store: " + storeName + " because the store: " + storeName
+              + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
@@ -351,24 +359,51 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   /**
    * Get hybrid store quota status from {@link HelixHybridStoreQuotaRepository} for stores.
    */
-  private void handleStreamReprocessingHybridStoreQuotaStatusLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+  private void handleStreamReprocessingHybridStoreQuotaStatusLookup(ChannelHandlerContext ctx,
+      VenicePathParserHelper helper) throws IOException {
     String resourceName = helper.getResourceName();
     checkResourceName(resourceName, "/" + TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA + "/${resourceName}");
     if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
       byte[] errBody =
-          ("Cannot fetch the hybrid store quota status for resource: " + resourceName + " because the store: "
-              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+          ("Cannot fetch the hybrid store quota status for resource: " + resourceName + " because the store: " + Version
+              .parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
     prepareHybridStoreQuotaStatusResponse(resourceName, ctx);
   }
 
-  private void prepareHybridStoreQuotaStatusResponse(String resourceName, ChannelHandlerContext ctx) throws IOException{
+  /**
+   * Get the current Store object for a given storeName, including Venice system stores.
+   */
+  private void handleStoreStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String storeName = helper.getResourceName();
+    checkResourceName(storeName, "/" + TYPE_STORE_STATE + "/${storeName}");
+    Store store = storeRepository.getStore(storeName);
+    if (store == null) {
+      byte[] errBody =
+          ("Cannot fetch the store state for store: " + storeName + " because the store cannot be found in cluster: "
+              + clusterName).getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+    byte[] body;
+    if (store instanceof SystemStore) {
+      SystemStore systemStore = (SystemStore) store;
+      body = systemStoreSerializer.serialize(systemStore.getSerializableSystemStore(), null);
+    } else {
+      body = storeSerializer.serialize(store, null);
+    }
+    setupResponseAndFlush(OK, body, true, ctx);
+  }
+
+  private void prepareHybridStoreQuotaStatusResponse(String resourceName, ChannelHandlerContext ctx)
+      throws IOException {
     HybridStoreQuotaStatusResponse hybridStoreQuotaStatusResponse = new HybridStoreQuotaStatusResponse();
     hybridStoreQuotaStatusResponse.setName(resourceName);
     if (hybridStoreQuotaRepository.isPresent()) {
-      hybridStoreQuotaStatusResponse.setQuotaStatus(hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(resourceName));
+      hybridStoreQuotaStatusResponse.setQuotaStatus(
+          hybridStoreQuotaRepository.get().getHybridStoreQuotaStatus(resourceName));
     } else {
       hybridStoreQuotaStatusResponse.setQuotaStatus(HybridStoreQuotaStatus.UNKNOWN);
     }
@@ -387,7 +422,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) throws Exception {
-    InetSocketAddress sockAddr = (InetSocketAddress)(ctx.channel().remoteAddress());
+    InetSocketAddress sockAddr = (InetSocketAddress) (ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
       logger.error("Got exception while handling meta data request from " + remoteAddr + ": ", e);
@@ -408,5 +443,4 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       ctx.channel().close();
     }
   }
-
 }
