@@ -60,6 +60,9 @@ public class IngestionBenchmarkWithTwoProcesses {
   public void setup() throws Exception {
     clusterInfoFilePath = File.createTempFile("temp-cluster-info", null).getAbsolutePath();
     ServiceFactory.startVeniceClusterInAnotherProcess(clusterInfoFilePath);
+
+    // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
+    TestUtils.restoreSystemExit();
   }
 
   @TearDown
