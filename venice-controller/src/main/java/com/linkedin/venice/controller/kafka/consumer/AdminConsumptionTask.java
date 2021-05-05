@@ -23,7 +23,6 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
@@ -115,7 +114,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final String clusterName;
   private final String topic;
   private final String consumerTaskId;
-  private final OffsetManager offsetManager;
   private final AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final VeniceHelixAdmin admin;
   private final boolean isParentController;
@@ -186,7 +184,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   public AdminConsumptionTask(String clusterName,
       KafkaConsumerWrapper consumer,
       VeniceHelixAdmin admin,
-      OffsetManager offsetManager,
       AdminTopicMetadataAccessor adminTopicMetadataAccessor,
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
@@ -207,7 +204,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.stats = stats;
     this.adminTopicReplicationFactor = adminTopicReplicationFactor;
     this.consumer = consumer;
-    this.offsetManager = offsetManager;
     this.adminTopicMetadataAccessor = adminTopicMetadataAccessor;
     this.executionIdAccessor = executionIdAccessor;
     this.processingCycleTimeoutInMs = processingCycleTimeoutInMs;
@@ -319,10 +315,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastOffset = lastPersistedOffset;
       lastDelegatedExecutionId = lastPersistedExecutionId;
     } else {
-      // should only happen when we first try to move away from PartitionState to admin topic metadata
-      lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getOffset();
-      lastDelegatedExecutionId = executionIdAccessor.getLastSucceededExecutionId(clusterName);
-      persistAdminTopicMetadata();
+      logger.info("Admin topic metadata is empty, will resume consumption from the starting offset");
+      lastOffset = UNASSIGNED_VALUE;
+      lastDelegatedExecutionId = UNASSIGNED_VALUE;
     }
     // Subscribe the admin topic
     consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);

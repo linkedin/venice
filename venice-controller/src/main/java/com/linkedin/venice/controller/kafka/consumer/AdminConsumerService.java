@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -19,13 +18,16 @@ import org.apache.log4j.Logger;
 
 import java.util.concurrent.ThreadFactory;
 
+
+/**
+ * One consumer service for one cluster.
+ */
 public class AdminConsumerService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(AdminConsumerService.class);
   private static final long WAITING_TIME_FOR_STOP_IN_MS = 5000;
 
   private final VeniceControllerConfig config;
   private final VeniceHelixAdmin admin;
-  private final AdminOffsetManager offsetManager;
   private final ZkAdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final KafkaClientFactory consumerFactory;
   private final MetricsRepository metricsRepository;
@@ -38,7 +40,6 @@ public class AdminConsumerService extends AbstractVeniceService {
   public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, MetricsRepository metricsRepository) {
     this.config = config;
     this.admin = admin;
-    this.offsetManager = new AdminOffsetManager(admin.getZkClient(), admin.getAdapterSerializer());
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
     this.metricsRepository = metricsRepository;
     this.consumerFactory = admin.getVeniceConsumerFactory();
@@ -67,7 +68,6 @@ public class AdminConsumerService extends AbstractVeniceService {
     return new AdminConsumptionTask(clusterName,
         createKafkaConsumer(clusterName),
         admin,
-        offsetManager,
         adminTopicMetadataAccessor,
         admin.getExecutionIdAccessor(),
         config.isParent(),
