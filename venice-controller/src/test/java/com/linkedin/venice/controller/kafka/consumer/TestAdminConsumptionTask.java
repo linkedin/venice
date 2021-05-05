@@ -20,7 +20,6 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -35,7 +34,6 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -180,11 +178,9 @@ public class TestAdminConsumptionTask {
       AdminConsumptionStats stats, long adminConsumptionCycleTimeoutMs) {
     MockInMemoryConsumer inMemoryKafkaConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
-    DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
-    return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, admin, deepCopyOffsetManager,
-        adminTopicMetadataAccessor, executionIdAccessor, isParent, stats, 1,
-        adminConsumptionCycleTimeoutMs, 1);
+    return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, admin, adminTopicMetadataAccessor,
+        executionIdAccessor, isParent, stats, 1, adminConsumptionCycleTimeoutMs, 1);
   }
 
   private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
@@ -681,7 +677,8 @@ public class TestAdminConsumptionTask {
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
-    offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+    Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(1, 1);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);

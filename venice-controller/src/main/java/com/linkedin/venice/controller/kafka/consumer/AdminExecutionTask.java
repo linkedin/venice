@@ -5,7 +5,6 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
