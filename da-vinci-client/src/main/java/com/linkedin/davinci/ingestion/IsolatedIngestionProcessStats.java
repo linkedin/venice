@@ -11,20 +11,20 @@ import org.apache.log4j.Logger;
 
 
 /**
- * IngestionProcessStats is a metrics collecting class that aims to collect metrics from isolated ingestion process.
+ * IsolatedIngestionProcessStats is a metrics collecting class that aims to collect metrics from isolated ingestion process.
  * It maintains a map of String to Double to keep the collected metrics from forked process. updateMetricMap() will be called
  * by a dedicated thread which collects metrics from child process at a fixed rate.
  * Metrics collected will be registered to main process's MetricRepository and be reported to metrics reporters(like InGraph).
  * In order to distinguish the collected metrics from the main process metrics, prefix "ingestion_isolation" is added to every metric names.
  */
-public class IngestionProcessStats extends AbstractVeniceStats {
-    private static final Logger logger = Logger.getLogger(IngestionProcessStats.class);
+public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
+    private static final Logger logger = Logger.getLogger(IsolatedIngestionProcessStats.class);
 
     private static final String METRIC_PREFIX = "ingestion_isolation";
 
     private final Map<String, Double> metricValueMap = new HashMap<>();
 
-    public IngestionProcessStats(MetricsRepository metricsRepository) {
+    public IsolatedIngestionProcessStats(MetricsRepository metricsRepository) {
         super(metricsRepository, METRIC_PREFIX);
     }
 

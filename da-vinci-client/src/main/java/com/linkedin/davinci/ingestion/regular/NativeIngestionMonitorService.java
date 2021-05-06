@@ -1,7 +1,8 @@
-package com.linkedin.davinci.ingestion;
+package com.linkedin.davinci.ingestion.regular;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.ingestion.channel.IngestionReportChannelInitializer;
+import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
+import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -16,6 +17,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,11 +32,16 @@ import static java.lang.Thread.*;
 
 
 /**
- * IngestionReportListener is the listener server that handles {@link com.linkedin.venice.ingestion.protocol.IngestionTaskReport}
- * and {@link com.linkedin.venice.ingestion.protocol.IngestionMetricsReport} sent from child process.
+ * NativeIngestionMonitorService is the listener service in main process which handles various kinds of reports sent from
+ * isolated ingestion service. NativeIngestionMonitorService itself is a Netty based server implementation, and the main
+ * report handling logics happens in {@link NativeIngestionReportHandler}.
+ * Besides reports handling, it also maintains two executor services to send heartbeat check and collect metrics to/from
+ * child process. Also, it maintains status for all the ongoing/completed topic partition ingestion tasks, which helps
+ * {@link IsolatedIngestionBackend} to check which process a topic partition storage is located, as well as status recovery
+ * when child process crashed and restarted.
  */
-public class IngestionReportListener extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(IngestionReportListener.class);
+public class NativeIngestionMonitorService extends AbstractVeniceService {
+  private static final Logger logger = Logger.getLogger(NativeIngestionMonitorService.class);
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
@@ -45,8 +52,8 @@ public class IngestionReportListener extends AbstractVeniceService {
   private final IsolatedIngestionBackend ingestionBackend;
   private final ScheduledExecutorService metricsRequestScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
-  private final IngestionRequestClient metricsClient;
-  private final IngestionRequestClient heartbeatClient;
+  private final NativeIngestionRequestClient metricsClient;
+  private final NativeIngestionRequestClient heartbeatClient;
   // Topic name to partition set map, representing all topic partitions being ingested in Isolated Ingestion Backend.
   private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
   // Topic name to partition set map, representing all topic partitions that have completed ingestion in isolated process.
@@ -56,15 +63,15 @@ public class IngestionReportListener extends AbstractVeniceService {
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository;
-  private IngestionProcessStats ingestionProcessStats;
-  private IngestionStorageMetadataService storageMetadataService;
+  private IsolatedIngestionProcessStats isolatedIngestionProcessStats;
+  private NativeIngestionStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService storeIngestionService;
 
   private VeniceConfigLoader configLoader;
   private long latestHeartbeatTimestamp = -1;
   private long heartbeatTimeoutMs;
 
-  public IngestionReportListener(IsolatedIngestionBackend ingestionBackend, int applicationPort, int servicePort) {
+  public NativeIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, int applicationPort, int servicePort) {
     this.applicationPort = applicationPort;
     this.servicePort = servicePort;
     this.ingestionBackend = ingestionBackend;
@@ -75,14 +82,14 @@ public class IngestionReportListener extends AbstractVeniceService {
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-            .childHandler(new IngestionReportChannelInitializer(this))
+            .childHandler(new NativeIngestionReportChannelInitializer(this))
             .option(ChannelOption.SO_BACKLOG, 1000)
             .childOption(ChannelOption.SO_KEEPALIVE, true)
             .option(ChannelOption.SO_REUSEADDR, true)
             .childOption(ChannelOption.TCP_NODELAY, true);
 
-    heartbeatClient = new IngestionRequestClient(this.servicePort);
-    metricsClient = new IngestionRequestClient(this.servicePort);
+    heartbeatClient = new NativeIngestionRequestClient(this.servicePort);
+    metricsClient = new NativeIngestionRequestClient(this.servicePort);
   }
 
   @Override
@@ -90,7 +97,7 @@ public class IngestionReportListener extends AbstractVeniceService {
     serverFuture = bootstrap.bind(applicationPort).sync();
     logger.info("Report listener service started on port: " + applicationPort);
     if (configLoader == null) {
-      throw new VeniceException("Venice config not found in IngestionReportListener!");
+      throw new VeniceException("Venice config not found in NativeIngestionMonitorService!");
     }
     heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS
         .toMillis(60));
@@ -157,11 +164,11 @@ public class IngestionReportListener extends AbstractVeniceService {
     return metricsRepository;
   }
 
-  public void setStorageMetadataService(IngestionStorageMetadataService storageMetadataService) {
+  public void setStorageMetadataService(NativeIngestionStorageMetadataService storageMetadataService) {
     this.storageMetadataService = storageMetadataService;
   }
 
-  public IngestionStorageMetadataService getStorageMetadataService() {
+  public NativeIngestionStorageMetadataService getStorageMetadataService() {
     return storageMetadataService;
   }
 
@@ -185,19 +192,25 @@ public class IngestionReportListener extends AbstractVeniceService {
   }
 
   public void removeVersionPartitionFromIngestionMap(String topicName, int partitionId) {
-    completedTopicPartitions.putIfAbsent(topicName, new HashSet<>());
-    completedTopicPartitions.computeIfPresent(topicName, (key, val) -> {
-      val.add(partitionId);
-      return val;
-    });
-
-    topicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
-      val.remove(partitionId);
-      return val;
-    });
+    if (topicNameToPartitionSetMap.getOrDefault(topicName, Collections.emptySet()).contains(partitionId)) {
+      // Add topic partition to completed task pool.
+      completedTopicPartitions.putIfAbsent(topicName, new HashSet<>());
+      completedTopicPartitions.computeIfPresent(topicName, (key, val) -> {
+        val.add(partitionId);
+        return val;
+      });
+      // Remove topic partition from ongoing task pool.
+      topicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
+        val.remove(partitionId);
+        return val;
+      });
+    } else {
+      logger.error("Topic partition not found in ongoing ingestion tasks: " + topicName + ", partition id: " + partitionId);
+    }
   }
 
   public void addVersionPartitionToIngestionMap(String topicName, int partitionId) {
+    // Add topic partition to ongoing task pool.
     topicNameToPartitionSetMap.putIfAbsent(topicName, new HashSet<>());
     topicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
       val.add(partitionId);
@@ -216,13 +229,13 @@ public class IngestionReportListener extends AbstractVeniceService {
       return;
     }
 
-    ingestionProcessStats = new IngestionProcessStats(metricsRepository);
+    isolatedIngestionProcessStats = new IsolatedIngestionProcessStats(metricsRepository);
     metricsRequestScheduler.scheduleAtFixedRate(this::collectIngestionServiceMetrics, 0, 5, TimeUnit.SECONDS);
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 10, TimeUnit.SECONDS);
   }
 
   private void restartForkedProcess() {
-    try (IngestionRequestClient client = new IngestionRequestClient(servicePort)) {
+    try (NativeIngestionRequestClient client = new NativeIngestionRequestClient(servicePort)) {
       ingestionBackend.setIsolatedIngestionServiceProcess(client.startForkedIngestionProcess(configLoader));
 
       // Reset heartbeat time.
@@ -240,7 +253,7 @@ public class IngestionReportListener extends AbstractVeniceService {
   }
 
   private void collectIngestionServiceMetrics() {
-    if (metricsClient.collectMetrics(ingestionProcessStats)) {
+    if (metricsClient.collectMetrics(isolatedIngestionProcessStats)) {
       // Update heartbeat time.
       latestHeartbeatTimestamp = System.currentTimeMillis();
     }
@@ -249,7 +262,7 @@ public class IngestionReportListener extends AbstractVeniceService {
   private void checkHeartbeatTimeout() {
     long currentTimeMillis = System.currentTimeMillis();
     if (logger.isDebugEnabled()) {
-      logger.info("Checking heartbeat timeout at " + currentTimeMillis + ", current heartbeat: " + latestHeartbeatTimestamp);
+      logger.debug("Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat received: " + latestHeartbeatTimestamp);
     }
     if (heartbeatClient.sendHeartbeatRequest()) {
       // Update heartbeat time.

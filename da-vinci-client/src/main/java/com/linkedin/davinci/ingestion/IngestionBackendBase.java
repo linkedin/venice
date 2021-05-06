@@ -16,7 +16,11 @@ public interface IngestionBackendBase extends Closeable {
 
   void killConsumptionTask(String topicName);
 
+  // addIngestionNotifier adds ingestion listener to KafkaStoreIngestionService
   void addIngestionNotifier(VeniceNotifier ingestionListener);
+
+  // dropStoragePartitionGracefully will stop subscribe topic's partition and delete partition data from storage.
+  void dropStoragePartitionGracefully(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds);
 
   StorageMetadataService getStorageMetadataService();
 
