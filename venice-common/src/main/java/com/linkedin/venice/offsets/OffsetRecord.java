@@ -286,6 +286,21 @@ public class OffsetRecord {
   }
 
   /**
+   * This function will print only the critical info inside OffsetRecord, like offset, EOP received; producer DIV info
+   * will not be printed.
+   */
+  public String toSimplifiedString() {
+    return "OffsetRecord{" +
+        "offset=" + getOffset() +
+        ", eventTimeEpochMs=" + getEventTimeEpochMs() +
+        ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
+        ", isEndOfPushReceived=" + isEndOfPushReceived() +
+        ", upstreamOffset=" + getUpstreamOffset() +
+        ", leaderTopic=" + getLeaderTopic() +
+        '}';
+  }
+
+  /**
    * This function will print out detailed offset info, which including info per producerGuid.
    * The reason is not using the default {@link PartitionState#toString} since it won't print GUID properly.
    *
