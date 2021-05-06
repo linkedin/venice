@@ -3,6 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -97,7 +98,8 @@ public class StorageExecutionHandlerTest {
 
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
-        mockMetadataRetriever, null, false, false, 10, serverConfig);
+        mockMetadataRetriever, null, false, false, 10, serverConfig,
+        mock(GenericRecordChunkingAdapter.class));
     testHandler.channelRead(mockCtx, testRequest);
 
     waitUntilStorageExecutionHandlerRespond(outputArray);
@@ -130,7 +132,8 @@ public class StorageExecutionHandlerTest {
     doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
 
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
-        mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig);
+        mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig,
+        mock(GenericRecordChunkingAdapter.class));
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
@@ -224,7 +227,7 @@ public class StorageExecutionHandlerTest {
 
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
-        mockMetadataRetriever, null, false, false, 10, serverConfig);
+        mockMetadataRetriever, null, false, false, 10, serverConfig, mock(GenericRecordChunkingAdapter.class));
     testHandler.channelRead(mockCtx, testRequest);
 
     waitUntilStorageExecutionHandlerRespond(outputArray);
@@ -282,7 +285,7 @@ public class StorageExecutionHandlerTest {
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
         mock(ReadOnlyStoreRepository.class), mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
-        10, serverConfig);
+        10, serverConfig, mock(GenericRecordChunkingAdapter.class));
     testHandler.channelRead(mockCtx, testRequest);
 
     waitUntilStorageExecutionHandlerRespond(outputArray);

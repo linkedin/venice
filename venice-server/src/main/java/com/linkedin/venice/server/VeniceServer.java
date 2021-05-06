@@ -14,6 +14,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -21,6 +22,7 @@ import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -52,6 +54,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.io.IOUtils;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -84,6 +87,7 @@ public class VeniceServer {
   private ZkClient zkClient;
   private VeniceJVMStats jvmStats;
   private ICProvider icProvider;
+  private CompressorFactory compressorFactory;
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
       throws VeniceException {
@@ -193,6 +197,9 @@ public class VeniceServer {
     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
 
+    compressorFactory = new CompressorFactory();
+    GenericRecordChunkingAdapter chunkingAdapter = new GenericRecordChunkingAdapter(compressorFactory);
+
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -208,7 +215,8 @@ public class VeniceServer {
         partitionStateSerializer,
         readOnlyZKSharedSchemaRepository,
         icProvider,
-        false);
+        false,
+        chunkingAdapter);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
@@ -240,7 +248,7 @@ public class VeniceServer {
     // create and add ListenerServer for handling GET requests
     ListenerService listenerService = createListenerService(storageService.getStorageEngineRepository(), metadataRepo, storeValueSchemasCacheService,
         routingRepositoryFuture, kafkaStoreIngestionService, serverConfig, metricsRepository, sslFactory,
-        routerAccessController, storeAccessController, diskHealthCheckService);
+        routerAccessController, storeAccessController, diskHealthCheckService, chunkingAdapter);
     services.add(listenerService);
 
     /**
@@ -393,6 +401,8 @@ public class VeniceServer {
         logger.error("Exception in closing: " + zkClient.getClass().getSimpleName(), e);
       }
 
+      IOUtils.closeQuietly(compressorFactory);
+
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
@@ -444,10 +454,11 @@ public class VeniceServer {
       Optional<SSLEngineComponentFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
-      DiskHealthCheckService diskHealthService) {
+      DiskHealthCheckService diskHealthService,
+      GenericRecordChunkingAdapter chunkingAdapter) {
     return new ListenerService(
         storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
-        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService);
+        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService, chunkingAdapter);
   }
 
   public static void main(String args[]) throws Exception {

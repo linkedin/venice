@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -56,11 +57,12 @@ public class TestVeniceServer extends VeniceServer {
       Optional<SSLEngineComponentFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
-      DiskHealthCheckService diskHealthService) {
+      DiskHealthCheckService diskHealthService,
+      GenericRecordChunkingAdapter chunkingAdapter) {
 
     return new ListenerService(
         storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
-        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService) {
+        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService, chunkingAdapter) {
 
       @Override
       protected StorageExecutionHandler createRequestHandler(
@@ -73,11 +75,12 @@ public class TestVeniceServer extends VeniceServer {
           DiskHealthCheckService diskHealthService,
           boolean fastAvroEnabled,
           boolean parallelBatchGetEnabled,
-          int parallelBatchGetChunkSize) {
+          int parallelBatchGetChunkSize,
+          GenericRecordChunkingAdapter chunkingAdapter) {
 
         return new StorageExecutionHandler(
             executor, computeExecutor, storageEngineRepository, metadataRepository, schemaRepository, metadataRetriever, diskHealthService,
-            fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig) {
+            fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, chunkingAdapter) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             RequestHandler handler = requestHandler.get();

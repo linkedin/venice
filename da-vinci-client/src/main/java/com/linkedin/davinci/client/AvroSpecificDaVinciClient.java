@@ -26,7 +26,7 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
 
     Class<V> valueClass = clientConfig.getSpecificValueClass();
     FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
-    this.chunkingAdapter = new SpecificRecordChunkingAdapter<>(valueClass);
+    this.chunkingAdapter = new SpecificRecordChunkingAdapter<>(valueClass, getCompressorFactory());
   }
 
   @Override

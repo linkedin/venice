@@ -32,7 +32,8 @@ public class TestVeniceResponseDecompressor {
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "storage/ZstdThreeStringFieldWithPrefix/ApqFzqwN?f=b64", System.currentTimeMillis(), 100000);
     request.headers().add(VENICE_SUPPORTED_COMPRESSION_STRATEGY, CompressionStrategy.GZIP.getValue());
 
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, null, request, "test-store", 1);
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, null, request, "test-store", 1, compressorFactory);
 
     CompositeByteBuf content = Unpooled.compositeBuffer();
     FullHttpResponse storageNodeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
@@ -60,18 +61,21 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "test-store_v1", new byte[]{}, 22);
+    try(CompressorFactory compressorFactory = new CompressorFactory()) {
+      compressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "test-store_v1",
+          new byte[]{}, 22);
 
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1);
+      VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
 
-    CompositeByteBuf content = Unpooled.compositeBuffer();
-    FullHttpResponse storageNodeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
-    storageNodeResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+      CompositeByteBuf content = Unpooled.compositeBuffer();
+      FullHttpResponse storageNodeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
+      storageNodeResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
 
-    FullHttpResponse routerResponse = responseDecompressor.processSingleGetResponse(storageNodeResponse);
+      FullHttpResponse routerResponse = responseDecompressor.processSingleGetResponse(storageNodeResponse);
 
-    Assert.assertEquals(routerResponse.status(), OK);
-    Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
+      Assert.assertEquals(routerResponse.status(), OK);
+      Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
+    }
   }
 
   /**
@@ -90,18 +94,21 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "test-store_v1", new byte[]{}, 22);
+    try(CompressorFactory compressorFactory = new CompressorFactory()) {
+      compressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "test-store_v1",
+          new byte[]{}, 22);
 
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1);
+      VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
 
-    CompositeByteBuf content = Unpooled.compositeBuffer();
-    FullHttpResponse storageNodeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content);
-    storageNodeResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+      CompositeByteBuf content = Unpooled.compositeBuffer();
+      FullHttpResponse storageNodeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content);
+      storageNodeResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
 
-    FullHttpResponse routerResponse = responseDecompressor.processSingleGetResponse(storageNodeResponse);
+      FullHttpResponse routerResponse = responseDecompressor.processSingleGetResponse(storageNodeResponse);
 
-    Assert.assertEquals(routerResponse.status(), NOT_FOUND);
-    Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
+      Assert.assertEquals(routerResponse.status(), NOT_FOUND);
+      Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
+    }
   }
 
   /**
@@ -120,7 +127,8 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1);
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
 
     CompositeByteBuf content = Unpooled.compositeBuffer();
     FullHttpResponse storageNodeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content);
@@ -148,7 +156,8 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1);
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
 
     CompositeByteBuf content = Unpooled.compositeBuffer();
     FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
@@ -183,7 +192,8 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1);
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
 
     CompositeByteBuf content = Unpooled.compositeBuffer();
     FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content);
@@ -219,26 +229,29 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "test-store_v1", new byte[]{}, 22);
+    try(CompressorFactory compressorFactory = new CompressorFactory()) {
+      compressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "test-store_v1",
+          new byte[]{}, 22);
 
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1);
+      VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
 
-    CompositeByteBuf content1 = Unpooled.compositeBuffer();
-    FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content1);
-    storageNodeResponse1.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
-    storageNodeResponse1.headers().add(VENICE_SCHEMA_ID, "1");
-    storageNodeResponse1.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+      CompositeByteBuf content1 = Unpooled.compositeBuffer();
+      FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content1);
+      storageNodeResponse1.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+      storageNodeResponse1.headers().add(VENICE_SCHEMA_ID, "1");
+      storageNodeResponse1.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    CompositeByteBuf content2 = Unpooled.compositeBuffer();
-    FullHttpResponse storageNodeResponse2 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content2);
-    storageNodeResponse2.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
-    storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
-    storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+      CompositeByteBuf content2 = Unpooled.compositeBuffer();
+      FullHttpResponse storageNodeResponse2 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content2);
+      storageNodeResponse2.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+      storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
+      storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(Arrays.asList(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
+      FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(Arrays.asList(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
 
-    Assert.assertEquals(routerResponse.status(), OK);
-    Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
+      Assert.assertEquals(routerResponse.status(), OK);
+      Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
+    }
   }
 
   /**
@@ -257,25 +270,28 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "test-store_v1", new byte[]{}, 22);
+    try(CompressorFactory compressorFactory = new CompressorFactory()) {
+      compressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "test-store_v1",
+          new byte[]{}, 22);
 
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1);
+      VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
 
-    CompositeByteBuf content1 = Unpooled.compositeBuffer();
-    FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content1);
-    storageNodeResponse1.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
-    storageNodeResponse1.headers().add(VENICE_SCHEMA_ID, "1");
-    storageNodeResponse1.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+      CompositeByteBuf content1 = Unpooled.compositeBuffer();
+      FullHttpResponse storageNodeResponse1 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content1);
+      storageNodeResponse1.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+      storageNodeResponse1.headers().add(VENICE_SCHEMA_ID, "1");
+      storageNodeResponse1.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    CompositeByteBuf content2 = Unpooled.compositeBuffer();
-    FullHttpResponse storageNodeResponse2 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content2);
-    storageNodeResponse2.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
-    storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
-    storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+      CompositeByteBuf content2 = Unpooled.compositeBuffer();
+      FullHttpResponse storageNodeResponse2 = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, NOT_FOUND, content2);
+      storageNodeResponse2.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+      storageNodeResponse2.headers().add(VENICE_SCHEMA_ID, "1");
+      storageNodeResponse2.headers().add(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
 
-    FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(Arrays.asList(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
+      FullHttpResponse routerResponse = responseDecompressor.processMultiGetResponses(Arrays.asList(new FullHttpResponse[]{storageNodeResponse1, storageNodeResponse2}));
 
-    Assert.assertEquals(routerResponse.status(), NOT_FOUND);
-    Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
+      Assert.assertEquals(routerResponse.status(), NOT_FOUND);
+      Assert.assertEquals(routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY), String.valueOf(CompressionStrategy.NO_OP.getValue()));
+    }
   }
 }

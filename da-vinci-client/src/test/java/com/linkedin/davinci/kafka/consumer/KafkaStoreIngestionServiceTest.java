@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -45,6 +46,7 @@ public class KafkaStoreIngestionServiceTest {
   private ClusterInfoProvider mockClusterInfoProvider;
   private ReadOnlyStoreRepository mockmetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
+  private GenericRecordChunkingAdapter chunkingAdapter;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
 
@@ -55,6 +57,7 @@ public class KafkaStoreIngestionServiceTest {
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockmetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
+    chunkingAdapter = mock(GenericRecordChunkingAdapter.class);
 
     setupMockConfig();
   }
@@ -92,7 +95,8 @@ public class KafkaStoreIngestionServiceTest {
        null,
        Optional.empty(),
        Optional.empty(),
-       AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+       AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+       chunkingAdapter);
 
    String mockStoreName = "test";
    String mockSimilarStoreName = "testTest";
@@ -165,7 +169,8 @@ public class KafkaStoreIngestionServiceTest {
         null,
         Optional.empty(),
         Optional.empty(),
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        chunkingAdapter);
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";

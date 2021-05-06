@@ -6,6 +6,7 @@ import com.linkedin.ddsstorage.base.misc.TimeValue;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.MetricNames;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
@@ -39,12 +40,12 @@ import static org.mockito.Mockito.*;
 public class TestVeniceResponseAggregator {
   private static Schema STRING_SCHEMA = Schema.parse("\"string\"");
 
-  private VenicePath getPath(String storeName, RequestType requestType, RouterStats routerStats, BasicFullHttpRequest request) {
+  private VenicePath getPath(String storeName, RequestType requestType, RouterStats routerStats, BasicFullHttpRequest request, CompressorFactory compressorFactory) {
     VenicePath path = mock(VenicePath.class);
     doReturn(requestType).when(path).getRequestType();
     doReturn(storeName).when(path).getStoreName();
     doReturn(Optional.empty()).when(path).getChunkedResponse();
-    doReturn(new VeniceResponseDecompressor(false, routerStats, request, storeName, 1)).when(path).getResponseDecompressor();
+    doReturn(new VeniceResponseDecompressor(false, routerStats, request, storeName, 1, compressorFactory)).when(path).getResponseDecompressor();
     return path;
   }
 
@@ -69,8 +70,10 @@ public class TestVeniceResponseAggregator {
     when(mockRouterStat.getStatsByType(RequestType.MULTI_GET)).thenReturn(mockStatsForMultiGet);
     when(mockRouterStat.getStatsByType(RequestType.COMPUTE)).thenReturn(mockStatsForCompute);
 
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+
     Metrics metrics = new Metrics();
-    metrics.setPath(getPath(storeName, RequestType.SINGLE_GET, mockRouterStat, request));
+    metrics.setPath(getPath(storeName, RequestType.SINGLE_GET, mockRouterStat, request, compressorFactory));
 
     VeniceResponseAggregator responseAggregator =
         new VeniceResponseAggregator(mockRouterStat);
@@ -130,8 +133,10 @@ public class TestVeniceResponseAggregator {
     when(mockRouterStat.getStatsByType(RequestType.MULTI_GET)).thenReturn(mockStatsForMultiGet);
     when(mockRouterStat.getStatsByType(RequestType.COMPUTE)).thenReturn(mockStatsForCompute);
 
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+
     Metrics metrics = new Metrics();
-    metrics.setPath(getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request));
+    metrics.setPath(getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request, compressorFactory));
 
     VeniceResponseAggregator responseAggregator =
         new VeniceResponseAggregator(mockRouterStat);

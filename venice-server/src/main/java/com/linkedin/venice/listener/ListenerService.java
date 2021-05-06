@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -59,7 +60,8 @@ public class ListenerService extends AbstractVeniceService {
       Optional<SSLEngineComponentFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
-      DiskHealthCheckService diskHealthService) {
+      DiskHealthCheckService diskHealthService,
+      GenericRecordChunkingAdapter chunkingAdapter) {
 
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
@@ -72,7 +74,7 @@ public class ListenerService extends AbstractVeniceService {
 
     StorageExecutionHandler requestHandler = createRequestHandler(
         executor, computeExecutor, storageEngineRepository, storeMetadataRepository, schemaRepository, metadataRetriever, diskHealthService,
-        serverConfig.isComputeFastAvroEnabled(), serverConfig.isEnableParallelBatchGet(), serverConfig.getParallelBatchGetChunkSize());
+        serverConfig.isComputeFastAvroEnabled(), serverConfig.isEnableParallelBatchGet(), serverConfig.getParallelBatchGetChunkSize(), chunkingAdapter);
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository, routingRepository, metricsRepository, sslFactory, serverConfig, routerAccessController,
@@ -154,9 +156,10 @@ public class ListenerService extends AbstractVeniceService {
       DiskHealthCheckService diskHealthService,
       boolean fastAvroEnabled,
       boolean parallelBatchGetEnabled,
-      int parallelBatchGetChunkSize) {
+      int parallelBatchGetChunkSize,
+      GenericRecordChunkingAdapter chunkingAdapter) {
     return new StorageExecutionHandler(
         executor, computeExecutor, storageEngineRepository, metadataRepository, schemaRepository, metadataRetriever, diskHealthService,
-        fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig);
+        fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, chunkingAdapter);
   }
 }

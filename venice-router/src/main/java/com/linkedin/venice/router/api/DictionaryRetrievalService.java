@@ -66,6 +66,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   private final Thread dictionaryRetrieverThread;
   private final ScheduledExecutorService executor;
   private final StorageNodeClient storageNodeClient;
+  private final CompressorFactory compressorFactory;
 
   // Shared queue between producer and consumer where topics whose dictionaries have to be downloaded are put in.
   private BlockingQueue<String> dictionaryDownloadCandidates = new LinkedBlockingQueue<>();
@@ -130,11 +131,12 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
    */
   public DictionaryRetrievalService(OnlineInstanceFinder onlineInstanceFinder, VeniceRouterConfig routerConfig,
       Optional<SSLEngineComponentFactory> sslFactory, ReadOnlyStoreRepository metadataRepository,
-      StorageNodeClient storageNodeClient){
+      StorageNodeClient storageNodeClient, CompressorFactory compressorFactory){
     this.onlineInstanceFinder = onlineInstanceFinder;
     this.sslFactory = sslFactory;
     this.metadataRepository = metadataRepository;
     this.storageNodeClient = storageNodeClient;
+    this.compressorFactory = compressorFactory;
 
     // How long of a timeout we allow for a node to respond to a dictionary request
     dictionaryRetrievalTimeMs = routerConfig.getDictionaryRetrievalTimeMs();
@@ -158,7 +160,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         }
 
         // If the dictionary has already been downloaded, skip it.
-        if (CompressorFactory.versionSpecificCompressorExists(kafkaTopic)) {
+        if (compressorFactory.versionSpecificCompressorExists(kafkaTopic)) {
           continue;
         }
 
@@ -344,7 +346,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       return;
     }
     CompressionStrategy compressionStrategy = version.getCompressionStrategy();
-    CompressorFactory.createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, dictionary);
+    compressorFactory.createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, dictionary);
   }
 
   private void handleVersionRetirement(String kafkaTopic, String exceptionReason) {
@@ -354,7 +356,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       dictionaryFutureForTopic.completeExceptionally(e);
     }
     dictionaryDownloadCandidates.remove(kafkaTopic);
-    CompressorFactory.removeVersionSpecificCompressor(kafkaTopic);
+    compressorFactory.removeVersionSpecificCompressor(kafkaTopic);
   }
 
   @Override

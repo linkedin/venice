@@ -2,10 +2,15 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -14,10 +19,7 @@ import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -96,7 +98,8 @@ public class StoreIngestionTaskFactory {
           venicePartitioner,
           storeVersionPartitionCount,
           isIsolatedIngestion,
-          amplificationFactor);
+          amplificationFactor,
+          builder.chunkingAdapter);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.kafkaClientFactory,
@@ -177,6 +180,7 @@ public class StoreIngestionTaskFactory {
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
     private boolean isIsolatedIngestion;
+    private GenericRecordChunkingAdapter chunkingAdapter;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -362,6 +366,13 @@ public class StoreIngestionTaskFactory {
     public Builder setIsIsolatedIngestion(boolean isolatedIngestion) {
       if (!built) {
         this.isIsolatedIngestion = isolatedIngestion;
+      }
+      return this;
+    }
+
+    public Builder setChunkingAdapter(GenericRecordChunkingAdapter chunkingAdapter) {
+      if (!built) {
+        this.chunkingAdapter = chunkingAdapter;
       }
       return this;
     }

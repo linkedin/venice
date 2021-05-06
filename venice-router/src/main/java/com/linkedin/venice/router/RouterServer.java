@@ -1,25 +1,38 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
+import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
+import com.linkedin.ddsstorage.base.concurrency.impl.SuccessAsyncFuture;
+import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
+import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
+import com.linkedin.ddsstorage.router.api.LongTailRetrySupplier;
+import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
+import com.linkedin.ddsstorage.router.impl.Router;
+import com.linkedin.ddsstorage.router.impl.netty4.Router4Impl;
+import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
-import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
+import com.linkedin.venice.helix.HelixOfflinePushRepository;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
-import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
-import com.linkedin.venice.helix.HelixOfflinePushRepository;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
-import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
@@ -27,7 +40,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
+import com.linkedin.venice.router.api.DictionaryRetrievalService;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
 import com.linkedin.venice.router.api.RouterKey;
@@ -42,8 +55,8 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
-import com.linkedin.venice.router.api.DictionaryRetrievalService;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
@@ -71,20 +84,6 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
-import com.linkedin.d2.server.factory.D2Server;
-import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
-import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
-import com.linkedin.ddsstorage.base.concurrency.impl.SuccessAsyncFuture;
-import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
-import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
-import com.linkedin.ddsstorage.router.api.LongTailRetrySupplier;
-import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
-import com.linkedin.ddsstorage.router.impl.Router;
-import com.linkedin.ddsstorage.router.impl.netty4.Router4Impl;
-import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-
 import io.netty.channel.AbstractChannel;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelPipeline;
@@ -98,13 +97,6 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.helix.InstanceType;
-import org.apache.helix.manager.zk.ZKHelixManager;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
-
-import javax.annotation.Nonnull;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.ArrayList;
@@ -117,6 +109,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import javax.annotation.Nonnull;
+import org.apache.helix.InstanceType;
+import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
 
@@ -419,8 +416,10 @@ public class RouterServer extends AbstractVeniceService {
         new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository,
             partitionStatusOnlineInstanceFinder, config.isHelixOfflinePushEnabled());
 
+    CompressorFactory compressorFactory = new CompressorFactory();
+
     dictionaryRetrievalService = new DictionaryRetrievalService(onlineInstanceFinder, config, sslFactoryForRequests,
-        metadataRepository, storageNodeClient);
+        metadataRepository, storageNodeClient, compressorFactory);
 
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, storeConfigRepository,
@@ -440,9 +439,10 @@ public class RouterServer extends AbstractVeniceService {
         new StaleVersionStats(metricsRepository, "stale_version"),
         storeConfigRepository,
         config.getClusterToD2Map(),
-        config.getClusterName());
+        config.getClusterName(),
+        compressorFactory);
     VenicePathParser pathParser = new VenicePathParser(versionFinder, partitionFinder,
-        routerStats, metadataRepository, config);
+        routerStats, metadataRepository, config, compressorFactory);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);

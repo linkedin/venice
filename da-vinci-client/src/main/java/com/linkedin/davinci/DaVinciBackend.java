@@ -18,6 +18,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -88,7 +89,8 @@ public class DaVinciBackend implements Closeable {
       ClientConfig clientConfig,
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
-      ICProvider icProvider) {
+      ICProvider icProvider,
+      GenericRecordChunkingAdapter chunkingAdapter) {
     VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
     this.configLoader = configLoader;
     metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
@@ -150,7 +152,8 @@ public class DaVinciBackend implements Closeable {
         rocksDBMemoryStats,
         Optional.of(kafkaMessageEnvelopeSchemaReader),
         Optional.empty(),
-        partitionStateSerializer);
+        partitionStateSerializer,
+        chunkingAdapter);
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
 

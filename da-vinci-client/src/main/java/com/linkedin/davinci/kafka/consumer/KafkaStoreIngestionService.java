@@ -18,6 +18,7 @@ import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -148,7 +149,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private ParticipantStoreConsumptionTask participantStoreConsumptionTask;
 
-
   private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
 
   private final SharedKafkaProducerService sharedKafkaProducerService;
@@ -163,10 +163,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       RocksDBMemoryStats rocksDBMemoryStats,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
       Optional<ClientConfig> clientConfig,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      GenericRecordChunkingAdapter chunkingAdapter) {
     this(storageEngineRepository, veniceConfigLoader, storageMetadataService, clusterInfoProvider, metadataRepo, schemaRepo,
         metricsRepository, rocksDBMemoryStats, kafkaMessageEnvelopeSchemaReader, clientConfig, partitionStateSerializer,
-        Optional.empty(), null, false);
+        Optional.empty(), null, false, chunkingAdapter);
   }
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
@@ -182,7 +183,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
                                     Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository,
                                     ICProvider icProvider,
-                                    boolean isIsolatedIngestion) {
+                                    boolean isIsolatedIngestion,
+                                    GenericRecordChunkingAdapter chunkingAdapter) {
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -383,6 +385,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
         .setIsIsolatedIngestion(isIsolatedIngestion)
+        .setChunkingAdapter(chunkingAdapter)
         .build();
   }
 

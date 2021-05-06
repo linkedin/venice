@@ -150,6 +150,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final BatchDeserializer<ComputeResponseRecordV1, K, GenericRecord> computeDeserializer;
   private final AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl;
 
+  private CompressorFactory compressorFactory;
+
   private final boolean useFastAvro;
 
   private final boolean useBlackHoleDeserializer;
@@ -201,6 +203,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.useFastAvro = clientConfig.isUseFastAvro();
     this.useBlackHoleDeserializer = clientConfig.isUseBlackHoleDeserializer();
     this.reuseObjectsForSerialization = clientConfig.isReuseObjectsForSerialization();
+    this.compressorFactory = new CompressorFactory();
   }
 
   protected boolean isUseFastAvro() {
@@ -693,6 +696,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (isHttp) { // TODO make d2client close method idempotent.  d2client re-uses the transport client for the schema reader
       IOUtils.closeQuietly(schemaReader);
     }
+    IOUtils.closeQuietly(compressorFactory);
   }
 
   protected Optional<Schema> getReaderSchema() {
@@ -768,9 +772,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return schemaReader.getLatestValueSchema();
   }
 
-  private static ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
+  private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
     try {
-      return CompressorFactory.getCompressor(compressionStrategy).decompress(data);
+      return compressorFactory.getCompressor(compressionStrategy).decompress(data);
     } catch (IOException e) {
       throw new VeniceClientException(
           String.format("Unable to decompress the record, compressionStrategy=%d", compressionStrategy.getValue()), e);

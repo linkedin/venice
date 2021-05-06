@@ -71,6 +71,7 @@ public class TestStreaming {
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
+  private CompressorFactory compressorFactory;
 
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
@@ -121,7 +122,8 @@ public class TestStreaming {
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA);
 
     CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
-    VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
+    compressorFactory = new CompressorFactory();
+    VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy);
 
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, new DefaultSerializer());
 
@@ -154,6 +156,7 @@ public class TestStreaming {
   public void cleanUp() {
     IOUtils.closeQuietly(veniceCluster);
     IOUtils.closeQuietly(veniceWriter);
+    IOUtils.closeQuietly(compressorFactory);
   }
 
   private Properties getRouterProperties(boolean enableStreaming, boolean enableNettyClient, boolean enableClientCompression) {
