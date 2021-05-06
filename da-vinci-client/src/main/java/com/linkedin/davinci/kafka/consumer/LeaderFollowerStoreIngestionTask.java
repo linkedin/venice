@@ -340,14 +340,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         Store store = storeRepository.getStoreOrThrow(storeName);
         if (store.isMigrationDuplicateStore()) {
           partitionConsumptionState.setLeaderState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
-          logger.info(consumerTaskId + " for partition " + partition + " is paused transition from STANDBY to LEADER;\n"
-              + partitionConsumptionState.getOffsetRecord().toDetailedString());
+          logger.info(consumerTaskId + " for partition " + partition + " is paused transition from STANDBY to LEADER");
         } else {
           // Mark this partition in the middle of STANDBY to LEADER transition
           partitionConsumptionState.setLeaderState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
 
-          logger.info(consumerTaskId + " for partition " + partition + " is in transition from STANDBY to LEADER;\n"
-              + partitionConsumptionState.getOffsetRecord().toDetailedString());
+          logger.info(consumerTaskId + " for partition " + partition + " is in transition from STANDBY to LEADER");
         }
         break;
       case LEADER_TO_STANDBY:
@@ -366,7 +364,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState = partitionConsumptionStateMap.get(partition);
         if (partitionConsumptionState.getLeaderState().equals(STANDBY)) {
           logger.info("State transition from LEADER to STANDBY is skipped for topic " + topic + " partition " + partition
-              + ", because this replica is a follower already.\n" + partitionConsumptionState.getOffsetRecord().toDetailedString());
+              + ", because this replica is a follower already.");
           return;
         }
 
@@ -390,7 +388,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // subscribe back to local VT/partition
           offsetRecord = partitionConsumptionState.getOffsetRecord();
           consumerSubscribe(topic, partitionConsumptionState, offsetRecord.getOffset());
-          logger.info(consumerTaskId + " demoted to standby for partition " + partition + "\n" + offsetRecord.toDetailedString());
+          logger.info(consumerTaskId + " demoted to standby for partition " + partition);
         }
         partitionConsumptionStateMap.get(partition).setLeaderState(STANDBY);
         /**
@@ -540,7 +538,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
           if (null == currentLeaderTopic) {
             String errorMsg = consumerTaskId + " Missing leader topic for actual leader. OffsetRecord: "
-                + partitionConsumptionState.getOffsetRecord().toDetailedString();
+                + partitionConsumptionState.getOffsetRecord().toSimplifiedString();
             logger.error(errorMsg);
             throw new VeniceException(errorMsg);
           }
