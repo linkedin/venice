@@ -355,7 +355,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, final long preRequestTimeInNS) {
     /**
      * Leveraging the following function to do safe D2 discovery for the following schema fetches.
-     * And we could use {@link #getKeySchema()} since it will cause a dead loop:
+     * And we could not use {@link #getKeySchema()} since it will cause a dead loop:
      * {@link #getRaw} -> {@link #getKeySchema} -> {@link SchemaReader#getKeySchema} -> {@link #getRaw}
      */
     discoverD2Service();
@@ -686,6 +686,17 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
     } else {
       this.schemaReader = null;
+    }
+    /**
+     * Try to warm-up the Venice Client during start phase, and it may not work since it is possible that the passed d2
+     * client hasn't been fully started yet, when this happens, the warm-up will be delayed to the first query.
+     */
+    try {
+      getKeySerializer();
+      logger.info("Store Client warm-up is done during start phase for store: " + getStoreName());
+    } catch (Exception e) {
+      logger.info("Got the following exception when trying to warm up client during start phase for store: "
+          + getStoreName() + ", and the warm-up will be delayed to the first query.", e);
     }
   }
 
