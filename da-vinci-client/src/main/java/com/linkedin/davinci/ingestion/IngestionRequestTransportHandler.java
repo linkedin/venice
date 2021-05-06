@@ -1,4 +1,4 @@
-package com.linkedin.davinci.ingestion.handler;
+package com.linkedin.davinci.ingestion;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -8,11 +8,11 @@ import org.apache.log4j.Logger;
 import java.util.concurrent.atomic.AtomicReference;
 
 
-public class IngestionRequestClientHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
-  private static final Logger logger = Logger.getLogger(IngestionRequestClientHandler.class);
+public class IngestionRequestTransportHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
+  private static final Logger logger = Logger.getLogger(IngestionRequestTransportHandler.class);
   private final AtomicReference<FullHttpResponse> response = new AtomicReference<>();
 
-  public IngestionRequestClientHandler() {
+  public IngestionRequestTransportHandler() {
   }
 
   @Override

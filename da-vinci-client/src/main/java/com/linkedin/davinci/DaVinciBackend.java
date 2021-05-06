@@ -5,7 +5,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.DaVinciIngestionBackend;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
-import com.linkedin.davinci.ingestion.IngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.regular.NativeIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
@@ -136,7 +136,7 @@ public class DaVinciBackend implements Closeable {
 
     // TODO: May need to reorder the object to make it looks cleaner.
     storageMetadataService = backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)
-        ? new IngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository))
+        ? new NativeIngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository))
         : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
 
     ingestionService = new KafkaStoreIngestionService(

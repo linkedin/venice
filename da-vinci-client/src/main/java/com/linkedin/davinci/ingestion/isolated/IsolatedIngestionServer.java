@@ -1,9 +1,13 @@
-package com.linkedin.davinci.ingestion;
+package com.linkedin.davinci.ingestion.isolated;
 
+import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
-import com.linkedin.davinci.ingestion.channel.IngestionServiceChannelInitializer;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
+import com.linkedin.davinci.ingestion.regular.NativeIngestionMonitorService;
+import com.linkedin.davinci.ingestion.regular.NativeIngestionRequestClient;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -47,10 +51,26 @@ import static java.lang.Thread.*;
 
 
 /**
- * IngestionService is the server service of the ingestion isolation side.
+ * IsolatedIngestionServer is the server service of the isolated ingestion service. It is a Netty based server that listens to
+ * all the requests sent from {@link IsolatedIngestionBackend} in main process and spawn {@link IsolatedIngestionServerHandler}
+ * to handle the request.
+ *
+ * The general workflow goes as follows:
+ * (1) When IsolatedIngestionServer instance is created in child process, it will remain idle until it receives initialization
+ * request from main process, which pass in all the configs needed to initialize all ingestion components.
+ * (2) Once initialization completes, it starts listening to ingestion command sent from main process, such as startConsumption,
+ * stopConsumption, killConsumption, updateMetadata and so on.
+ * (3) When ingestion notifier in child process is notified, it will use its {@link NativeIngestionRequestClient} to relay status
+ * back to {@link NativeIngestionMonitorService} in main process. {@link NativeIngestionMonitorService} will further dispatch status
+ * reporting to all registered notifiers in main process.
+ *  -- For COMPLETED status, it will stop ingestion and shutdown corresponding storage so main process can re-subscribe it for serving purpose.
+ *  -- For ERROR status, it will also stop ingestion and shutdown storage, and it will also forward the ERROR status for main process to handle.
+ * IsolatedIngestionServer itself is stateless and will not persist any ingestion status. When the child process encounters failure
+ * and crash, {@link NativeIngestionMonitorService} will be responsible of respawning a new instance and resume all ongoing ingestion
+ * tasks for fault tolerance purpose.
  */
-public class IngestionService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(IngestionService.class);
+public class IsolatedIngestionServer extends AbstractVeniceService {
+  private static final Logger logger = Logger.getLogger(IsolatedIngestionServer.class);
 
   private final RedundantExceptionFilter redundantExceptionFilter = new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private final ServerBootstrap bootstrap;
@@ -64,9 +84,12 @@ public class IngestionService extends AbstractVeniceService {
   private final ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
   // Leader section Id map helps to verify if the PROMOTE_TO_LEADER/DEMOTE_TO_STANDBY is valid or not when processing the message in the queue.
   private final Map<String, Map<Integer, AtomicLong>> leaderSessionIdMap = new HashMap<>();
-  // The boolean value of this map indicates whether we have added UNSUBSCRIBE message to the processing queue.
-  // We should not add leader change message into the queue if we have added UNSUBSCRIBE message to the queue, otherwise it won't get processed.
-  // This will help leader promo/demote request from parent process fail out early and avoid race condition.
+  /**
+   * The boolean value of this map indicates whether we have added UNSUBSCRIBE message to the processing queue.
+   * We should not add leader change message into the queue if we have added UNSUBSCRIBE message to the queue, otherwise
+   * it won't get processed and the request may be missed. This will help leader promo/demote request from parent process
+   * fail out early and avoid race condition.
+   */
   private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap = new HashMap<>();
   private final long heartbeatTimeoutMs;
 
@@ -81,11 +104,11 @@ public class IngestionService extends AbstractVeniceService {
   private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private boolean isInitiated = false;
-  private IngestionRequestClient reportClient;
-  private long heartbeatTime = -1;
+  private IsolatedIngestionRequestClient reportClient;
+  private long heartbeatTimeInMs = -1;
   private int stopConsumptionWaitRetriesNum;
 
-  public IngestionService(int servicePort, long heartbeatTimeoutMs) {
+  public IsolatedIngestionServer(int servicePort, long heartbeatTimeoutMs) {
     this.servicePort = servicePort;
     this.heartbeatTimeoutMs = heartbeatTimeoutMs;
 
@@ -95,15 +118,15 @@ public class IngestionService extends AbstractVeniceService {
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-        .childHandler(new IngestionServiceChannelInitializer(this))
+        .childHandler(new IsolatedIngestionServerChannelInitializer(this))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
-    logger.info("IngestionService created");
+    logger.info("IsolatedIngestionServer created");
   }
 
-  public IngestionService(int servicePort) {
+  public IsolatedIngestionServer(int servicePort) {
     this(servicePort, TimeUnit.MILLISECONDS.toMillis(60));
   }
 
@@ -191,7 +214,7 @@ public class IngestionService extends AbstractVeniceService {
     this.storageMetadataService = storageMetadataService;
   }
 
-  public void setReportClient(IngestionRequestClient reportClient) {
+  public void setReportClient(IsolatedIngestionRequestClient reportClient) {
     this.reportClient = reportClient;
   }
 
@@ -212,7 +235,7 @@ public class IngestionService extends AbstractVeniceService {
     this.stopConsumptionWaitRetriesNum = numRetries;
   }
 
-  public IngestionRequestClient getReportClient() {
+  public IsolatedIngestionRequestClient getReportClient() {
     return reportClient;
   }
 
@@ -261,14 +284,29 @@ public class IngestionService extends AbstractVeniceService {
   }
 
   public void updateHeartbeatTime() {
-    this.heartbeatTime = System.currentTimeMillis();
+    this.heartbeatTimeInMs = System.currentTimeMillis();
   }
 
+  /**
+   * Use executor to execute status reporting in async fashion, otherwise it may cause deadlock between main process
+   * and child process.
+   * One previous example of the deadlock situation could happen when VersionBackend is trying to unsubscribe a topic partition,
+   * it will hold VersionBackend instance lock, and send a blocking call to isolated ingestion service to call
+   * {@link KafkaStoreIngestionService#stopConsumptionAndWait(VeniceStoreConfig, int, int, int)}, inside which it will
+   * wait up to 30 seconds to drain internal messages for the partition. For SOP message, it will call
+   * {@link com.linkedin.davinci.notifier.VeniceNotifier#started(String, int)} and in ingestion isolation case it will
+   * send a blocking call to main process to report progress. The logic inside Da Vinci Client ingestion notifier's
+   * started() will call tryStartHeartbeat() in VersionBackend which will also need the VersionBackend instance lock.
+   * Thus all of them get stuck until timeout, which leads to unexpected behavior of draining to closed RocksDB storage.
+   * This status reporting executor is designed to be single thread to respect the reporting order inside child process.
+   * For time-consuming action like stopConsumptionAndWait, we introduced an extra multi-thread executors to improve the
+   * performance.
+   */
   public void reportIngestionStatus(IngestionTaskReport report) {
-    if (IngestionReportType.valueOf(report.reportType).equals(IngestionReportType.COMPLETED) || IngestionReportType.valueOf(report.reportType).equals(IngestionReportType.ERROR)) {
+    IngestionReportType ingestionReportType = IngestionReportType.valueOf(report.reportType);
+    if (ingestionReportType.equals(IngestionReportType.COMPLETED) || ingestionReportType.equals(IngestionReportType.ERROR)) {
       setPartitionToBeUnsubscribed(report.topicName.toString(), report.partitionId);
 
-      // Use async to avoid deadlock waiting in StoreBufferDrainer
       Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
       statusReportingExecutor.execute(() -> {
         String topicName = report.topicName.toString();
@@ -279,7 +317,7 @@ public class IngestionService extends AbstractVeniceService {
         } catch (ExecutionException | InterruptedException e) {
           logger.info("Encounter exception when trying to stop consumption and close storage for " + partitionId + " of topic: " + topicName);
         }
-        if (IngestionReportType.valueOf(report.reportType).equals(IngestionReportType.COMPLETED)) {
+        if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
           logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
           // Set offset record in ingestion report.
           OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partitionId);
@@ -289,7 +327,8 @@ public class IngestionService extends AbstractVeniceService {
           // Set store version state in ingestion report.
           Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
           if (storeVersionState.isPresent()) {
-            report.storeVersionState = ByteBuffer.wrap(IngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
+            report.storeVersionState = ByteBuffer.wrap(
+                IsolatedIngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
           } else {
             throw new VeniceException("StoreVersionState does not exist for version " + topicName);
           }
@@ -351,9 +390,11 @@ public class IngestionService extends AbstractVeniceService {
   private void checkHeartbeatTimeout() {
     if (!isShuttingDown.get()) {
       long currentTimeMillis = System.currentTimeMillis();
-      logger.info("Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat: " + heartbeatTime);
+      if (logger.isDebugEnabled()) {
+        logger.debug("Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat on server: " + heartbeatTimeInMs);
+      }
 
-      if ((heartbeatTime != -1) && ((currentTimeMillis - heartbeatTime) > heartbeatTimeoutMs)) {
+      if ((heartbeatTimeInMs != -1) && ((currentTimeMillis - heartbeatTimeInMs) > heartbeatTimeoutMs)) {
         logger.warn("Lost connection to parent process, will shutdown the ingestion backend gracefully.");
         isShuttingDown.set(true);
         try {
@@ -373,12 +414,12 @@ public class IngestionService extends AbstractVeniceService {
       throw new VeniceException("Expected at least one arguments: port. Got " + args.length);
     }
     int port = Integer.parseInt(args[0]);
-    IngestionService ingestionService;
+    IsolatedIngestionServer isolatedIngestionServer;
     if (args.length == 2) {
-      ingestionService = new IngestionService(port, Long.parseLong(args[1]));
+      isolatedIngestionServer = new IsolatedIngestionServer(port, Long.parseLong(args[1]));
     } else {
-      ingestionService = new IngestionService(port);
+      isolatedIngestionServer = new IsolatedIngestionServer(port);
     }
-    ingestionService.start();
+    isolatedIngestionServer.start();
   }
 }

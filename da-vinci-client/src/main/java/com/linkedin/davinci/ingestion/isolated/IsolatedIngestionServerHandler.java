@@ -1,12 +1,11 @@
-package com.linkedin.davinci.ingestion.handler;
+package com.linkedin.davinci.ingestion.isolated;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.ingestion.IngestionRequestClient;
-import com.linkedin.davinci.ingestion.IngestionService;
-import com.linkedin.davinci.ingestion.IngestionUtils;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+import com.linkedin.davinci.ingestion.regular.NativeIngestionStorageMetadataService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
@@ -62,21 +61,37 @@ import java.util.HashMap;
 import java.util.Optional;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
-public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
-  private static final Logger logger = Logger.getLogger(IngestionServiceTaskHandler.class);
+/**
+ * IsolatedIngestionServerHandler is the handler class for {@link IsolatedIngestionServer}. This handler will be spawn to handle
+ * the following {@link IngestionAction} request from main process:
+ * (1) INIT: Initialization request that pass all the configs to initialize the {@link IsolatedIngestionServer} components.
+ * (2) COMMAND: Different kinds of ingestion commands to control the ingestion of a given topic (partition)
+ * (3) METRIC: Request to collect metrics from child process and report to InGraph service.
+ * (4) HEARTBEAT: Request to check the health of child process for monitoring purpose.
+ * (5) UPDATE_METADATA: A special kind of request to update metadata of topic partitions opened in main process. As
+ * of current ingestion isolation design, metadata partition of a topic will always be opened in child process.
+ * {@link NativeIngestionStorageMetadataService} maintains in-memory cache of metadata in main
+ * process, and it will persist metadata updates via UPDATE_METADATA requests.
+ * (6) SHUTDOWN_COMPONENT: Request to shutdown a specific ingestion component gracefully.
+ *
+ * This class contains all the logic details to handle above requests. Also, it registers ingestion listener which relays
+ * status reporting to main process.
+ */
+public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+  private static final Logger logger = Logger.getLogger(IsolatedIngestionServerHandler.class);
 
-  private final IngestionService ingestionService;
+  private final IsolatedIngestionServer isolatedIngestionServer;
 
-  public IngestionServiceTaskHandler(IngestionService ingestionService) {
+  public IsolatedIngestionServerHandler(IsolatedIngestionServer isolatedIngestionServer) {
     super();
-    this.ingestionService = ingestionService;
+    this.isolatedIngestionServer = isolatedIngestionServer;
     if (logger.isDebugEnabled()) {
-      logger.debug("IngestionServiceTaskHandler created for listener service.");
+      logger.debug("IsolatedIngestionServerHandler created for listener service.");
     }
   }
 
@@ -90,45 +105,32 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     try {
       IngestionAction action = getIngestionActionFromRequest(msg);
       byte[] result = getDummyContent();
+      if (logger.isDebugEnabled()) {
+        logger.debug("Received " + action.name() + " message: " + msg);
+      }
       switch (action) {
         case INIT:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Received INIT message: " + msg.toString());
-          }
           InitializationConfigs initializationConfigs = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           handleIngestionInitialization(initializationConfigs);
           break;
         case COMMAND:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Received COMMAND message " + msg.toString());
-          }
           IngestionTaskCommand ingestionTaskCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport report = handleIngestionTaskCommand(ingestionTaskCommand);
           result = serializeIngestionActionResponse(action, report);
           break;
         case METRIC:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Received METRIC message.");
-          }
           IngestionMetricsReport metricsReport = handleMetricsRequest();
           result = serializeIngestionActionResponse(action, metricsReport);
           break;
         case HEARTBEAT:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Received HEARTBEAT message.");
-          }
-          ingestionService.updateHeartbeatTime();
+          isolatedIngestionServer.updateHeartbeatTime();
           break;
         case UPDATE_METADATA:
-          if (logger.isDebugEnabled()) {
-            logger.debug("Received UPDATE_METADATA message.");
-          }
           IngestionStorageMetadata ingestionStorageMetadata = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport metadataUpdateReport = handleIngestionStorageMetadataUpdate(ingestionStorageMetadata);
           result = serializeIngestionActionResponse(action, metadataUpdateReport);
           break;
         case SHUTDOWN_COMPONENT:
-          logger.info("Received SHUTDOWN_COMPONENT message.");
           ProcessShutdownCommand processShutdownCommand = deserializeIngestionActionRequest(action, readHttpRequestContent(msg));
           IngestionTaskReport shutdownTaskReport = handleProcessShutdownCommand(processShutdownCommand);
           result = serializeIngestionActionResponse(action, shutdownTaskReport);
@@ -168,8 +170,8 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     propertyBuilder.put(SERVER_RESTORE_DATA_PARTITIONS_ENABLED, "false");
     VeniceProperties veniceProperties = propertyBuilder.build();
     VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties, veniceProperties);
-    ingestionService.setConfigLoader(configLoader);
-    ingestionService.setStopConsumptionWaitRetriesNum(configLoader.getCombinedProperties().getInt(
+    isolatedIngestionServer.setConfigLoader(configLoader);
+    isolatedIngestionServer.setStopConsumptionWaitRetriesNum(configLoader.getCombinedProperties().getInt(
         SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180));
 
     // Initialize D2Client.
@@ -205,7 +207,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
 
     // Create MetricsRepository
     MetricsRepository metricsRepository = new MetricsRepository();
-    ingestionService.setMetricsRepository(metricsRepository);
+    isolatedIngestionServer.setMetricsRepository(metricsRepository);
 
     // Initialize store/schema repositories.
     VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder = new VeniceMetadataRepositoryBuilder(
@@ -218,7 +220,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     ReadOnlySchemaRepository schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
     Optional<HelixReadOnlyZKSharedSchemaRepository> helixReadOnlyZKSharedSchemaRepository = veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
     ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
-    ingestionService.setStoreRepository(storeRepository);
+    isolatedIngestionServer.setStoreRepository(storeRepository);
 
     SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
@@ -226,10 +228,10 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
-    ingestionService.setPartitionStateSerializer(partitionStateSerializer);
+    isolatedIngestionServer.setPartitionStateSerializer(partitionStateSerializer);
     InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
-    ingestionService.setStoreVersionStateSerializer(storeVersionStateSerializer);
+    isolatedIngestionServer.setStoreVersionStateSerializer(storeVersionStateSerializer);
 
     // Create RocksDBMemoryStats
     RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
@@ -257,7 +259,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
     StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);
     storageService.start();
-    ingestionService.setStorageService(storageService);
+    isolatedIngestionServer.setStorageService(storageService);
 
     // Create SchemaReader
     SchemaReader kafkaMessageEnvelopeSchemaReader = getSchemaReader(
@@ -265,7 +267,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     );
 
     StorageMetadataService storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
-    ingestionService.setStorageMetadataService(storageMetadataService);
+    isolatedIngestionServer.setStorageMetadataService(storageMetadataService);
 
     // Create KafkaStoreIngestionService
     KafkaStoreIngestionService storeIngestionService = new KafkaStoreIngestionService(
@@ -285,15 +287,15 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         true);
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);
-    ingestionService.setStoreIngestionService(storeIngestionService);
+    isolatedIngestionServer.setStoreIngestionService(storeIngestionService);
 
     logger.info("Starting report client with target application port: " + configLoader.getVeniceServerConfig().getIngestionApplicationPort());
     // Create Netty client to report status back to application.
-    IngestionRequestClient reportClient = new IngestionRequestClient(configLoader.getVeniceServerConfig().getIngestionApplicationPort());
-    ingestionService.setReportClient(reportClient);
+    IsolatedIngestionRequestClient reportClient = new IsolatedIngestionRequestClient(configLoader.getVeniceServerConfig().getIngestionApplicationPort());
+    isolatedIngestionServer.setReportClient(reportClient);
 
-    // Mark the IngestionService as initiated.
-    ingestionService.setInitiated(true);
+    // Mark the IsolatedIngestionServer as initiated.
+    isolatedIngestionServer.setInitiated(true);
   }
 
   private IngestionTaskReport handleIngestionTaskCommand(IngestionTaskCommand ingestionTaskCommand) {
@@ -307,20 +309,20 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     report.topicName = topicName;
     report.partitionId = partitionId;
     try {
-      if (!ingestionService.isInitiated()) {
-        throw new VeniceException("IngestionService has not been initiated.");
+      if (!isolatedIngestionServer.isInitiated()) {
+        throw new VeniceException("IsolatedIngestionServer has not been initiated.");
       }
-      VeniceStoreConfig storeConfig = ingestionService.getConfigLoader().getStoreConfig(topicName);
-      StorageService storageService = ingestionService.getStorageService();
-      KafkaStoreIngestionService storeIngestionService = ingestionService.getStoreIngestionService();
+      VeniceStoreConfig storeConfig = isolatedIngestionServer.getConfigLoader().getStoreConfig(topicName);
+      StorageService storageService = isolatedIngestionServer.getStorageService();
+      KafkaStoreIngestionService storeIngestionService = isolatedIngestionServer.getStoreIngestionService();
 
       switch (IngestionCommandType.valueOf(ingestionTaskCommand.commandType)) {
         case START_CONSUMPTION:
-          IngestionMode ingestionMode = ingestionService.getConfigLoader().getVeniceServerConfig().getIngestionMode();
+          IngestionMode ingestionMode = isolatedIngestionServer.getConfigLoader().getVeniceServerConfig().getIngestionMode();
           if (!ingestionMode.equals(IngestionMode.ISOLATED)) {
             throw new VeniceException("Ingestion isolation is not enabled.");
           }
-          ReadOnlyStoreRepository storeRepository = ingestionService.getStoreRepository();
+          ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
           // For subscription based store repository, we will need to subscribe to the store explicitly.
           if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
             logger.info("Ingestion Service subscribing to store: " + storeName);
@@ -344,40 +346,40 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
           report.isPositive = storeIngestionService.isPartitionConsuming(storeConfig, partitionId);
           break;
         case REMOVE_STORAGE_ENGINE:
-          ingestionService.getStorageService().removeStorageEngine(ingestionTaskCommand.topicName.toString());
-          logger.info("Remaining storage engines after dropping: " + ingestionService.getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().toString());
+          isolatedIngestionServer.getStorageService().removeStorageEngine(ingestionTaskCommand.topicName.toString());
+          logger.info("Remaining storage engines after dropping: " + isolatedIngestionServer.getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().toString());
           break;
         case REMOVE_PARTITION:
           if (storeIngestionService.isPartitionConsuming(storeConfig, partitionId)) {
             long startTimeInMs = System.currentTimeMillis();
-            storeIngestionService.stopConsumptionAndWait(storeConfig, partitionId, 1, ingestionService.getStopConsumptionWaitRetriesNum());
+            storeIngestionService.stopConsumptionAndWait(storeConfig, partitionId, 1, isolatedIngestionServer.getStopConsumptionWaitRetriesNum());
             logger.info("Partition: " + partitionId + " of topic: " + topicName + " has stopped consumption in " + LatencyUtils.getElapsedTimeInMs(startTimeInMs)
                 + " ms.");
           }
-          ingestionService.getStorageService().dropStorePartition(storeConfig, partitionId);
+          isolatedIngestionServer.getStorageService().dropStorePartition(storeConfig, partitionId);
           logger.info("Partition: " + partitionId + " of topic: " + topicName + " has been removed.");
           break;
         case OPEN_STORAGE_ENGINE:
           // Open metadata partition of the store engine.
           storeConfig.setRestoreDataPartitions(false);
           storeConfig.setRestoreMetadataPartition(true);
-          ingestionService.getStorageService().openStore(storeConfig);
+          isolatedIngestionServer.getStorageService().openStore(storeConfig);
           logger.info("Metadata partition of topic: " + ingestionTaskCommand.topicName.toString() + " restored.");
           break;
         case PROMOTE_TO_LEADER:
           // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the action queue, but instead fail the command fast.
-          if (ingestionService.isPartitionBeingUnsubscribed(topicName, partitionId)) {
+          if (isolatedIngestionServer.isPartitionBeingUnsubscribed(topicName, partitionId)) {
             report.isPositive = false;
           } else {
-            storeIngestionService.promoteToLeader(storeConfig, partitionId, ingestionService.getLeaderSectionIdChecker(topicName, partitionId));
+            storeIngestionService.promoteToLeader(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
             logger.info("Promoting partition: " + partitionId + " of topic: " + topicName + " to leader.");
           }
           break;
         case DEMOTE_TO_STANDBY:
-          if (ingestionService.isPartitionBeingUnsubscribed(topicName, partitionId)) {
+          if (isolatedIngestionServer.isPartitionBeingUnsubscribed(topicName, partitionId)) {
             report.isPositive = false;
           } else {
-            storeIngestionService.demoteToStandby(storeConfig, partitionId, ingestionService.getLeaderSectionIdChecker(topicName, partitionId));
+            storeIngestionService.demoteToStandby(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
             logger.info("Demoting partition: " + partitionId + " of topic: " + topicName + " to standby.");
           }
           break;
@@ -395,14 +397,14 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
   private IngestionMetricsReport handleMetricsRequest() {
     IngestionMetricsReport report = new IngestionMetricsReport();
     report.aggregatedMetrics = new HashMap<>();
-    if (ingestionService.getMetricsRepository() != null) {
-      ingestionService.getMetricsRepository().metrics().forEach((name, metric) -> {
+    if (isolatedIngestionServer.getMetricsRepository() != null) {
+      isolatedIngestionServer.getMetricsRepository().metrics().forEach((name, metric) -> {
         if (metric != null) {
           try {
             report.aggregatedMetrics.put(name, metric.value());
           } catch (Exception e) {
             String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
-            if (!ingestionService.getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {
+            if (!isolatedIngestionServer.getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {
               logger.error(exceptionLogMessage, e);
             }
           }
@@ -422,9 +424,9 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     report.topicName = topicName;
     report.partitionId = partitionId;
     try {
-      if (!ingestionService.isInitiated()) {
+      if (!isolatedIngestionServer.isInitiated()) {
         // Short circuit here when ingestion service is not initiated.
-        String errorMessage = "IngestionService has not been initiated.";
+        String errorMessage = "IsolatedIngestionServer has not been initiated.";
         logger.error(errorMessage);
         report.isPositive = false;
         report.message = errorMessage;
@@ -432,16 +434,17 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       }
       switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
         case PUT_OFFSET_RECORD:
-          ingestionService.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array(), ingestionService.getPartitionStateSerializer()));
+          isolatedIngestionServer.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array(), isolatedIngestionServer
+              .getPartitionStateSerializer()));
           break;
         case CLEAR_OFFSET_RECORD:
-          ingestionService.getStorageMetadataService().clearOffset(topicName, partitionId);
+          isolatedIngestionServer.getStorageMetadataService().clearOffset(topicName, partitionId);
           break;
         case PUT_STORE_VERSION_STATE:
-          ingestionService.getStorageMetadataService().put(topicName, IngestionUtils.deserializeStoreVersionState(topicName, ingestionStorageMetadata.payload.array()));
+          isolatedIngestionServer.getStorageMetadataService().put(topicName, IsolatedIngestionUtils.deserializeStoreVersionState(topicName, ingestionStorageMetadata.payload.array()));
           break;
         case CLEAR_STORE_VERSION_STATE:
-          ingestionService.getStorageMetadataService().clearStoreVersionState(topicName);
+          isolatedIngestionServer.getStorageMetadataService().clearStoreVersionState(topicName);
           break;
         default:
           break;
@@ -460,15 +463,15 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     report.message = "";
     report.topicName = "";
     try {
-      if (!ingestionService.isInitiated()) {
-        throw new VeniceException("IngestionService has not been initiated.");
+      if (!isolatedIngestionServer.isInitiated()) {
+        throw new VeniceException("IsolatedIngestionServer has not been initiated.");
       }
       switch (IngestionComponentType.valueOf(processShutdownCommand.componentType)) {
         case KAFKA_INGESTION_SERVICE:
-          ingestionService.getStoreIngestionService().stop();
+          isolatedIngestionServer.getStoreIngestionService().stop();
           break;
         case STORAGE_SERVICE:
-          ingestionService.getStorageService().stop();
+          isolatedIngestionServer.getStorageService().stop();
           break;
         default:
           break;
@@ -506,7 +509,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
 
     }
 
@@ -517,7 +520,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
@@ -527,7 +530,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.message = message;
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
@@ -538,7 +541,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
@@ -549,7 +552,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
@@ -560,7 +563,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
@@ -571,7 +574,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
@@ -582,7 +585,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
@@ -593,7 +596,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
@@ -604,7 +607,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       report.topicName = kafkaTopic;
       report.partitionId = partitionId;
       report.offset = offset;
-      ingestionService.reportIngestionStatus(report);
+      isolatedIngestionServer.reportIngestionStatus(report);
     }
   };
 }

@@ -10,8 +10,8 @@ import com.linkedin.davinci.client.NonLocalAccessException;
 import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.ingestion.IngestionRequestClient;
-import com.linkedin.davinci.ingestion.IngestionUtils;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+import com.linkedin.davinci.ingestion.regular.NativeIngestionRequestClient;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -247,7 +247,7 @@ public class DaVinciClientTest {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       CompletableFuture<Void> future = client.subscribeAll();
       // Kill the ingestion process.
-      IngestionUtils.releaseTargetPortBinding(servicePort);
+      IsolatedIngestionUtils.releaseTargetPortBinding(servicePort);
       // Make sure ingestion will end and future can complete
       writer.broadcastEndOfPush(Collections.emptyMap());
       future.get();
@@ -257,13 +257,13 @@ public class DaVinciClientTest {
       }
 
       // Kill the ingestion process again.
-      IngestionUtils.releaseTargetPortBinding(servicePort);
+      IsolatedIngestionUtils.releaseTargetPortBinding(servicePort);
       IngestionStorageMetadata dummyOffsetMetadata = new IngestionStorageMetadata();
       dummyOffsetMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_OFFSET_RECORD.getValue();
       dummyOffsetMetadata.topicName = Version.composeKafkaTopic(storeName, 1);
       dummyOffsetMetadata.partitionId = 0;
       dummyOffsetMetadata.payload = ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
-      IngestionRequestClient requestClient = new IngestionRequestClient(servicePort);
+      NativeIngestionRequestClient requestClient = new NativeIngestionRequestClient(servicePort);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertTrue(requestClient.updateMetadata(dummyOffsetMetadata));
       });
@@ -780,8 +780,8 @@ public class DaVinciClientTest {
     );
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
-    IngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
-    // Sleep long enough so the heartbeat timeout is detected by IngestionService.
+    IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
+    // Sleep long enough so the heartbeat timeout is detected by IsolatedIngestionServer.
     Thread.sleep(15000);
     D2Client d2Client = new D2ClientBuilder()
         .setZkHosts(zkHosts)

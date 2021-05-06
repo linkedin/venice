@@ -1,8 +1,9 @@
-package com.linkedin.davinci.ingestion;
+package com.linkedin.davinci.ingestion.utils;
 
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
@@ -47,10 +48,10 @@ import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
 
 
 /**
- * IngestionUtils class contains methods used for communication between ingestion client and server.
+ * IsolatedIngestionUtils class contains methods used for communication between ingestion client and server.
  */
-public class IngestionUtils {
-  private static final Logger logger = Logger.getLogger(IngestionUtils.class);
+public class IsolatedIngestionUtils {
+  private static final Logger logger = Logger.getLogger(IsolatedIngestionUtils.class);
   private static final int D2_STARTUP_TIMEOUT = 60000;
 
   private static final InternalAvroSpecificSerializer<InitializationConfigs> initializationConfigSerializer =
@@ -242,9 +243,9 @@ public class IngestionUtils {
         int pid = Integer.parseInt(processId);
         logger.info("Target port: " + port + " is bind to process id: " + pid);
         String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
-        if (fullProcessName.contains(IngestionService.class.getName())) {
+        if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
           executeShellCommand("kill " +  pid);
-          logger.info("Killed IngestionService process on pid " + pid);
+          logger.info("Killed IsolatedIngestionServer process on pid " + pid);
         } else {
           logger.info("Target port is bind to unknown process: " + fullProcessName);
         }

@@ -1,6 +1,8 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.ingestion.handler.IngestionServiceTaskHandler;
+import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServerHandler;
+import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -26,7 +28,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.Mockito.*;
 
 
-public class IngestionServiceTaskHandlerTest {
+public class IsolatedIngestionServerTaskHandlerTest {
   @Test
   public void testInitializationConfig() throws Exception {
     try (ZkServerWrapper zk = ServiceFactory.getZkServer()) {
@@ -38,14 +40,14 @@ public class IngestionServiceTaskHandlerTest {
       initializationConfigs.aggregatedConfigs.put(KAFKA_BOOTSTRAP_SERVERS, TestUtils.getUniqueString());
       initializationConfigs.aggregatedConfigs.put(KAFKA_ZK_ADDRESS, TestUtils.getUniqueString());
       initializationConfigs.aggregatedConfigs.put(D2_CLIENT_ZK_HOSTS_ADDRESS, zk.getAddress());
-      byte[] content = IngestionUtils.serializeIngestionActionRequest(IngestionAction.INIT, initializationConfigs);
+      byte[] content = IsolatedIngestionUtils.serializeIngestionActionRequest(IngestionAction.INIT, initializationConfigs);
       ChannelHandlerContext mockContext = mock(ChannelHandlerContext.class);
       FullHttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, path, Unpooled.wrappedBuffer(content));
       ArgumentCaptor<FullHttpResponse> argumentCaptor = ArgumentCaptor.forClass(FullHttpResponse.class);
 
-      IngestionService ingestionService = mock(IngestionService.class);
-      IngestionServiceTaskHandler ingestionServiceTaskHandler = new IngestionServiceTaskHandler(ingestionService);
-      ingestionServiceTaskHandler.channelRead(mockContext, msg);
+      IsolatedIngestionServer isolatedIngestionServer = mock(IsolatedIngestionServer.class);
+      IsolatedIngestionServerHandler isolatedIngestionServerHandler = new IsolatedIngestionServerHandler(isolatedIngestionServer);
+      isolatedIngestionServerHandler.channelRead(mockContext, msg);
       verify(mockContext).writeAndFlush(argumentCaptor.capture());
       FullHttpResponse response = argumentCaptor.getValue();
       Assert.assertEquals(response.status(), HttpResponseStatus.OK);

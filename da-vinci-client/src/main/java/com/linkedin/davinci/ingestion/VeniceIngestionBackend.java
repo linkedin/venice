@@ -17,6 +17,7 @@ public interface VeniceIngestionBackend extends IngestionBackendBase {
 
   void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener);
 
+  // addPushStatusNotifier adds ingestion listener which reports ingestion status for different push monitors.
   void addPushStatusNotifier(VeniceNotifier pushStatusNotifier);
 
 }

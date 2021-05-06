@@ -1,6 +1,5 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.ingestion.handler.IngestionRequestClientHandler;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import io.netty.bootstrap.Bootstrap;
@@ -27,7 +26,7 @@ import java.io.Closeable;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
 
 /**
@@ -37,13 +36,13 @@ import static com.linkedin.davinci.ingestion.IngestionUtils.*;
 public class IngestionRequestTransport implements Closeable {
   private static final Logger logger = Logger.getLogger(IngestionRequestTransport.class);
   private final int port;
-  private IngestionRequestClientHandler responseHandler;
+  private IngestionRequestTransportHandler responseHandler;
   private final EventLoopGroup workerGroup;
   private final Bootstrap bootstrap;
 
   public IngestionRequestTransport(int port) {
     this.port = port;
-    this.responseHandler = new IngestionRequestClientHandler();
+    this.responseHandler = new IngestionRequestTransportHandler();
     workerGroup = new NioEventLoopGroup();
     bootstrap = new Bootstrap();
     bootstrap.group(workerGroup);
@@ -71,7 +70,9 @@ public class IngestionRequestTransport implements Closeable {
     httpRequest.headers()
         .set(HttpHeaderNames.HOST, hostAndPort)
         .set(HttpHeaderNames.CONTENT_LENGTH, contentBuf.readableBytes());
-    logger.info("IngestionRequestTransport sending request: " + httpRequest);
+    if (logger.isDebugEnabled()) {
+      logger.debug("IngestionRequestTransport sending request: " + httpRequest);
+    }
     // Exception will be thrown if connection is bad.
     FullHttpResponse response;
     try {
@@ -79,7 +80,9 @@ public class IngestionRequestTransport implements Closeable {
     } catch (InterruptedException e) {
       throw new VeniceException("Caught interrupted exception ", e);
     }
-    logger.info("IngestionRequestTransport received response: " + response);
+    if (logger.isDebugEnabled()) {
+      logger.debug("IngestionRequestTransport received response: " + response);
+    }
 
     try {
       if (!response.status().equals(HttpResponseStatus.OK)) {
@@ -113,8 +116,8 @@ public class IngestionRequestTransport implements Closeable {
     return responseHandler.getResponse();
   }
 
-  private IngestionRequestClientHandler getResponseHandler() {
-    IngestionRequestClientHandler handler = new IngestionRequestClientHandler();
+  private IngestionRequestTransportHandler getResponseHandler() {
+    IngestionRequestTransportHandler handler = new IngestionRequestTransportHandler();
     responseHandler = handler;
     return handler;
   }

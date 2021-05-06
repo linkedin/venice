@@ -1,7 +1,6 @@
-package com.linkedin.davinci.ingestion.handler;
+package com.linkedin.davinci.ingestion.regular;
 
-import com.linkedin.davinci.ingestion.IngestionReportListener;
-import com.linkedin.davinci.ingestion.IngestionUtils;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
@@ -19,17 +18,22 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.function.Consumer;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
 
-public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
-  private static final Logger logger = Logger.getLogger(IngestionReportHandler.class);
+/**
+ * NativeIngestionReportHandler is the handler class for {@link NativeIngestionMonitorService}. It handles {@link IngestionTaskReport}
+ * sent from child process and triggers corresponding notifier actions. For all these status, the handler will notify all
+ * the registered notifiers in main process.
+ */
+public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+  private static final Logger logger = Logger.getLogger(NativeIngestionReportHandler.class);
   private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-  private final IngestionReportListener ingestionReportListener;
+  private final NativeIngestionMonitorService nativeIngestionMonitorService;
 
-  public IngestionReportHandler(IngestionReportListener ingestionReportListener) {
-    logger.info("IngestionReportHandler created.");
-    this.ingestionReportListener = ingestionReportListener;
+  public NativeIngestionReportHandler(NativeIngestionMonitorService nativeIngestionMonitorService) {
+    logger.info("NativeIngestionReportHandler created.");
+    this.nativeIngestionMonitorService = nativeIngestionMonitorService;
   }
 
   @Override
@@ -41,34 +45,22 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
   public void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
     // Decode ingestion report from incoming http request content.
     IngestionTaskReport report = deserializeIngestionActionRequest(IngestionAction.REPORT, readHttpRequestContent(msg));
-    logger.info("Received ingestion task report " + report + " from ingestion service.");
+    IngestionReportType ingestionReportType = IngestionReportType.valueOf(report.reportType);
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
-
-    // Sync up offset record & store version state before report ingestion complete to parent process.
-    if (ingestionReportListener.getStorageMetadataService() != null) {
-      if (report.offsetRecord != null) {
-        OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecord.array(), partitionStateSerializer);
-        ingestionReportListener.getStorageMetadataService().putOffsetRecord(topicName, partitionId, offsetRecord);
-        logger.info("Updated offsetRecord for (topic, partition): " + topicName + " " + partitionId + " " + offsetRecord.toString());
-      }
-      if (report.storeVersionState != null) {
-        StoreVersionState storeVersionState = IngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
-        ingestionReportListener.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
-        logger.info("Updated storeVersionState for topic: " + topicName + " " + storeVersionState.toString());
-      }
-    }
-
+    logger.info("Received ingestion report " + ingestionReportType.name() + " for topic: " + topicName + ", partition: " + partitionId + " from ingestion service.");
+    // TODO: Use more flexible pull model to sync storage metadata from child process to main process.
+    updateLocalStorageMetadata(report);
     // Relay the notification to parent service's listener.
-    switch (IngestionReportType.valueOf(report.reportType)) {
+    switch (ingestionReportType) {
       case COMPLETED:
         // TODO: Set leader state in local KafkaStoreIngestionService during server integration.
-        ingestionReportListener.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+        nativeIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
         notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset));
         break;
       case ERROR:
-        ingestionReportListener.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+        nativeIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
         notifierHelper(notifier -> notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString())));
         break;
       case STARTED:
@@ -109,8 +101,27 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
   }
 
   private void notifierHelper(Consumer<VeniceNotifier> lambda) {
-    ingestionReportListener.getPushStatusNotifierList().forEach(lambda);
-    ingestionReportListener.getIngestionNotifierList().forEach(lambda);
+    nativeIngestionMonitorService.getPushStatusNotifierList().forEach(lambda);
+    nativeIngestionMonitorService.getIngestionNotifierList().forEach(lambda);
+  }
+
+  private void updateLocalStorageMetadata(IngestionTaskReport report) {
+    String topicName = report.topicName.toString();
+    int partitionId = report.partitionId;
+    long offset = report.offset;
+    // Sync up offset record & store version state before report ingestion complete to parent process.
+    if (nativeIngestionMonitorService.getStorageMetadataService() != null) {
+      if (report.offsetRecord != null) {
+        OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecord.array(), partitionStateSerializer);
+        nativeIngestionMonitorService.getStorageMetadataService().putOffsetRecord(topicName, partitionId, offsetRecord);
+        logger.info("Updated offsetRecord for (topic, partition): " + topicName + " " + partitionId + " " + offsetRecord.toString());
+      }
+      if (report.storeVersionState != null) {
+        StoreVersionState storeVersionState = IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
+        nativeIngestionMonitorService.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
+        logger.info("Updated storeVersionState for topic: " + topicName + " " + storeVersionState.toString());
+      }
+    }
   }
 }
 

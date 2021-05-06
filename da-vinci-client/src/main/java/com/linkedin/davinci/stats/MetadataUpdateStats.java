@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.davinci.ingestion.regular.NativeIngestionStorageMetadataService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
@@ -7,7 +8,7 @@ import io.tehuti.metrics.Sensor;
 
 
 /**
- * MetadataUpdateStats records metrics related to storage metadata update via {@link com.linkedin.davinci.ingestion.IngestionStorageMetadataService}
+ * MetadataUpdateStats records metrics related to storage metadata update via {@link NativeIngestionStorageMetadataService}
  */
 public class MetadataUpdateStats extends AbstractVeniceStats {
   private static final String METRICS_PREFIX = "ingestion_isolation_metadata_updates";

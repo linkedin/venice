@@ -1,6 +1,10 @@
-package com.linkedin.davinci.ingestion;
+package com.linkedin.davinci.ingestion.regular;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
+import com.linkedin.davinci.ingestion.IngestionRequestTransport;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
@@ -23,19 +27,19 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.ingestion.IngestionUtils.*;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
- * IngestionRequestClient sends requests to target listener service and retrieves responses.
+ * NativeIngestionRequestClient sends requests to isolated ingestion process and retrieves responses.
  */
-public class IngestionRequestClient implements AutoCloseable, Closeable {
-  private static final Logger logger = Logger.getLogger(IngestionRequestClient.class);
+public class NativeIngestionRequestClient implements Closeable {
+  private static final Logger logger = Logger.getLogger(NativeIngestionRequestClient.class);
 
   private final IngestionRequestTransport ingestionRequestTransport;
 
-  public IngestionRequestClient(int port) {
+  public NativeIngestionRequestClient(int port) {
     ingestionRequestTransport = new IngestionRequestTransport(port);
   }
 
@@ -43,7 +47,7 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
     int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     try {
       // Add blocking call to release target port binding.
-      IngestionUtils.releaseTargetPortBinding(ingestionServicePort);
+      IsolatedIngestionUtils.releaseTargetPortBinding(ingestionServicePort);
       List<String> jvmArgs = new ArrayList<>();
       for (String jvmArg : configLoader.getCombinedProperties().getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "").split(",")) {
         if (jvmArg.length() != 0) {
@@ -54,13 +58,13 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
       long heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS,
           TimeUnit.SECONDS.toMillis(60));
       Process isolatedIngestionService = ForkedJavaProcess.exec(
-          IngestionService.class,
+          IsolatedIngestionServer.class,
           Arrays.asList(String.valueOf(ingestionServicePort), String.valueOf(heartbeatTimeoutMs)),
           jvmArgs,
           Optional.empty()
       );
       // Wait for server in forked child process to bind the listening port.
-      IngestionUtils.waitPortBinding(ingestionServicePort, 100);
+      IsolatedIngestionUtils.waitPortBinding(ingestionServicePort, 100);
       // Wait for server in forked child process to pass health check.
       waitHealthCheck(100);
       InitializationConfigs initializationConfigs = new InitializationConfigs();
@@ -212,26 +216,13 @@ public class IngestionRequestClient implements AutoCloseable, Closeable {
     }
   }
 
-  public boolean reportIngestionTask(IngestionTaskReport report) {
-    String topicName = report.topicName.toString();
-    int partitionId = report.partitionId;
-    logger.info("Sending ingestion report: " + report);
-    try {
-      ingestionRequestTransport.sendRequest(IngestionAction.REPORT, report);
-      return true;
-    } catch (Exception e) {
-      logger.warn("Failed to send report with exception for topic: " + topicName + ", partition: " + partitionId , e);
-      return false;
-    }
-  }
-
-  public boolean collectMetrics(IngestionProcessStats ingestionProcessStats) {
+  public boolean collectMetrics(IsolatedIngestionProcessStats isolatedIngestionProcessStats) {
     try {
       IngestionMetricsReport metricsReport = ingestionRequestTransport.sendRequest(IngestionAction.METRIC, getDummyCommand());
       if (logger.isDebugEnabled()) {
         logger.debug("Collected " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
       }
-      ingestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
+      isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
       return true;
     } catch (Exception e) {
       logger.warn("Unable to collect metrics from ingestion service", e);

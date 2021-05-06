@@ -52,7 +52,7 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void unsubscribeTopicPartition(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds) {
+  public void dropStoragePartitionGracefully(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds) {
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
     getStorageService().dropStorePartition(storeConfig, partition);
   }
