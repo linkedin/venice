@@ -338,7 +338,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties.getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10)); // default 10 mins
     enableAutoCompactionForSamzaReprocessingJob = serverProperties.getBoolean(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
     isDaVinciClient = serverProperties.getBoolean(INGESTION_USE_DA_VINCI_CLIENT, false);
-    unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH,true);
+    unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH,false);
   }
 
   public int getListenerPort() {
