@@ -2,34 +2,35 @@ package com.linkedin.venice.compression;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.Map;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 
-public class CompressorFactory {
+public class CompressorFactory implements Closeable, AutoCloseable {
   private static final Logger logger = Logger.getLogger(CompressorFactory.class);
-  private static Map<CompressionStrategy, VeniceCompressor> compressorMap = new VeniceConcurrentHashMap<>();
-  // TODO: Clean up retired store versions
-  private static Map<String, VeniceCompressor> versionSpecificCompressorMap = new VeniceConcurrentHashMap<>();
+  private Map<CompressionStrategy, VeniceCompressor> compressorMap = new VeniceConcurrentHashMap<>();
+  private Map<String, VeniceCompressor> versionSpecificCompressorMap = new VeniceConcurrentHashMap<>();
 
-  public static VeniceCompressor getCompressor(CompressionStrategy compressionStrategy) {
+  public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy) {
     return compressorMap.computeIfAbsent(compressionStrategy, key -> createCompressor(compressionStrategy));
   }
 
-  public static VeniceCompressor createVersionSpecificCompressorIfNotExist(CompressionStrategy compressionStrategy, String kafkaTopic, final byte[] dictionary) {
+  public VeniceCompressor createVersionSpecificCompressorIfNotExist(CompressionStrategy compressionStrategy, String kafkaTopic, final byte[] dictionary) {
     return createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, dictionary, Zstd.maxCompressionLevel());
   }
 
-  public static VeniceCompressor createVersionSpecificCompressorIfNotExist(CompressionStrategy compressionStrategy, String kafkaTopic, final byte[] dictionary, int level) {
+  public VeniceCompressor createVersionSpecificCompressorIfNotExist(CompressionStrategy compressionStrategy, String kafkaTopic, final byte[] dictionary, int level) {
     return versionSpecificCompressorMap.computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(compressionStrategy, dictionary, level));
   }
 
-  public static VeniceCompressor getVersionSpecificCompressor(String kafkaTopic) {
+  public VeniceCompressor getVersionSpecificCompressor(String kafkaTopic) {
     return versionSpecificCompressorMap.get(kafkaTopic);
   }
 
-  public static void removeVersionSpecificCompressor(String kafkaTopic) {
+  public void removeVersionSpecificCompressor(String kafkaTopic) {
     VeniceCompressor previousCompressor = versionSpecificCompressorMap.remove(kafkaTopic);
     if (previousCompressor != null) {
       try {
@@ -41,11 +42,11 @@ public class CompressorFactory {
     }
   }
 
-  public static boolean versionSpecificCompressorExists(String kafkaTopic) {
+  public boolean versionSpecificCompressorExists(String kafkaTopic) {
     return versionSpecificCompressorMap.containsKey(kafkaTopic);
   }
 
-  public static VeniceCompressor createCompressor(CompressionStrategy compressionStrategy) {
+  public VeniceCompressor createCompressor(CompressionStrategy compressionStrategy) {
     if (compressionStrategy == CompressionStrategy.GZIP) {
       return new GzipCompressor();
     } else if (compressionStrategy == CompressionStrategy.NO_OP) {
@@ -55,11 +56,22 @@ public class CompressorFactory {
     throw new IllegalArgumentException("unsupported compression strategy: " + compressionStrategy.toString());
   }
 
-  public static VeniceCompressor createCompressorWithDictionary(CompressionStrategy compressionStrategy, final byte[] dictionary, int level) {
+  public VeniceCompressor createCompressorWithDictionary(CompressionStrategy compressionStrategy, final byte[] dictionary, int level) {
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       return new ZstdWithDictCompressor(dictionary, level);
     }
 
     throw new IllegalArgumentException("unsupported compression strategy with dictionary: " + compressionStrategy.toString());
+  }
+
+  @Override
+  public void close() {
+    for (VeniceCompressor compressor : compressorMap.values()) {
+      IOUtils.closeQuietly(compressor);
+    }
+
+    for (String topic : versionSpecificCompressorMap.keySet()) {
+      removeVersionSpecificCompressor(topic);
+    }
   }
 }

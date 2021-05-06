@@ -124,6 +124,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final RocksDBComputeAccessMode rocksDBComputeAccessMode;
   private final VeniceServerConfig serverConfig;
   private final Map<String, VenicePartitioner> venicePartitioners = new VeniceConcurrentHashMap<>();
+  private final GenericRecordChunkingAdapter chunkingAdapter;
 
   private static class ReusableObjects {
     // reuse buffer for rocksDB value object
@@ -158,7 +159,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                   ReadOnlyStoreRepository metadataStoreRepository,
                                   ReadOnlySchemaRepository schemaRepository,
                                   MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
-                                  boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize, VeniceServerConfig serverConfig) {
+                                  boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize,
+                                  VeniceServerConfig serverConfig, GenericRecordChunkingAdapter chunkingAdapter) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storageEngineRepository = storageEngineRepository;
@@ -173,6 +175,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     this.keyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
     this.rocksDBComputeAccessMode = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
     this.serverConfig = serverConfig;
+    this.chunkingAdapter = chunkingAdapter;
   }
 
   @Override
@@ -634,12 +637,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     switch (rocksDBComputeAccessMode) {
       case SINGLE_GET:
-        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, reuseValueRecord,
+        reuseValueRecord = chunkingAdapter.get(store, partition, key, isChunked, reuseValueRecord,
             binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName);
         break;
       case SINGLE_GET_WITH_REUSE:
         reuseValueRecord =
-          GenericRecordChunkingAdapter.INSTANCE.get(storeName, store, partition, ByteUtils.extractByteArray(key),
+            chunkingAdapter.get(storeName, store, partition, ByteUtils.extractByteArray(key),
               reuseRawValue, reuseValueRecord, binaryDecoder, isChunked, compressionStrategy, fastAvroEnabled, this.schemaRepo, response);
         break;
       default:

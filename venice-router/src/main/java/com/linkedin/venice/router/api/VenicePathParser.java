@@ -4,6 +4,7 @@ import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
 import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -81,15 +82,17 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final VeniceRouterConfig routerConfig;
+  private final CompressorFactory compressorFactory;
 
   public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder,
       RouterStats<AggRouterHttpRequestStats> routerStats, ReadOnlyStoreRepository storeRepository,
-      VeniceRouterConfig routerConfig){
+      VeniceRouterConfig routerConfig, CompressorFactory compressorFactory){
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
     this.routerStats = routerStats;
     this.storeRepository = storeRepository;
     this.routerConfig = routerConfig;
+    this.compressorFactory = compressorFactory;
   };
 
   @Override
@@ -179,7 +182,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       // TODO: maybe we should use the builder pattern here??
       // Setup decompressor
       VeniceResponseDecompressor responseDecompressor =
-          new VeniceResponseDecompressor(decompressOnClient, routerStats, fullHttpRequest, storeName, version);
+          new VeniceResponseDecompressor(decompressOnClient, routerStats, fullHttpRequest, storeName, version, compressorFactory);
       path.setResponseDecompressor(responseDecompressor);
 
       AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);

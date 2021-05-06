@@ -26,6 +26,8 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
 
   protected abstract RecordDeserializer<T> getDeserializer(String storeName, int schemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled);
 
+  protected abstract CompressorFactory getCompressorFactory();
+
   /**
    * The default {@link DecoderFactory} will allocate 8k buffer by default for every input stream, which seems to be
    * over-kill for Venice use case.
@@ -176,7 +178,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
 
   private final DecoderWrapper<InputStream, T> decompressingInputStreamDecoder =
       (reusedDecoder, inputStream, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) -> {
-        VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
+        VeniceCompressor compressor = getCompressorFactory().getCompressor(compressionStrategy);
         try (InputStream decompressedInputStream = compressor.decompress(inputStream)) {
           BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(decompressedInputStream, reusedDecoder);
           return deserializer.deserialize(reusedValue, decoder);

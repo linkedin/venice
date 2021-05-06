@@ -35,6 +35,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   private static final Logger LOGGER = Logger.getLogger(AbstractVeniceMapper.class);
   private static final int TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS = 0;
 
+  private CompressorFactory compressorFactory;
   private VeniceCompressor compressor;
   byte[] recordKey = null, recordValue = null;
   BytesWritable keyBW = new BytesWritable(), valueBW = new BytesWritable();
@@ -109,6 +110,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
   @Override
   protected void configureTask(VeniceProperties props, JobConf job) {
+    this.compressorFactory = new CompressorFactory();
     this.veniceRecordReader = getRecordReader(props);
     if (this.veniceRecordReader == null) {
       throw new VeniceException("Record reader not initialized");
@@ -121,18 +123,22 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
       if (compressionDictionary != null && compressionDictionary.limit() > 0) {
         this.compressor =
-            CompressorFactory.createCompressorWithDictionary(CompressionStrategy.ZSTD_WITH_DICT, compressionDictionary.array(), compressionLevel);
+            compressorFactory.createCompressorWithDictionary(CompressionStrategy.ZSTD_WITH_DICT, compressionDictionary.array(), compressionLevel);
       }
     } else {
       this.compressor =
-          CompressorFactory.createCompressor(CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)));
+          compressorFactory.createCompressor(CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)));
     }
   }
 
   @Override
-  public void close() throws IOException {
-    if (compressor != null && compressor.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT) {
-      IOUtils.closeQuietly(compressor);
+  public void close() {
+    if (compressor != null) {
+      if (compressor.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT) {
+        compressorFactory.removeVersionSpecificCompressor(veniceRecordReader.topicName);
+      } else {
+        IOUtils.closeQuietly(compressor);
+      }
     }
   }
 }

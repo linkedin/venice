@@ -24,6 +24,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.*;
@@ -43,6 +44,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final ClientConfig config;
   private final TransportClient transportClient;
   private final Executor deserializationExecutor;
+  private final CompressorFactory compressorFactory;
 
   // Key serializer
   private RecordSerializer<K> keySerializer;
@@ -52,6 +54,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     this.metadata = metadata;
     this.config = config;
     this.transportClient = new R2TransportClient(config.getR2Client());
+    this.compressorFactory = new CompressorFactory();
 
     if (config.isSpeculativeQueryEnabled()) {
       this.requiredReplicaCount = 2;
@@ -203,9 +206,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   // TODO: zstd decompression support
-  private static ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
+  private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
     try {
-      return CompressorFactory.getCompressor(compressionStrategy).decompress(data);
+      return compressorFactory.getCompressor(compressionStrategy).decompress(data);
     } catch (IOException e) {
       throw new VeniceClientException(
           String.format("Unable to decompress the record, compressionStrategy=%d", compressionStrategy.getValue()), e);
@@ -226,6 +229,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     } catch (Exception e) {
       throw new VeniceClientException("Failed to close store metadata", e);
     }
+
+    IOUtils.closeQuietly(compressorFactory);
   }
 
   @Override

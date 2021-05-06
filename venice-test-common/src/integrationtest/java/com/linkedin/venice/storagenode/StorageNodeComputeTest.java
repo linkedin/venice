@@ -62,6 +62,8 @@ public class StorageNodeComputeTest {
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
 
+  private CompressorFactory compressorFactory;
+
   private static final String valueSchemaForCompute = "{" +
       "  \"namespace\": \"example.compute\",    " +
       "  \"type\": \"record\",        " +
@@ -107,6 +109,8 @@ public class StorageNodeComputeTest {
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(routerAddr)
             .setUseFastAvro(true));
+
+    compressorFactory = new CompressorFactory();
   }
 
   @AfterClass(alwaysRun = true)
@@ -116,6 +120,7 @@ public class StorageNodeComputeTest {
     }
     IOUtils.closeQuietly(regularStoreClient);
     IOUtils.closeQuietly(fastAvroStoreClient);
+    IOUtils.closeQuietly(compressorFactory);
   }
 
   @DataProvider(name = "testPermutations")
@@ -163,7 +168,7 @@ public class StorageNodeComputeTest {
       pushSyntheticDataForCompute(topic, keyPrefix, valuePrefix, keyCount, veniceCluster,
           veniceWriter, pushVersion, compressionStrategy, valueLargerThan1MB);
     }
-    
+
     AvroGenericStoreClient<String, Object> storeClient = fastAvro ? fastAvroStoreClient : regularStoreClient;
     // Run multiple rounds
     int rounds = 100;
@@ -328,7 +333,7 @@ public class StorageNodeComputeTest {
       features.add(Float.valueOf((float)((i + 1) * 10)));
       value.put("member_feature", features);
 
-      byte[] compressedValue = CompressorFactory.getCompressor(compressionStrategy).compress(valueSerializer.serialize(topic, value));
+      byte[] compressedValue = compressorFactory.getCompressor(compressionStrategy).compress(valueSerializer.serialize(topic, value));
       writerFutures[i] = veniceWriter.put(keyPrefix + i, compressedValue, valueSchemaId);
     }
     // wait synchronously for them to succeed

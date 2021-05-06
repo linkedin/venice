@@ -11,6 +11,7 @@ import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -87,7 +88,8 @@ public class PushTimeoutTest {
         Optional.empty(), false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, mockVeniceStoreConfig, mock(DiskUsage.class),
         mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
-        mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1);
+        mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
+        mock(GenericRecordChunkingAdapter.class));
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     leaderFollowerStoreIngestionTask.run();
 

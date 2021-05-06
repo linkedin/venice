@@ -1,5 +1,6 @@
 package com.linkedin.davinci.storage.chunking;
 
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.serializer.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -11,10 +12,11 @@ import org.apache.avro.Schema;
  * Read compute and write compute chunking adapter
  */
 public class GenericChunkingAdapter<V> extends AbstractAvroChunkingAdapter<V> {
-  public static final GenericChunkingAdapter INSTANCE = new GenericChunkingAdapter();
+  private final CompressorFactory compressorFactory;
 
-  /** Singleton */
-  protected GenericChunkingAdapter() {}
+  public GenericChunkingAdapter(CompressorFactory compressorFactory) {
+    this.compressorFactory = compressorFactory;
+  }
 
   @Override
   protected RecordDeserializer<V> getDeserializer(String storeName, int schemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled) {
@@ -27,5 +29,10 @@ public class GenericChunkingAdapter<V> extends AbstractAvroChunkingAdapter<V> {
     } else {
       return ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(writerSchema, latestValueSchema);
     }
+  }
+
+  @Override
+  protected CompressorFactory getCompressorFactory() {
+    return compressorFactory;
   }
 }

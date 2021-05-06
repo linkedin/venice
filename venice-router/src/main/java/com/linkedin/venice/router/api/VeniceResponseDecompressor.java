@@ -71,13 +71,16 @@ public class VeniceResponseDecompressor {
   private final String storeName;
   private final int version;
   private final String kafkaTopic;
+  private final CompressorFactory compressorFactory;
 
-  public VeniceResponseDecompressor(boolean decompressOnClient, RouterStats<AggRouterHttpRequestStats> routerStats, BasicFullHttpRequest request, String storeName, int version) {
+  public VeniceResponseDecompressor(boolean decompressOnClient, RouterStats<AggRouterHttpRequestStats> routerStats,
+      BasicFullHttpRequest request, String storeName, int version, CompressorFactory compressorFactory) {
     this.routerStats = routerStats;
     this.clientCompression = decompressOnClient ? getClientSupportedCompression(request) : CompressionStrategy.NO_OP;
     this.storeName = storeName;
     this.version = version;
     this.kafkaTopic = Version.composeKafkaTopic(storeName, version);
+    this.compressorFactory = compressorFactory;
   }
 
   private static CompressionStrategy getClientSupportedCompression(HttpRequest request) {
@@ -295,13 +298,13 @@ public class VeniceResponseDecompressor {
     try {
       VeniceCompressor compressor;
       if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        compressor = CompressorFactory.getVersionSpecificCompressor(kafkaTopic);
+        compressor = compressorFactory.getVersionSpecificCompressor(kafkaTopic);
         if (compressor == null) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType),
               SERVICE_UNAVAILABLE, "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
         }
       } else {
-        compressor = CompressorFactory.getCompressor(compressionStrategy);
+        compressor = compressorFactory.getCompressor(compressionStrategy);
       }
       ByteBuffer decompressed = compressor.decompress(compressedData);
       return decompressed;

@@ -78,7 +78,6 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
-import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
@@ -125,6 +124,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceAddress;
+
+  private final GenericRecordChunkingAdapter chunkingAdapter;
 
   private final VeniceWriterFactory veniceWriterFactory;
   // Non-final
@@ -180,7 +181,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       VenicePartitioner venicePartitioner,
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
-      int amplificationFactor) {
+      int amplificationFactor,
+      GenericRecordChunkingAdapter chunkingAdapter) {
     super(
         consumerFactory,
         kafkaConsumerProperties,
@@ -231,6 +233,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
+    this.chunkingAdapter = chunkingAdapter;
 
     this.veniceWriterFactory = writerFactory;
   }
@@ -1439,8 +1442,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             if (transientRecord == null) {
               try {
                 long lookupStartTimeInNS = System.nanoTime();
-                originalValue = GenericRecordChunkingAdapter.INSTANCE.get(
-                    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
+                originalValue = chunkingAdapter.get(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
                     amplificationFactor != 1 && Version.isRealTimeTopic(consumerRecord.topic()) ?
                         venicePartitioner.getPartitionId(keyBytes, subPartitionCount) : consumerRecord.partition(),
                     ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
@@ -1458,8 +1460,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               if (transientRecord.getValue() != null) {
                 try {
                   originalValue =
-                      GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(),
-                          transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen(),
+                      chunkingAdapter.constructValue(transientRecord.getValueSchemaId(), transientRecord.getValue(),
+                          transientRecord.getValueOffset(), transientRecord.getValueLen(),
                           serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
                 } catch (Exception e) {
                   writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;

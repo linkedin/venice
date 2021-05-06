@@ -39,16 +39,18 @@ public class VeniceVersionFinder {
   private final String clusterName;
   private final ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
   private final OnlineInstanceFinder onlineInstanceFinder;
+  private CompressorFactory compressorFactory;
 
   public VeniceVersionFinder(ReadOnlyStoreRepository metadataRepository, OnlineInstanceFinder onlineInstanceFinder,
       StaleVersionStats stats, HelixReadOnlyStoreConfigRepository storeConfigRepo,
-      Map<String, String> clusterToD2Map, String clusterName) {
+      Map<String, String> clusterToD2Map, String clusterName, CompressorFactory compressorFactory) {
     this.metadataRepository = metadataRepository;
     this.onlineInstanceFinder = onlineInstanceFinder;
     this.stats = stats;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
     this.clusterName = clusterName;
+    this.compressorFactory = compressorFactory;
   }
 
   public int getVersion(String store, BasicFullHttpRequest request) throws VeniceException {
@@ -175,7 +177,7 @@ public class VeniceVersionFinder {
   private boolean isDecompressorReady(Store store, int versionNumber) {
     String kafkaTopic = Version.composeKafkaTopic(store.getName(), versionNumber);
     return store.getVersion(versionNumber)
-        .map(version -> version.getCompressionStrategy() != CompressionStrategy.ZSTD_WITH_DICT || CompressorFactory.versionSpecificCompressorExists(kafkaTopic))
+        .map(version -> version.getCompressionStrategy() != CompressionStrategy.ZSTD_WITH_DICT || compressorFactory.versionSpecificCompressorExists(kafkaTopic))
         .orElse(false);
   }
 }

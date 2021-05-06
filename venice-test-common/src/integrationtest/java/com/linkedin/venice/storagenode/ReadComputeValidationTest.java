@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -56,6 +57,7 @@ public class ReadComputeValidationTest {
   private VeniceKafkaSerializer valueSerializer;
   private VeniceKafkaSerializer valueSerializer2;
   private VeniceKafkaSerializer valueSerializerSwapped;
+  private CompressorFactory compressorFactory;
 
   private static final List<Float> mfEmbedding = generateRandomFloatList(100);
   private static final List<Float> companiesEmbedding = generateRandomFloatList(100);
@@ -123,6 +125,8 @@ public class ReadComputeValidationTest {
     valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaForCompute);
     valueSerializer2 = new VeniceAvroKafkaSerializer(valueSchemaForCompute2);
     valueSerializerSwapped = new VeniceAvroKafkaSerializer(valueSchemaForComputeSwapped);
+
+    compressorFactory = new CompressorFactory();
   }
 
   @AfterClass(alwaysRun = true)
@@ -130,6 +134,7 @@ public class ReadComputeValidationTest {
     if (veniceCluster != null) {
       veniceCluster.close();
     }
+    IOUtils.closeQuietly(compressorFactory);
   }
 
   @Test
@@ -265,7 +270,7 @@ public class ReadComputeValidationTest {
         value.put("companiesEmbedding", companiesEmbedding);
       }
       value.put("member_feature", mfEmbedding);
-      byte[] compressedValue = CompressorFactory.getCompressor(CompressionStrategy.NO_OP).compress(serializer.serialize(topic, value));
+      byte[] compressedValue = compressorFactory.getCompressor(CompressionStrategy.NO_OP).compress(serializer.serialize(topic, value));
       veniceWriter.put(i, compressedValue, valueSchemaId).get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP

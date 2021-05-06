@@ -284,7 +284,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
         partitionStateSerializer,
         helixReadOnlyZKSharedSchemaRepository,
         null,
-        true);
+        true,
+        isolatedIngestionServer.getChunkingAdapter());
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);
     isolatedIngestionServer.setStoreIngestionService(storeIngestionService);
