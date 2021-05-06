@@ -163,7 +163,7 @@ public class D2TestUtils {
     return getAndStartD2Client(zkHosts, true);
   }
 
-  public static D2Client getAndStartD2Client(String zkHosts, boolean https) {
+  public static D2Client getD2Client(String zkHosts, boolean https) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
 
@@ -187,8 +187,10 @@ public class D2TestUtils {
           .setIsSSLEnabled(true);
     }
 
-    D2Client d2Client = builder.build();
+    return builder.build();
+  }
 
+  public static void startD2Client(D2Client d2Client) {
     CountDownLatch latch = new CountDownLatch(1);
     d2Client.start(new Callback<None>() {
       @Override
@@ -206,6 +208,11 @@ public class D2TestUtils {
     } catch (InterruptedException e) {
       throw new VeniceException(e);
     }
+  }
+
+  public static D2Client getAndStartD2Client(String zkHosts, boolean https) {
+    D2Client d2Client = getD2Client(zkHosts, https);
+    startD2Client(d2Client);
     return d2Client;
   }
 
