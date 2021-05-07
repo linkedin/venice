@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
@@ -50,6 +51,43 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   }
 
   @Test
+  public void testReducerPutWithTooLargeValueAndChunkingDisabled() {
+    AbstractVeniceWriter mockWriter = mock(AbstractVeniceWriter.class);
+    when(mockWriter.put(any(), any(), anyInt(), any())).thenThrow(new RecordTooLargeException("expected exception"));
+    testReduceWithTooLargeValueAndChunkingDisabled(mockWriter, setupJobConf());
+  }
+
+  @Test
+  public void testReducerUpdateWithTooLargeValueAndChunkingDisabled() {
+    AbstractVeniceWriter mockWriter = mock(AbstractVeniceWriter.class);
+    when(mockWriter.update(any(), any(), anyInt(), anyInt(), any())).thenThrow(new RecordTooLargeException("expected exception"));
+    JobConf jobConf = setupJobConf();
+    jobConf.setInt(DERIVED_SCHEMA_ID_PROP, 2);
+    jobConf.setBoolean(ENABLE_WRITE_COMPUTE, true);
+    testReduceWithTooLargeValueAndChunkingDisabled(mockWriter, jobConf);
+  }
+
+  private void testReduceWithTooLargeValueAndChunkingDisabled(AbstractVeniceWriter mockWriter, JobConf jobConf) {
+    VeniceReducer reducer = new VeniceReducer();
+    reducer.setVeniceWriter(mockWriter);
+    reducer.configure(jobConf);
+    final String keyFieldValue = "test_key";
+    final String valueFieldValue = "test_value";
+    BytesWritable keyWritable = new BytesWritable(keyFieldValue.getBytes());
+    BytesWritable valueWritable = new BytesWritable(valueFieldValue.getBytes());
+    List<BytesWritable> values = Collections.singletonList(valueWritable);
+    OutputCollector mockCollector = mock(OutputCollector.class);
+    Reporter mockReporter = createZeroCountReporterMock();
+    reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
+
+    verify(mockReporter).incrCounter(
+        MRJobCounterHelper.RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME.getGroupName(),
+        MRJobCounterHelper.RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME.getCounterName(),
+        1
+    );
+  }
+
+  @Test
   public void testReduce() {
     AbstractVeniceWriter mockWriter = mock(AbstractVeniceWriter.class);
     VeniceReducer reducer = new VeniceReducer();
@@ -59,8 +97,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     final String valueFieldValue = "test_value";
     BytesWritable keyWritable = new BytesWritable(keyFieldValue.getBytes());
     BytesWritable valueWritable = new BytesWritable(valueFieldValue.getBytes());
-    List<BytesWritable> values = new ArrayList<>();
-    values.add(valueWritable);
+    List<BytesWritable> values = Collections.singletonList(valueWritable);
     OutputCollector mockCollector = mock(OutputCollector.class);
     Reporter mockReporter = createZeroCountReporterMock();
 
@@ -222,6 +259,11 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     when(mockReporter.getCounter(
         MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName(),
         MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName())
+    ).thenReturn(zeroCounters);
+
+    when(mockReporter.getCounter(
+        MRJobCounterHelper.RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME.getGroupName(),
+        MRJobCounterHelper.RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME.getCounterName())
     ).thenReturn(zeroCounters);
 
     when(mockReporter.getCounter(

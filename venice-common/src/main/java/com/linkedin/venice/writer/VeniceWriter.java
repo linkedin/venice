@@ -3,6 +3,7 @@ package com.linkedin.venice.writer;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -396,7 +397,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       if (isChunkingEnabled) {
         return putLargeValue(serializedKey, serializedValue, valueSchemaId, callback, partition, upstreamOffset);
       } else {
-        throw new VeniceException("This record exceeds the maximum size. " +
+        throw new RecordTooLargeException("This record exceeds the maximum size. " +
             getSizeReport(serializedKey, serializedValue));
       }
     }
@@ -456,7 +457,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     //large value is not supported for "update" yet
     if (serializedKey.length + serializedUpdate.length > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
-      throw new VeniceException("This partial update exceeds the maximum size. " + getSizeReport(serializedKey, serializedUpdate));
+      throw new RecordTooLargeException("This partial update exceeds the maximum size. " + getSizeReport(serializedKey, serializedUpdate));
     }
 
     KafkaKey kafkaKey = new KafkaKey((MessageType.UPDATE), serializedKey);
