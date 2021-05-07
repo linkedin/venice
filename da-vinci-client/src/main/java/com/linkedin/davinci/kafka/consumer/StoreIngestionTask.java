@@ -126,7 +126,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /** After processing the following number of messages, Venice SN will report progress metrics. */
   public static int OFFSET_REPORTING_INTERVAL = 1000;
-  private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 3;
+  private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
   private static final int MAX_IDLE_COUNTER  = 100;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   private static final long KILL_WAIT_TIME_MS = 5000L;
@@ -1087,7 +1087,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (!consumerHasSubscription()) {
       if (++idleCounter <= MAX_IDLE_COUNTER) {
-        logger.info(consumerTaskId + " Not subscribed to any partitions, idleCounter=" + idleCounter);
+        String message = consumerTaskId + " Not subscribed to any partitions";
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+          logger.info(message);
+        }
         if (usingSharedConsumer) {
           /**
            * The extended sleep is trying to reduce the contention since the consumer is shared and synchronized.
@@ -1100,7 +1103,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       } else {
         if (serverConfig.isUnsubscribeAfterBatchpushEnabled() && subscribedCount != 0 && subscribedCount == forceUnSubscribedCount) {
-          logger.info(consumerTaskId + "Going back to sleep as consumption has finished and topics are unsubscribed");
+          String msg = consumerTaskId + " Going back to sleep as consumption has finished and topics are unsubscribed";
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+            logger.info(msg);
+          }
           Thread.sleep(readCycleDelayMs * 20);
           idleCounter = 0;
         } else {
@@ -1119,7 +1125,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (versionNumber <= store.getCurrentVersion()) {
         for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
           if (state.isCompletionReported() && !state.isIncrementalPushEnabled()) {
-            unSubscribePartition(kafkaVersionTopic, state.getPartition());
+            logger.info("Unsubscribing completed partitions " + state.getPartition() + "of store : " + store.getName() + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
+            consumerUnSubscribe(kafkaVersionTopic, state);
             forceUnSubscribedCount++;
           }
         }
@@ -1416,8 +1423,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           logger.warn("Failed to process consumer action " + action + ", will retry later.", e);
           return;
         }
-        logger.error("Ignoring consumer action " + action + " after " + action.getAttemptsCount() + " attempts.", e);
-        consumerActionsQueue.poll();
+        logger.error("Failed to execute consumer action " + action + " after " + action.getAttemptsCount() + " attempts.", e);
+        // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
+        throw e;
       }
     }
     if (emitMetrics.get()) {
