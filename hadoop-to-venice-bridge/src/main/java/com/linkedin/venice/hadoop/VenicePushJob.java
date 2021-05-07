@@ -417,7 +417,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     WRITE_ACL_FAILED(-2),
     DUP_KEY_WITH_DIFF_VALUE(-3),
     FILE_SCHEMA_VALIDATION_FAILED(-4),
-    EXTENDED_FILE_SCHEMA_VALIDATION_FAILED(-5);
+    EXTENDED_FILE_SCHEMA_VALIDATION_FAILED(-5),
+    RECORD_TOO_LARGE_FAILED(-6);
 
     private final int value;
 
@@ -1146,6 +1147,14 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
             jobId, duplicateKeyWithDistinctValueCount);
         return Optional.of(new ErrorMessage(errorMessage));
       }
+    }
+    // Record too large
+    final long recordTooLargeFailureCount = MRJobCounterHelper.getRecordTooLargeFailureCount(runningJob.getCounters());
+    if (recordTooLargeFailureCount > 0) {
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.RECORD_TOO_LARGE_FAILED);
+      String errorMessage = String.format("Detect record too large failure. Job ID %s, counter value %d",
+          jobId, recordTooLargeFailureCount);
+      return Optional.of(new ErrorMessage(errorMessage));
     }
     return Optional.empty();
   }

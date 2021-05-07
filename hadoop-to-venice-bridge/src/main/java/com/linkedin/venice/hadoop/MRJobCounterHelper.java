@@ -18,6 +18,7 @@ public class MRJobCounterHelper {
   private static final String COUNTER_OUTPUT_RECORDS = "Output Records";
   private static final String EMPTY_RECORD = "empty record";
   private static final String AUTHORIZATION_FAILURES = "authorization failures";
+  private static final String RECORD_TOO_LARGE_FAILURES = "record too large failures";
 
   private static final String COUNTER_GROUP_DATA_QUALITY = "Data quality";
   private static final String DUPLICATE_KEY_WITH_IDENTICAL_VALUE = "duplicate key with identical value";
@@ -44,6 +45,9 @@ public class MRJobCounterHelper {
   static final GroupAndCounterNames DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_DISTINCT_VALUE);
 
+  static final GroupAndCounterNames RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_DATA_QUALITY, RECORD_TOO_LARGE_FAILURES);
+
   static final GroupAndCounterNames OUTPUT_RECORD_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA, COUNTER_OUTPUT_RECORDS);
 
@@ -66,6 +70,10 @@ public class MRJobCounterHelper {
 
   static void incrWriteAclAuthorizationFailureCount(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, amount);
+  }
+
+  static void incrRecordTooLargeFailureCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME, amount);
   }
 
   static void incrTotalKeySize(Reporter reporter, long amount) {
@@ -104,6 +112,10 @@ public class MRJobCounterHelper {
     return getCountWithGroupCounterName(reporter, DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME);
   }
 
+  static long getRecordTooLargeFailureCount(Reporter reporter) {
+    return getCountWithGroupCounterName(reporter, RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME);
+  }
+
   static long getTotalKeySize(Reporter reporter) {
     return getCountWithGroupCounterName(reporter, TOTAL_KEY_SIZE_GROUP_COUNTER_NAME);
   }
@@ -126,6 +138,10 @@ public class MRJobCounterHelper {
 
   static long getDuplicateKeyWithDistinctCount(Counters counters) {
     return getCountFromCounters(counters, DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME);
+  }
+
+  static long getRecordTooLargeFailureCount(Counters counters) {
+    return getCountFromCounters(counters, RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME);
   }
 
   static long getTotalKeySize(Counters counters) {

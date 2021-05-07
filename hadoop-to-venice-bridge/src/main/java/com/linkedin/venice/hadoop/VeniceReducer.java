@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -127,6 +128,7 @@ public class VeniceReducer
   private boolean exceedQuota = false;
   private boolean hasWriteAclFailure = false;
   private boolean hasDuplicateKeyWithDistinctValue = false;
+  private boolean hasRecordTooLargeFailure = false;
   private HadoopJobClientProvider hadoopJobClientProvider = new DefaultHadoopJobClientProvider();
   private boolean isDuplicateKeyAllowed = DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 
@@ -155,6 +157,10 @@ public class VeniceReducer
             MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
             LOGGER.error(e);
             return;
+          } else if (e instanceof RecordTooLargeException) {
+            MRJobCounterHelper.incrRecordTooLargeFailureCount(reporter, 1);
+            LOGGER.error(e);
+            return;
           }
           throw e;
         }
@@ -177,15 +183,25 @@ public class VeniceReducer
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
     }
     duplicateKeyPrinter.detectAndHandleDuplicateKeys(keyBytes, valueBytes, values, reporter);
-
-
     return Optional.of(new VeniceWriterMessage(keyBytes, valueBytes, valueSchemaId));
   }
 
   protected boolean hasReportedFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
     return exceedQuota(reporter)
         || hasWriteAclFailure(reporter)
-        || hasDuplicatedKeyWithDistinctValueFailure(reporter, isDuplicateKeyAllowed);
+        || hasDuplicatedKeyWithDistinctValueFailure(reporter, isDuplicateKeyAllowed)
+        || hasRecordTooLargeFailure(reporter);
+  }
+
+  private boolean hasRecordTooLargeFailure(Reporter reporter) {
+    if (this.hasRecordTooLargeFailure) {
+      return true;
+    }
+    final boolean hasRecordTooLargeFailure = MRJobCounterHelper.getRecordTooLargeFailureCount(reporter) > 0;
+    if (hasRecordTooLargeFailure) {
+      this.hasRecordTooLargeFailure = true;
+    }
+    return hasRecordTooLargeFailure;
   }
 
   private boolean hasDuplicatedKeyWithDistinctValueFailure(Reporter reporter, boolean isDuplicateKeyAllowed) {
