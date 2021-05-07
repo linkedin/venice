@@ -480,8 +480,18 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             defaultDelayToRebalanceMS, defaultMinActiveReplica, null, null, sslToKafka, false, properties);
     synchronized (this) {
       veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
+      setExternalControllerDiscoveryURL(veniceControllerWrappers.values().stream()
+          .map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(",")));
     }
     return veniceControllerWrapper;
+  }
+
+  public void addVeniceControllerWrapper(VeniceControllerWrapper veniceControllerWrapper) {
+    synchronized (this) {
+      veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
+      setExternalControllerDiscoveryURL(veniceControllerWrappers.values().stream()
+          .map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(",")));
+    }
   }
 
   public VeniceRouterWrapper addVeniceRouter(Properties properties) {

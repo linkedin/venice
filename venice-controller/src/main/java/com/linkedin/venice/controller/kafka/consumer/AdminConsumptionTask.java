@@ -107,6 +107,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + " [Topic: %s] ";
   private static final long UNASSIGNED_VALUE = -1L;
   private static final int READ_CYCLE_DELAY_MS = 1000;
+  private static final int MAX_DUPLICATE_MESSAGE_LOGS = 20;
   public static int IGNORED_CURRENT_VERSION = -1;
 
   private final Logger logger;
@@ -121,6 +122,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final AdminOperationSerializer deserializer;
   private final AdminConsumptionStats stats;
   private final int adminTopicReplicationFactor;
+  private final boolean remoteConsumptionEnabled;
 
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
@@ -181,8 +183,17 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private ProducerInfo producerInfo = null;
 
+  /**
+   * During roll-out/roll-back phase of the remote consumption feature for admin topic, child controllers will consume
+   * messages that have already been processed before. In order to not to flood the log with duplicate message logging,
+   * keep track of consecutive duplicate messages and stop logging after {@link AdminConsumptionTask#MAX_DUPLICATE_MESSAGE_LOGS}
+   * consecutive duplicates.
+   */
+  private int consecutiveDuplicateMessageCount = 0;
+
   public AdminConsumptionTask(String clusterName,
       KafkaConsumerWrapper consumer,
+      boolean remoteConsumptionEnabled,
       VeniceHelixAdmin admin,
       AdminTopicMetadataAccessor adminTopicMetadataAccessor,
       ExecutionIdAccessor executionIdAccessor,
@@ -204,6 +215,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.stats = stats;
     this.adminTopicReplicationFactor = adminTopicReplicationFactor;
     this.consumer = consumer;
+    this.remoteConsumptionEnabled = remoteConsumptionEnabled;
     this.adminTopicMetadataAccessor = adminTopicMetadataAccessor;
     this.executionIdAccessor = executionIdAccessor;
     this.processingCycleTimeoutInMs = processingCycleTimeoutInMs;
@@ -310,7 +322,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void subscribe() {
     Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
     if (!metaData.isEmpty()) {
-      lastPersistedOffset = AdminTopicMetadataAccessor.getOffset(metaData);
+      lastPersistedOffset = AdminTopicMetadataAccessor.getOffset(metaData, remoteConsumptionEnabled);
       lastPersistedExecutionId = AdminTopicMetadataAccessor.getExecutionId(metaData);
       lastOffset = lastPersistedOffset;
       lastDelegatedExecutionId = lastPersistedExecutionId;
@@ -337,6 +349,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       offsetToSkipDIV = UNASSIGNED_VALUE;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
       lastPersistedExecutionId = UNASSIGNED_VALUE;
+      lastOffset = UNASSIGNED_VALUE;
+      lastPersistedOffset = UNASSIGNED_VALUE;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       isSubscribed = false;
@@ -504,9 +518,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     logger.info("Received admin message: " + adminOperation + " offset: " + record.offset());
     try {
       checkAndValidateMessage(adminOperation, record);
+      consecutiveDuplicateMessageCount = 0;
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
-      logger.info(e.getMessage());
+      if (consecutiveDuplicateMessageCount++ < MAX_DUPLICATE_MESSAGE_LOGS) {
+        logger.info(e.getMessage());
+      } else if (consecutiveDuplicateMessageCount == MAX_DUPLICATE_MESSAGE_LOGS) {
+        logger.info("It appears that controller is consuming from a low offset and encounters many admin messages that "
+            + "have already been processed. Will stop logging duplicate messages until a fresh admin message.");
+      }
       return executionId;
     }
 
@@ -573,6 +593,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         throw new MissingDataException(exceptionString);
       } else {
         logger.info("Ignoring " + exceptionString + " Cross-reference with producerInfo passed. " + producerInfoString);
+        updateProducerInfo(record.value().producerMetadata);
         lastDelegatedExecutionId = incomingExecutionId;
       }
     }
@@ -632,7 +653,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       // Skip since there are no new admin messages processed.
       return;
     }
-    Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(lastOffset, lastDelegatedExecutionId);
+    Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(lastOffset, lastDelegatedExecutionId, remoteConsumptionEnabled);
     adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
     lastPersistedOffset = lastOffset;
     lastPersistedExecutionId = lastDelegatedExecutionId;

@@ -104,6 +104,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
             ServiceFactory.getVeniceClusterWrapperForMultiCluster(coloName, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
                 clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicationFactor, partitionSize, enableWhitelist,
                 enableAutoJoinWhitelist, rebalanceDelayMs, minActiveReplica, sslToStorageNodes, false, veniceProperties, forkServer);
+        controllerMap.values().stream().forEach(clusterWrapper::addVeniceControllerWrapper);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
         clusterWrapper.setExternalControllerDiscoveryURL(controllerMap.values().stream()
             .map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(",")));

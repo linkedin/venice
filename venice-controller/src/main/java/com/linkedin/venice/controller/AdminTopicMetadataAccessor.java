@@ -5,18 +5,24 @@ import java.util.Map;
 
 public abstract class AdminTopicMetadataAccessor {
   private static final String OFFSET_KEY = "offset";
+  /**
+   * When remote consumption is enabled, child controller will consume directly from the source admin topic; an extra
+   * metadata called upstream offset will be maintained, which indicate the last offset in the source admin topic that
+   * gets processed successfully.
+   */
+  private static final String UPSTREAM_OFFSET_KEY = "upstreamOffset";
   private static final String EXECUTION_ID_KEY = "executionId";
   private static final long UNDEFINED_VALUE = -1;
 
-  public static Map<String, Long> generateMetadataMap(long offset, long executionId) {
+  public static Map<String, Long> generateMetadataMap(long offset, long executionId, boolean remoteConsumptionEnabled) {
     Map<String, Long> metadata = new HashMap<>();
-    metadata.put(OFFSET_KEY, offset);
+    metadata.put(remoteConsumptionEnabled ? UPSTREAM_OFFSET_KEY : OFFSET_KEY, offset);
     metadata.put(EXECUTION_ID_KEY, executionId);
     return metadata;
   }
 
-  public static long getOffset(Map<String, Long> metadata) {
-    return metadata.getOrDefault(OFFSET_KEY, UNDEFINED_VALUE);
+  public static long getOffset(Map<String, Long> metadata, boolean remoteConsumptionEnabled) {
+    return metadata.getOrDefault(remoteConsumptionEnabled ? UPSTREAM_OFFSET_KEY : OFFSET_KEY, UNDEFINED_VALUE);
   }
 
   public static long getExecutionId(Map<String, Long> metadata) {

@@ -179,7 +179,7 @@ public class TestAdminConsumptionTask {
     MockInMemoryConsumer inMemoryKafkaConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
 
-    return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, admin, adminTopicMetadataAccessor,
+    return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, false, admin, adminTopicMetadataAccessor,
         executionIdAccessor, isParent, stats, 1, adminConsumptionCycleTimeoutMs, 1);
   }
 
@@ -188,7 +188,7 @@ public class TestAdminConsumptionTask {
   }
 
   private long getLastOffset(String clusterName) {
-    return AdminTopicMetadataAccessor.getOffset(adminTopicMetadataAccessor.getMetadata(clusterName));
+    return AdminTopicMetadataAccessor.getOffset(adminTopicMetadataAccessor.getMetadata(clusterName), false);
   }
 
   private long getLastExecutionId(String clusterName) {
@@ -677,7 +677,7 @@ public class TestAdminConsumptionTask {
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
-    Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(1, 1);
+    Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(1, 1, false);
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
@@ -737,7 +737,7 @@ public class TestAdminConsumptionTask {
       final Long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
-        return AdminTopicMetadataAccessor.getOffset(metaData) == executionId
+        return AdminTopicMetadataAccessor.getOffset(metaData, false) == executionId
             && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
@@ -935,7 +935,7 @@ public class TestAdminConsumptionTask {
     Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
-    Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, 4L);
+    Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, 4L, false);
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 4L);
     // Resubscribe to the admin topic and make sure it can still process new admin messages
