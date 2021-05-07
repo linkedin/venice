@@ -1,34 +1,35 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.kafka.consumer.StoreBufferService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
+import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.writer.ApacheKafkaProducer;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.log4j.Logger;
 
 
 public class AggLagStats extends AbstractVeniceStats {
+  private static final Logger LOGGER = Logger.getLogger(AggLagStats.class);
 
-  private final AtomicLong aggBatchReplicationLagFuture;
-  private final AtomicLong aggLeaderOffsetLagFuture;
-  private final AtomicLong aggFollowerOffsetLagFuture;
+  private final StoreIngestionService storeIngestionService;
 
-  public AggLagStats(MetricsRepository metricsRepository) {
+  private long aggBatchReplicationLagFuture;
+  private long aggLeaderOffsetLagFuture;
+  private long aggFollowerOffsetLagFuture;
+
+  private long lastLagUpdateTsMs = 0;
+
+  public AggLagStats(StoreIngestionService storeIngestionService, MetricsRepository metricsRepository) {
     super(metricsRepository, "AggLagStats");
+    this.storeIngestionService = storeIngestionService;
 
-    aggBatchReplicationLagFuture = new AtomicLong();
-    aggLeaderOffsetLagFuture = new AtomicLong();
-    aggFollowerOffsetLagFuture = new AtomicLong();
-
-    /**
-     * The following aggregated lag metrics depends on the corresponding store level metrics to work. It does not loop over
-     * all store's lag metrics by itself. Instead it depends on the those metrics collection to happen
-     * periodically for each store which contributes to these aggregated metrics.
-     * If we stop producing the store level metrics the these metrics need to be refactored.
-     */
     registerSensor("agg_batch_replication_lag_future", new Gauge(
         () -> this.getAggBatchReplicationLagFuture()
     ));
@@ -41,32 +42,40 @@ public class AggLagStats extends AbstractVeniceStats {
 
   }
 
-  public long getAggBatchReplicationLagFuture() {
-    long lag = aggBatchReplicationLagFuture.getAndSet(0);
-    return lag;
+  private synchronized void mayCollectAllLags() {
+    /**
+     * Will cache the result for 60 seconds to avoid looping through all ingestion task every time.
+     */
+    if (LatencyUtils.getElapsedTimeInMs(lastLagUpdateTsMs) < 60 * Time.MS_PER_SECOND) {
+      return;
+    }
+    aggBatchReplicationLagFuture = 0;
+    aggLeaderOffsetLagFuture = 0;
+    aggFollowerOffsetLagFuture = 0;
+
+    storeIngestionService.traverseAllIngestionTasksAndApply((ingestionTask) -> {
+      if (ingestionTask.isFutureVersion()) {
+        aggBatchReplicationLagFuture += ingestionTask.getBatchReplicationLag();
+        aggLeaderOffsetLagFuture += ingestionTask.getBatchLeaderOffsetLag();
+        aggFollowerOffsetLagFuture += ingestionTask.getBatchFollowerOffsetLag();
+      }
+    });
+
+    lastLagUpdateTsMs = System.currentTimeMillis();
   }
 
-  public void addAggBatchReplicationLagFuture(long lag) {
-    aggBatchReplicationLagFuture.addAndGet(lag);
+  public long getAggBatchReplicationLagFuture() {
+    mayCollectAllLags();
+    return aggBatchReplicationLagFuture;
   }
 
   public long getAggLeaderOffsetLagFuture() {
-    long lag = aggLeaderOffsetLagFuture.getAndSet(0);
-    return lag;
-  }
-
-  public void addAggLeaderOffsetLagFuture(long lag) {
-    aggLeaderOffsetLagFuture.addAndGet(lag);
+    mayCollectAllLags();
+    return aggLeaderOffsetLagFuture;
   }
 
   public long getAggFollowerOffsetLagFuture() {
-    long lag = aggFollowerOffsetLagFuture.getAndSet(0);
-    return lag;
+    mayCollectAllLags();
+    return aggFollowerOffsetLagFuture;
   }
-
-  public void addAggFollowerOffsetLagFuture(long lag) {
-    aggFollowerOffsetLagFuture.addAndGet(lag);
-  }
-
-
 }

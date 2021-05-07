@@ -8,6 +8,7 @@ import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 
 /**
@@ -122,4 +123,6 @@ public interface StoreIngestionService {
   StoreIngestionTask getStoreIngestionTask(String topic);
 
   Optional<MetaSystemStoreReplicaStatusNotifier> getMetaSystemStoreReplicaStatusNotifier();
+
+  void traverseAllIngestionTasksAndApply(Consumer<StoreIngestionTask> consumer);
 }

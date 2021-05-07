@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -76,7 +75,6 @@ public class StoreIngestionTaskFactory {
           builder.ingestionStats,
           builder.versionedDIVStats,
           builder.versionedStorageIngestionStats,
-          builder.aggLagStats,
           builder.storeBufferService,
           isCurrentVersion,
           hybridStoreConfig,
@@ -117,7 +115,6 @@ public class StoreIngestionTaskFactory {
           builder.ingestionStats,
           builder.versionedDIVStats,
           builder.versionedStorageIngestionStats,
-          builder.aggLagStats,
           builder.storeBufferService,
           isCurrentVersion,
           hybridStoreConfig,
@@ -170,7 +167,6 @@ public class StoreIngestionTaskFactory {
     private AggStoreIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedStorageIngestionStats versionedStorageIngestionStats;
-    private AggLagStats aggLagStats;
     private StoreBufferService storeBufferService;
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
@@ -302,13 +298,6 @@ public class StoreIngestionTaskFactory {
     public Builder setVersionedStorageIngestionStats(AggVersionedStorageIngestionStats versionedStorageIngestionStats) {
       if (!built) {
         this.versionedStorageIngestionStats = versionedStorageIngestionStats;
-      }
-      return this;
-    }
-
-    public Builder setAggLagStats(AggLagStats aggLagStats) {
-      if (!built) {
-        this.aggLagStats = aggLagStats;
       }
       return this;
     }

@@ -83,7 +83,7 @@ public class PushTimeoutTest {
         mockStorageMetadataService, notifiers, mock(EventThrottler.class), mock(EventThrottler.class), mock(EventThrottler.class),
         mock(EventThrottler.class), mock(ReadOnlySchemaRepository.class), mockReadOnlyStoreRepository, mock(TopicManagerRepository.class),
         mock(TopicManagerRepository.class), mock(AggStoreIngestionStats.class), mock(AggVersionedDIVStats.class),
-        mock(AggVersionedStorageIngestionStats.class), mock(AggLagStats.class), mock(StoreBufferService.class), mock(BooleanSupplier.class),
+        mock(AggVersionedStorageIngestionStats.class), mock(StoreBufferService.class), mock(BooleanSupplier.class),
         Optional.empty(), false, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, mockVeniceStoreConfig, mock(DiskUsage.class),
         mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
