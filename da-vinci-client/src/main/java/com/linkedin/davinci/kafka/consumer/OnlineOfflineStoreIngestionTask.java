@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
-import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -65,7 +64,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      AggLagStats aggLagStats,
       StoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
@@ -102,7 +100,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         storeIngestionStats,
         versionedDIVStats,
         versionedStorageIngestionStats,
-        aggLagStats,
         storeBufferService,
         isCurrentVersion,
         hybridStoreConfig,

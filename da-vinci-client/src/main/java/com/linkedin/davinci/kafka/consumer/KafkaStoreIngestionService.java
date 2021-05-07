@@ -69,6 +69,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -265,7 +266,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     new StoreBufferServiceStats(metricsRepository, this.storeBufferService);
 
-    this.aggLagStats = new AggLagStats(metricsRepository);
+    this.aggLagStats = new AggLagStats(this, metricsRepository);
 
     if (clientConfig.isPresent()) {
       String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
@@ -345,7 +346,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStoreIngestionStats(ingestionStats)
         .setVersionedDIVStats(versionedDIVStats)
         .setVersionedStorageIngestionStats(versionedStorageIngestionStats)
-        .setAggLagStats(aggLagStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
@@ -909,5 +909,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       response.setMessage(msg);
     }
     return response;
+  }
+
+  @Override
+  public void traverseAllIngestionTasksAndApply(Consumer<StoreIngestionTask> consumer) {
+    topicNameToIngestionTaskMap.values().forEach(consumer);
+  }
+
+  public AggLagStats getAggLagStats() {
+    return aggLagStats;
   }
 }

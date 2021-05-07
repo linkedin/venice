@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
-import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
@@ -151,7 +150,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      AggLagStats aggLagStats,
       StoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
@@ -191,7 +189,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         storeIngestionStats,
         versionedDIVStats,
         versionedStorageIngestionStats,
-        aggLagStats,
         storeBufferService,
         isCurrentVersion,
         hybridStoreConfig,
@@ -1480,14 +1477,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public long getBatchReplicationLag() {
-    long batchReplicationLag = getReplicationLag(BATCH_REPLICATION_LAG_FILTER);
-
-    //if this task is for future version then update the aggregrated lag here
-    if (versionedStorageIngestionStats.isFutureVersion(storeName, versionNumber)) {
-      aggLagStats.addAggBatchReplicationLagFuture(batchReplicationLag);
-    }
-
-    return batchReplicationLag;
+    return getReplicationLag(BATCH_REPLICATION_LAG_FILTER);
   }
 
 
@@ -1547,14 +1537,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public long getBatchLeaderOffsetLag() {
-    long batchLeaderOffsetLag = getLeaderOffsetLag(BATCH_LEADER_OFFSET_LAG_FILTER);
-
-    //if this task is for future version then update the aggregrated lag here
-    if (versionedStorageIngestionStats.isFutureVersion(storeName, versionNumber)) {
-      aggLagStats.addAggLeaderOffsetLagFuture(batchLeaderOffsetLag);
-    }
-
-    return batchLeaderOffsetLag;
+    return getLeaderOffsetLag(BATCH_LEADER_OFFSET_LAG_FILTER);
   }
 
   @Override
@@ -1607,14 +1590,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public long getBatchFollowerOffsetLag() {
-    long batchFollowerOffsetLag = getFollowerOffsetLag(BATCH_FOLLOWER_OFFSET_LAG_FILTER);
-
-    //if this task is for future version then update the aggregrated lag here
-    if (versionedStorageIngestionStats.isFutureVersion(storeName, versionNumber)) {
-      aggLagStats.addAggFollowerOffsetLagFuture(batchFollowerOffsetLag);
-    }
-
-    return batchFollowerOffsetLag;
+    return getFollowerOffsetLag(BATCH_FOLLOWER_OFFSET_LAG_FILTER);
   }
 
   @Override
