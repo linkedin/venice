@@ -107,6 +107,16 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   private final String regionName;
 
+  /**
+   * A config flag to decide whether child controllers will consume remotely from the source admin topic.
+   */
+  private final boolean adminTopicRemoteConsumptionEnabled;
+
+  /**
+   * Region name of the source admin topic.
+   */
+  private final String adminTopicSourceRegion;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -139,8 +149,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       this.childDataCenterControllerD2Map = Collections.emptyMap();
       this.d2ServiceName = null;
       this.parentFabrics = Collections.emptySet();
-      this.childDataCenterKafkaUrlMap = Collections.emptyMap();
-      this.childDataCenterKafkaZkMap = Collections.emptyMap();
+      String nativeReplicationSourceFabricWhitelist = props.getString(NATIVE_REPLICATION_FABRIC_WHITELIST, "");
+      if (nativeReplicationSourceFabricWhitelist == null || nativeReplicationSourceFabricWhitelist.length() == 0) {
+        this.childDataCenterKafkaUrlMap = Collections.emptyMap();
+        this.childDataCenterKafkaZkMap = Collections.emptyMap();
+      } else {
+        this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricWhitelist);
+        this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricWhitelist);
+      }
     }
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
@@ -219,6 +235,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
     this.regionName = props.getString(LOCAL_REGION_NAME, "");
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
+    this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);
+    if (adminTopicRemoteConsumptionEnabled && (childDataCenterKafkaUrlMap == null || childDataCenterKafkaUrlMap.isEmpty())) {
+      throw new VeniceException("Admin topic remote consumption is enabled but Kafka url map is empty");
+    }
+    this.adminTopicSourceRegion = props.getString(ADMIN_TOPIC_SOURCE_REGION, "");
   }
 
   public int getAdminPort() {
@@ -455,6 +476,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
             .map(ControllerRoute::valueOfPath)
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
+  }
+
+  public boolean isAdminTopicRemoteConsumptionEnabled() {
+    return adminTopicRemoteConsumptionEnabled;
+  }
+
+  public String getAdminTopicSourceRegion() {
+    return adminTopicSourceRegion;
   }
 
   /**

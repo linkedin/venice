@@ -263,6 +263,17 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_ENFORCE_SSL = "controller.enforce.ssl";
 
+  /**
+   * Whether child controllers will directly consume the source admin topic in the parent Kafka cluster.
+   */
+  public static final String ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED = "admin.topic.remote.consumption.enabled";
+
+  /**
+   * This config defines the source region name of the admin topic
+   */
+  public static final String ADMIN_TOPIC_SOURCE_REGION = "admin.topic.source.region";
+
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";
