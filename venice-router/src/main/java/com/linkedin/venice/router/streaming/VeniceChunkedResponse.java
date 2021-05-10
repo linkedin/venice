@@ -13,6 +13,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.EmptyByteBuf;
@@ -110,6 +111,7 @@ public class VeniceChunkedResponse {
   private HttpResponse responseMetadata;
   private Optional<CompressionStrategy> responseCompression = Optional.empty();
 
+  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   /**
    * Only two kinds of response meta could be sent out based on request types:
@@ -408,7 +410,12 @@ public class VeniceChunkedResponse {
    * @param propagateErrorIfRequired
    */
   private synchronized void handleChannelWriteFailure(Throwable cause, boolean propagateErrorIfRequired) {
-    LOGGER.error("Encountered a throwable on channel write failure on channel: " + ctx.channel(), cause);
+    String msg = "Encountered a throwable on channel write failure on channel: ";
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+      LOGGER.error(msg + ctx.channel(), cause);
+    } else {
+      LOGGER.error(msg + ctx.channel());
+    }
 
     Exception exception;
     if (!(cause instanceof Exception)) {
@@ -474,7 +481,12 @@ public class VeniceChunkedResponse {
         chunkedWriteHandler.write(ctx, new ChunkDispenser(), writeFuture);
         chunkedWriteHandler.resumeTransfer();
       } else {
-        LOGGER.error("Received exception when sending response meta", future.cause());
+        String msg = "Received exception when sending response metadata";
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          LOGGER.error(msg, future.cause());
+        } else {
+          LOGGER.error(msg);
+        }
         /**
          * We need to do some cleanup here:
          * 1. free all the chunks;
