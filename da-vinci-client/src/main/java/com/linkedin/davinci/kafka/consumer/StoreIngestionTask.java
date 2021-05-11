@@ -101,6 +101,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -2908,35 +2909,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * the value will be 1 offset greater than what's expected.
      */
     long getOffset(String topicName, int partitionId) {
-      long now = System.nanoTime();
-
-      Pair key = new Pair<>(topicName, partitionId);
-      Pair<Long, Long> entry = offsetCache.get(key);
-      if (entry != null && entry.getFirst() > now) {
-        return entry.getSecond();
-      }
-
-      entry = offsetCache.compute(key, (k, oldValue) ->
-          (oldValue != null && oldValue.getFirst() > now) ?
-              oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager().getLatestOffsetAndRetry(topicName, partitionId, 10)));
-      return entry.getSecond();
+      return fetchMetadata(new Pair<>(topicName, partitionId), offsetCache, () -> {
+        long latestOffset = topicManagerRepository.getTopicManager().getLatestOffsetAndRetry(topicName, partitionId, 10);
+        // Get a new TTL start time after fetching fresh metadata.
+        return new Pair<>(System.nanoTime() + ttl, latestOffset);
+      });
     }
 
     long getOffsetFromRemoteKafka(String remoteKafkaServer, String topicName, int partitionId) {
-      long now = System.nanoTime();
-
-      Pair key = new Pair<>(topicName, partitionId);
-      Pair<Long, Long> entry = remoteOffsetCache.get(key);
-      if (entry != null && entry.getFirst() > now) {
-        return entry.getSecond();
-      }
-
       try {
-        entry = remoteOffsetCache.compute(key, (k, oldValue) ->
-            (oldValue != null && oldValue.getFirst() > now) ? oldValue : new Pair<>(now + ttl,
-                topicManagerRepositoryJavaBased.getTopicManager(remoteKafkaServer)
-                    .getLatestOffsetAndRetry(topicName, partitionId, 10)));
-        return entry.getSecond();
+        return fetchMetadata(new Pair<>(topicName, partitionId), remoteOffsetCache, () -> {
+          long latestOffset = topicManagerRepositoryJavaBased.getTopicManager(remoteKafkaServer).getLatestOffsetAndRetry(topicName, partitionId, 10);
+          // Get a new TTL start time after fetching fresh metadata.
+          return new Pair<>(System.nanoTime() + ttl, latestOffset);
+        });
       } catch (TopicDoesNotExistException e) {
         //It's observed in production that With java based admin client the topic may not be found temporarily, so return 0 in such cases.
         return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
@@ -2944,32 +2930,49 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     long getProducerTimestampOfLastMessage(String topicName, int partitionId) {
-      long now = System.nanoTime();
-
-      Pair key = new Pair<>(topicName, partitionId);
-      Pair<Long, Long> entry = lastProducerTimestampCache.get(key);
-      if (entry != null && entry.getFirst() > now) {
-        return entry.getSecond();
-      }
-
-      entry = lastProducerTimestampCache.compute(key, (k, oldValue) ->
-          (oldValue != null && oldValue.getFirst() > now) ?
-              oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager().getLatestProducerTimestampAndRetry(topicName, partitionId, 10)));
-      return entry.getSecond();
+      return fetchMetadata(new Pair<>(topicName, partitionId), lastProducerTimestampCache, () -> {
+        long latestProducerTimestamp = topicManagerRepository.getTopicManager().getLatestProducerTimestampAndRetry(topicName, partitionId, 10);
+        // Get a new TTL start time after fetching fresh metadata.
+        return new Pair<>(System.nanoTime() + ttl, latestProducerTimestamp);
+      });
     }
 
     boolean containsTopic(String topicName) {
+      return fetchMetadata(topicName, topicExistenceCache, () -> {
+        boolean topicExists = topicManagerRepository.getTopicManager().containsTopic(topicName);
+        // Get a new TTL start time after fetching fresh metadata.
+        return new Pair<>(System.nanoTime() + ttl, topicExists);
+      });
+    }
+
+    /**
+     * Helper function to fetch metadata from cache or Kafka.
+     * @param key cache key: Topic name or TopicPartition
+     * @param metadataCache cache for this specific metadata
+     * @param freshMetadataSupplier function to fetch metadata from Kafka
+     * @param <K> type of the cache key
+     * @param <T> type of the metadata
+     * @return the cache value or the fresh metadata from Kafka
+     */
+    private <K, T> T fetchMetadata(K key, Map<K, Pair<Long, T>> metadataCache, Supplier<Pair<Long, T>> freshMetadataSupplier) {
       long now = System.nanoTime();
 
-      Pair<Long, Boolean> entry = topicExistenceCache.get(topicName);
-      if (entry != null && entry.getFirst() > now) {
-        return entry.getSecond();
+      Pair<Long, T> cachedValue = metadataCache.get(key);
+      /**
+       * The first entry of the pair is the expired time of this metadata; if the expired time is bigger than the current time,
+       * reuse the cached value.
+       */
+      if (cachedValue != null && cachedValue.getFirst() > now) {
+        return cachedValue.getSecond();
       }
 
-      entry = topicExistenceCache.compute(topicName, (k, oldValue) ->
-          (oldValue != null && oldValue.getFirst() > now) ?
-              oldValue : new Pair<>(now + ttl, topicManagerRepository.getTopicManager().containsTopic(topicName)));
-      return entry.getSecond();
+      cachedValue = metadataCache.compute(key, (k, oldValue) -> {
+        if (oldValue != null && oldValue.getFirst() > now) {
+          return oldValue;
+        }
+        return freshMetadataSupplier.get();
+      });
+      return cachedValue.getSecond();
     }
   }
 
