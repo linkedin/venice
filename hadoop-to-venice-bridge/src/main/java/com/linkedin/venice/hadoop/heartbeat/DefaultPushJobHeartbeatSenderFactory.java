@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop.heartbeat;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -30,19 +29,12 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
   private static final Logger LOGGER = Logger.getLogger(DefaultPushJobHeartbeatSenderFactory.class);
 
   @Override
-  public PushJobHeartbeatSender createHeartbeatSender(VeniceProperties properties, Optional<SSLFactory> sslFactory) {
-    final String veniceD2ZKHost = getVeniceD2ZKHost(properties);
-    final String d2ServiceName = getD2ServiceName(properties);
+  public PushJobHeartbeatSender createHeartbeatSender(
+      VeniceProperties properties,
+      ControllerClient controllerClient,
+      Optional<SSLFactory> sslFactory
+  ) {
     final String heartbeatStoreName = getHeartbeatStoreName(properties);
-    final String veniceControllerUrl = getVeniceControllerUrl(properties);
-    final ControllerClient controllerClient = getControllerClient(
-            veniceD2ZKHost,
-            d2ServiceName,
-            heartbeatStoreName,
-            veniceControllerUrl,
-            sslFactory
-    );
-
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
             controllerClient,
             3,
@@ -88,23 +80,6 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
             Collectors.toMap(MultiSchemaResponse.Schema::getId, schema -> Schema.parse(schema.getSchemaStr())));
   }
 
-  private ControllerClient getControllerClient(
-          String veniceD2ZKHost,
-          String d2ServiceName,
-          String heartbeatStoreName,
-          String veniceControllerUrl,
-          Optional<SSLFactory> sslFactory
-  ) {
-    D2ServiceDiscoveryResponse discoveryResponse = ControllerClient.discoverCluster(
-            veniceControllerUrl,
-            heartbeatStoreName,
-            sslFactory
-    );
-    String clusterName = discoveryResponse.getCluster();
-    LOGGER.info("Found cluster: " + clusterName + " for heartbeat store: " + heartbeatStoreName);
-    return new ControllerClient(clusterName, veniceControllerUrl, sslFactory);
-  }
-
   private Schema getHeartbeatKeySchema(ControllerClient controllerClient, String heartbeatStoreName) {
     SchemaResponse keySchemaResponse = ControllerClient.retryableRequest(
             controllerClient,
@@ -115,29 +90,8 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     return Schema.parse(keySchemaResponse.getSchemaStr());
   }
 
-  private String getD2ServiceName(VeniceProperties properties) {
-    return getValueForConfigPropOrFail(HEARTBEAT_VENICE_D2_SERVICE_NAME_CONFIG.getConfigName(), properties);
-  }
-
   private String getHeartbeatStoreName(VeniceProperties properties) {
-    return getValueForConfigPropOrFail(HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), properties);
-  }
-
-  private String getVeniceD2ZKHost(VeniceProperties properties) {
-    return getValueForConfigPropOrFail(HEARTBEAT_VENICE_D2_ZK_HOST_CONFIG.getConfigName(), properties);
-  }
-
-  private String getVeniceControllerUrl(VeniceProperties properties) {
-    return getValueForConfigPropOrFail(HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), properties);
-  }
-
-  @Nonnull
-  private String getValueForConfigPropOrFail(String configPropName, VeniceProperties properties) {
-    String configValue = properties.getString(configPropName, () -> null);
-    if (configValue == null) {
-      throw new IllegalArgumentException("Expected but not found config property: " + configPropName);
-    }
-    return configValue;
+    return properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName());
   }
 
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
