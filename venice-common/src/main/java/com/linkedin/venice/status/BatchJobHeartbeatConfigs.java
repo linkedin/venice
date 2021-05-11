@@ -31,16 +31,6 @@ public class BatchJobHeartbeatConfigs {
             0L,
             "Delay before sending the first heartbeat"
     );
-    public static final Utils.ConfigEntity<String> HEARTBEAT_VENICE_D2_ZK_HOST_CONFIG = new Utils.ConfigEntity<>(
-            "heartbeat.venice.d2.zk.host",
-            null,
-            "D2 Zookeeper host used to discover the Venice cluster with the heartbeat store"
-    );
-    public static final Utils.ConfigEntity<String> HEARTBEAT_VENICE_D2_SERVICE_NAME_CONFIG = new Utils.ConfigEntity<>(
-            "heartbeat.venice.d2.service.name",
-            null,
-            "D2 service name used to construct a Venice controller client"
-    );
     public static final Utils.ConfigEntity<String> HEARTBEAT_STORE_NAME_CONFIG = new Utils.ConfigEntity<>(
             "heartbeat.store.name",
             null,

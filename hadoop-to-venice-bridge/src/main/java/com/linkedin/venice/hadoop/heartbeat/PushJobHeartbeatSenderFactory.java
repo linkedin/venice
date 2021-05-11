@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.heartbeat;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
@@ -13,5 +14,9 @@ public interface PushJobHeartbeatSenderFactory {
      * Create a heartbeat sender
      * @param properties
      */
-    PushJobHeartbeatSender createHeartbeatSender(VeniceProperties properties, Optional<SSLFactory> sslFactory);
+    PushJobHeartbeatSender createHeartbeatSender(
+        VeniceProperties properties,
+        ControllerClient controllerClient,
+        Optional<SSLFactory> sslFactory
+    );
 }

@@ -704,8 +704,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
    * @throws VeniceException
    */
   public void run() {
-    PushJobHeartbeatSender pushJobHeartbeatSender =
-            pushJobHeartbeatSenderFactory.createHeartbeatSender(props, Optional.empty());
+    PushJobHeartbeatSender pushJobHeartbeatSender = null;
     try {
       initPushJobDetails();
       jobStartTimeMs = System.currentTimeMillis();
@@ -716,6 +715,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       );
       initControllerClient(sslFactory, pushJobSetting.veniceControllerUrl, clusterName);
       sendPushJobDetailsToController();
+      pushJobHeartbeatSender = pushJobHeartbeatSenderFactory.createHeartbeatSender(props, controllerClient, Optional.empty());
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota, storeSetting.storageEngineOverheadRatio);
@@ -866,7 +866,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       throwVeniceException(e);
     } finally {
       IOUtils.closeQuietly(inputDataInfoProvider);
-      pushJobHeartbeatSender.stop();
+      if (pushJobHeartbeatSender != null) {
+        pushJobHeartbeatSender.stop();
+      }
       inputDataInfoProvider = null;
     }
   }
