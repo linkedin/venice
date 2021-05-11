@@ -98,7 +98,6 @@ public class StoreIngestionTaskFactory {
           isIsolatedIngestion);
     } else {
       return new OnlineOfflineStoreIngestionTask(
-          builder.veniceWriterFactory,
           builder.kafkaClientFactory,
           kafkaConsumerProperties,
           builder.storageEngineRepository,

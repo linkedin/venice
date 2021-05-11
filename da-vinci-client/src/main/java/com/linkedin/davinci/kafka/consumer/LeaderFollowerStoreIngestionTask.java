@@ -24,6 +24,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -52,6 +53,8 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
+import com.linkedin.venice.writer.KafkaProducerWrapper;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -122,6 +125,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceAddress;
 
+  private final VeniceWriterFactory veniceWriterFactory;
+  // Non-final
+  /** Should never be accessed directly. Always use {@link #getVeniceWriter()} instead, so that lazy init can occur. */
+  private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
+
   /**
    * A set of boolean that check if partitions owned by this task have released the latch.
    * This is an optional field and is only used while ingesting a topic that currently
@@ -172,7 +180,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion) {
     super(
-        writerFactory,
         consumerFactory,
         kafkaConsumerProperties,
         storageEngineRepository,
@@ -221,6 +228,71 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
+
+    this.veniceWriterFactory = writerFactory;
+  }
+
+  @Override
+  protected void closeProducers() {
+    if (veniceWriter != null) {
+      veniceWriter.close();
+    }
+  }
+
+  /**
+   * N.B.:
+   *    With L/F+native replication and many Leader partitions getting assigned to a single SN this function may be called
+   *    from multiple thread simultaneously to initialize the veniceWriter during start of batch push. So it needs to be thread safe
+   *    and provide initialization guarantee that only one instance of veniceWriter is created for the entire ingestion task.
+   *
+   * @return the instance of {@link VeniceWriter}, lazily initialized if necessary.
+   */
+  private VeniceWriter getVeniceWriter() {
+    if (null == veniceWriter) {
+      synchronized (this) {
+        if (null == veniceWriter) {
+          Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
+          if (storeVersionState.isPresent()) {
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner,
+                Optional.of(storeVersionPartitionCount));
+          } else {
+            /**
+             * In general, a partition in version topic follows this pattern:
+             * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
+             * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
+             * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
+             *
+             * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
+             * different in some test cases which reuse the same VeniceWriter.
+             */
+            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner, Optional.of(storeVersionPartitionCount));
+          }
+        }
+      }
+    }
+    return veniceWriter;
+  }
+
+  /**
+   * Close a DIV segment for a version topic partition.
+   */
+  private void endSegment(int partition) {
+    // If the VeniceWriter doesn't exist, no need to explicitly create a VeniceWriter first and end a segment that doesn't exist
+    if (null != veniceWriter) {
+      veniceWriter.endSegment(partition, true);
+    }
+  }
+
+  @Override
+  protected void processStartOfPush(ControlMessage controlMessage, int partition, long offset,
+      PartitionConsumptionState partitionConsumptionState) {
+    StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
+    super.processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
+
+    // Update chunking flag in VeniceWriter
+    if (startOfPush.chunked && veniceWriter != null) {
+      veniceWriter.updateChunckingEnabled(startOfPush.chunked);
+    }
   }
 
   @Override

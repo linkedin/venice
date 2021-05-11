@@ -73,8 +73,6 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -143,7 +141,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String consumerTaskId;
   protected final Properties kafkaProps;
   protected final KafkaClientFactory factory;
-  protected final VeniceWriterFactory veniceWriterFactory;
   protected final AtomicBoolean isRunning;
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
@@ -208,9 +205,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // use this checker to check whether ingestion completion can be reported for a partition
   protected final ReadyToServeCheck defaultReadyToServeChecker;
 
-  // Non-final
-  /** Should never be accessed directly. Always use {@link #getVeniceWriter()} instead, so that lazy init can occur. */
-  private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
   // Kafka bootstrap url to consumer
   protected Map<String, KafkaConsumerWrapper> consumerMap;
 
@@ -301,9 +295,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Set<Integer> consumptionResumedPartitionSet = new HashSet<>();
 
   // Used to construct VenicePartitioner
-  private final VenicePartitioner venicePartitioner;
+  protected final VenicePartitioner venicePartitioner;
+
   //Total number of partition for this store version
-  private final int storeVersionPartitionCount;
+  protected final int storeVersionPartitionCount;
+
   private int subscribedCount = 0;
   private int forceUnSubscribedCount = 0;
 
@@ -313,7 +309,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean isIsolatedIngestion;
 
   public StoreIngestionTask(
-      VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
       StorageEngineRepository storageEngineRepository,
@@ -353,7 +348,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    this.veniceWriterFactory = writerFactory;
     this.factory = consumerFactory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storageEngineRepository = storageEngineRepository;
@@ -1342,15 +1336,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else {
         consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
       }
-      if (veniceWriter != null) {
-        veniceWriter.close();
-      }
+      closeProducers();
     } catch (Exception e) {
       logger.error("Caught exception while trying to close the current ingestion task", e);
     }
     isRunning.set(false);
     logger.info("Store ingestion task for store: " + kafkaVersionTopic + " is closed");
   }
+
+  protected void closeProducers() { }
 
   /**
    * Consumes the kafka actions messages in the queue.
@@ -1901,10 +1895,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
       newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
       storageMetadataService.put(kafkaVersionTopic, newStoreVersionState);
-      // Update chunking flag in VeniceWriter
-      if (startOfPush.chunked && veniceWriter != null) {
-        veniceWriter.updateChunckingEnabled(startOfPush.chunked);
-      }
     } else if (storeVersionState.get().sorted != startOfPush.sorted) {
       // Something very wrong is going on ): ...
       throw new VeniceException("Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name() +
@@ -2306,48 +2296,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  /**
-   * N.B.:
-   *    With L/F+native replication and many Leader partitions getting assigned to a single SN this function may be called
-   *    from multiple thread simultaneously to initialize the veniceWriter during start of batch push. So it needs to be thread safe
-   *    and provide initialization guarantee that only one instance of veniceWriter is created for the entire ingestion task.
-   *
-   * @return the instance of {@link VeniceWriter}, lazily initialized if necessary.
-   */
-  protected VeniceWriter getVeniceWriter() {
-    if (null == veniceWriter) {
-      synchronized (this) {
-        if (null == veniceWriter) {
-          Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-          if (storeVersionState.isPresent()) {
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, storeVersionState.get().chunked, venicePartitioner, Optional.of(storeVersionPartitionCount));
-          } else {
-            /**
-             * In general, a partition in version topic follows this pattern:
-             * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
-             * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
-             * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
-             *
-             * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
-             * different in some test cases which reuse the same VeniceWriter.
-             */
-            veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaVersionTopic, venicePartitioner, Optional.of(storeVersionPartitionCount));
-          }
-        }
-      }
-    }
-    return veniceWriter;
-  }
 
-  /**
-   * Close a DIV segment for a version topic partition.
-   */
-  protected void endSegment(int partition) {
-    // If the VeniceWriter doesn't exist, no need to explicitly create a VeniceWriter first and end a segment that doesn't exist
-    if (null != veniceWriter) {
-      veniceWriter.endSegment(partition, true);
-    }
-  }
+
 
   /**
    * All the subscriptions belonging to the same {@link StoreIngestionTask} SHOULD use this function instead of

@@ -83,7 +83,6 @@ public class VeniceServer {
   private Optional<HelixReadOnlyZKSharedSchemaRepository> readOnlyZKSharedSchemaRepository;
   private ZkClient zkClient;
   private VeniceJVMStats jvmStats;
-  private KafkaClientStats kafkaClientStats;
   private ICProvider icProvider;
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
@@ -150,9 +149,6 @@ public class VeniceServer {
 
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
-
-    // Create Kafka client stats
-    kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats");
 
     Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName())));

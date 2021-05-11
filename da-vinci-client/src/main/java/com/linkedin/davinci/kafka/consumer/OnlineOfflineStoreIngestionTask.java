@@ -47,7 +47,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   private static final Logger logger = Logger.getLogger(OnlineOfflineStoreIngestionTask.class);
 
   public OnlineOfflineStoreIngestionTask(
-      VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
       StorageEngineRepository storageEngineRepository,
@@ -83,7 +82,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion) {
     super(
-        writerFactory,
         consumerFactory,
         kafkaConsumerProperties,
         storageEngineRepository,

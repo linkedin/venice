@@ -31,9 +31,14 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.stats.KafkaClientStats;
+import com.linkedin.venice.writer.ApacheKafkaProducer;
+import com.linkedin.venice.writer.KafkaProducerWrapper;
+import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.security.Permission;
 import org.apache.commons.io.FileUtils;
@@ -355,6 +360,21 @@ public class TestUtils {
     factoryProperties.put(KAFKA_DELIVERY_TIMEOUT_MS, 5000);
     factoryProperties.putAll(properties);
     return new VeniceWriterFactory(factoryProperties);
+  }
+
+  public static VeniceWriterFactory getVeniceWriterFactoryWithSharedProducer(Properties properties) {
+    Properties factoryProperties = new Properties();
+    factoryProperties.put(KAFKA_REQUEST_TIMEOUT_MS, 5000);
+    factoryProperties.put(KAFKA_DELIVERY_TIMEOUT_MS, 5000);
+    factoryProperties.putAll(properties);
+    SharedKafkaProducerService sharedKafkaProducerService = new SharedKafkaProducerService(factoryProperties, 1,
+        new SharedKafkaProducerService.KafkaProducerSupplier() {
+          @Override
+          public KafkaProducerWrapper getNewProducer(VeniceProperties props) {
+            return new ApacheKafkaProducer(props);
+          }
+        }, Optional.empty());
+    return new VeniceWriterFactory(factoryProperties, Optional.of(sharedKafkaProducerService));
   }
 
   public static KafkaClientFactory getVeniceConsumerFactory(KafkaBrokerWrapper kafka) {
