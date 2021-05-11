@@ -218,6 +218,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final boolean enableAutoCompactionForSamzaReprocessingJob;
 
+  private final boolean sharedKafkaProducerEnabled;
+  private final int sharedProducerPoolSizePerKafkaCluster;
   /**
    * Boolean flag indicating if it is a Da Vinci application.
    */
@@ -337,6 +339,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties.getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10)); // default 10 mins
     enableAutoCompactionForSamzaReprocessingJob = serverProperties.getBoolean(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
+
+    sharedKafkaProducerEnabled = serverProperties.getBoolean(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, false);
+    sharedProducerPoolSizePerKafkaCluster = serverProperties.getInt(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, 8);
     isDaVinciClient = serverProperties.getBoolean(INGESTION_USE_DA_VINCI_CLIENT, false);
     unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH,false);
   }
@@ -632,6 +637,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return enableAutoCompactionForSamzaReprocessingJob;
   }
 
+  public boolean isSharedKafkaProducerEnabled() {
+    return sharedKafkaProducerEnabled;
+  }
+
+  public int getSharedProducerPoolSizePerKafkaCluster() {
+    return sharedProducerPoolSizePerKafkaCluster;
+  }
   public boolean isDaVinciClient() {
     return isDaVinciClient;
   }

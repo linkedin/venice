@@ -586,6 +586,17 @@ public class ConfigKeys {
    */
   public static final String FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS = "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
 
+  /**
+   * Whether to enable shared kafka producer in storage node.
+   */
+  public static final String SERVER_SHARED_KAFKA_PRODUCER_ENABLED = "server.shared.kafka.producer.enabled";
+
+  /**
+   * Shared kafka producer pool size per Kafka cluster.
+   */
+  public static final String SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER = "server.kafka.producer.pool.size.per.kafka.cluster";
+
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

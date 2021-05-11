@@ -1,0 +1,210 @@
+package com.linkedin.venice.endToEnd;
+
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.io.File;
+import java.util.List;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
+import org.apache.avro.Schema;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.meta.IngestionMode.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.writer.SharedKafkaProducerService.*;
+
+
+/**
+ * The purpose of this test is to run parallel push job in Native replication mode with shared producer pool size of 1
+ * This is to make sure multiple ingestion task can use one kafka producer to produce the message on local VT and completes
+ * the ingestion.
+ *
+ */
+public class TestPushJobWithNativeReplicationSharedProducer {
+  private static final Logger logger = Logger.getLogger(TestPushJobWithNativeReplicationSharedProducer.class);
+  private static final int TEST_TIMEOUT = 120_000; // ms
+
+  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
+  private static final int NUMBER_OF_CLUSTERS = 1;
+  private static final String[] CLUSTER_NAMES =
+      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
+      // ["venice-cluster0", "venice-cluster1", ...];
+
+  private List<VeniceMultiClusterWrapper> childDatacenters;
+  private List<VeniceControllerWrapper> parentControllers;
+  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+
+  @DataProvider(name = "storeSize")
+  public static Object[][] storeSize() {
+    return new Object[][]{{1000, 2}};
+  }
+
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
+    /**
+     * Reduce leader promotion delay to 3 seconds;
+     * Create a testing environment with 1 parent fabric and 2 child fabrics;
+     * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
+     * KMM whitelist config allows replicating all topics.
+     */
+    Properties serverProperties = new Properties();
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    serverProperties.put(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
+    serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
+    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
+    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+
+    //shared producer related configs.
+    serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, "true");
+    serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "1");
+    //this is to make sure config override works for shared producer.
+    serverProperties.put(SHARED_KAFKA_PRODUCER_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG, 32864);
+
+    Properties controllerProps = new Properties();
+    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
+    multiColoMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
+            1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)), Optional.of(controllerProps),
+            Optional.of(new VeniceProperties(serverProperties)), false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+  }
+
+  @AfterClass(alwaysRun = true)
+  public void cleanUp() {
+    multiColoMultiClusterWrapper.close();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
+  public void testNativeReplicationForBatchPush(int recordCount, int partitionCount) throws Exception {
+    int storeCount = 3;
+    String[] storeNames = new String[storeCount];
+    Thread[] threads = new Thread[storeCount];
+    Properties[] storeProps = new Properties[storeCount];
+    ControllerClient[] parentControllerClients = new ControllerClient[storeCount];
+
+    String clusterName = CLUSTER_NAMES[0];
+    File inputDir = getTempDataDirectory();
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+
+    try {
+      for (int i = 0; i < storeCount; i++) {
+        String storeName = TestUtils.getUniqueString("store");
+        storeNames[i] = storeName;
+        Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+        storeProps[i] = props;
+        props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+
+        Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
+        String keySchemaStr =
+            recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+        String valueSchemaStr =
+            recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+
+        UpdateStoreQueryParams updateStoreParams =
+            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                .setPartitionCount(partitionCount)
+                .setLeaderFollowerModel(true)
+                .setNativeReplicationEnabled(true);
+
+        ControllerClient parentControllerClient = null;
+
+        parentControllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+        parentControllerClients[i] = parentControllerClient;
+
+        try (ControllerClient dc0Client = new ControllerClient(clusterName,
+            childDatacenters.get(0).getControllerConnectString());
+            ControllerClient dc1Client = new ControllerClient(clusterName,
+                childDatacenters.get(1).getControllerConnectString())) {
+
+          //verify the update store command has taken effect before starting the push job.
+          TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
+          TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, true);
+        }
+      }
+
+      for (int i = 0; i < storeCount; i++) {
+        int id = i;
+        Thread pushJobThread = new Thread(() -> {
+          TestPushUtils.runPushJob("Test push job " + id, storeProps[id]);
+        });
+        threads[i] = pushJobThread;
+      }
+
+      for (int i = 0; i < storeCount; i++) {
+        threads[i].start();
+      }
+
+      for (int i = 0; i < storeCount; i++) {
+        String storeName = storeNames[i];
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // Current version should become 1
+          for (int version : parentController.getVeniceAdmin()
+              .getCurrentVersionsForMultiColos(clusterName, storeName)
+              .values()) {
+            Assert.assertEquals(version, 1);
+          }
+
+          //Verify the data in the second child fabric which consumes remotely
+          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+          String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+          try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+            for (int j = 1; j <= recordCount; ++j) {
+              String expected = "test_name_" + j;
+              String actual = client.get(Integer.toString(j)).get().toString();
+              Assert.assertEquals(actual, expected);
+            }
+          }
+        });
+      }
+      for (int i = 0; i < storeCount; i++) {
+        threads[i].join();
+      }
+    } finally {
+      FileUtils.deleteDirectory(inputDir);
+      for (int i = 0; i < storeCount; i++) {
+        if (null != parentControllerClients[i]) {
+          ControllerResponse deleteStoreResponse = parentControllerClients[i].disableAndDeleteStore(storeNames[i]);
+          IOUtils.closeQuietly(parentControllerClients[i]);
+          Assert.assertFalse(deleteStoreResponse.isError(),
+              "Failed to delete the test store: " + deleteStoreResponse.getError());
+        }
+      }
+    }
+  }
+}

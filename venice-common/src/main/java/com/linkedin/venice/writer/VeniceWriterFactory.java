@@ -24,9 +24,15 @@ import java.util.function.Supplier;
 public class VeniceWriterFactory {
   private final Properties properties;
   private final String localKafkaBootstrapServers;
+  private final Optional<SharedKafkaProducerService> sharedKafkaProducerService;
 
   public VeniceWriterFactory(Properties properties) {
+    this(properties, Optional.empty());
+  }
+
+  public VeniceWriterFactory(Properties properties, Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
     this.properties = properties;
+    this.sharedKafkaProducerService = sharedKafkaProducerService;
     boolean sslToKafka = Boolean.valueOf(properties.getProperty(ConfigKeys.SSL_TO_KAFKA, "false"));
     if (!sslToKafka) {
       checkProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
@@ -135,6 +141,8 @@ public class VeniceWriterFactory {
   protected <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(String topic, String kafkaBootstrapServers, VeniceKafkaSerializer<K> keySerializer,
       VeniceKafkaSerializer<V> valueSerializer, VeniceKafkaSerializer<U> writeComputeSerializer, Optional<Boolean> chunkingEnabled, Time time, VenicePartitioner partitioner,
       Optional<Integer> topicPartitionCount) {
+    //Currently this writerProperties is overloaded as it contains KafkaProducer config and as well as VeniceWriter config
+    //We should clean this up and also not add any more KafkaProducer config here.
     Properties writerProperties = new Properties();
     writerProperties.putAll(this.properties);
     writerProperties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
@@ -142,8 +150,14 @@ public class VeniceWriterFactory {
       writerProperties.put(VeniceWriter.ENABLE_CHUNKING, chunkingEnabled.get());
     }
     VeniceProperties props = new VeniceProperties(writerProperties);
-    return new VeniceWriter<>(props, topic, keySerializer, valueSerializer, writeComputeSerializer, partitioner, time, topicPartitionCount,
-        () -> new ApacheKafkaProducer(props));
+    return new VeniceWriter<>(props, topic, keySerializer, valueSerializer, writeComputeSerializer, partitioner, time,
+        topicPartitionCount, () -> {
+      if (sharedKafkaProducerService.isPresent()) {
+        return sharedKafkaProducerService.get().acquireKafkaProducer(topic);
+      } else {
+        return new ApacheKafkaProducer(props);
+      }
+    });
   }
 
   public VeniceWriter<KafkaKey, byte[], byte[]> createVeniceWriter(String topic) {

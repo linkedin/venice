@@ -43,6 +43,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
@@ -52,6 +53,10 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.ApacheKafkaProducer;
+import com.linkedin.venice.writer.KafkaProducerWrapper;
+import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
@@ -72,6 +77,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
 
@@ -108,6 +114,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final AggLagStats aggLagStats;
 
+  private final KafkaClientStats kafkaClientStats;
   /**
    * Store buffer service to persist data into local bdb for all the stores.
    */
@@ -141,6 +148,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
 
   private boolean metaSystemStoreReplicaStatusNotifierQueued = false;
+
+  private final SharedKafkaProducerService sharedKafkaProducerService;
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
       VeniceConfigLoader veniceConfigLoader,
@@ -178,6 +187,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
 
+    // Create Kafka client stats
+    this.kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats");
+
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
 
@@ -191,7 +203,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (serverConfig.isKafkaOpenSSLEnabled()) {
       veniceWriterProperties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
     }
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
+
+    if (serverConfig.isSharedKafkaProducerEnabled()) {
+      sharedKafkaProducerService = new SharedKafkaProducerService(veniceWriterProperties, serverConfig.getSharedProducerPoolSizePerKafkaCluster(), new SharedKafkaProducerService.KafkaProducerSupplier() {
+        @Override
+        public KafkaProducerWrapper getNewProducer(VeniceProperties props) {
+          return new ApacheKafkaProducer(props);
+        }
+      }, Optional.of(this.kafkaClientStats));
+      logger.info("Shared kafka producer service is enabled");
+    } else {
+      sharedKafkaProducerService = null;
+      logger.info("Shared kafka producer service is disabled");
+    }
+
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties, Optional.ofNullable(sharedKafkaProducerService));
 
     EventThrottler bandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
@@ -394,6 +420,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (null != aggKafkaConsumerService) {
       aggKafkaConsumerService.start();
     }
+    if (null != sharedKafkaProducerService) {
+      sharedKafkaProducerService.start();
+    }
     if (participantStoreConsumptionTask != null) {
       participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
@@ -496,6 +525,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     IOUtils.closeQuietly(metaStoreWriter);
 
     kafkaMessageEnvelopeSchemaReader.ifPresent(SchemaReader::close);
+
+    //close it the very end to make sure all ingestion task have released the shared producers.
+    IOUtils.closeQuietly(sharedKafkaProducerService);
+
   }
 
   /**

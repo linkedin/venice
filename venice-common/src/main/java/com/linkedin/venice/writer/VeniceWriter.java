@@ -279,7 +279,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       if (shouldEndAllSegments) {
         endAllSegments(true);
       }
-      producer.close(closeTimeOut);
+      //DO NOT call the {@link #KafkaProducerWrapper.close(int) version from here.}
+      producer.close(topicName, closeTimeOut);
       OPEN_VENICE_WRITER_COUNT.decrementAndGet();
     } catch (Exception e) {
       logger.warn("Swallowed an exception while trying to close the VeniceWriter for " + topicName, e);
