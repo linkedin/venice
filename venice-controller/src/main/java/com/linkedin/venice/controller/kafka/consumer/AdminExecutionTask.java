@@ -109,7 +109,7 @@ public class AdminExecutionTask implements Callable<Void> {
         long completionTimestamp = System.currentTimeMillis();
         long processLatency = Math.max(0, completionTimestamp - adminOperationWrapper.getStartProcessingTimestamp());
         if (AdminMessageType.valueOf(adminOperationWrapper.getAdminOperation()) == AdminMessageType.ADD_VERSION) {
-          stats.recordAdminMessageProcessLatency(processLatency);
+          stats.recordAdminMessageAddVersionProcessLatency(processLatency);
         } else {
           stats.recordAdminMessageProcessLatency(processLatency);
         }
