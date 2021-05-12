@@ -2,7 +2,6 @@ package com.linkedin.venice.utils;
 
 import io.tehuti.utils.Time;
 
-
 public class LatencyUtils {
   /**
    * @param startTimeInNS input start time should use nanosecond unit

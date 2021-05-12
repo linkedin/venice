@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -35,7 +36,7 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   @Override
   public Set<String> getPersistedStoreNames() {
     // Nothing to restore here
-    return new HashSet<>();
+    return Collections.emptySet();
   }
 
   @Override

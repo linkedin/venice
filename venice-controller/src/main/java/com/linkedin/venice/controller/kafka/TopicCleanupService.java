@@ -13,6 +13,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -242,7 +243,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   protected List<String> extractVeniceTopicsToCleanup(Map<String, Long> topicRetentions) {
     if (topicRetentions.isEmpty()) {
-      return new ArrayList<>();
+      return Collections.emptyList();
     }
     Set<String> veniceTopics = topicRetentions.keySet();
     int maxVersion = veniceTopics.stream()

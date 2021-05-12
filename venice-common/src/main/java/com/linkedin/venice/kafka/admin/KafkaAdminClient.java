@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -54,10 +55,9 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     if (replication > Short.MAX_VALUE) {
       throw new IllegalArgumentException("Replication factor cannot be > " + Short.MAX_VALUE);
     }
-    Collection<NewTopic> newTopics = new ArrayList<>();
     Map<String, String> topicPropertiesMap = new HashMap<>();
     topicProperties.stringPropertyNames().forEach(key -> topicPropertiesMap.put(key, topicProperties.getProperty(key)));
-    newTopics.add(new NewTopic(topicName, numPartitions, (short) replication).configs(topicPropertiesMap));
+    Collection<NewTopic> newTopics = Collections.singleton(new NewTopic(topicName, numPartitions, (short) replication).configs(topicPropertiesMap));
     try {
       getKafkaAdminClient().createTopics(newTopics).all().get();
     } catch (ExecutionException e) {
@@ -77,17 +77,14 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   // catch/extract any expected exceptions such as UnknownTopicOrPartitionException.
   @Override
   public KafkaFuture<Void> deleteTopic(String topicName) {
-    Collection<String> topics = new ArrayList<>();
-    topics.add(topicName);
-    return getKafkaAdminClient().deleteTopics(topics).values().get(topicName);
+    return getKafkaAdminClient().deleteTopics(Collections.singleton(topicName)).values().get(topicName);
   }
 
   @Override
   public void setTopicConfig(String topicName, Properties topicProperties) {
-    Collection<ConfigEntry> entries = new ArrayList<>();
+    Collection<ConfigEntry> entries = new ArrayList<>(topicProperties.stringPropertyNames().size());
     topicProperties.stringPropertyNames().forEach(key -> entries.add(new ConfigEntry(key, topicProperties.getProperty(key))));
-    Map<ConfigResource, Config> configs = new HashMap<>();
-    configs.put(new ConfigResource(ConfigResource.Type.TOPIC, topicName), new Config(entries));
+    Map<ConfigResource, Config> configs = Collections.singletonMap(new ConfigResource(ConfigResource.Type.TOPIC, topicName), new Config(entries));
     getKafkaAdminClient().alterConfigs(configs).all();
   }
 
@@ -103,9 +100,8 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
   @Override
   public Properties getTopicConfig(String topicName) {
-    Collection<ConfigResource> configResources = new ArrayList<>();
     ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, topicName);
-    configResources.add(resource);
+    Collection<ConfigResource> configResources = Collections.singleton(resource);
     DescribeConfigsResult result = getKafkaAdminClient().describeConfigs(configResources);
     try {
       Config config = result.all().get().get(resource);
@@ -145,8 +141,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       // Another way of doing this... not sure which is better:
       // return getKafkaAdminClient().listTopics().names().get().contains(topic);
 
-      Collection<String> topicNames = new ArrayList<>(1);
-      topicNames.add(topic);
+      Collection<String> topicNames = Collections.singleton(topic);
       TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).values().get(topic).get();
 
       if (null == topicDescription) {
@@ -185,6 +180,11 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     // Always return false to bypass the checks since concurrent topic delete request for Java kafka admin client is
     // harmless.
     return false;
+  }
+
+  @Override
+  public String getClassName() {
+    return KafkaAdminClient.class.getName();
   }
 
   @Override

@@ -4,8 +4,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.log4j.Logger;
@@ -36,7 +38,9 @@ public class TopicManagerRepository implements Closeable {
       int topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       boolean isConcurrentTopicDeleteRequestsEnabled,
-      KafkaClientFactory kafkaClientFactory) {
+      KafkaClientFactory kafkaClientFactory,
+      MetricsRepository metricsRepository
+  ) {
     this.localKafkaBootstrapServers = localKafkaBootstrapServers;
     this.localKafkaZkAddress = localKafkaZkAddress;
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
@@ -46,11 +50,12 @@ public class TopicManagerRepository implements Closeable {
     this.kafkaClientFactory = kafkaClientFactory;
     topicManagerCreator = (kafkaServerAndZk) ->
         new TopicManager(
-          this.kafkaOperationTimeoutMs,
-          this.topicDeletionStatusPollIntervalMs,
-          this.topicMinLogCompactionLagMs,
-          this.isConcurrentTopicDeleteRequestsEnabled,
-          this.kafkaClientFactory.clone(kafkaServerAndZk.getFirst(), kafkaServerAndZk.getSecond())
+            this.kafkaOperationTimeoutMs,
+            this.topicDeletionStatusPollIntervalMs,
+            this.topicMinLogCompactionLagMs,
+            this.isConcurrentTopicDeleteRequestsEnabled,
+            this.kafkaClientFactory.clone(kafkaServerAndZk.getFirst(), kafkaServerAndZk.getSecond()),
+            Optional.of(metricsRepository)
       );
   }
 
@@ -60,24 +65,37 @@ public class TopicManagerRepository implements Closeable {
       int kafkaOperationTimeoutMs,
       int topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
-      KafkaClientFactory kafkaClientFactory) {
-    this(localKafkaBootstrapServers,
+      KafkaClientFactory kafkaClientFactory,
+      MetricsRepository metricsRepository
+  ) {
+    this(
+        localKafkaBootstrapServers,
         localKafkaZkAddress,
         kafkaOperationTimeoutMs,
         topicDeletionStatusPollIntervalMs,
         topicMinLogCompactionLagMs,
         DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY,
-        kafkaClientFactory);
+        kafkaClientFactory,
+        metricsRepository
+    );
   }
 
-  public TopicManagerRepository(String localKafkaBootstrapServers, String localKafkaZkAddress, KafkaClientFactory kafkaClientFactory) {
-    this(localKafkaBootstrapServers,
+  public TopicManagerRepository(
+      String localKafkaBootstrapServers,
+      String localKafkaZkAddress,
+      KafkaClientFactory kafkaClientFactory,
+      MetricsRepository metricsRepository
+  ) {
+    this(
+        localKafkaBootstrapServers,
         localKafkaZkAddress,
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
         DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
         DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY,
-        kafkaClientFactory);
+        kafkaClientFactory,
+        metricsRepository
+    );
   }
 
   /**

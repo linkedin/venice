@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import org.apache.commons.io.FileUtils;
@@ -93,7 +94,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     File storeDbDir = new File(storeDbPath);
     if (!storeDbDir.exists()) {
       LOGGER.info("Store dir: " + storeDbPath + " doesn't exist");
-      return new HashSet<>();
+      return Collections.emptySet();
     }
     if (!storeDbDir.isDirectory()) {
       throw new VeniceException("Store dir: " + storeDbPath + " is not a directory!!!");
