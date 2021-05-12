@@ -1351,7 +1351,7 @@ public class TestHybrid {
   public void testHybridWithAmplificationFactor(boolean useCustomizedView) throws Exception {
     final Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
-    final int partitionCount = 3;
+    final int partitionCount = 2;
     final int keyCount = 20;
     VeniceClusterWrapper cluster;
     if (useCustomizedView) {
@@ -1375,45 +1375,49 @@ public class TestHybrid {
       HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
       admin.addCustomizedStateConfig(cluster.getClusterName(), customizedStateConfig);
     } else {
-      cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 1,
-          100, false, false, extraProperties);
+      cluster = sharedVenice;
     }
+
     UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-        // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
-        .setHybridRewindSeconds(2000000)
-        .setHybridOffsetLagThreshold(10)
         .setPartitionCount(partitionCount)
         .setReplicationFactor(2)
-        .setAmplificationFactor(3)
+        .setAmplificationFactor(5)
         .setLeaderFollowerModel(true);
     String storeName = TestUtils.getUniqueString("store");
     try (ControllerClient controllerClient = cluster.getControllerClient()) {
-      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-      controllerClient.updateStore(storeName, params);
+      TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
     }
     cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
     try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-      ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+      for (int i = 0; i < keyCount; i++) {
+        assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
+      }
+
+      // Update Amp Factor and turn store into a hybrid store
+      params = new UpdateStoreQueryParams()
+          .setAmplificationFactor(3)
+          // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+          .setHybridRewindSeconds(2000000)
+          .setHybridOffsetLagThreshold(10);
+      try (ControllerClient controllerClient = cluster.getControllerClient()) {
+        TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+      }
+
+      // Create a new version with updated amplification factor
+      cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
       for (Integer i = 0; i < keyCount; i++) {
         assertEquals(client.get(String.valueOf(i)).get().toString(), String.valueOf(i));
       }
+
+      // Produce Large Streaming Record
       SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
       for (int i = 0; i < keyCount; i++) {
         TestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
       }
       producer.stop();
 
-      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-        for (int i = 0; i < keyCount; i++) {
-          checkLargeRecord(client, i);
-        }
-      });
-      try (ControllerClient controllerClient = cluster.getControllerClient()) {
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-            .setAmplificationFactor(5)
-        );
-      }
-      cluster.createVersion(storeName, STRING_SCHEMA, STRING_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i + 2))));
       TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
         for (int i = 0; i < keyCount; i++) {
           checkLargeRecord(client, i);

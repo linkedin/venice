@@ -4,7 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.function.IntUnaryOperator;
 
 /**
- * UserPartitionAwarePartitioner takes a partitioner and amplication factor as input params.
+ * UserPartitionAwarePartitioner takes a partitioner and amplification factor as input params.
  * When partitioning, the partitioner is run twice in a row, once to determine the application partition,
  * and a second time to determine the sub-partition.
  *

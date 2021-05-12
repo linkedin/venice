@@ -2902,7 +2902,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
                     }
                 } else {
-                    if (originalStore.isLeaderFollowerModelEnabled()) {
+                    if (!originalStore.isLeaderFollowerModelEnabled()) {
                         throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
                     }
                 }

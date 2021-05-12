@@ -26,7 +26,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
   private final ReadOnlyStoreRepository metadataRepository;
 
   // a map of map: each store could have multiple versions and each version has a specific partitioner
-  private Map<String, Map<Integer, VenicePartitioner>> storeByVersionByPartitionerMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Map<Integer, VenicePartitioner>> storeByVersionByPartitionerMap = new VeniceConcurrentHashMap<>();
 
   public VenicePartitionFinder(RoutingDataRepository dataRepository, ReadOnlyStoreRepository metadataRepository){
     this.dataRepository = dataRepository;
@@ -69,8 +69,8 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
    * If miss, real search using store info happens in {@link #searchPartitioner}
    */
   private VenicePartitioner findPartitioner(String storeName, int versionNum) {
-    Map versionByPartitionerMap = storeByVersionByPartitionerMap.computeIfAbsent(storeName, k -> new VeniceConcurrentHashMap<>());
-    return (VenicePartitioner) versionByPartitionerMap.computeIfAbsent(versionNum, k -> searchPartitioner(storeName, versionNum));
+    Map<Integer, VenicePartitioner> versionByPartitionerMap = storeByVersionByPartitionerMap.computeIfAbsent(storeName, k -> new VeniceConcurrentHashMap<>());
+    return versionByPartitionerMap.computeIfAbsent(versionNum, k -> searchPartitioner(storeName, versionNum));
   }
 
   private VenicePartitioner searchPartitioner(String storeName, int versionNum) {
@@ -86,8 +86,12 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
     Properties params = new Properties();
     params.putAll(partitionerConfig.getPartitionerParams());
     VeniceProperties partitionerProperties = new VeniceProperties(params);
+    /**
+     * Force amplification factor == 1 to avoid using UserPartitionAwarePartitioner, as we are hiding amp factor concept
+     * for Router and Helix
+     */
     return PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(),
-        partitionerConfig.getAmplificationFactor(), partitionerProperties);
+        1, partitionerProperties);
   }
 
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
