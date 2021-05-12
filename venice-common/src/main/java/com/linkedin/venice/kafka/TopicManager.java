@@ -3,19 +3,18 @@ package com.linkedin.venice.kafka;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
-import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
+import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,6 +85,7 @@ public class TopicManager implements Closeable {
   private final long topicMinLogCompactionLagMs;
   private final KafkaClientFactory kafkaClientFactory;
   private final boolean isConcurrentTopicDeleteRequestsEnabled;
+  private final Optional<MetricsRepository> optionalMetricsRepository;
 
   // Mutable, lazily initialized or populated, state
   private KafkaAdminWrapper kafkaAdmin;
@@ -105,7 +105,8 @@ public class TopicManager implements Closeable {
       int topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       boolean isConcurrentTopicDeleteRequestsEnabled,
-      KafkaClientFactory kafkaClientFactory) {
+      KafkaClientFactory kafkaClientFactory,
+      Optional<MetricsRepository> optionalMetricsRepository) {
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
@@ -113,8 +114,10 @@ public class TopicManager implements Closeable {
     this.kafkaClientFactory = kafkaClientFactory;
     this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
     this.kafkaZkAddress = kafkaClientFactory.getKafkaZkAddress();
+    this.optionalMetricsRepository = optionalMetricsRepository;
   }
 
+  // This constructor is used mostly for testing purpose
   public TopicManager(
       int kafkaOperationTimeoutMs,
       int topicDeletionStatusPollIntervalMs,
@@ -125,7 +128,9 @@ public class TopicManager implements Closeable {
         topicDeletionStatusPollIntervalMs,
         topicMinLogCompactionLagMs,
         DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY,
-        kafkaClientFactory);
+        kafkaClientFactory,
+        Optional.empty()
+    );
   }
 
   /**
@@ -643,13 +648,13 @@ public class TopicManager implements Closeable {
     // since querying offset against non-existing topic could cause endless retrying.
     if (!containsTopicAndAllPartitionsAreOnline(topic)) {
       logger.warn("Topic: " + topic + " doesn't exist, returning empty map for latest offsets");
-      return new HashMap<>();
+      return Collections.emptyMap();
     }
     KafkaConsumer<byte[], byte[]> consumer = getRawBytesConsumer();
     List<PartitionInfo> partitionInfoList = consumer.partitionsFor(topic);
     if (null == partitionInfoList || partitionInfoList.isEmpty()) {
       logger.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
-      return new HashMap<>();
+      return Collections.emptyMap();
     }
 
     Map<Integer, Long> latestOffsets = partitionInfoList.stream()
@@ -716,14 +721,14 @@ public class TopicManager implements Closeable {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     long latestOffset;
     try {
-      consumer.assign(Arrays.asList(topicPartition));
-      consumer.seekToEnd(Arrays.asList(topicPartition));
+      consumer.assign(Collections.singletonList(topicPartition));
+      consumer.seekToEnd(Collections.singletonList(topicPartition));
       latestOffset = consumer.position(topicPartition);
     } catch (org.apache.kafka.common.errors.TimeoutException ex) {
       throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to end to get latest offset"
           + " for topic: " + topic + " and partition: " + partition, ex);
     } finally {
-      consumer.assign(Arrays.asList());
+      consumer.assign(Collections.emptyList());
     }
     return latestOffset;
   }
@@ -1071,14 +1076,8 @@ public class TopicManager implements Closeable {
 
   private synchronized KafkaAdminWrapper getKafkaAdmin() {
     if (null == kafkaAdmin) {
-      String kafkaAdminName = "Unknown";
-      kafkaAdmin = kafkaClientFactory.getKafkaAdminClient();
-      if (kafkaAdmin instanceof KafkaAdminClient) {
-        kafkaAdminName = KafkaAdminClient.class.getName();
-      } else if (kafkaAdmin instanceof ScalaAdminUtils) {
-        kafkaAdminName = ScalaAdminUtils.class.getName();
-      }
-      logger.info(this.getClass().getSimpleName() + " is using kafka admin client: " + kafkaAdminName);
+      kafkaAdmin = kafkaClientFactory.getKafkaAdminClient(optionalMetricsRepository);
+      logger.info(this.getClass().getSimpleName() + " is using kafka admin client: " + kafkaAdmin.getClassName());
     }
     return kafkaAdmin;
   }

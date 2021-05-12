@@ -254,12 +254,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.topicManagerRepository = new TopicManagerRepository(
         veniceConsumerFactory.getKafkaBootstrapServers(),
         veniceConsumerFactory.getKafkaZkAddress(),
-        veniceConsumerFactory);
+        veniceConsumerFactory, metricsRepository);
 
     this.topicManagerRepositoryJavaBased = new TopicManagerRepository(
         veniceConsumerFactory.getKafkaBootstrapServers(),
         veniceConsumerFactory.getKafkaZkAddress(),
-        veniceConsumerJavaBasedFactory);
+        veniceConsumerJavaBasedFactory, metricsRepository);
 
     VeniceNotifier notifier = new LogNotifier();
     this.onlineOfflineNotifiers.add(notifier);

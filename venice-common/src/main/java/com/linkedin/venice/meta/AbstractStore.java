@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -286,7 +287,7 @@ public abstract class AbstractStore implements Store {
     List<Version> versions = storeVersionsSupplier.getForRead();
     int versionCnt = versions.size();
     if(versionCnt == 0) {
-      return new ArrayList<>();
+      return Collections.emptyList();
     }
 
     // The code assumes that Versions are sorted in increasing order by addVersion and increaseVersion

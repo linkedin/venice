@@ -129,6 +129,11 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
     }
   }
 
+  @Override
+  public String getClassName() {
+    return ScalaAdminUtils.class.getName();
+  }
+
   /**
    * The first time this is called, it lazily initializes {@link #zkClient}.
    *

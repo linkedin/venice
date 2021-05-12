@@ -359,7 +359,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                                                  multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
                                                                  multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
                                                                  multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
-                                                                 veniceConsumerFactory);
+                                                                 veniceConsumerFactory,
+                                                                 metricsRepository);
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
         this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer,
@@ -2082,7 +2083,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // will not return any store if we pass minNumberOfStoreVersionsToPreserve during push
             int numVersionToPreserve = minNumberOfStoreVersionsToPreserve - (deleteBackupOnStartPush ? 1 : 0);
             List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
-            if (versionsToDelete.size() == 0) {
+            if (versionsToDelete.isEmpty()) {
                 return;
             }
 
