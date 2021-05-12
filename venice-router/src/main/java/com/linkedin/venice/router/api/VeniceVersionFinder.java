@@ -37,8 +37,8 @@ public class VeniceVersionFinder {
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
   private final String clusterName;
-  private ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
-  private OnlineInstanceFinder onlineInstanceFinder;
+  private final ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
+  private final OnlineInstanceFinder onlineInstanceFinder;
 
   public VeniceVersionFinder(ReadOnlyStoreRepository metadataRepository, OnlineInstanceFinder onlineInstanceFinder,
       StaleVersionStats stats, HelixReadOnlyStoreConfigRepository storeConfigRepo,
