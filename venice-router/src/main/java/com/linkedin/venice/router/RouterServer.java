@@ -153,7 +153,7 @@ public class RouterServer extends AbstractVeniceService {
   private ResourceRegistry registry = null;
   private StorageNodeClient storageNodeClient;
   private VeniceDispatcher dispatcher;
-  private RouterHeartbeat heartbeat;
+  private RouterHeartbeat heartbeat = null;
   private VeniceDelegateMode scatterGatherMode;
   private HelixAdapterSerializer adapter;
   private ZkRoutersClusterManager routersClusterManager;
@@ -395,8 +395,10 @@ public class RouterServer extends AbstractVeniceService {
         routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats, aggHostHealthStats, routerStats);
     scatterGatherMode = new VeniceDelegateMode(config, routerStats, routeHttpRequestStats);
 
-    heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests, storageNodeClient);
-    heartbeat.startInner();
+    if (config.isRouterHeartBeatEnabled()) {
+      heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests, storageNodeClient);
+      heartbeat.startInner();
+    }
 
     /**
      * TODO: find a way to add read compute stats in host finder;
@@ -709,7 +711,9 @@ public class RouterServer extends AbstractVeniceService {
     if (zkClient != null) {
       zkClient.close();
     }
-    heartbeat.stopInner();
+    if (heartbeat != null) {
+      heartbeat.stopInner();
+    }
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {
