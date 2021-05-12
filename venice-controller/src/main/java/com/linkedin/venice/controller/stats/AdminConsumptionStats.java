@@ -44,6 +44,7 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * fully processed in the child controller.
    */
   final private Sensor adminMessageTotalLatencySensor;
+
   private long adminConsumptionFailedOffset;
   /**
    * A gauge reporting the total number of pending admin messages remaining in the internal queue at the end of each
@@ -54,6 +55,25 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * A gauge reporting the number of stores with pending messages at the end of each consumption cycle.
    */
   private double storesWithPendingAdminMessagesCountGauge;
+
+  /**
+   * A gauge that represents the consumption offset checkpointed into ZK. If remote consumption is enabled, this is the
+   * checkpoint upstream offset; otherwise, it's the checkpoint local consumption offset.
+   */
+  private long adminConsumptionCheckpointOffset;
+
+  /**
+   * adminConsumptionOffsetLag = End offset of the admin topic in the source Kafka cluster - the latest consumed offset
+   */
+  private long adminConsumptionOffsetLag;
+
+  /**
+   * maxAdminConsumptionOffsetLag = End offset of the admin topic in the source Kafka cluster - the latest persisted offset
+   * If there is a failed admin message for a specific store, with store level isolation, admin messages for other stores
+   * will be processed; however, the checkpoint offset will freeze until there is no more failed admin message. In general,
+   * the maxAdminConsumptionOffsetLag is equal to adminConsumptionOffsetLag, unless there is a failed admin message.
+   */
+  private long maxAdminConsumptionOffsetLag;
 
   public AdminConsumptionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -75,6 +95,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageAddVersionProcessLatencySensor = registerSensor("admin_message_add_version_process_latency_ms",
         new Avg(), new Max());
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
+    registerSensor("admin_consumption_offset_lag", new Gauge(() -> this.adminConsumptionOffsetLag));
+    registerSensor("max_admin_consumption_offset_lag", new Gauge(() -> this.maxAdminConsumptionOffsetLag));
   }
 
   /**
@@ -134,5 +156,25 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void recordAdminMessageTotalLatency(double value) {
     adminMessageTotalLatencySensor.record(value);
+  }
+
+  public void setAdminConsumptionCheckpointOffset(long adminConsumptionCheckpointOffset) {
+    this.adminConsumptionCheckpointOffset = adminConsumptionCheckpointOffset;
+  }
+
+  /**
+   * Lazily register the checkpoint offset metric after knowing the latest checkpoint offset, so that restarting the
+   * controller node will not result in the metric value dipping to 0.
+   */
+  public void registerAdminConsumptionCheckpointOffset() {
+    registerSensorIfAbsent("admin_consumption_checkpoint_offset", new Gauge(() -> this.adminConsumptionCheckpointOffset));
+  }
+
+  public void setAdminConsumptionOffsetLag(long adminConsumptionOffsetLag) {
+    this.adminConsumptionOffsetLag = adminConsumptionOffsetLag;
+  }
+
+  public void setMaxAdminConsumptionOffsetLag(long maxAdminConsumptionOffsetLag) {
+    this.maxAdminConsumptionOffsetLag = maxAdminConsumptionOffsetLag;
   }
 }

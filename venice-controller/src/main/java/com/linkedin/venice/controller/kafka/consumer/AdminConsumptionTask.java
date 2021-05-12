@@ -15,6 +15,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -24,6 +25,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -108,6 +110,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private static final long UNASSIGNED_VALUE = -1L;
   private static final int READ_CYCLE_DELAY_MS = 1000;
   private static final int MAX_DUPLICATE_MESSAGE_LOGS = 20;
+  private static final long CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS = TimeUnit.MINUTES.toMillis(5);
   public static int IGNORED_CURRENT_VERSION = -1;
 
   private final Logger logger;
@@ -148,6 +151,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private final ExecutionIdAccessor executionIdAccessor;
   private final ExecutorService executorService;
+
+  private TopicManager sourceKafkaClusterTopicManager;
 
   public ExecutorService getExecutorService() {
     return executorService;
@@ -191,9 +196,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private int consecutiveDuplicateMessageCount = 0;
 
+  /**
+   * Timestamp in millisecond: the last time when updating the consumption offset lag metric
+   */
+  private long lastUpdateTimeForConsumptionOffsetLag = 0;
+
   public AdminConsumptionTask(String clusterName,
       KafkaConsumerWrapper consumer,
       boolean remoteConsumptionEnabled,
+      Optional<String> remoteKafkaServerUrl,
+      Optional<String> remoteKafkaZkAddress,
       VeniceHelixAdmin admin,
       AdminTopicMetadataAccessor adminTopicMetadataAccessor,
       ExecutionIdAccessor executionIdAccessor,
@@ -226,6 +238,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         new LinkedBlockingQueue<>(), new DaemonThreadFactory("Venice-Admin-Execution-Task"));
     this.undelegatedRecords = new LinkedList<>();
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
+
+    if (remoteConsumptionEnabled) {
+      if (!(remoteKafkaServerUrl.isPresent() && remoteKafkaZkAddress.isPresent())) {
+        throw new VeniceException("Admin topic remote consumption is enabled but no config for the source Kafka "
+            + "bootstrap server url or source Kafka ZK address");
+      }
+      this.sourceKafkaClusterTopicManager = admin.getTopicManager(new Pair<>(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get()));
+    }
   }
 
   @Override
@@ -307,6 +327,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             undelegatedRecords.poll();
           }
         }
+        if (remoteConsumptionEnabled && LatencyUtils.getElapsedTimeInMs(lastUpdateTimeForConsumptionOffsetLag) > CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS) {
+          recordConsumptionLag();
+          lastUpdateTimeForConsumptionOffsetLag = System.currentTimeMillis();
+        }
         executeMessagesAndCollectResults();
         stats.setAdminConsumptionFailedOffset(failingOffset);
       } catch (Exception e) {
@@ -331,6 +355,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastOffset = UNASSIGNED_VALUE;
       lastDelegatedExecutionId = UNASSIGNED_VALUE;
     }
+    stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
+    stats.registerAdminConsumptionCheckpointOffset();
     // Subscribe the admin topic
     consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     isSubscribed = true;
@@ -657,6 +683,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
     lastPersistedOffset = lastOffset;
     lastPersistedExecutionId = lastDelegatedExecutionId;
+    stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
   }
 
   public void skipMessageWithOffset(long offset) {
@@ -744,5 +771,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
 
     return true;
+  }
+
+  /**
+   * Record metrics for consumption lag.
+   */
+  private void recordConsumptionLag() {
+    try {
+      long sourceAdminTopicEndOffset = sourceKafkaClusterTopicManager.getLatestOffsetAndRetry(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, 10);
+      stats.setAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastOffset);
+      stats.setMaxAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastPersistedOffset);
+    } catch (Exception e) {
+      logger.error("Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
+    }
   }
 }
