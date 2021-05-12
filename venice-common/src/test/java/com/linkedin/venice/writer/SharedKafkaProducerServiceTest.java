@@ -21,9 +21,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -32,11 +31,11 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.writer.ApacheKafkaProducer.*;
+import static org.apache.kafka.clients.producer.ProducerConfig.*;
 import static org.mockito.Mockito.*;
 
 
@@ -74,6 +73,7 @@ public class SharedKafkaProducerServiceTest {
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
+    properties.put(PROPERTIES_KAFKA_PREFIX + BUFFER_MEMORY_CONFIG, "16384");
 
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactoryWithSharedProducer(properties);
 
@@ -92,13 +92,13 @@ public class SharedKafkaProducerServiceTest {
           veniceWriter1.put(new KafkaKey(MessageType.PUT, "topic1".getBytes()), "topic1".getBytes(), 1, new Callback() {
             public void onCompletion(RecordMetadata metadata, Exception e) {
               if(e != null) {
-                e.printStackTrace();
+                LOGGER.error("Error when producing to an existing topic " + topicName1, e);
               } else {
                 LOGGER.info("produced offset test-topic-1: " + metadata.offset());
+                producedTopicPresent.getAndIncrement();
               }
             }
           });
-          producedTopicPresent.getAndIncrement();
         } catch (Exception e) {
           LOGGER.error("Exception: ", e);
         }
@@ -107,18 +107,22 @@ public class SharedKafkaProducerServiceTest {
 
 
     Thread thread2 = new Thread(() -> {
+      /**
+       * Test would fail if increase messages sent to non-existence topic from 100 to 16384. TODO: Is it expected because
+       * buffer is full?
+       */
       for (int i = 0; i < 100; i++) {
         try {
           veniceWriter2.put(new KafkaKey(MessageType.PUT, "topic2".getBytes()), "topic2".getBytes(), 1, new Callback() {
             public void onCompletion(RecordMetadata metadata, Exception e) {
               if(e != null) {
-                e.printStackTrace();
+                LOGGER.error("Error when producing to a non-existing topic " + topicName1, e);
               } else {
                 LOGGER.info("produced offset test-topic-2: " + metadata.offset());
+                producedTopicNotPresent.getAndIncrement();
               }
             }
           });
-          producedTopicNotPresent.getAndIncrement();
         } catch (Exception e) {
           LOGGER.error("Exception: ", e);
           if (e instanceof InterruptedException) {
@@ -133,8 +137,10 @@ public class SharedKafkaProducerServiceTest {
 
     thread1.join();
 
-    Assert.assertEquals(producedTopicPresent.get(), 100);
-    Assert.assertEquals(producedTopicNotPresent.get(), 0);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      Assert.assertEquals(producedTopicPresent.get(), 100);
+      Assert.assertEquals(producedTopicNotPresent.get(), 0);
+    });
 
     Properties consumerProps = new Properties();
     consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
