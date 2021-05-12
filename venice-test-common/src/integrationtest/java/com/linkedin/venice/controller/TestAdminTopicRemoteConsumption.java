@@ -56,7 +56,7 @@ public class TestAdminTopicRemoteConsumption {
     multiColoMultiClusterWrapper.close();
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testAdminTopicRemoteConsumptionFeature() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("store");

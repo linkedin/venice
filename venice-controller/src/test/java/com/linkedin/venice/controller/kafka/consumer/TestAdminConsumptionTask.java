@@ -179,8 +179,9 @@ public class TestAdminConsumptionTask {
     MockInMemoryConsumer inMemoryKafkaConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
 
-    return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, false, admin, adminTopicMetadataAccessor,
-        executionIdAccessor, isParent, stats, 1, adminConsumptionCycleTimeoutMs, 1);
+    return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, false, Optional.empty(),
+        Optional.empty(), admin, adminTopicMetadataAccessor, executionIdAccessor, isParent, stats,
+        1, adminConsumptionCycleTimeoutMs, 1);
   }
 
   private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
