@@ -1355,6 +1355,11 @@ public class ConfigKeys {
   public static final String ROUTER_EARLY_THROTTLE_ENABLED = "router.early.throttle.enabled";
 
   /**
+   *  Disable router heart-beat job which marks hosts as unhealthy.
+   */
+  public static final String ROUTER_HEART_BEAT_ENABLED = "router.heart.beat.enabled";
+
+  /**
    * Number of IO threads used for AHAC client.
    */
   public static final String ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT = "router.httpasyncclient.client.pool.io.thread.count";

@@ -111,6 +111,7 @@ public class VeniceRouterConfig {
   private int clientSslHandshakeAttempts;
   private long clientSslHandshakeBackoffMs;
   private long readQuotaThrottlingLeaseTimeoutMs;
+  private boolean routerHeartBeatEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -260,6 +261,7 @@ public class VeniceRouterConfig {
           ", and allowed values: " + Arrays.toString(HelixGroupSelectionStrategyEnum.values()));
     }
     systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
+    routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
   }
 
   public String getClusterName() {
@@ -677,5 +679,9 @@ public class VeniceRouterConfig {
 
   public long getReadQuotaThrottlingLeaseTimeoutMs() {
     return readQuotaThrottlingLeaseTimeoutMs;
+  }
+
+  public boolean isRouterHeartBeatEnabled() {
+    return routerHeartBeatEnabled;
   }
 }
