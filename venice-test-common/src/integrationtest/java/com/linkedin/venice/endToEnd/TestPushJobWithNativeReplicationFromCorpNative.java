@@ -114,6 +114,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, "corp-venice-native");
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + "corp-venice-native", corpVeniceNativeKafka.getAddress());
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + "corp-venice-native", corpVeniceNativeKafka.getZkAddress());
+    controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
 
     multiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
@@ -403,12 +404,14 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       Assert.assertFalse(newStoreResponse.isError());
 
       /**
-       * Enable L/F in dc-0 and parent controller
+       * Enable L/F in dc-0; explicitly disable L/F in parent controller to mimic to real prod environment;
+       * the {@link com.linkedin.venice.ConfigKeys#LF_MODEL_DEPENDENCY_CHECK_DISABLED} config should take care of
+       * the L/F config in parent controllers.
        */
       UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
           .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
           .setLeaderFollowerModel(true)
-          .setRegionsFilter("parent,dc-0");
+          .setRegionsFilter("dc-0");
       ControllerResponse controllerResponse = parentControllerClient.updateStore(batchOnlyStoreName, updateStoreParams);
       Assert.assertFalse(controllerResponse.isError());
 
@@ -426,7 +429,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       updateStoreParams = new UpdateStoreQueryParams()
           .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
           .setLeaderFollowerModel(true)
-          .setRegionsFilter("parent,dc-0");
+          .setRegionsFilter("dc-0");
       controllerResponse = parentControllerClient.updateStore(hybridStoreName, updateStoreParams);
       Assert.assertFalse(controllerResponse.isError());
 
@@ -442,7 +445,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       updateStoreParams = new UpdateStoreQueryParams()
           .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
           .setLeaderFollowerModel(true)
-          .setRegionsFilter("parent,dc-0");
+          .setRegionsFilter("dc-0");
       controllerResponse = parentControllerClient.updateStore(incrementPushStoreName, updateStoreParams);
       Assert.assertFalse(controllerResponse.isError());
 

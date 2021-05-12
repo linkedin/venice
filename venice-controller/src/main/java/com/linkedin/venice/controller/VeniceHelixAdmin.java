@@ -4839,6 +4839,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
 
+        VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
         if (storeName.isPresent()) {
             /**
              * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
@@ -4872,7 +4873,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * If the command is trying to enable native replication, the store must have Leader/Follower state model enabled.
              */
             if (enableNativeReplicationForCluster) {
-                shouldUpdateNativeReplication &= originalStore.isLeaderFollowerModelEnabled();
+                shouldUpdateNativeReplication &= (originalStore.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled());
             }
             if (shouldUpdateNativeReplication) {
                 setNativeReplicationEnabled(clusterName, storeName.get(), enableNativeReplicationForCluster);
@@ -4917,7 +4918,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeCandidates = storeCandidates.stream().filter(store -> !store.isSystemStore()).collect(Collectors.toList());
 
             storeCandidates.forEach(store -> {
-                if (enableNativeReplicationForCluster && !store.isLeaderFollowerModelEnabled()) {
+                if (enableNativeReplicationForCluster && !(store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled())) {
                     logger.info("Will not enable native replication for store " + store.getName()
                         + " since it doesn't have Leader/Follower state model enabled.");
                 } else {
