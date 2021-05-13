@@ -108,6 +108,15 @@ public class TehutiUtils {
   }
 
   /**
+   * A valid metric name needs to pass the test in {@link javax.management.ObjectName}. This helper function will
+   * try to fix all invalid character mentioned in the above function to avoid MalformedObjectNameException; besides,
+   * dot(.) will also be replaced since dot is a separator used in InGraph.
+   */
+  public static String fixMalformedMetricName(String metricName) {
+    return metricName.replaceAll("[\\*?=:\".]", "_");
+  }
+
+  /**
    * Generate a ratio stat that is based on two arbitrary {@link Rate}. It calculates the proportion of one
    * Stat over the sum of two Stats. This method is mostly used to calculate the bad request ratio (bad / (good + bad))
    *
