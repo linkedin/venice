@@ -5,6 +5,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.util.*;
@@ -137,7 +138,6 @@ public class TopicManagerTest {
     Mockito.verify(partiallyMockedTopicManager, times(MAX_TOPIC_DELETE_RETRIES)).ensureTopicIsDeletedAndBlock(topicName);
   }
 
-
   @Test
   public void testSyncDeleteTopic() throws ExecutionException {
     String topicName = getTopic();
@@ -257,6 +257,31 @@ public class TopicManagerTest {
     manager.updateTopicRetention(topic, 0);
     Properties topicProperties = manager.getTopicConfig(topic);
     Assert.assertEquals(topicProperties.getProperty(LogConfig.RetentionMsProp()), "0");
+  }
+
+  @Test
+  public void testListAllTopics() {
+    Set<String> expectTopics = new HashSet<>(manager.listTopics());
+    String topic1 = TestUtils.getUniqueString("topic");
+    String topic2 = TestUtils.getUniqueString("topic");
+    String topic3 = TestUtils.getUniqueString("topic");
+    // Create 1 topic, expect 1 topic in total
+    manager.createTopic(topic1, 1, 1, true);
+    expectTopics.add(topic1);
+    Set<String> allTopics = manager.listTopics();
+    Assert.assertEquals(allTopics, expectTopics);
+
+    // Create another topic, expect 2 topics in total
+    manager.createTopic(topic2, 1, 1, false);
+    expectTopics.add(topic2);
+    allTopics = manager.listTopics();
+    Assert.assertEquals(allTopics, expectTopics);
+
+    // Create another topic, expect 3 topics in total
+    manager.createTopic(topic3, 1, 1, false);
+    expectTopics.add(topic3);
+    allTopics = manager.listTopics();
+    Assert.assertEquals(allTopics, expectTopics);
   }
 
   @Test
