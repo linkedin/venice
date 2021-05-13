@@ -30,6 +30,7 @@ import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 
+import java.util.concurrent.Callable;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
@@ -307,7 +308,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
                                             ", clientClass=" + client.getClass());
       }
       D2ServiceDiscovery serviceDiscovery = new D2ServiceDiscovery();
-      D2ServiceDiscoveryResponseV2 response = serviceDiscovery.discoverD2Service((D2TransportClient) client, getStoreName());
+      D2ServiceDiscoveryResponseV2 response;
+      Callable<D2ServiceDiscoveryResponseV2> discoveryCallable = () -> serviceDiscovery.discoverD2Service((D2TransportClient) client, getStoreName());
+      if (icProvider != null) {
+        response = icProvider.call(this.getClass().getCanonicalName(), discoveryCallable);
+      } else {
+        response = discoveryCallable.call();
+      }
       logger.info("Venice service discovered" +
                       ", clusterName=" + response.getCluster() +
                       ", zkAddress=" + response.getZkAddress() +
