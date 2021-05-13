@@ -16,6 +16,7 @@ import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
+import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -162,7 +163,9 @@ public class NativeIngestionRequestClient implements Closeable {
 
   public boolean updateMetadata(IngestionStorageMetadata ingestionStorageMetadata) {
     try {
-      logger.info("Sending UPDATE_METADATA request to child process: "  + ingestionStorageMetadata);
+      logger.info("Sending UPDATE_METADATA request to child process: " +
+          IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType) + " for topic: " + ingestionStorageMetadata.topicName
+          + " partition: " + ingestionStorageMetadata.partitionId);
       IngestionTaskReport report = ingestionRequestTransport.sendRequest(IngestionAction.UPDATE_METADATA, ingestionStorageMetadata);
       return report.isPositive;
     } catch (Exception e) {
