@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -19,6 +20,7 @@ import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.ConfigEntry;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
+import org.apache.kafka.clients.admin.ListTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
@@ -36,9 +38,8 @@ import static com.linkedin.venice.utils.Time.*;
 
 public class KafkaAdminClient implements KafkaAdminWrapper {
   private static final Logger logger = Logger.getLogger(KafkaAdminClient.class);
-
-  private Properties properties;
   private AdminClient kafkaAdminClient;
+  private Long maxRetryInMs;
 
   public KafkaAdminClient() {}
 
@@ -47,7 +48,8 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     if (null == properties) {
       throw new IllegalArgumentException("properties cannot be null!");
     }
-    this.properties = properties;
+    this.kafkaAdminClient = AdminClient.create(properties);
+    this.maxRetryInMs = (Long) properties.get(KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND;
   }
 
   @Override
@@ -70,6 +72,16 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       }
     } catch (Exception e) {
       throw new VeniceException("Failed to create topic: " + topicName + "due to Exception", e);
+    }
+  }
+
+  @Override
+  public Set<String> listAllTopics() {
+    ListTopicsResult listTopicsResult = getKafkaAdminClient().listTopics();
+    try {
+      return listTopicsResult.names().get();
+    } catch (Exception e) {
+      throw new VeniceException("Failed to list all topics due to exception: ", e);
     }
   }
 
@@ -117,14 +129,12 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
   @Override
   public Properties getTopicConfigWithRetry(String topic) {
-    long maxRetryInMs = (Long)properties.get(KAFKA_ADMIN_GET_TOPIC_CONFG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND;
     long accumWaitTime = 0;
     long sleepIntervalInMs = 100;
     VeniceException veniceException = null;
-    while (accumWaitTime < maxRetryInMs) {
+    while (accumWaitTime < this.maxRetryInMs) {
       try {
-        Properties properties = getTopicConfig(topic);
-        return properties;
+        return getTopicConfig(topic);
       } catch (VeniceException e) {
         veniceException = e;
         Utils.sleep(sleepIntervalInMs);
@@ -198,18 +208,11 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     }
   }
 
-  private synchronized AdminClient getKafkaAdminClient() {
-    if (null != this.kafkaAdminClient) {
-      return this.kafkaAdminClient;
-    }
-
-    if (null == this.properties) {
+  private AdminClient getKafkaAdminClient() {
+    if (kafkaAdminClient == null) {
       throw new IllegalStateException("initialize(properties) has not been called!");
     }
-
-    this.kafkaAdminClient = AdminClient.create(this.properties);
-
-    return this.kafkaAdminClient;
+    return kafkaAdminClient;
   }
 
   private <T> Map<String, T> getSomethingForAllTopics(Function<Config, T> configTransformer) {

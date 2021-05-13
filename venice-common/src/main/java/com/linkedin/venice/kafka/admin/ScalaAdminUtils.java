@@ -2,11 +2,14 @@ package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Time;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicAlreadyMarkedForDeletionException;
@@ -17,6 +20,7 @@ import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.TopicConfig;
+import org.apache.kafka.common.internals.Topic;
 import org.apache.log4j.Logger;
 
 import scala.collection.JavaConversions;
@@ -35,7 +39,7 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   private Properties properties;
   private String zkConnection;
   private ZkClient zkClient;
-  private ZkUtils zkUtils;
+  private Lazy<ZkUtils> zkUtilsLazy;
 
   public ScalaAdminUtils() {}
 
@@ -49,6 +53,7 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
     if (null == this.zkConnection) {
       throw new IllegalArgumentException("properties must contain: " + ConfigKeys.KAFKA_ZK_ADDRESS);
     }
+    zkUtilsLazy = Lazy.of(() -> new ZkUtils(getZkClient(), new ZkConnection(zkConnection), false));
   }
 
   @Override
@@ -67,6 +72,19 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   }
 
   @Override
+  public Set<String> listAllTopics() {
+    scala.collection.Iterator<String> iterator = getZkUtils().getAllTopics().iterator();
+    Set<String> allButNoInternalTopics = new HashSet<>(iterator.length());
+    while (iterator.hasNext()) {
+      String topic = iterator.next();
+      if (!Topic.isInternal(topic)) {
+        allButNoInternalTopics.add(topic);
+      }
+    }
+    return allButNoInternalTopics;
+  }
+
+  @Override
   public void setTopicConfig(String topicName, Properties topicProperties) {
     AdminUtils.changeTopicConfig(getZkUtils(), topicName, topicProperties);
   }
@@ -77,6 +95,9 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
     scala.collection.Map<String, Properties> allTopicConfigs = AdminUtils.fetchAllTopicConfigs(getZkUtils());
     Map<String, Properties> allTopicConfigsJavaMap = scala.collection.JavaConversions.mapAsJavaMap(allTopicConfigs);
     allTopicConfigsJavaMap.forEach( (topic, topicProperties) -> {
+      if (Topic.isInternal(topic)) {
+        return;
+      }
       if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
         topicRetentions.put(topic, Long.valueOf(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG)));
       } else {
@@ -122,7 +143,7 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
     }
     if (null != this.zkClient) {
       try {
-        this.zkUtils.close();
+        getZkUtils().close();
       } catch (Exception e) {
         logger.warn("Exception (suppressed) during zkUtils.close()", e);
       }
@@ -148,14 +169,11 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   }
 
   /**
-   * The first time this is called, it lazily initializes {@link #zkUtils}.
+   * The first time this is called, it lazily initializes
    *
    * @return The internal {@link ZkUtils} instance.
    */
-  private synchronized ZkUtils getZkUtils() {
-    if (this.zkUtils == null) {
-      this.zkUtils = new ZkUtils(getZkClient(), new ZkConnection(zkConnection), false);
-    }
-    return this.zkUtils;
+  private ZkUtils getZkUtils() {
+    return zkUtilsLazy.get();
   }
 }
