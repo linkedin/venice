@@ -55,7 +55,7 @@ public class NativeIngestionStorageMetadataService extends AbstractVeniceService
   @Override
   public boolean startInner() throws Exception {
     metadataUpdateService.execute(new MetadataUpdateWorker());
-    return false;
+    return true;
   }
 
   @Override
@@ -156,9 +156,7 @@ public class NativeIngestionStorageMetadataService extends AbstractVeniceService
    * putStoreVersionState will only put StoreVersionState into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putStoreVersionState(String topicName, StoreVersionState record) {
-    if (logger.isDebugEnabled()) {
-      logger.debug("Updating StoreVersionState for " + topicName);
-    }
+    logger.info("Updating StoreVersionState for " + topicName);
     topicStoreVersionStateMap.put(topicName, record);
   }
 
@@ -173,8 +171,6 @@ public class NativeIngestionStorageMetadataService extends AbstractVeniceService
    */
   class MetadataUpdateWorker implements Runnable, Closeable {
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
-    private final int checkUpdateQueueInterval = 1000;
-    private final int retryUpdateInterval = 100;
 
     @Override
     public void close() throws IOException {
@@ -195,10 +191,13 @@ public class NativeIngestionStorageMetadataService extends AbstractVeniceService
               metadataUpdateQueue.remove();
               metadataUpdateStats.recordMetadataUpdateQueueLength(metadataUpdateQueue.size());
             } else {
-              Thread.sleep(retryUpdateInterval);
+              Thread.sleep(100);
             }
           }
-          Thread.sleep(checkUpdateQueueInterval);
+          Thread.sleep(1000);
+          if (metadataUpdateQueue.size() > 0) {
+            logger.info("Number of remaining metadata update requests in queue: " + metadataUpdateQueue.size());
+          }
         } catch (InterruptedException ie) {
           Thread.currentThread().interrupt();
           break;

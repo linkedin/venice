@@ -38,6 +38,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.ComplementSet;
@@ -136,10 +137,11 @@ public class DaVinciBackend implements Closeable {
         ClientConfig.cloneConfig(clientConfig)
             .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
 
-    // TODO: May need to reorder the object to make it looks cleaner.
     storageMetadataService = backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)
         ? new NativeIngestionStorageMetadataService(backendConfig.getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository))
         : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+    // Start storage metadata service
+    ((AbstractVeniceService)storageMetadataService).start();
 
     ingestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
