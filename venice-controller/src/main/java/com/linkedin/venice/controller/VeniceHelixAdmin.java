@@ -414,6 +414,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         .setHybridStoreDiskQuotaEnabled(false)
                         .setHybridTimeLagThreshold(TimeUnit.HOURS.toSeconds(1))
                         .setHybridRewindSeconds(TimeUnit.HOURS.toSeconds(1))
+                        .setHybridOffsetLagThreshold(1000L)
                         .setPartitionCount(16)
                         .setLeaderFollowerModel(true)),
                 false)
