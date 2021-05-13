@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -43,7 +44,7 @@ public abstract class KafkaClientFactory {
     adminWrapper.initialize(properties);
     if (optionalMetricsRepository.isPresent()) {
       // Use Kafka bootstrap server to identify which Kafka admin client stats it is
-      String kafkaAdminStatsName = "KafkaAdminStats_" + getKafkaBootstrapServers();
+      String kafkaAdminStatsName = "KafkaAdminStats_" + TehutiUtils.fixMalformedMetricName(getKafkaBootstrapServers());
       adminWrapper = new InstrumentedKafkaAdmin(adminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
       LOGGER.info("Created instrumented topic manager for Kafka cluster with bootstrap server " + getKafkaBootstrapServers());
     } else {

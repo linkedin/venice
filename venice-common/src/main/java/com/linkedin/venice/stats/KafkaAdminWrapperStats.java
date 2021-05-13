@@ -34,7 +34,7 @@ public class KafkaAdminWrapperStats extends AbstractVeniceStats {
       final String sensorName = sensorType.name().toLowerCase();
       tmpRateSensorsByTypes.put(
           sensorType,
-          registerSensor(
+          registerSensorIfAbsent(
               sensorName,
               new OccurrenceRate(),
               new Max(),
