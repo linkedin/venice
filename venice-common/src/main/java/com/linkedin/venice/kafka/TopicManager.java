@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,6 +28,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
+import kafka.server.KafkaConfig;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -77,6 +79,7 @@ public class TopicManager implements Closeable {
   // aren't necessarily compromised with potentially new bad behavior.
   public static final boolean DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
 
+  public static final int DEFAULT_KAFKA_OFFSET_API_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
   // Immutable state
   private final String kafkaBootstrapServers;
@@ -723,14 +726,19 @@ public class TopicManager implements Closeable {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     long latestOffset;
     try {
-      consumer.assign(Collections.singletonList(topicPartition));
-      consumer.seekToEnd(Collections.singletonList(topicPartition));
-      latestOffset = consumer.position(topicPartition);
-    } catch (org.apache.kafka.common.errors.TimeoutException ex) {
-      throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to end to get latest offset"
-          + " for topic: " + topic + " and partition: " + partition, ex);
-    } finally {
-      consumer.assign(Collections.emptyList());
+      Map<TopicPartition, Long> offsetMap = consumer.endOffsets(Collections.singletonList(topicPartition), Duration.ofMillis(DEFAULT_KAFKA_OFFSET_API_TIMEOUT));
+      if (offsetMap.containsKey(topicPartition)) {
+        latestOffset = offsetMap.get(topicPartition);
+      } else {
+        throw new VeniceException("offset result returned from endOffsets does not contain entry: " + topicPartition);
+      }
+    } catch (Exception ex) {
+      if (ex instanceof  org.apache.kafka.common.errors.TimeoutException) {
+        throw new VeniceOperationAgainstKafkaTimedOut(
+            "Timeout exception when seeking to end to get latest offset" + " for topic: " + topic + " and partition: " + partition, ex);
+      } else {
+        throw ex;
+      }
     }
     return latestOffset;
   }
@@ -845,14 +853,19 @@ public class TopicManager implements Closeable {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     long earliestOffset;
     try {
-      consumer.assign(Collections.singletonList(topicPartition));
-      consumer.seekToBeginning(Collections.singletonList(topicPartition));
-      earliestOffset = consumer.position(topicPartition);
-    } catch (org.apache.kafka.common.errors.TimeoutException ex) {
-      throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to beginning to get earliest offset"
-          + " for topic: " + topic + " and partition: " + partition, ex);
-    } finally {
-      consumer.assign(Collections.emptyList());
+      Map<TopicPartition, Long> offsetMap = consumer.beginningOffsets(Collections.singletonList(topicPartition), Duration.ofMillis(DEFAULT_KAFKA_OFFSET_API_TIMEOUT));
+      if (offsetMap.containsKey(topicPartition)) {
+        earliestOffset = offsetMap.get(topicPartition);
+      } else {
+        throw new VeniceException("offset result returned from beginningOffsets does not contain entry: " + topicPartition);
+      }
+    } catch (Exception ex) {
+      if (ex instanceof org.apache.kafka.common.errors.TimeoutException) {
+        throw new VeniceOperationAgainstKafkaTimedOut(
+            "Timeout exception when seeking to beginning to get earliest offset" + " for topic: " + topic + " and partition: " + partition, ex);
+      } else {
+        throw ex;
+      }
     }
     return earliestOffset;
   }
