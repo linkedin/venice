@@ -1371,6 +1371,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else {
         consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
       }
+      if (aggKafkaConsumerService != null) {
+        aggKafkaConsumerService.detach(this);
+      }
       closeProducers();
     } catch (Exception e) {
       logger.error("Caught exception while trying to close the current ingestion task", e);
