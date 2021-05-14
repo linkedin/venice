@@ -117,6 +117,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   private final String adminTopicSourceRegion;
 
+  /**
+   * Automatically perform new version creation for corresponding meta system store upon new user store creation.
+   */
+  private final boolean isAutoMaterializeMetaSystemStoreEnabled;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -240,6 +245,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       throw new VeniceException("Admin topic remote consumption is enabled but Kafka url map is empty");
     }
     this.adminTopicSourceRegion = props.getString(ADMIN_TOPIC_SOURCE_REGION, "");
+    this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
   }
 
   public int getAdminPort() {
@@ -484,6 +490,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getAdminTopicSourceRegion() {
     return adminTopicSourceRegion;
+  }
+
+  public boolean isAutoMaterializeMetaSystemStoreEnabled() {
+    return isAutoMaterializeMetaSystemStoreEnabled;
   }
 
   /**

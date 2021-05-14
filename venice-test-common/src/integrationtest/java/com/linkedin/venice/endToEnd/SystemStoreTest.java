@@ -10,6 +10,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.MetadataStoreUtils;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -104,6 +105,7 @@ public class SystemStoreTest {
     controllerConfig.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
         String.valueOf(Long.MAX_VALUE));
     controllerConfig.setProperty(CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED, String.valueOf(true));
+    controllerConfig.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
     venice = ServiceFactory.getVeniceCluster(1, 0, 1, 1,
         100000, false, false, controllerConfig);
     clusterName = venice.getClusterName();
@@ -173,6 +175,14 @@ public class SystemStoreTest {
     String derivedComputeSchema = WriteComputeSchemaAdapter.parse(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()).toString();
     SchemaResponse derivedSchemaResponse = controllerClient.getValueOrDerivedSchemaId(metadataSystemStoreName, derivedComputeSchema);
     assertFalse(derivedSchemaResponse.isError(), "Unexpected error while fetching the derived schema id for the latest value schema: " + derivedSchemaResponse.getError());
+    // Create a new user store and its corresponding meta system store should also be materialized.
+    String regularVeniceStoreName = TestUtils.getUniqueString("test_auto_creation");
+    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularVeniceStoreName, "test",
+        STRING_SCHEMA, USER_SCHEMA_STRING);
+    assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName), 1),
+        controllerClient, 30, TimeUnit.SECONDS, Optional.empty());
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

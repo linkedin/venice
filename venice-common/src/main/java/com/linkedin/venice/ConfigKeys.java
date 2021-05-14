@@ -1498,4 +1498,10 @@ public class ConfigKeys {
    * This config will specify the region name of a controller; the region name can be customized by Venice internal.
    */
   public static final String LOCAL_REGION_NAME = "local.region.name";
+
+  /**
+   * This config controls whether to make an empty push to materialize meta system store for newly created user stores
+   * if possible.
+   */
+  public static final String CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE = "controller.auto.materialize.meta.system.store";
 }
