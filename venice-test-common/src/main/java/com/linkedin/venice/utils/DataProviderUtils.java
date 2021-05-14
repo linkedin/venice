@@ -20,4 +20,14 @@ public class DataProviderUtils {
     };
   }
 
+  @DataProvider(name = "L/F-and-AmplificationFactor", parallel = false)
+  public static Object[][] testLeaderFollowerAndAmplificationFactor() {
+    return new Object[][]{
+        {false, false},
+        {true, true},
+        {true, false}
+    };
+  }
+
+
 }

@@ -12,6 +12,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -35,6 +36,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -270,5 +272,39 @@ public class IsolatedIngestionUtils {
       logger.info("Encounter exception when executing shell command: " + command, e);
       return "";
     }
+  }
+
+  public static IngestionTaskReport createIngestionTaskReport(IngestionReportType ingestionReportType, String kafkaTopic, int partitionId, long offset, String message) {
+    IngestionTaskReport report = new IngestionTaskReport();
+    report.reportType = ingestionReportType.getValue();
+    report.message = message;
+    report.topicName = kafkaTopic;
+    report.partitionId = partitionId;
+    report.offset = offset;
+    report.offsetRecordArray = Collections.emptyList();
+    return report;
+  }
+
+  public static IngestionTaskReport createIngestionTaskReport(String kafkaTopic, int partitionId) {
+    IngestionTaskReport report = new IngestionTaskReport();
+    report.isPositive = true;
+    report.message = "";
+    report.topicName = kafkaTopic;
+    report.partitionId = partitionId;
+    report.offset = 0;
+    report.offsetRecordArray = Collections.emptyList();
+    return report;
+  }
+
+  public static IngestionTaskReport createIngestionTaskReport() {
+    return createIngestionTaskReport("", 0);
+  }
+
+  public static IngestionTaskReport createIngestionTaskReport(IngestionReportType ingestionReportType, String kafkaTopic, int partitionId) {
+    return createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, 0, "");
+  }
+
+  public static IngestionTaskReport createIngestionTaskReport(IngestionReportType ingestionReportType, String kafkaTopic, int partitionId, String message) {
+    return createIngestionTaskReport(ingestionReportType, kafkaTopic, partitionId, 0, message);
   }
 }

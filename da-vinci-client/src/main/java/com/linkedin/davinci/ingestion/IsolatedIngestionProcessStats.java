@@ -50,7 +50,8 @@ public class IsolatedIngestionProcessStats extends AbstractVeniceStats {
             metricValueMap.put(correctedMetricName, value);
         });
         if (!newMetricNameSet.isEmpty()) {
-            logger.info("Registered " + newMetricNameSet.size() + " new metrics: " + newMetricNameSet.toString());
+            logger.info("Registered " + newMetricNameSet.size() + " new metrics.");
+            logger.debug("New metrics list: " + newMetricNameSet.toString());
         }
     }
 }

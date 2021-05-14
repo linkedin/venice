@@ -35,8 +35,10 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -330,9 +332,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
           logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
           // Set offset record in ingestion report.
-          OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partitionId);
-          report.offsetRecord = ByteBuffer.wrap(offsetRecord.toBytes());
-          logger.info("OffsetRecord of topic " + topicName + " , partition " + partitionId + " " + offsetRecord.toString());
+          List<ByteBuffer> offsetRecordArray = new ArrayList<>();
+          int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, topicName);
+          for (int subPartition : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
+            OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, subPartition);
+            offsetRecordArray.add(ByteBuffer.wrap(offsetRecord.toBytes()));
+            logger.info("Putting offsetRecord: " + offsetRecord.toString() + " for topic: " + topicName + ", subPartition: " + subPartition);
+          }
+          report.offsetRecordArray = offsetRecordArray;
 
           // Set store version state in ingestion report.
           Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
@@ -346,10 +353,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         } else {
           logger.error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
         }
-        reportClient.reportIngestionTask(report);
+        reportClient.reportIngestionStatus(report);
       });
     } else {
-      statusReportingExecutor.execute(() ->  reportClient.reportIngestionTask(report));
+      statusReportingExecutor.execute(() ->  reportClient.reportIngestionStatus(report));
     }
   }
 
@@ -396,7 +403,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
       // Make sure partition is not consuming so we can safely close the rocksdb partition
       for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
-
         long startTimeInMs = System.currentTimeMillis();
         getStoreIngestionService().stopConsumptionAndWait(storeConfig, subPartitionId, 1, stopConsumptionWaitRetriesNum);
         // Close RocksDB partition in Ingestion Service.

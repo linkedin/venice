@@ -111,7 +111,7 @@ public class PushStatusStoreTest {
         Optional.empty());
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
   public void testKafkaPushJob(boolean isIsolated) throws Exception {
     Properties h2vProperties = getH2VProperties();
     // setup initial version

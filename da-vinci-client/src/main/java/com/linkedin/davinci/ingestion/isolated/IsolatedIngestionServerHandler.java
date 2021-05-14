@@ -304,11 +304,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     int partitionId = ingestionTaskCommand.partitionId;
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
 
-    IngestionTaskReport report = new IngestionTaskReport();
-    report.isPositive = true;
-    report.message = "";
-    report.topicName = topicName;
-    report.partitionId = partitionId;
+    IngestionTaskReport report = createIngestionTaskReport(topicName, partitionId);
     try {
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("IsolatedIngestionServer has not been initiated.");
@@ -419,11 +415,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     String topicName = ingestionStorageMetadata.topicName.toString();
     int partitionId = ingestionStorageMetadata.partitionId;
 
-    IngestionTaskReport report = new IngestionTaskReport();
-    report.isPositive = true;
-    report.message = "";
-    report.topicName = topicName;
-    report.partitionId = partitionId;
+    IngestionTaskReport report = createIngestionTaskReport(topicName, partitionId);
     try {
       if (!isolatedIngestionServer.isInitiated()) {
         // Short circuit here when ingestion service is not initiated.
@@ -459,10 +451,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
   }
 
   private IngestionTaskReport handleProcessShutdownCommand(ProcessShutdownCommand processShutdownCommand) {
-    IngestionTaskReport report = new IngestionTaskReport();
-    report.isPositive = true;
-    report.message = "";
-    report.topicName = "";
+    IngestionTaskReport report = createIngestionTaskReport();
     try {
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("IsolatedIngestionServer has not been initiated.");
@@ -504,110 +493,61 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
     public void completed(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.COMPLETED.getValue();
-      report.message = message;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.COMPLETED, kafkaTopic, partitionId, offset, message);
       isolatedIngestionServer.reportIngestionStatus(report);
-
     }
 
     @Override
     public void error(String kafkaTopic, int partitionId, String message, Exception e) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.ERROR.getValue();
-      report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.ERROR, kafkaTopic, partitionId, e.getClass().getSimpleName() + "_" + e.getMessage());
       isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
     public void started(String kafkaTopic, int partitionId, String message) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.STARTED.getValue();
-      report.message = message;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.STARTED, kafkaTopic, partitionId, message);
       isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
     public void restarted(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.RESTARTED.getValue();
-      report.message = message;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.RESTARTED, kafkaTopic, partitionId, offset, message);
       isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
     public void endOfPushReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.END_OF_PUSH_RECEIVED.getValue();
-      report.message = message;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.END_OF_PUSH_RECEIVED, kafkaTopic, partitionId, offset, message);
       isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
     public void startOfBufferReplayReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.START_OF_BUFFER_REPLAY_RECEIVED.getValue();
-      report.message = message;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.START_OF_BUFFER_REPLAY_RECEIVED, kafkaTopic, partitionId, offset, message);
       isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
     public void startOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue();
-      report.message = incrementalPushVersion;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.START_OF_INCREMENTAL_PUSH_RECEIVED, kafkaTopic, partitionId, offset, incrementalPushVersion);
       isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
     public void endOfIncrementalPushReceived(String kafkaTopic, int partitionId, long offset, String incrementalPushVersion) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue();
-      report.message = incrementalPushVersion;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.END_OF_INCREMENTAL_PUSH_RECEIVED, kafkaTopic, partitionId, offset, incrementalPushVersion);
       isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
     public void topicSwitchReceived(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.TOPIC_SWITCH_RECEIVED.getValue();
-      report.message = message;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.TOPIC_SWITCH_RECEIVED, kafkaTopic, partitionId, offset, message);
       isolatedIngestionServer.reportIngestionStatus(report);
     }
 
     @Override
     public void progress(String kafkaTopic, int partitionId, long offset, String message) {
-      IngestionTaskReport report = new IngestionTaskReport();
-      report.reportType = IngestionReportType.PROGRESS.getValue();
-      report.message = message;
-      report.topicName = kafkaTopic;
-      report.partitionId = partitionId;
-      report.offset = offset;
+      IngestionTaskReport report = createIngestionTaskReport(IngestionReportType.PROGRESS, kafkaTopic, partitionId, offset, message);
       isolatedIngestionServer.reportIngestionStatus(report);
     }
   };
