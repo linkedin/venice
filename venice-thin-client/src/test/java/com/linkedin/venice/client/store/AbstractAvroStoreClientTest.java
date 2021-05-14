@@ -146,7 +146,7 @@ public class AbstractAvroStoreClientTest {
     doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
-        false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+        true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
     ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
     ClientStats streamingStats = ClientStats.getClientStats(metricsRepository, storeName,
@@ -217,7 +217,7 @@ public class AbstractAvroStoreClientTest {
     doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
-        false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+        true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
     ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
     ClientStats streamingStats = ClientStats.getClientStats(metricsRepository, storeName,
@@ -264,7 +264,7 @@ public class AbstractAvroStoreClientTest {
     doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
-        false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+        true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.empty(), Optional.empty(), 0)
         .project("int_field")
         .execute(keys);

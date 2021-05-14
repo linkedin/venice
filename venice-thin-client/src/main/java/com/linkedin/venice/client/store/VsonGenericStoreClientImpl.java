@@ -30,10 +30,14 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
 
   @Override
   protected void initSerializer() {
-    this.keySerializer =
-        SerializerDeserializerFactory.getVsonSerializer(getSchemaReader().getKeySchema());
-    this.multiGetRequestSerializer =
-        SerializerDeserializerFactory.getVsonSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
+    if (needSchemaReader) {
+      if (getSchemaReader() != null) {
+        this.keySerializer = SerializerDeserializerFactory.getVsonSerializer(getSchemaReader().getKeySchema());
+        this.multiGetRequestSerializer = SerializerDeserializerFactory.getVsonSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
+      } else {
+        throw new VeniceClientException("SchemaReader is null when initializing serializer");
+      }
+    }
   }
 
   @Override
