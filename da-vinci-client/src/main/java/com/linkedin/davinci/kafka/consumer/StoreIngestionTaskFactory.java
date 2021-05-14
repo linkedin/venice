@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.stats.AggLagStats;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;

@@ -1,5 +1,6 @@
 package com.linkedin.davinci.helix;
 
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.config.VeniceStoreConfig;

@@ -536,7 +536,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     //close it the very end to make sure all ingestion task have released the shared producers.
     IOUtils.closeQuietly(sharedKafkaProducerService);
-    
+
     IOUtils.closeQuietly(topicManagerRepository);
     IOUtils.closeQuietly(topicManagerRepositoryJavaBased);
   }
@@ -546,9 +546,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * Subscribes to partition if required.
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
+   * @param leaderState
    */
   @Override
-  public synchronized void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
+  public synchronized void startConsumption(VeniceStoreConfig veniceStore, int partitionId,
+      Optional<LeaderFollowerStateType> leaderState) {
     String topic = veniceStore.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask == null || !consumerTask.isRunning()) {
@@ -584,7 +586,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
     updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
-    consumerTask.subscribePartition(topic, partitionId);
+    consumerTask.subscribePartition(topic, partitionId, leaderState);
     logger.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
   }
 
@@ -961,5 +963,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public AggLagStats getAggLagStats() {
     return aggLagStats;
+  }
+
+
+  public LeaderFollowerStateType getLeaderStateFromPartitionConsumptionState(String topicName, int partitionId) {
+    return getStoreIngestionTask(topicName).getLeaderState(partitionId);
   }
 }

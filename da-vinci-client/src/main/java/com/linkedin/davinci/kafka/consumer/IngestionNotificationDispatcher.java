@@ -1,16 +1,15 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
-import org.apache.log4j.Logger;
-
 import java.util.Collection;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import org.apache.log4j.Logger;
+
 
 /**
  * Class to wrap all of the interaction with {@link com.linkedin.davinci.notifier.VeniceNotifier}

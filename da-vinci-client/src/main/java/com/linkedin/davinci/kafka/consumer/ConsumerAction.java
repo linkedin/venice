@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import java.util.Optional;
 
 
 /**
@@ -16,20 +17,32 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private final int partition;
   private final int sequenceNumber;
   private final LeaderFollowerParticipantModel.LeaderSessionIdChecker checker;
+  private final LeaderFollowerStateType leaderState;
 
   private int attempts = 0;
 
   public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber) {
-    this(type, topic, partition, sequenceNumber, null);
+    this(type, topic, partition, sequenceNumber, null, Optional.empty());
   }
 
   public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
       LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+    this(type, topic, partition, sequenceNumber, checker, Optional.empty());
+  }
+
+  public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
+      Optional<LeaderFollowerStateType> leaderState) {
+    this(type, topic, partition, sequenceNumber, null, leaderState);
+  }
+
+  public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
+      LeaderFollowerParticipantModel.LeaderSessionIdChecker checker, Optional<LeaderFollowerStateType> leaderState) {
     this.type = type;
     this.topic = topic;
     this.partition = partition;
     this.sequenceNumber = sequenceNumber;
     this.checker = checker;
+    this.leaderState = leaderState.orElse(LeaderFollowerStateType.STANDBY);
   }
 
   public ConsumerActionType getType() {
@@ -58,6 +71,10 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public LeaderFollowerParticipantModel.LeaderSessionIdChecker getLeaderSessionIdChecker() {
     return checker;
+  }
+
+  public LeaderFollowerStateType getLeaderState() {
+    return leaderState;
   }
 
   @Override
@@ -100,7 +117,8 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     if (topic.equals(other.topic)
         && partition == other.partition
         && sequenceNumber == other.sequenceNumber
-        && type.equals(other.type)) {
+        && type.equals(other.type)
+        && leaderState.equals(other.leaderState)) {
       return true;
     }
 

@@ -44,7 +44,7 @@ public class KafkaStoreIngestionServiceTest {
   private VeniceConfigLoader mockVeniceConfigLoader;
   private StorageMetadataService storageMetadataService;
   private ClusterInfoProvider mockClusterInfoProvider;
-  private ReadOnlyStoreRepository mockmetadataRepo;
+  private ReadOnlyStoreRepository mockMetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
   private GenericRecordChunkingAdapter chunkingAdapter;
 
@@ -55,7 +55,7 @@ public class KafkaStoreIngestionServiceTest {
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     storageMetadataService = mock(StorageMetadataService.class);
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
-    mockmetadataRepo = mock(ReadOnlyStoreRepository.class);
+    mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     chunkingAdapter = mock(GenericRecordChunkingAdapter.class);
 
@@ -88,8 +88,7 @@ public class KafkaStoreIngestionServiceTest {
    kafkaStoreIngestionService = new KafkaStoreIngestionService(
        mockStorageEngineRepository,
        mockVeniceConfigLoader,
-       storageMetadataService, mockClusterInfoProvider,
-       mockmetadataRepo,
+       storageMetadataService, mockClusterInfoProvider, mockMetadataRepo,
        mockSchemaRepo,
        new MetricsRepository(),
        null,
@@ -119,7 +118,7 @@ public class KafkaStoreIngestionServiceTest {
 
    Store mockStore = mock(Store.class);
    doReturn(maxVersionNumber).when(mockStore).getLargestUsedVersionNumber();
-   doReturn(mockStore).when(mockmetadataRepo).getStore(mockStoreName);
+   doReturn(mockStore).when(mockMetadataRepo).getStore(mockStoreName);
 
    VeniceStoreConfig mockStoreConfig = mock(VeniceStoreConfig.class);
    doReturn(mockStoreName + "_v" + String.valueOf(taskNum)).when(mockStoreConfig).getStoreName();
@@ -162,8 +161,7 @@ public class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageEngineRepository,
         mockVeniceConfigLoader,
-        storageMetadataService, mockClusterInfoProvider,
-        mockmetadataRepo,
+        storageMetadataService, mockClusterInfoProvider, mockMetadataRepo,
         mockSchemaRepo,
         new MetricsRepository(),
         null,
@@ -182,12 +180,12 @@ public class KafkaStoreIngestionServiceTest {
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
     toBeDeletedStore.addVersion(new VersionImpl(deletedStoreName, 1, "test-job-id"));
-    doReturn(mockStore).when(mockmetadataRepo).getStore(storeName);
-    doReturn(toBeDeletedStore).when(mockmetadataRepo).getStore(deletedStoreName);
-    doReturn(mockStore).when(mockmetadataRepo).getStoreOrThrow(storeName);
-    doReturn(toBeDeletedStore).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);
-    doReturn(new Pair<>(mockStore, mockStore.getVersion(1).get())).when(mockmetadataRepo).waitVersion(eq(storeName), eq(1), any());
-    doReturn(new Pair<>(toBeDeletedStore, toBeDeletedStore.getVersion(1).get())).when(mockmetadataRepo).waitVersion(eq(deletedStoreName), eq(1), any());
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
+    doReturn(toBeDeletedStore).when(mockMetadataRepo).getStore(deletedStoreName);
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    doReturn(toBeDeletedStore).when(mockMetadataRepo).getStoreOrThrow(deletedStoreName);
+    doReturn(new Pair<>(mockStore, mockStore.getVersion(1).get())).when(mockMetadataRepo).waitVersion(eq(storeName), eq(1), any());
+    doReturn(new Pair<>(toBeDeletedStore, toBeDeletedStore.getVersion(1).get())).when(mockMetadataRepo).waitVersion(eq(deletedStoreName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic1, veniceProperties), 0);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 1,
@@ -196,11 +194,11 @@ public class KafkaStoreIngestionServiceTest {
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 0,
        "Expecting an empty set since all ingesting topics have version status of ONLINE");
     mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id"));
-    doReturn(new Pair<>(mockStore, mockStore.getVersion(2).get())).when(mockmetadataRepo).waitVersion(eq(storeName), eq(2), any());
+    doReturn(new Pair<>(mockStore, mockStore.getVersion(2).get())).when(mockMetadataRepo).waitVersion(eq(storeName), eq(2), any());
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic2, veniceProperties), 0);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(invalidTopic, veniceProperties), 0);
-    doThrow(new VeniceNoStoreException(deletedStoreName)).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);
-    doReturn(null).when(mockmetadataRepo).getStore(deletedStoreName);
+    doThrow(new VeniceNoStoreException(deletedStoreName)).when(mockMetadataRepo).getStoreOrThrow(deletedStoreName);
+    doReturn(null).when(mockMetadataRepo).getStore(deletedStoreName);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 2,
         "Invalid and in flight ingesting topics should be included in the returned set");
     mockStore.updateVersionStatus(2, VersionStatus.ONLINE);

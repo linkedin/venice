@@ -8,6 +8,7 @@ import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.RelayNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -20,6 +21,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.log4j.Logger;
 
@@ -82,13 +84,13 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
   }
 
   @Override
-  public void startConsumption(VeniceStoreConfig storeConfig, int partition) {
+  public void startConsumption(VeniceStoreConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
     if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
       AbstractStorageEngine storageEngine = getStorageService().openStoreForNewPartition(storeConfig, partition);
       if (topicStorageEngineReferenceMap.containsKey(storeConfig.getStoreName())) {
         topicStorageEngineReferenceMap.get(storeConfig.getStoreName()).set(storageEngine);
       }
-      getStoreIngestionService().startConsumption(storeConfig, partition);
+      getStoreIngestionService().startConsumption(storeConfig, partition, leaderState);
     } else {
       mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreName(), partition);
       mainIngestionRequestClient.startConsumption(storeConfig.getStoreName(), partition);
@@ -261,7 +263,7 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
       isolatedIngestionServiceProcess.destroy();
       mainIngestionRequestClient.close();
     } catch (Exception e) {
-      logger.info("Unable to close IsolatedIngestionBackend", e);
+      logger.info("Unable to close " + getClass().getSimpleName(), e);
     }
   }
 
@@ -272,14 +274,18 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
   private VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
-      public void completed(String kafkaTopic, int partition, long offset, String message) {
+      public void completed(String kafkaTopic, int partition, long offset, String message, Optional<LeaderFollowerStateType> leaderState) {
         VeniceStoreConfig config = configLoader.getStoreConfig(kafkaTopic);
         config.setRestoreDataPartitions(false);
         config.setRestoreMetadataPartition(false);
         int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, kafkaTopic);
         // Start partition consumption locally.
         for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-          startConsumption(config, subPartition);
+          if (subPartition == PartitionUtils.getLeaderSubPartition(partition, amplificationFactor)) {
+            startConsumption(config, subPartition, leaderState);
+          } else {
+            startConsumption(config, subPartition);
+          }
         }
       }
     };

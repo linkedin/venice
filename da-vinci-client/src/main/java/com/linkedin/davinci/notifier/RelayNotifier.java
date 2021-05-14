@@ -1,5 +1,9 @@
 package com.linkedin.davinci.notifier;
 
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
+import java.util.Optional;
+
+
 /**
  * RelayNotifier is a VeniceNotifier which takes in a target VeniceNotifier and forward all actions to the target notifier.
  * This RelayNotifier can served as the base implementation and other notifier implementation can override the method
@@ -12,8 +16,8 @@ public class RelayNotifier implements VeniceNotifier {
     this.targetNotifier = notifier;
   }
   @Override
-  public void completed(String kafkaTopic, int partitionId, long offset, String message) {
-    targetNotifier.completed(kafkaTopic, partitionId, offset, message);
+  public void completed(String kafkaTopic, int partitionId, long offset, String message, Optional<LeaderFollowerStateType> leaderState) {
+    targetNotifier.completed(kafkaTopic, partitionId, offset, message, leaderState);
   }
 
   @Override

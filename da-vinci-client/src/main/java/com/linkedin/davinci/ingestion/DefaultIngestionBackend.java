@@ -3,12 +3,14 @@ package com.linkedin.davinci.ingestion;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 
@@ -27,13 +29,14 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
     this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
   }
+
   @Override
-  public void startConsumption(VeniceStoreConfig storeConfig, int partition) {
+  public void startConsumption(VeniceStoreConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
     AbstractStorageEngine storageEngine = getStorageService().openStoreForNewPartition(storeConfig, partition);
     if (topicStorageEngineReferenceMap.containsKey(storeConfig.getStoreName())) {
       topicStorageEngineReferenceMap.get(storeConfig.getStoreName()).set(storageEngine);
     }
-    getStoreIngestionService().startConsumption(storeConfig, partition);
+    getStoreIngestionService().startConsumption(storeConfig, partition, leaderState);
   }
 
   @Override
