@@ -27,17 +27,21 @@ public class D2ServiceDiscovery {
   public static final String TYPE_D2_SERVICE_DISCOVERY = "discover_cluster";
   private final Time time = new SystemTime(); // TODO: Make it injectable if we need to control time via tests.
 
-  public TransportClient getD2TransportClientForStore(D2TransportClient client, String storeName) {
-    D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse = discoverD2Service(client, storeName);
+  public TransportClient getD2TransportClientForStore(D2TransportClient client, String storeName, boolean retryOnFailure) {
+    D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse = discoverD2Service(client, storeName, retryOnFailure);
     client.setServiceName(d2ServiceDiscoveryResponse.getD2Service());
     return client;
   }
 
   public D2ServiceDiscoveryResponseV2 discoverD2Service(D2TransportClient client, String storeName) {
+    return discoverD2Service(client, storeName, true);
+  }
+
+  public D2ServiceDiscoveryResponseV2 discoverD2Service(D2TransportClient client, String storeName, boolean retryOnFailure) {
     try {
       TransportClientResponse response = null;
       int currentAttempt = 0;
-      final int MAX_ATTEMPT = 10;
+      final int MAX_ATTEMPT = retryOnFailure ? 10 : 1;
       final long SLEEP_TIME_BETWEEN_ATTEMPTS = 5 * Time.MS_PER_SECOND;
       while (response == null) {
         if (currentAttempt >= MAX_ATTEMPT) {

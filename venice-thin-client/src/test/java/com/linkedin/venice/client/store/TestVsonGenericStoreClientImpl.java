@@ -9,8 +9,8 @@ import org.testng.annotations.Test;
 
 public class TestVsonGenericStoreClientImpl {
   @Test
-  public void testInit() {
-    String storeName = "testInit";
+  public void testStart() {
+    String storeName = "testStart";
     D2TransportClient transportClient = Mockito.mock(D2TransportClient.class);
     VsonGenericStoreClientImpl client = new VsonGenericStoreClientImpl(transportClient, ClientConfig.defaultVsonGenericClientConfig(storeName));
 
@@ -19,12 +19,11 @@ public class TestVsonGenericStoreClientImpl {
     D2TransportClient newTransportClient = Mockito.mock(D2TransportClient.class);
     Mockito.doReturn(newTransportClient)
         .when(d2ServiceDiscovery)
-        .getD2TransportClientForStore(Mockito.any(), Mockito.eq(storeName));
+        .getD2TransportClientForStore(Mockito.any(), Mockito.eq(storeName), Mockito.eq(false));
     client.setD2ServiceDiscovery(d2ServiceDiscovery);
-    client.start();
 
     try {
-      client.init();
+      client.start();
     } catch (VeniceClientException e) {
 
     }

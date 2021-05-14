@@ -43,7 +43,6 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.client.store.InternalAvroStoreClient.*;
 import static org.mockito.Mockito.*;
 
 public class StatTrackingStoreClientTest {
@@ -302,7 +301,7 @@ public class StatTrackingStoreClientTest {
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord>
         storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
-        false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+        true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
 
     MetricsRepository repository = new MetricsRepository();
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(

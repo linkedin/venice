@@ -131,7 +131,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET = CompletableFuture.completedFuture(new HashMap<>());
   private final CompletableFuture<Map<K, GenericRecord>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE = CompletableFuture.completedFuture(new HashMap<>());
 
-  private final Boolean needSchemaReader;
+  protected final Boolean needSchemaReader;
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
   private SchemaReader schemaReader;
   // Key serializer
@@ -244,6 +244,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   protected RecordSerializer<K> getKeySerializer() {
+    return getKeySerializer(true);
+  }
+
+  private RecordSerializer<K> getKeySerializer(boolean retryOnServiceDiscoveryFailure) {
     if (null != keySerializer) {
       return keySerializer;
     }
@@ -253,13 +257,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         return keySerializer;
       }
 
-      init();
+      init(retryOnServiceDiscoveryFailure);
 
       return keySerializer;
     }
   }
 
-  private void discoverD2Service() {
+  private void discoverD2Service(boolean retryOnServiceDiscoveryFailure) {
     if (hasServiceDiscoveryDone) {
       return;
     }
@@ -272,7 +276,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         // Use the new d2 transport client which will talk to the cluster own the given store.
         // Do not need to close the original one, because if we use global d2 client, close will do nothing. If we use
         // private d2, we could not close it as we share this d2 client in the new transport client.
-        transportClient = d2ServiceDiscovery.getD2TransportClientForStore((D2TransportClient) transportClient, storeName);
+        transportClient = d2ServiceDiscovery.getD2TransportClientForStore((D2TransportClient) transportClient,
+            storeName, retryOnServiceDiscoveryFailure);
       }
       hasServiceDiscoveryDone = true;
     }
@@ -283,27 +288,33 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * to, before initializing the serializer.
    * So if sub-implementation need to have its own serializer, please override the initSerializer method.
    */
-  protected void init() {
-    discoverD2Service();
+  protected void init(boolean retryOnServiceDiscoveryFailure) {
+    discoverD2Service(retryOnServiceDiscoveryFailure);
     initSerializer();
   }
 
   protected void initSerializer() {
     // init key serializer
-    this.keySerializer = useFastAvro
-        ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema())
-        : SerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema());
-    // init multi-get request serializer
-    this.multiGetRequestSerializer = useFastAvro
-        ? FastSerializerDeserializerFactory.getAvroGenericSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema())
-        : SerializerDeserializerFactory.getAvroGenericSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
-    // init compute request serializer
-    this.computeRequestClientKeySerializer = useFastAvro
-        ? FastSerializerDeserializerFactory.getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema())
-        : SerializerDeserializerFactory.getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
-    this.streamingFooterRecordDeserializer = useFastAvro
-        ? FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class)
-        : SerializerDeserializerFactory.getAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class);
+    if (needSchemaReader) {
+      if (getSchemaReader() != null) {
+        this.keySerializer =
+            useFastAvro ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema()) : SerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema());
+        // init multi-get request serializer
+        this.multiGetRequestSerializer = useFastAvro ? FastSerializerDeserializerFactory.getAvroGenericSerializer(
+            ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema())
+            : SerializerDeserializerFactory.getAvroGenericSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
+        // init compute request serializer
+        this.computeRequestClientKeySerializer =
+            useFastAvro ? FastSerializerDeserializerFactory.getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema())
+                : SerializerDeserializerFactory.getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
+        this.streamingFooterRecordDeserializer =
+            useFastAvro ? FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class)
+                : SerializerDeserializerFactory.getAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$,
+                    StreamingFooterRecordV1.class);
+      } else {
+        throw new VeniceClientException("SchemaReader is null while initializing serializer");
+      }
+    }
   }
 
   // For testing
@@ -355,10 +366,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, final long preRequestTimeInNS) {
     /**
      * Leveraging the following function to do safe D2 discovery for the following schema fetches.
-     * And we could use {@link #getKeySchema()} since it will cause a dead loop:
+     * And we could not use {@link #getKeySchema()} since it will cause a dead loop:
      * {@link #getRaw} -> {@link #getKeySchema} -> {@link SchemaReader#getKeySchema} -> {@link #getRaw}
      */
-    discoverD2Service();
+    discoverD2Service(true);
     CompletableFuture<byte[]> valueFuture = new CompletableFuture<>();
     requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, false,
         () -> transportClient.get(requestPath),
@@ -584,6 +595,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>();
+    getKeySerializer();
     keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))));
     return  computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
   }
@@ -686,6 +698,24 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
     } else {
       this.schemaReader = null;
+    }
+
+    /**
+     * Try to warm-up the Venice Client during start phase, and it may not work since it is possible that the passed d2
+     * client hasn't been fully started yet, when this happens, the warm-up will be delayed to the first query.
+     */
+    try {
+      getKeySerializer(false);
+      logger.info("Store Client warm-up is done during start phase for store: " + getStoreName());
+    } catch (Exception e) {
+      logger.info("Got the following exception when trying to warm up client during start phase for store: "
+          + getStoreName() + ", and will kick off an async warm-up", e);
+      /**
+       * Kick off an async warm-up, and the D2 client could be ready during the async warm-up.
+       * If the D2 client isn't retry in the async warm-up phase, it will be delayed to the first query.
+       * Essentially, this is a best-effort.
+       */
+      CompletableFuture.runAsync(() -> getKeySerializer());
     }
   }
 
