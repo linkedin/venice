@@ -1593,7 +1593,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
   protected abstract String getBatchWriteSourceAddress();
 
-  Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
+  public Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
     return Optional.of(partitionConsumptionStateMap.get(partitionId));
   }
 
@@ -3070,8 +3070,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * ReportStatusAdaper takes in a notificationDispatcher.
-   * It forwards status report requests to subPartitions of notificationDispatcher.
+   * ReportStatusAdapter forwards status report requests to notificationDispatcher at USER-partition level. It will record
+   * all sub-partitions status reporting and report only once for user-partition when all the preconditions are met.
    */
   public class ReportStatusAdapter {
     private final IngestionNotificationDispatcher notificationDispatcher;
@@ -3101,7 +3101,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     public void reportStartOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
-      report(partitionConsumptionState, SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
+      report(partitionConsumptionState, SubPartitionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
           () -> notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, version));
     }
 
@@ -3111,7 +3111,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * For now we dont have amplificationFactor use cases need incremental push feature.
      */
     public void reportEndOfIncrementalPushReceived(PartitionConsumptionState partitionConsumptionState, String version) {
-      report(partitionConsumptionState, SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, Optional.of(version),
+      report(partitionConsumptionState, SubPartitionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
           () -> notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, version));
     }
 
@@ -3135,12 +3135,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     public void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
-      report(partitionConsumptionState, SubPartitionStatus.TOPIC_SWITCH_RECEIVED,
-          () -> notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion));
+      if (amplificationFactor == 1) {
+        notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
+        return;
+      }
+      int userPartition = partitionConsumptionState.getUserPartition();
+      for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+        if (!partitionConsumptionStateMap.containsKey(subPartitionId)
+            /**
+             * In processEndOfPush, endOfPushReceived is marked as true first then END_OF_PUSH_RECEIVED get reported.
+             * add a check in completion report to prevent a race condition that END_OF_PUSH_RECEIVED comes after completion reported.
+             */
+            || !partitionConsumptionStateMap.get(subPartitionId).hasSubPartitionStatus(SubPartitionStatus.END_OF_PUSH_RECEIVED)
+            || !partitionConsumptionStateMap.get(subPartitionId).isComplete()) {
+          return;
+        }
+      }
+      notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
+      for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+        if (partitionConsumptionStateMap.containsKey(subPartitionId)) {
+          partitionConsumptionStateMap.get(subPartitionId).completionReported();
+        }
+      }
     }
 
+    // This method is called when PartitionConsumptionState are not initialized
     public void reportError(int errorPartitionId, String message, Exception consumerEx) {
-      // this method is called when PartitionConsumptionState are not initialized
       notificationDispatcher.reportError(errorPartitionId, message, consumerEx);
     }
 
@@ -3180,7 +3200,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     private void report(
         PartitionConsumptionState partitionConsumptionState,
         SubPartitionStatus subPartitionStatus,
-        Optional<String> version,
         Runnable report) {
       if (amplificationFactor == 1) {
         report.run();
@@ -3189,22 +3208,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int userPartition = partitionConsumptionState.getUserPartition();
       partitionConsumptionState.recordSubPartitionStatus(subPartitionStatus);
       for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-        if (subPartition == partitionConsumptionState.getPartition()) {
-          continue;
-        }
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(subPartition);
-        if (consumptionState == null
-            || !consumptionState.hasSubPartitionStatus(subPartitionStatus)) {
+        if (consumptionState == null || !consumptionState.hasSubPartitionStatus(subPartitionStatus)) {
           return;
         }
       }
       report.run();
-    }
-
-    private void report(PartitionConsumptionState partitionConsumptionState,
-        SubPartitionStatus subPartitionStatus,
-        Runnable report) {
-      report(partitionConsumptionState, subPartitionStatus, Optional.empty(), report);
     }
   }
 }

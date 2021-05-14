@@ -32,9 +32,12 @@
       "default": ""
     },
     {
-      "name": "offsetRecord",
-      "type": ["null", "bytes"],
-      "default": null
+      "name": "offsetRecordArray",
+      "type": {
+        "type": "array",
+        "items": "bytes"
+      },
+      "default": []
     },
     {
       "name": "storeVersionState",

@@ -271,14 +271,15 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
-  public void testIngestionIsolation(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-and-AmplificationFactor", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
+  public void testIngestionIsolation(boolean isLeaderFollowerModelEnabled, boolean isAmplificationFactorEnabled) throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
+    final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = TestUtils.getUniqueString("store");
     String storeName2 = cluster.createStore(KEY_COUNT);
     Consumer<UpdateStoreQueryParams> paramsConsumer =
-            params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            params -> params.setAmplificationFactor(amplificationFactor)
                 .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
                 .setPartitionCount(partitionCount)
                 .setPartitionerClass(ConstantVenicePartitioner.class.getName())
@@ -345,18 +346,17 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testHybridStore(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-and-AmplificationFactor", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testHybridStore(boolean isLeaderFollowerModelEnabled, boolean isAmplificationFactorEnabled) throws Exception {
     final int partition = 1;
     final int partitionCount = 2;
+    final int amplificationFactor = isAmplificationFactorEnabled ? 3 : 1;
     String storeName = TestUtils.getUniqueString("store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
             .setPartitionCount(partitionCount)
-            // TODO: Re-enable after Amplification Factor is supported for Leader-Follower model
-            //.setAmplificationFactor(10)
-            .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setAmplificationFactor(amplificationFactor)
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
             );
@@ -422,63 +422,6 @@ public class DaVinciClientTest {
           assertThrows(NonLocalAccessException.class, () -> client4.get(key).get());
         }
       }
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testAmplificationFactorInHybridStore() throws Exception {
-    final int partition = 1;
-    final int partitionCount = 2;
-    final int amplificationFactor = 10;
-    String storeName = TestUtils.getUniqueString("store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer =
-        params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
-            .setPartitionCount(partitionCount)
-            .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-            .setLeaderFollowerModel(true)
-            .setReplicationFactor(2)
-            .setAmplificationFactor(amplificationFactor)
-            .setPartitionerParams(
-                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
-            );
-    setupHybridStore(storeName, paramsConsumer);
-
-    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
-      client.subscribe(Collections.singleton(partition)).get();
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (Integer i = 0; i < KEY_COUNT; i++) {
-          assertEquals(client.get(i).get(), i);
-        }
-      });
-
-      // unsubscribe to a partition with data
-      client.unsubscribe(Collections.singleton(partition));
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (Integer i = 0; i < KEY_COUNT; i++) {
-          final int key = i;
-          assertThrows(VeniceException.class, () -> client.get(key).get());
-        }
-      });
-
-      // unsubscribe not subscribed partitions
-      client.unsubscribe(Collections.singleton(0));
-
-      // re-subscribe to a partition with data to test sub a unsub-ed partition
-      client.subscribeAll().get();
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (Integer i = 0; i < KEY_COUNT; i++) {
-          assertEquals(client.get(i).get(), i);
-        }
-      });
-
-      // test unsubscribe from all partitions
-      client.unsubscribeAll();
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        for (Integer i = 0; i < KEY_COUNT; i++) {
-          final int key = i;
-          assertThrows(VeniceException.class, () -> client.get(key).get());
-        }
-      });
     }
   }
 

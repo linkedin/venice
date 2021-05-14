@@ -51,13 +51,10 @@ public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<Fu
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
-
     logger.info("Received ingestion report " + ingestionReportType.name() + " for topic: " + topicName + ", partition: " + partitionId + " from ingestion service.");
-    // TODO: Use more flexible pull model to sync storage metadata from child process to main process.
-    updateLocalStorageMetadata(report);
-
     int amplificationFactor = PartitionUtils.getAmplificationFactor(nativeIngestionMonitorService.getStoreRepository(), topicName);
-
+    // TODO: Use more flexible pull model to sync storage metadata from child process to main process.
+    updateLocalStorageMetadata(report, amplificationFactor);
     // Relay the notification to parent service's listener.
     switch (ingestionReportType) {
       case COMPLETED:
@@ -115,18 +112,19 @@ public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<Fu
     nativeIngestionMonitorService.getIngestionNotifierList().forEach(lambda);
   }
 
-  private void updateLocalStorageMetadata(IngestionTaskReport report) {
-    // TODO: when amplifcationFactor > 1, ingestion isolation is not well supported
-    // replace report.offsetRecord to a list of offsetRecords later
+  private void updateLocalStorageMetadata(IngestionTaskReport report, int amplificationFactor) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
-    long offset = report.offset;
     // Sync up offset record & store version state before report ingestion complete to parent process.
     if (nativeIngestionMonitorService.getStorageMetadataService() != null) {
-      if (report.offsetRecord != null) {
-        OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecord.array(), partitionStateSerializer);
-        nativeIngestionMonitorService.getStorageMetadataService().putOffsetRecord(topicName, partitionId, offsetRecord);
-        logger.info("Updated offsetRecord for (topic, partition): " + topicName + " " + partitionId + " " + offsetRecord.toString());
+      if (!report.offsetRecordArray.isEmpty()) {
+        int idx = 0;
+        for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
+          OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecordArray.get(idx).array(), partitionStateSerializer);
+          nativeIngestionMonitorService.getStorageMetadataService().putOffsetRecord(topicName, subPartitionId, offsetRecord);
+          logger.info("Updated offsetRecord for subPartition: "  + subPartitionId + " of topic: " + topicName + " as " + offsetRecord.toString());
+          idx++;
+        }
       }
       if (report.storeVersionState != null) {
         StoreVersionState storeVersionState = IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());

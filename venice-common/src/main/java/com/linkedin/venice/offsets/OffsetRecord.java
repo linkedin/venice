@@ -9,20 +9,19 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.util.Utf8;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
@@ -42,7 +41,7 @@ public class OffsetRecord {
   private final PartitionState partitionState;
   private final InternalAvroSpecificSerializer<PartitionState> serializer;
 
-  private Map<GUID, OffsetRecordTransformer> offsetRecordTransformers = new VeniceConcurrentHashMap<>();
+  private final Map<GUID, OffsetRecordTransformer> offsetRecordTransformers = new VeniceConcurrentHashMap<>();
 
   public OffsetRecord(PartitionState partitionState, InternalAvroSpecificSerializer<PartitionState> serializer) {
     this.partitionState = partitionState;
@@ -131,16 +130,24 @@ public class OffsetRecord {
       // Even an empty push should have a SOP and EOP, so offset 1 is the absolute minimum.
       throw new IllegalArgumentException("endOfPushOffset cannot be < 1.");
     }
-//    this.setOffset(endOfPushOffset);
     this.partitionState.endOfPush = true;
   }
 
   public boolean hasSubPartitionStatus(SubPartitionStatus status) {
-    return partitionState.previousStatuses.containsKey(status.name());
+    for (CharSequence previousStatus : partitionState.previousStatuses.keySet()) {
+      if (status.name().equals(previousStatus.toString())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public void recordSubPartitionStatus(SubPartitionStatus status) {
     partitionState.previousStatuses.put(status.name(), status.name());
+  }
+
+  public Map<CharSequence, CharSequence> getSubPartitionStatus() {
+    return partitionState.previousStatuses;
   }
 
   public boolean isEndOfPushReceived() {

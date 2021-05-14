@@ -95,7 +95,7 @@ public class PartitionConsumptionState {
    * because of the properties of the above operations the caller is gurranted to get the latest value for a key either from
    * this map or from the DB.
    */
-  private ConcurrentMap<ByteBuffer, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
+  private final ConcurrentMap<ByteBuffer, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
 
   /**
    * This field is used to track whether the last queued record has been fully processed or not.

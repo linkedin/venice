@@ -3,6 +3,7 @@ package com.linkedin.davinci.ingestion.isolated;
 import com.linkedin.davinci.ingestion.IngestionRequestTransport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import java.io.Closeable;
 import org.apache.log4j.Logger;
 
@@ -18,10 +19,10 @@ public class IsolatedIngestionRequestClient implements Closeable {
     ingestionRequestTransport = new IngestionRequestTransport(port);
   }
 
-  public void reportIngestionTask(IngestionTaskReport report) {
+  public void reportIngestionStatus(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
-    logger.info("Sending ingestion report: " + report);
+    logger.info("Sending ingestion report: " + IngestionReportType.valueOf(report.reportType) + " for topic: " + report.topicName + ", partition: " + report.partitionId);
     try {
       ingestionRequestTransport.sendRequest(IngestionAction.REPORT, report);
     } catch (Exception e) {

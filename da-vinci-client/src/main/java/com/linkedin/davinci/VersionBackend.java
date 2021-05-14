@@ -255,8 +255,6 @@ public class VersionBackend {
       return;
     }
     completeSubPartition(subPartition);
-
-
     backend.getIngestionBackend().dropStoragePartitionGracefully(config, subPartition, stopConsumptionWaitRetriesNum);
     subPartitionFutures.remove(subPartition);
     tryStopHeartbeat();
