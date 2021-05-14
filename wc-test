@@ -4,6 +4,7 @@ import os
 import re
 import json
 import time
+import random
 import argparse
 import textwrap
 import subprocess
@@ -24,7 +25,7 @@ def run_command(command):
 
 def get_queued_build(build_url, params):
   while True:
-    response = run_command("curl -fs '{0}api/json' -u $(whoami):{apiToken}"
+    response = run_command("curl -kfs '{0}api/json' -u $(whoami):{apiToken}"
       .format(build_url, **params))
     build = json.loads(response)
     if ("executable" in build) or build["blocked"] or build["buildable"]:
@@ -53,10 +54,12 @@ if __name__ == "__main__":
 
   params = dict(job="Venice-WcTest")
   params.update(get_config(CI_CONFIG))
+  if isinstance(params["url"], list):
+    params["url"] = random.choice(params["url"])
 
   if args.patch:
     response = run_command(
-      "curl -fv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
+      "curl -kfv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
         .format(**params, patch=args.patch))
   else:
     changes = run_command("git diff --patch --compact-summary origin/master")
@@ -65,7 +68,7 @@ if __name__ == "__main__":
 
     revision = '#' + run_command("git rev-parse --short HEAD")
     response = run_command(
-        "curl -fv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}' <<'\003'\n{changes}\n\003"
+        "curl -kfv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@-;filename={name}' <<'\003'\n{changes}\n\003"
           .format(**params, changes=changes, name=revision))
 
     print("Submitted working copy {name} for testing:".format(name=revision))
