@@ -8,7 +8,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import org.apache.kafka.common.KafkaFuture;
 
 
@@ -63,17 +62,6 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     // the occurrence rate at least
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.DELETE_TOPIC,
-        calculateDurationMs(startTimeMs)
-    );
-    return res;
-  }
-
-  @Override
-  public Set<String> listAllTopics() {
-    final long startTimeMs = time.getMilliseconds();
-    Set<String> res = kafkaAdmin.listAllTopics();
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.LIST_ALL_TOPICS,
         calculateDurationMs(startTimeMs)
     );
     return res;
