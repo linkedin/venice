@@ -136,7 +136,8 @@ public class StoreBackend {
           bootstrapVersion.orElseGet(
               () -> backend.getCurrentVersion(storeName, faultyVersions).orElseGet(
                   () -> backend.getLatestVersion(storeName, faultyVersions).orElseThrow(
-                      () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName))))));
+                      () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName)))),
+          stats));
 
     } else if (bootstrapVersion.isPresent()) {
       throw new VeniceException("Bootstrap version is already selected, storeName=" + storeName +
@@ -217,7 +218,7 @@ public class StoreBackend {
     }
 
     logger.info("Subscribing to future version " + version.kafkaTopicName());
-    setFutureVersion(new VersionBackend(backend, version));
+    setFutureVersion(new VersionBackend(backend, version, stats));
     futureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapCurrentVersion(e));
   }
 

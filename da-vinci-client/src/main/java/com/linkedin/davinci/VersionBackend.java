@@ -48,6 +48,7 @@ public class VersionBackend {
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
   private final Map<Integer, CompletableFuture> subPartitionFutures = new VeniceConcurrentHashMap<>();
   private final int stopConsumptionWaitRetriesNum;
+  private final StoreBackendStats storeBackendStats;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -56,7 +57,7 @@ public class VersionBackend {
   private Future heartbeat;
   private final int heartbeatInterval;
 
-  VersionBackend(DaVinciBackend backend, Version version) {
+  VersionBackend(DaVinciBackend backend, Version version, StoreBackendStats storeBackendStats) {
     this.backend = backend;
     this.version = version;
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
@@ -74,6 +75,7 @@ public class VersionBackend {
     this.storageEngine.set(backend.getStorageService().getStorageEngine(version.kafkaTopicName()));
     this.backend.getIngestionBackend().setStorageEngineReference(version.kafkaTopicName(), storageEngine);
     Store store = backend.getStoreRepository().getStoreOrThrow(version.getStoreName());
+    this.storeBackendStats = storeBackendStats;
     // push status store must be enabled both in Da Vinci and the store
     this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled() &&
       this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
@@ -185,8 +187,7 @@ public class VersionBackend {
 
     return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
         .whenComplete((v, e) -> {
-          StoreBackend storeBackend = backend.getStoreOrThrow(version.getStoreName());
-          storeBackend.getStats().recordSubscribeDuration(Duration.between(startTime, Instant.now()));
+          storeBackendStats.recordSubscribeDuration(Duration.between(startTime, Instant.now()));
         });
   }
 

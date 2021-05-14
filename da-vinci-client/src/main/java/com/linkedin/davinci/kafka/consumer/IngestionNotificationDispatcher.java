@@ -54,7 +54,7 @@ class IngestionNotificationDispatcher {
       return;
     }
 
-    for(VeniceNotifier notifier : notifiers) {
+    for (VeniceNotifier notifier : notifiers) {
       try {
         function.apply(notifier);
       } catch(Exception ex) {

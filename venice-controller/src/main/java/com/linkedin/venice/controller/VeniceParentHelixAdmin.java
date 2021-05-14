@@ -154,6 +154,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
   private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
+  private static final String AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX = "Auto_meta_system_store_empty_push_";
+  private static final long DEFAULT_META_SYSTEM_STORE_SIZE = 1024 * 1024 * 1024;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
 
@@ -558,14 +560,24 @@ public class VeniceParentHelixAdmin implements Admin {
       message.operationType = AdminMessageType.STORE_CREATION.getValue();
       message.payloadUnion = storeCreation;
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-      // TODO For now only auto materialize if the config is enabled and the zk shared store already exists. We will
-      //      automatically create the zk shared store too once we refactor the zk shared scheme.
+      VeniceControllerConfig controllerConfig = multiClusterConfigs.getConfigForCluster(clusterName);
       if (!VeniceSystemStoreUtils.isSystemStore(storeName) &&
-          multiClusterConfigs.getConfigForCluster(clusterName).isMetadataSystemStoreAutoMaterializeEnabled()) {
+          controllerConfig.isMetadataSystemStoreAutoMaterializeEnabled()) {
         Store zkSharedStore = getStore(clusterName, VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName));
         if (zkSharedStore != null && zkSharedStore.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
           materializeMetadataStoreVersion(clusterName, storeName, zkSharedStore.getCurrentVersion());
         }
+      }
+      if (!VeniceSystemStoreUtils.isSystemStore(storeName) &&
+          controllerConfig.isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled() &&
+          controllerConfig.isAutoMaterializeMetaSystemStoreEnabled()) {
+        String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+        // Generate unique empty push id to ensure a new version is always created.
+        String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
+        Version version = incrementVersionIdempotent(clusterName, metaSystemStoreName, pushJobId,
+            calculateNumberOfPartitions(clusterName, metaSystemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
+            getReplicationFactor(clusterName, metaSystemStoreName));
+        writeEndOfPush(clusterName, metaSystemStoreName, version.getNumber(), true);
       }
     } finally {
       releaseAdminMessageLock(clusterName);

@@ -14,6 +14,8 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
@@ -56,11 +58,32 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
 
   // A map of mocked meta Store objects. Keep the meta stores separately from SystemStoreBasedRepository.subscribedStoreMap
   // because these meta stores doesn't require refreshes.
-  private final Map<String, Store> metaStoreMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, SystemStore> metaStoreMap = new VeniceConcurrentHashMap<>();
 
   private final DaVinciConfig daVinciConfig = new DaVinciConfig();
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final SchemaReader metaStoreSchemaReader;
+
+  private final StoreDataChangedListener metaSystemStoreChangeListener = new StoreDataChangedListener() {
+    @Override
+    public void handleStoreChanged(Store store) {
+      if (!(store instanceof SystemStore)) {
+        String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName());
+        SystemStore existingMetaSystemStore = metaStoreMap.get(metaSystemStoreName);
+        if (existingMetaSystemStore == null) {
+          logger.warn(
+              "Meta system store: " + metaSystemStoreName + " is missing unexpectedly from internal metaStoreMap");
+          return;
+        }
+        // Even if there's a rewind and we accidentally go back to a previous version it should be temporary.
+        // i.e. endpoint discovers v2 -> meta system store attributes shows v1 (due to rewind) -> endpoint will discover v2 again
+        SystemStore newMetaSystemStore = new SystemStore(existingMetaSystemStore.getZkSharedStore().cloneStore(),
+            existingMetaSystemStore.getSystemStoreType(), store.cloneStore());
+        metaStoreMap.put(metaSystemStoreName, newMetaSystemStore);
+        notifyStoreChanged(newMetaSystemStore);
+      }
+    }
+  };
 
   public DaVinciClientMetaStoreBasedRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
     super(clientConfig, backendConfig);
@@ -72,6 +95,20 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
         .setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())
         .setSpecificValueClass(StoreMetaValue.class);
     metaStoreSchemaReader = ClientFactory.getSchemaReader(clonedClientConfig);
+    registerStoreDataChangedListener(metaSystemStoreChangeListener);
+  }
+
+  @Override
+  protected Store removeStore(String storeName) {
+    if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
+      // We also need to release its corresponding meta system store resources.
+      Store metaSystemStore = metaStoreMap.remove(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+      if (metaSystemStore != null) {
+        notifyStoreDeleted(metaSystemStore);
+      }
+      daVinciClientMap.remove(storeName);
+    }
+    return super.removeStore(storeName);
   }
 
   @Override
@@ -202,10 +239,16 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     return new ZKStore(storeProperties);
   }
 
-  private Store getMetaStore(String metaStoreName) {
+  private SystemStore getMetaStore(String metaStoreName) {
     ClientConfig clonedClientConfig = ClientConfig.cloneConfig(clientConfig).setStoreName(metaStoreName);
     try (StoreStateReader storeStateReader = StoreStateReader.getInstance(clonedClientConfig)) {
-      return storeStateReader.getStore();
+      Store metaStore = storeStateReader.getStore();
+      if (metaStore instanceof SystemStore) {
+        return (SystemStore) metaStore;
+      } else {
+        throw new VeniceException("Expecting a meta system store from StoreStateReader with name: " + metaStoreName
+            + " but got a non-system store instead");
+      }
     }
   }
 
