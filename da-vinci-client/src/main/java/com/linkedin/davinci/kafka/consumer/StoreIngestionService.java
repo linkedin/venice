@@ -20,8 +20,13 @@ public interface StoreIngestionService {
    * Starts consuming messages from Kafka Partition corresponding to Venice Partition.
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
+   * @param leaderState Initial L/F state.
    */
-  void startConsumption(VeniceStoreConfig veniceStore, int partitionId);
+  void startConsumption(VeniceStoreConfig veniceStore, int partitionId, Optional<LeaderFollowerStateType> leaderState);
+
+  default void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
+    startConsumption(veniceStore, partitionId, Optional.empty());
+  }
 
   /**
    * Stops consuming messages from Kafka Partition corresponding to Venice Partition.

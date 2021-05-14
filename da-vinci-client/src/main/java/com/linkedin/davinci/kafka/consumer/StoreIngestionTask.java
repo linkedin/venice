@@ -101,7 +101,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -111,6 +110,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import static java.util.concurrent.TimeUnit.*;
+
 
 /**
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
@@ -522,9 +522,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Adds an asynchronous partition subscription request for the task.
    */
-  public synchronized void subscribePartition(String topic, int partition) {
+  public synchronized void subscribePartition(String topic, int partition, Optional<LeaderFollowerStateType> leaderState) {
     throwIfNotRunning();
-    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, partition, nextSeqNum()));
+    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, partition, nextSeqNum(), leaderState));
+  }
+
+  public synchronized void subscribePartition(String topic, int partition) {
+    subscribePartition(topic, partition, Optional.empty());
   }
 
   /**
@@ -1486,7 +1490,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return everSubscribedTopics;
   }
 
-  protected void processCommonConsumerAction(ConsumerActionType operation, String topic, int partition) throws InterruptedException {
+  protected void processCommonConsumerAction(ConsumerActionType operation, String topic, int partition, LeaderFollowerStateType leaderState) throws InterruptedException {
     switch (operation) {
       case SUBSCRIBE:
         // Drain the buffered message by last subscription.
@@ -1497,6 +1501,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // First let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, amplificationFactor, record,
             hybridStoreConfig.isPresent(), isIncrementalPushEnabled, incrementalPushPolicy);
+
+        newPartitionConsumptionState.setLeaderState(leaderState);
+
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -1788,6 +1795,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Check whether it's ready to serve
     defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
+  }
+
+  /**
+   * Retrieve current LeaderFollowerState from partition's PCS. This method is used by IsolatedIngestionServer to sync
+   * user-partition LeaderFollower status from child process to parent process in ingestion isolation.
+   */
+  public LeaderFollowerStateType getLeaderState(int partition) {
+    if (partitionConsumptionStateMap.containsKey(partition)) {
+      return partitionConsumptionStateMap.get(partition).getLeaderState();
+    }
+    // By default L/F state is STANDBY(follower)
+    return LeaderFollowerStateType.STANDBY;
   }
 
   private void syncOffset(String topic, PartitionConsumptionState ps) {

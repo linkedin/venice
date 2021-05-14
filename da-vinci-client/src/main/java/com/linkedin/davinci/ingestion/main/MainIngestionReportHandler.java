@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion.main;
 
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
@@ -16,6 +17,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.util.Optional;
 import java.util.function.Consumer;
 import org.apache.log4j.Logger;
 
@@ -57,11 +59,12 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     // Relay the notification to parent service's listener.
     switch (ingestionReportType) {
       case COMPLETED:
-        // TODO: Set leader state in local KafkaStoreIngestionService during server integration.
         for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
           mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
         }
-        notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset));
+        // Set LeaderState passed from child process to cache.
+        LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
+        notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
         break;
       case ERROR:
         for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {

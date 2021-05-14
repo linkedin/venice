@@ -3,11 +3,14 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.StatsErrorCode;
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -22,15 +25,11 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -39,7 +38,6 @@ import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Logger;
-
 
 
 public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
@@ -134,7 +132,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       case LEADER_TO_STANDBY:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + this.getClass().getName());
       default:
-        processCommonConsumerAction(operation, topic, partition);
+        processCommonConsumerAction(operation, topic, partition, message.getLeaderState());
     }
   }
 

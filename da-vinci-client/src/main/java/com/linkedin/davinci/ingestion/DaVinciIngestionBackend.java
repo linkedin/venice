@@ -1,6 +1,5 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import java.util.concurrent.atomic.AtomicReference;
 

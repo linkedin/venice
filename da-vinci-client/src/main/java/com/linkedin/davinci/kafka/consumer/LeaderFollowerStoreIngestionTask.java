@@ -1,15 +1,19 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.StatsErrorCode;
 import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -39,15 +43,11 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
@@ -55,7 +55,6 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
-import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
@@ -387,7 +386,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         endSegment(partition);
         break;
       default:
-        processCommonConsumerAction(operation, topic, partition);
+        processCommonConsumerAction(operation, topic, partition, message.getLeaderState());
     }
   }
 

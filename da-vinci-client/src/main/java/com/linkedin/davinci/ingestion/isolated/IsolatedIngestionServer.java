@@ -8,6 +8,7 @@ import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -317,6 +318,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   public void reportIngestionStatus(IngestionTaskReport report) {
     IngestionReportType ingestionReportType = IngestionReportType.valueOf(report.reportType);
     if (ingestionReportType.equals(IngestionReportType.COMPLETED) || ingestionReportType.equals(IngestionReportType.ERROR)) {
+      int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, report.topicName.toString());
+      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(report.partitionId, amplificationFactor);
+      // Fetch LeaderState from LeaderSubPartition of the user partition.
+      LeaderFollowerStateType leaderState = getStoreIngestionService().getLeaderStateFromPartitionConsumptionState(report.topicName.toString(), leaderSubPartition);
+      logger.info("Transferring leader state " + leaderState + " for topic: " + report.topicName + ", partition: " + report.partitionId + " from leaderPartition: " + leaderSubPartition);
+
       setPartitionToBeUnsubscribed(report.topicName.toString(), report.partitionId);
 
       Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
@@ -333,7 +340,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
           logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
           // Set offset record in ingestion report.
           List<ByteBuffer> offsetRecordArray = new ArrayList<>();
-          int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, topicName);
           for (int subPartition : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
             OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, subPartition);
             offsetRecordArray.add(ByteBuffer.wrap(offsetRecord.toBytes()));
@@ -349,7 +355,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
           } else {
             throw new VeniceException("StoreVersionState does not exist for version " + topicName);
           }
-          // TODO: Transmit current L/F state to main process in following RB.
+          // Report leaderState for user partition.
+          report.leaderFollowerState = leaderState.getValue();
         } else {
           logger.error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
         }
