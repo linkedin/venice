@@ -1,7 +1,6 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
@@ -131,32 +130,6 @@ public class AvroGenericStoreClientImplTest {
       IOUtils.closeQuietly(storeClient);
     }
     storeClients.clear();
-    if (d2Client != null) {
-      D2ClientUtils.shutdownClient(d2Client);
-    }
-  }
-
-  @Test
-  public void testWarmupDuringStartPhaseForD2ClientBasedStoreClient()
-      throws InterruptedException, ExecutionException, IOException {
-    D2Client lateStartD2Client = D2TestUtils.getD2Client(routerServer.getZkAddress(), false);
-    MetricsRepository metricsRepository = new MetricsRepository();
-    try (AvroGenericStoreClient<String, Object> d2StoreClient =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig
-            .defaultGenericClientConfig(storeName)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
-            .setD2Client(lateStartD2Client)
-            .setMetricsRepository(metricsRepository))) {
-      // Register metrics repository per store client for further metrics verification
-      storeClientMetricsRepositories.put(d2StoreClient, metricsRepository);
-      // Start d2 client after starting store client
-      D2TestUtils.startD2Client(lateStartD2Client);
-      Map<String, AvroGenericStoreClient<String, Object>> storeClientMap = new HashMap<>();
-      storeClientMap.put(D2TransportClient.class.getName(), d2StoreClient);
-      getByStoreKeyTest(storeClientMap);
-    } finally {
-      D2ClientUtils.shutdownClient(lateStartD2Client);
-    }
   }
 
   @Test
@@ -211,8 +184,9 @@ public class AvroGenericStoreClientImplTest {
     }
   }
 
-  private void getByStoreKeyTest(Map<String, AvroGenericStoreClient<String, Object>> storeClientMap)
-      throws IOException, VeniceClientException, ExecutionException, InterruptedException {
+
+  @Test
+  public void getByStoreKeyTest() throws IOException, VeniceClientException, ExecutionException, InterruptedException {
     int valueSchemaId = 1;
     String valueSchemaStr = "{\n" +
         "\t\"type\": \"record\",\n" +
@@ -244,7 +218,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(key);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClientMap.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
@@ -254,11 +228,6 @@ public class AvroGenericStoreClientImplTest {
 
       testMetric(entry.getValue(), RequestType.SINGLE_GET);
     }
-  }
-
-  @Test
-  public void getByStoreKeyTest() throws IOException, VeniceClientException, ExecutionException, InterruptedException {
-    getByStoreKeyTest(storeClients);
   }
 
   @Test

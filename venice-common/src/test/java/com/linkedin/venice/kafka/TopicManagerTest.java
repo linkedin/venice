@@ -5,7 +5,6 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.util.*;
@@ -258,27 +257,6 @@ public class TopicManagerTest {
     manager.updateTopicRetention(topic, 0);
     Properties topicProperties = manager.getTopicConfig(topic);
     Assert.assertEquals(topicProperties.getProperty(LogConfig.RetentionMsProp()), "0");
-  }
-
-  @Test
-  public void testListAllTopics() {
-    String topic1 = TestUtils.getUniqueString("topic");
-    String topic2 = TestUtils.getUniqueString("topic");
-    String topic3 = TestUtils.getUniqueString("topic");
-    // Create 1 topic, expect 1 topic in total
-    manager.createTopic(topic1, 1, 1, true);
-    Set<String> allTopics = manager.listTopics();
-    Assert.assertEquals(allTopics, Collections.singleton(topic1));
-
-    // Create another topic, expect 2 topics in total
-    manager.createTopic(topic2, 1, 1, false);
-    allTopics = manager.listTopics();
-    Assert.assertEquals(allTopics, Utils.setOf(topic1, topic2));
-
-    // Create another topic, expect 3 topics in total
-    manager.createTopic(topic3, 1, 1, false);
-    allTopics = manager.listTopics();
-    Assert.assertEquals(allTopics, Utils.setOf(topic1, topic2, topic3));
   }
 
   @Test

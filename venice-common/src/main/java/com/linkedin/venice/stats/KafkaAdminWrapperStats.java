@@ -16,7 +16,6 @@ public class KafkaAdminWrapperStats extends AbstractVeniceStats {
   public enum OCCURRENCE_LATENCY_SENSOR_TYPE {
     CREATE_TOPIC,
     DELETE_TOPIC,
-    LIST_ALL_TOPICS,
     SET_TOPIC_CONFIG,
     GET_ALL_TOPIC_RETENTIONS,
     GET_TOPIC_CONFIG,
