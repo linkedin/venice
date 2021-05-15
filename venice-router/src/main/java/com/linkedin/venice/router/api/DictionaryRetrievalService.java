@@ -141,9 +141,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     // How long of a timeout we allow for a node to respond to a dictionary request
     dictionaryRetrievalTimeMs = routerConfig.getDictionaryRetrievalTimeMs();
 
-    // How long of a timeout we allow for a node to respond to a dictionary request
-    int numThreads = routerConfig.getRouterDictionaryProcessingThreads();
-
+    executor = Executors.newScheduledThreadPool(routerConfig.getRouterDictionaryProcessingThreads());
 
     // This thread is the consumer and it waits for an item to be put in the "dictionaryDownloadCandidates" queue.
     Runnable runnable = () -> {
@@ -174,7 +172,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     };
 
     this.dictionaryRetrieverThread = new Thread(runnable);
-    executor = Executors.newScheduledThreadPool(numThreads);
   }
 
   private CompletableFuture<byte[]> getDictionary(String store, int version){
@@ -280,20 +277,22 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       return true;
     }
 
-    List<CompletableFuture<Void>> dictionaryDownloadFutures = dictionaryDownloadTopics.stream()
+    List<Version> filteredTopics = dictionaryDownloadTopics.stream()
         .map(topic -> metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(topic)).getVersion(Version.parseVersionFromKafkaTopicName(topic)))
         .filter(Optional::isPresent)
         .map(Optional::get)
-        .map(version -> fetchCompressionDictionary(version))
         .filter(Objects::nonNull)
         .collect(Collectors.toList());
 
-    CompletableFuture<ByteBuffer>[] dictionaryDownloadFutureArray = dictionaryDownloadFutures.toArray(new CompletableFuture[dictionaryDownloadFutures.size()]);
+    logger.info("Beginning dictionary fetch for " + storeTopics);
+
+    CompletableFuture[] dictionaryDownloadFutureArray = filteredTopics.stream()
+        .map(this::fetchCompressionDictionary)
+        .filter(Objects::nonNull)
+        .toArray(CompletableFuture[]::new);
 
     try {
-      logger.info("Beginning dictionary fetch for " + storeTopics);
       CompletableFuture.allOf(dictionaryDownloadFutureArray).get(dictionaryRetrievalTimeMs, TimeUnit.MILLISECONDS);
-      logger.info("Dictionary fetch completed for " + storeTopics);
     } catch (Exception e) {
       logger.warn("Dictionary fetch failed. Store topics were: " + storeTopics + " : " + e.getMessage());
       return false;
@@ -308,7 +307,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     if (downloadingDictionaryFutures.containsKey(kafkaTopic)) {
       dictionaryFuture = downloadingDictionaryFutures.get(kafkaTopic);
     } else {
-      dictionaryFuture = getDictionary(version.getStoreName(), version.getNumber()).handle((dictionary, exception) -> {
+      dictionaryFuture = getDictionary(version.getStoreName(), version.getNumber()).handleAsync((dictionary, exception) -> {
         if(exception != null) {
           if (exception instanceof InterruptedException) {
             logger.warn(exception.getMessage() + ". Will not retry dictionary download.");
@@ -332,7 +331,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
           initCompressorFromDictionary(version, dictionary);
         }
         return null;
-      });
+      }, executor);
       downloadingDictionaryFutures.put(kafkaTopic, dictionaryFuture);
     }
 
