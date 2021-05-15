@@ -115,14 +115,14 @@ public class VeniceVersionFinder {
 
       VersionStatus lastCurrentVersionStatus = veniceStore.getVersionStatus(prevVersion);
       if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE) && prevVersionDecompressorReady) {
-        String message = errorMessage + ". Continuing to serve previous version: " + prevVersion;
+        String message = errorMessage + " Continuing to serve previous version: " + prevVersion + ".";
         if (!filter.isRedundantException(message)) {
           logger.warn(message);
         }
         stats.recordStale(metadataCurrentVersion, prevVersion);
         return prevVersion;
       } else {
-        errorMessage += " Unable to serve previous version: " + prevVersion;
+        errorMessage += " Unable to serve previous version: " + prevVersion + ".";
 
         if (!lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
           errorMessage += " Previous version has status: " + lastCurrentVersionStatus.toString() + ".";

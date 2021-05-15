@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.HashMap;
@@ -266,6 +267,8 @@ public class TestVsonStoreBatch {
           properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
         },
         (avroClient, vsonClient, metricsRepository) -> {
+          // Sleeping to wait for dictionary download since there is no previous version to fallback to.
+          Utils.sleep(1000);
           //test single get
           for (int i = 1; i <= 100; i ++) {
             Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);

@@ -581,7 +581,7 @@ public abstract class TestBatch {
 
         Assert.assertEquals(avroClient.get(key).get(), null);
       }
-    }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -618,7 +618,7 @@ public abstract class TestBatch {
 
         Assert.assertEquals(avroClient.get(key).get(), null);
       }
-    }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -655,7 +655,7 @@ public abstract class TestBatch {
 
         Assert.assertEquals(avroClient.get(key).get(), null);
       }
-    }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+    });
   }
 
   protected String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator) throws Exception {
