@@ -79,7 +79,7 @@ public class TopicManager implements Closeable {
   // aren't necessarily compromised with potentially new bad behavior.
   public static final boolean DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
 
-  public static final int DEFAULT_KAFKA_OFFSET_API_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  public static final Duration DEFAULT_KAFKA_OFFSET_API_TIMEOUT = Duration.ofMinutes(1);
 
   // Immutable state
   private final String kafkaBootstrapServers;
@@ -726,7 +726,7 @@ public class TopicManager implements Closeable {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     long latestOffset;
     try {
-      Map<TopicPartition, Long> offsetMap = consumer.endOffsets(Collections.singletonList(topicPartition), Duration.ofMillis(DEFAULT_KAFKA_OFFSET_API_TIMEOUT));
+      Map<TopicPartition, Long> offsetMap = consumer.endOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
       if (offsetMap.containsKey(topicPartition)) {
         latestOffset = offsetMap.get(topicPartition);
       } else {
@@ -747,7 +747,7 @@ public class TopicManager implements Closeable {
    * If the topic is empty or all the messages are truncated (startOffset==endOffset), return -1;
    * otherwise, return the producer timestamp of the last message in the selected partition of a topic
    */
-  private synchronized Long getLatestProducerTimestamp(String topic, Integer partition) throws TopicDoesNotExistException {
+  private synchronized Long getLatestProducerTimestamp(String topic, int partition) throws TopicDoesNotExistException {
     if (!containsTopic(topic)) {
       throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
     }
@@ -760,13 +760,18 @@ public class TopicManager implements Closeable {
 
     long latestProducerTimestamp;
     try {
-      consumer.assign(Collections.singletonList(topicPartition));
-      consumer.seekToEnd(Collections.singletonList(topicPartition));
-      long latestOffset = consumer.position(topicPartition);
+      Map<TopicPartition, Long> offsetByTopicPartition =
+          consumer.endOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
+      if (offsetByTopicPartition == null || !offsetByTopicPartition.containsKey(topicPartition)) {
+        throw new VeniceException("Got no results of finding end offsets for topic partition: " + topicPartition);
+      }
+      final long latestOffset = offsetByTopicPartition.get(topicPartition);
+
       if (latestOffset <= 0) {
         // empty topic
         latestProducerTimestamp = -1;
       } else {
+        consumer.assign(Collections.singletonList(topicPartition));
         consumer.seekToBeginning(Collections.singletonList(topicPartition));
         long earliestOffset = consumer.position(topicPartition);
         if (earliestOffset == latestOffset) {
@@ -853,7 +858,7 @@ public class TopicManager implements Closeable {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     long earliestOffset;
     try {
-      Map<TopicPartition, Long> offsetMap = consumer.beginningOffsets(Collections.singletonList(topicPartition), Duration.ofMillis(DEFAULT_KAFKA_OFFSET_API_TIMEOUT));
+      Map<TopicPartition, Long> offsetMap = consumer.beginningOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
       if (offsetMap.containsKey(topicPartition)) {
         earliestOffset = offsetMap.get(topicPartition);
       } else {
