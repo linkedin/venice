@@ -20,8 +20,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.davinci.config.BlockingQueueType.*;
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -217,6 +217,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final boolean enableAutoCompactionForSamzaReprocessingJob;
+  private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
 
   private final boolean sharedKafkaProducerEnabled;
   private final int sharedProducerPoolSizePerKafkaCluster;
@@ -347,7 +348,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties.getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10)); // default 10 mins
     enableAutoCompactionForSamzaReprocessingJob = serverProperties.getBoolean(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
-
     sharedKafkaProducerEnabled = serverProperties.getBoolean(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, false);
     sharedProducerPoolSizePerKafkaCluster = serverProperties.getInt(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, 8);
 
@@ -364,6 +364,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, 8 * 1024 * 1024);
     http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, 4096);
     http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
+
+    offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart = serverProperties.getInt(
+        OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
   }
 
   public int getListenerPort() {
@@ -677,6 +680,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return unsubscribeAfterBatchpushEnabled;
   }
 
+
   public boolean isHttp2InboundEnabled() {
     return http2InboundEnabled;
   }
@@ -699,5 +703,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getHttp2MaxHeaderListSize() {
     return http2MaxHeaderListSize;
+  }
+
+  public int getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() {
+    return offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
   }
 }
