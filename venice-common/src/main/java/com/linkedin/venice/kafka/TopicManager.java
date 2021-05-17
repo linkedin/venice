@@ -307,7 +307,7 @@ public class TopicManager implements Closeable {
    * @param retentionInMS
    * @return true if the retention time config of the input topic gets updated; return false if nothing gets updated
    */
-  public boolean updateTopicRetention(String topicName, long retentionInMS) {
+  public boolean updateTopicRetention(String topicName, long retentionInMS) throws TopicDoesNotExistException {
     Properties topicProperties = getTopicConfig(topicName);
     return updateTopicRetention(topicName, retentionInMS, topicProperties);
   }
@@ -336,7 +336,7 @@ public class TopicManager implements Closeable {
    * Update topic compaction policy.
    * @throws TopicDoesNotExistException, if the topic doesn't exist
    */
-  public synchronized void updateTopicCompactionPolicy(String topicName, boolean logCompaction) {
+  public synchronized void updateTopicCompactionPolicy(String topicName, boolean logCompaction) throws TopicDoesNotExistException {
     Properties topicProperties = getTopicConfig(topicName);
     // If the compaction policy doesn't exist, by default it is disabled.
     String currentCompactionPolicy = topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG) ?
@@ -382,7 +382,7 @@ public class TopicManager implements Closeable {
   /**
    * Return topic retention time in MS.
    */
-  public long getTopicRetention(String topicName) {
+  public long getTopicRetention(String topicName) throws TopicDoesNotExistException {
     Properties topicProperties = getTopicConfig(topicName);
     if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
       return Long.parseLong(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG));
@@ -401,8 +401,6 @@ public class TopicManager implements Closeable {
 
   /**
    * This operation is a little heavy, since it will pull the configs for all the topics.
-   * @param topicName
-   * @return
    */
   public Properties getTopicConfig(String topicName) {
     if (!containsTopic(topicName)) {
@@ -418,9 +416,6 @@ public class TopicManager implements Closeable {
 
   /**
    * Still heavy, but can be called repeatedly to amortize that cost.
-   *
-   * @param topicName
-   * @return
    */
   public Properties getCachedTopicConfig(String topicName) {
     // query the cache first, if it it doesn't have it, query it from kafka and store it.
