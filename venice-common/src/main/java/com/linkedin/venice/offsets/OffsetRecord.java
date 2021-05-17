@@ -34,6 +34,8 @@ public class OffsetRecord {
 
   // Offset 0 is still a valid offset, Using that will cause a message to be skipped.
   public static final long LOWEST_OFFSET = -1;
+  public static final long LOWEST_OFFSET_LAG = 0;
+  public static final long DEFAULT_OFFSET_LAG = -1;
 
   private static final String PARTITION_STATE_STRING = "PartitionState";
 
@@ -62,6 +64,7 @@ public class OffsetRecord {
   private static PartitionState getEmptyPartitionState() {
     PartitionState emptyPartitionState = new PartitionState();
     emptyPartitionState.offset = LOWEST_OFFSET;
+    emptyPartitionState.offsetLag = LOWEST_OFFSET_LAG;
     emptyPartitionState.producerStates = new HashMap<>();
     emptyPartitionState.endOfPush = false;
     emptyPartitionState.lastUpdate = 0;
@@ -103,6 +106,25 @@ public class OffsetRecord {
 
   public void setOffset(long offset) {
     this.partitionState.offset = offset;
+  }
+
+  public long getOffsetLag() {
+    return this.partitionState.offsetLag;
+  }
+
+  public void setOffsetLag(long offsetLag) {
+    this.partitionState.offsetLag = offsetLag;
+  }
+
+  /**
+   * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
+   */
+  public long getEventTimeEpochMs() {
+    return this.partitionState.producerStates.values().stream()
+        .map(producerPartitionState -> producerPartitionState.messageTimestamp)
+        .sorted((o1, o2) -> o1.compareTo(o2) * -1)
+        .findFirst()
+        .orElse(-1L);
   }
 
   public long getLatestProducerProcessingTimeInMs() {
@@ -273,6 +295,8 @@ public class OffsetRecord {
   public String toString() {
     return "OffsetRecord{" +
         "offset=" + getOffset() +
+        ", offsetLag=" + getOffsetLag() +
+        ", eventTimeEpochMs=" + getEventTimeEpochMs() +
         ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
         ", isEndOfPushReceived=" + isEndOfPushReceived() +
         ", databaseInfo=" + getDatabaseInfo() +

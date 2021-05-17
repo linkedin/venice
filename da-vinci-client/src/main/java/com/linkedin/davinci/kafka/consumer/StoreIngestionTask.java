@@ -1235,6 +1235,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         consumerUnSubscribeAllTopics(partitionConsumptionState);
         waitForAllMessageToBeProcessedFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition(), partitionConsumptionState);
+        // Before shutdown, try to persist offset lag to make partition online faster when restart.
+        updateOffsetLagInMetadata(partitionConsumptionState);
         syncOffset(kafkaVersionTopic, partitionConsumptionState);
       }
 
@@ -1484,7 +1486,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * task state transition in Controller.
      */
     try {
-      defaultReadyToServeChecker.apply(newPartitionConsumptionState);
+      // Compare the offset lag is acceptable or not, if acceptable, report completed directly, otherwise rely on the normal
+      // ready-to-server checker.
+      boolean isCompletedReport = false;
+      long offsetLagDeltaRelaxFactor = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart();
+      long previousOffsetLag = newPartitionConsumptionState.getOffsetRecord().getOffsetLag();
+      if (hybridStoreConfig.isPresent() && newPartitionConsumptionState.isEndOfPushReceived()) {
+        long offsetLagThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+        // Only enable this feature with positive offset lag delta relax factor and offset lag threshold.
+        if (offsetLagDeltaRelaxFactor > 0 && offsetLagThreshold > 0) {
+          long offsetLag = measureHybridOffsetLag(newPartitionConsumptionState, true);
+          if (previousOffsetLag != OffsetRecord.DEFAULT_OFFSET_LAG) {
+            logger.info("Checking offset Lag behavior: current offset lag: " + offsetLag + ", previous offset lag: "
+                + previousOffsetLag + ", offset lag threshold: " + offsetLagThreshold);
+            if (offsetLag < previousOffsetLag + offsetLagDeltaRelaxFactor * offsetLagThreshold) {
+                reportStatusAdapter.reportCompleted(newPartitionConsumptionState, true);
+                isCompletedReport = true;
+            }
+            // Clear offset lag in metadata, it is only used in restart.
+            newPartitionConsumptionState.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
+          }
+        }
+      }
+      if (!isCompletedReport) {
+        defaultReadyToServeChecker.apply(newPartitionConsumptionState);
+      }
     } catch (VeniceInconsistentStoreMetadataException e) {
       storeIngestionStats.recordInconsistentStoreMetadata(storeName, 1);
       // clear the local store metadata and the replica will be rebuilt from scratch upon retry as part of
@@ -1841,6 +1867,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
       logger.info(msg + offsetRecord.getOffset());
     }
+  }
+
+  private void updateOffsetLagInMetadata(PartitionConsumptionState ps) {
+    // Measure and save real-time offset lag.
+    long offsetLag = measureHybridOffsetLag(ps, true);
+    ps.getOffsetRecord().setOffsetLag(offsetLag);
   }
 
   public void setLastDrainerException(Exception e) {

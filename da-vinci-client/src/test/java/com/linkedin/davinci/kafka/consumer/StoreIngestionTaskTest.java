@@ -12,6 +12,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -33,6 +34,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -803,7 +805,6 @@ public class StoreIngestionTaskTest {
   public void testReadyToServePartition(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.broadcastEndOfPush(new HashMap<>());
-
     runTest(getSet(PARTITION_FOO),
         () -> {
           Store mockStore = mock(Store.class);
@@ -1763,6 +1764,66 @@ public class StoreIngestionTaskTest {
     );
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testFastReadyToServePartition(boolean isLeaderFollowerModelEnabled) throws Exception {
+    StorageEngineMetadataService storageEngineMetadataService = mock(StorageEngineMetadataService.class);
+    long previousOffsetLag = 10L;
+    mockStorageMetadataService = storageEngineMetadataService;
+    long offsetLagThresholdToGoOnline = 10L;
+    hybridStoreConfig = Optional.of(new HybridStoreConfigImpl(10L, offsetLagThresholdToGoOnline,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE));
+    // Using a negative value just for preparing positive offset lag: -currentOffset
+    long currentOffset = -20L;
+    int offsetLagThresholdFactor = 2;
+    // In this test we will trigger online faster by ensuring:
+    // -currentOffset < previousOffsetLag + offsetLagThresholdFactor * offsetLagThresholdToGoOnline
+    runTest(getSet(PARTITION_FOO),
+        () -> {
+          doReturn(offsetLagThresholdFactor).when(veniceServerConfig).getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart();
+          StoreVersionState storeVersionState = new StoreVersionState();
+          StartOfBufferReplay sobr = new StartOfBufferReplay();
+          storeVersionState.startOfBufferReplay = sobr;
+          // Prepare offset record.
+          PartitionState partitionState = new PartitionState();
+          partitionState.producerStates = new HashMap<>();
+          partitionState.endOfPush = true;
+          partitionState.lastUpdate = 0;
+          partitionState.startOfBufferReplayDestinationOffset = null;
+          partitionState.databaseInfo = new HashMap<>();
+          // Assign an empty map. Otherwise, NPE will be thrown during serialization.
+          partitionState.upstreamOffsetMap = new HashMap<>();
+          partitionState.previousStatuses = new HashMap<>();
+          final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+              AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+          OffsetRecord offsetRecord = new OffsetRecord(partitionState, partitionStateSerializer);
+          offsetRecord.setOffset(currentOffset);
+          offsetRecord.setOffsetLag(previousOffsetLag);
+          // Buffer Replay is enabled for hybrid in this test. Prepare offset lag for O/O and L/F model: -currentOffset
+          if (isLeaderFollowerModelEnabled) {
+            // For L/F model, Offset lag calculated as: lastOffsetInRealTimeTopic - leaderOffset = -currentOffset
+            partitionState.leaderOffset = currentOffset;
+            partitionState.leaderTopic = Version.composeRealTimeTopic(storeNameWithoutVersionInfo);
+          } else {
+            // For O/O model, Offset lag calculated as:
+            // (sourceTopicMaxOffset  - sobrSourceOffset) - (currentOffset - sobrDestinationOffset) = -currentOffset
+            long sobrSourceOffset = 0L;
+            long sobrDestinationOffset = 0L;
+            // Prepare sobrDestinationOffset for PARTITION_FOO [id == 1]
+            offsetRecord.setStartOfBufferReplayDestinationOffset(sobrDestinationOffset);
+            // Prepare sobrSourceOffset for O/O model PARTITION_FOO [id == 1]
+            sobr.sourceOffsets = Arrays.asList(0L,sobrSourceOffset);
+            sobr.sourceTopicName = topic;
+          }
+          doReturn(offsetRecord).when(storageEngineMetadataService).getLastOffset(topic, PARTITION_FOO);
+          doReturn(Optional.of(storeVersionState)).when(mockStorageMetadataService).getStoreVersionState(topic);
+        },
+        () -> {
+          waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+            verify(mockLogNotifier, atLeastOnce()).completed(topic, PARTITION_FOO, currentOffset);
+          });
+        },
+        isLeaderFollowerModelEnabled);
+  }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testReportErrorWithEmptyPcsMap(boolean isLeaderFollowerModelEnabled) throws Exception {
