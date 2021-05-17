@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
@@ -89,13 +90,22 @@ public class PartitionConsumptionState {
    * This hash map will keep a temporary mapping between a key and it's value.
    * get {@link #getTransientRecord(byte[])} and put {@link ##setTransientRecord(long, byte[], byte[], int, int, int)}
    * operation on this map will be invoked from from kafka consumer thread.
-   *
    * delete {@link #mayRemoveTransientRecord(long, byte[])} operation will be invoked from drainer thread after persisting it in DB.
-   *
-   * because of the properties of the above operations the caller is gurranted to get the latest value for a key either from
+   * because of the properties of the above operations the caller is guaranteed to get the latest value for a key either from
    * this map or from the DB.
    */
   private final ConcurrentMap<ByteBuffer, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
+
+  /**
+   * In-memory hash set which keeps track of all previous status this sub-partition has reported. It is the in-memory
+   * cache of the previousStatuses field in {@link com.linkedin.venice.kafka.protocol.state.PartitionState} inside
+   * {@link OffsetRecord}.
+   * The reason to have this HashSet is to maintain correctness and efficiency for the sub-partition status report
+   * condition checking. The previousStatus is a generated CharSequence to CharSequence map and we need to iterate over
+   * all the records in it to in order to compare with incoming status string. Without explicit locking, this iteration
+   * might throw {@link java.util.ConcurrentModificationException} in multi-thread environments.
+   */
+  private final Set<String> previousStatusSet = VeniceConcurrentHashMap.newKeySet();
 
   /**
    * This field is used to track whether the last queued record has been fully processed or not.
@@ -128,6 +138,11 @@ public class PartitionConsumptionState {
      */
     this.latestMessageConsumptionTimestampInMs = System.currentTimeMillis();
     this.consumptionStartTimeInMs = System.currentTimeMillis();
+
+    // Restore previous status from offset record.
+    for (CharSequence status : offsetRecord.getSubPartitionStatus().keySet()) {
+      previousStatusSet.add(status.toString());
+    }
   }
 
   public int getPartition() {
@@ -388,13 +403,14 @@ public class PartitionConsumptionState {
   }
 
   public boolean hasSubPartitionStatus(SubPartitionStatus subPartitionStatus) {
-    return this.getOffsetRecord() != null && this.getOffsetRecord().hasSubPartitionStatus(subPartitionStatus);
+    return previousStatusSet.contains(subPartitionStatus.name());
   }
 
   public void recordSubPartitionStatus(SubPartitionStatus subPartitionStatus) {
     if (this.getOffsetRecord() != null) {
       this.getOffsetRecord().recordSubPartitionStatus(subPartitionStatus);
     }
+    previousStatusSet.add(subPartitionStatus.name());
   }
 
   /**
