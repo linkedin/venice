@@ -1,4 +1,4 @@
-package com.linkedin.davinci.ingestion.regular;
+package com.linkedin.davinci.ingestion.main;
 
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -8,7 +8,6 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -24,18 +23,18 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 
 
 /**
- * NativeIngestionReportHandler is the handler class for {@link NativeIngestionMonitorService}. It handles {@link IngestionTaskReport}
+ * MainIngestionReportHandler is the handler class for {@link MainIngestionMonitorService}. It handles {@link IngestionTaskReport}
  * sent from child process and triggers corresponding notifier actions. For all these status, the handler will notify all
  * the registered notifiers in main process.
  */
-public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
-  private static final Logger logger = Logger.getLogger(NativeIngestionReportHandler.class);
+public class MainIngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+  private static final Logger logger = Logger.getLogger(MainIngestionReportHandler.class);
   private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-  private final NativeIngestionMonitorService nativeIngestionMonitorService;
+  private final MainIngestionMonitorService mainIngestionMonitorService;
 
-  public NativeIngestionReportHandler(NativeIngestionMonitorService nativeIngestionMonitorService) {
-    logger.info("NativeIngestionReportHandler created.");
-    this.nativeIngestionMonitorService = nativeIngestionMonitorService;
+  public MainIngestionReportHandler(MainIngestionMonitorService mainIngestionMonitorService) {
+    logger.info("MainIngestionReportHandler created.");
+    this.mainIngestionMonitorService = mainIngestionMonitorService;
   }
 
   @Override
@@ -52,7 +51,7 @@ public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<Fu
     int partitionId = report.partitionId;
     long offset = report.offset;
     logger.info("Received ingestion report " + ingestionReportType.name() + " for topic: " + topicName + ", partition: " + partitionId + " from ingestion service.");
-    int amplificationFactor = PartitionUtils.getAmplificationFactor(nativeIngestionMonitorService.getStoreRepository(), topicName);
+    int amplificationFactor = PartitionUtils.getAmplificationFactor(mainIngestionMonitorService.getStoreRepository(), topicName);
     // TODO: Use more flexible pull model to sync storage metadata from child process to main process.
     updateLocalStorageMetadata(report, amplificationFactor);
     // Relay the notification to parent service's listener.
@@ -60,13 +59,13 @@ public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<Fu
       case COMPLETED:
         // TODO: Set leader state in local KafkaStoreIngestionService during server integration.
         for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
-          nativeIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
+          mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
         }
         notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset));
         break;
       case ERROR:
         for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
-          nativeIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
+          mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
         }
         notifierHelper(notifier -> notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString())));
         break;
@@ -108,27 +107,27 @@ public class NativeIngestionReportHandler extends SimpleChannelInboundHandler<Fu
   }
 
   private void notifierHelper(Consumer<VeniceNotifier> lambda) {
-    nativeIngestionMonitorService.getPushStatusNotifierList().forEach(lambda);
-    nativeIngestionMonitorService.getIngestionNotifierList().forEach(lambda);
+    mainIngestionMonitorService.getPushStatusNotifierList().forEach(lambda);
+    mainIngestionMonitorService.getIngestionNotifierList().forEach(lambda);
   }
 
   private void updateLocalStorageMetadata(IngestionTaskReport report, int amplificationFactor) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     // Sync up offset record & store version state before report ingestion complete to parent process.
-    if (nativeIngestionMonitorService.getStorageMetadataService() != null) {
+    if (mainIngestionMonitorService.getStorageMetadataService() != null) {
       if (!report.offsetRecordArray.isEmpty()) {
         int idx = 0;
         for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
           OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecordArray.get(idx).array(), partitionStateSerializer);
-          nativeIngestionMonitorService.getStorageMetadataService().putOffsetRecord(topicName, subPartitionId, offsetRecord);
+          mainIngestionMonitorService.getStorageMetadataService().putOffsetRecord(topicName, subPartitionId, offsetRecord);
           logger.info("Updated offsetRecord for subPartition: "  + subPartitionId + " of topic: " + topicName + " as " + offsetRecord.toString());
           idx++;
         }
       }
       if (report.storeVersionState != null) {
         StoreVersionState storeVersionState = IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
-        nativeIngestionMonitorService.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
+        mainIngestionMonitorService.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
         logger.info("Updated storeVersionState for topic: " + topicName + " " + storeVersionState.toString());
       }
     }

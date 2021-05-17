@@ -4,8 +4,8 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
-import com.linkedin.davinci.ingestion.regular.NativeIngestionStorageMetadataService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
@@ -75,7 +75,7 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
  * (4) HEARTBEAT: Request to check the health of child process for monitoring purpose.
  * (5) UPDATE_METADATA: A special kind of request to update metadata of topic partitions opened in main process. As
  * of current ingestion isolation design, metadata partition of a topic will always be opened in child process.
- * {@link NativeIngestionStorageMetadataService} maintains in-memory cache of metadata in main
+ * {@link MainIngestionStorageMetadataService} maintains in-memory cache of metadata in main
  * process, and it will persist metadata updates via UPDATE_METADATA requests.
  * (6) SHUTDOWN_COMPONENT: Request to shutdown a specific ingestion component gracefully.
  *

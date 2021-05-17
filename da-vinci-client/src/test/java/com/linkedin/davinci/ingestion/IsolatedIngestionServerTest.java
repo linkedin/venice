@@ -1,7 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
-import com.linkedin.davinci.ingestion.regular.NativeIngestionRequestClient;
+import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -25,7 +25,7 @@ public class IsolatedIngestionServerTest {
         Optional.empty()
     );
 
-    NativeIngestionRequestClient client = new NativeIngestionRequestClient(servicePort);
+    MainIngestionRequestClient client = new MainIngestionRequestClient(servicePort);
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(client.sendHeartbeatRequest());
     });

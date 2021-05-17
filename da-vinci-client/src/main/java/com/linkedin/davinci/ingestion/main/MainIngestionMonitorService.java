@@ -1,4 +1,4 @@
-package com.linkedin.davinci.ingestion.regular;
+package com.linkedin.davinci.ingestion.main;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
@@ -33,16 +33,16 @@ import static java.lang.Thread.*;
 
 
 /**
- * NativeIngestionMonitorService is the listener service in main process which handles various kinds of reports sent from
- * isolated ingestion service. NativeIngestionMonitorService itself is a Netty based server implementation, and the main
- * report handling logics happens in {@link NativeIngestionReportHandler}.
+ * MainIngestionMonitorService is the listener service in main process which handles various kinds of reports sent from
+ * isolated ingestion service. MainIngestionMonitorService itself is a Netty based server implementation, and the main
+ * report handling logics happens in {@link MainIngestionReportHandler}.
  * Besides reports handling, it also maintains two executor services to send heartbeat check and collect metrics to/from
  * child process. Also, it maintains status for all the ongoing/completed topic partition ingestion tasks, which helps
  * {@link IsolatedIngestionBackend} to check which process a topic partition storage is located, as well as status recovery
  * when child process crashed and restarted.
  */
-public class NativeIngestionMonitorService extends AbstractVeniceService {
-  private static final Logger logger = Logger.getLogger(NativeIngestionMonitorService.class);
+public class MainIngestionMonitorService extends AbstractVeniceService {
+  private static final Logger logger = Logger.getLogger(MainIngestionMonitorService.class);
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
@@ -53,8 +53,8 @@ public class NativeIngestionMonitorService extends AbstractVeniceService {
   private final IsolatedIngestionBackend ingestionBackend;
   private final ScheduledExecutorService metricsRequestScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
-  private final NativeIngestionRequestClient metricsClient;
-  private final NativeIngestionRequestClient heartbeatClient;
+  private final MainIngestionRequestClient metricsClient;
+  private final MainIngestionRequestClient heartbeatClient;
   // Topic name to partition set map, representing all topic partitions being ingested in Isolated Ingestion Backend.
   private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
   // Topic name to partition set map, representing all topic partitions that have completed ingestion in isolated process.
@@ -65,7 +65,7 @@ public class NativeIngestionMonitorService extends AbstractVeniceService {
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository;
   private IsolatedIngestionProcessStats isolatedIngestionProcessStats;
-  private NativeIngestionStorageMetadataService storageMetadataService;
+  private MainIngestionStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService storeIngestionService;
   private ReadOnlyStoreRepository storeRepository;
 
@@ -73,7 +73,7 @@ public class NativeIngestionMonitorService extends AbstractVeniceService {
   private long latestHeartbeatTimestamp = -1;
   private long heartbeatTimeoutMs;
 
-  public NativeIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, int applicationPort, int servicePort) {
+  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, int applicationPort, int servicePort) {
     this.applicationPort = applicationPort;
     this.servicePort = servicePort;
     this.ingestionBackend = ingestionBackend;
@@ -84,14 +84,14 @@ public class NativeIngestionMonitorService extends AbstractVeniceService {
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-            .childHandler(new NativeIngestionReportChannelInitializer(this))
+            .childHandler(new MainIngestionReportChannelInitializer(this))
             .option(ChannelOption.SO_BACKLOG, 1000)
             .childOption(ChannelOption.SO_KEEPALIVE, true)
             .option(ChannelOption.SO_REUSEADDR, true)
             .childOption(ChannelOption.TCP_NODELAY, true);
 
-    heartbeatClient = new NativeIngestionRequestClient(this.servicePort);
-    metricsClient = new NativeIngestionRequestClient(this.servicePort);
+    heartbeatClient = new MainIngestionRequestClient(this.servicePort);
+    metricsClient = new MainIngestionRequestClient(this.servicePort);
   }
 
   @Override
@@ -99,7 +99,7 @@ public class NativeIngestionMonitorService extends AbstractVeniceService {
     serverFuture = bootstrap.bind(applicationPort).sync();
     logger.info("Report listener service started on port: " + applicationPort);
     if (configLoader == null) {
-      throw new VeniceException("Venice config not found in NativeIngestionMonitorService!");
+      throw new VeniceException("Venice config not found in MainIngestionMonitorService!");
     }
     heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS
         .toMillis(60));
@@ -166,11 +166,11 @@ public class NativeIngestionMonitorService extends AbstractVeniceService {
     return metricsRepository;
   }
 
-  public void setStorageMetadataService(NativeIngestionStorageMetadataService storageMetadataService) {
+  public void setStorageMetadataService(MainIngestionStorageMetadataService storageMetadataService) {
     this.storageMetadataService = storageMetadataService;
   }
 
-  public NativeIngestionStorageMetadataService getStorageMetadataService() {
+  public MainIngestionStorageMetadataService getStorageMetadataService() {
     return storageMetadataService;
   }
 
@@ -245,7 +245,7 @@ public class NativeIngestionMonitorService extends AbstractVeniceService {
   }
 
   private void restartForkedProcess() {
-    try (NativeIngestionRequestClient client = new NativeIngestionRequestClient(servicePort)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(servicePort)) {
       ingestionBackend.setIsolatedIngestionServiceProcess(client.startForkedIngestionProcess(configLoader));
 
       // Reset heartbeat time.

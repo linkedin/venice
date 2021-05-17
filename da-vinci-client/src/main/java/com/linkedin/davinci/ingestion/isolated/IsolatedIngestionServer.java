@@ -3,10 +3,10 @@ package com.linkedin.davinci.ingestion.isolated;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
+import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
-import com.linkedin.davinci.ingestion.regular.NativeIngestionMonitorService;
-import com.linkedin.davinci.ingestion.regular.NativeIngestionRequestClient;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -65,13 +65,13 @@ import static java.lang.Thread.*;
  * request from main process, which pass in all the configs needed to initialize all ingestion components.
  * (2) Once initialization completes, it starts listening to ingestion command sent from main process, such as startConsumption,
  * stopConsumption, killConsumption, updateMetadata and so on.
- * (3) When ingestion notifier in child process is notified, it will use its {@link NativeIngestionRequestClient} to relay status
- * back to {@link NativeIngestionMonitorService} in main process. {@link NativeIngestionMonitorService} will further dispatch status
+ * (3) When ingestion notifier in child process is notified, it will use its {@link MainIngestionRequestClient} to relay status
+ * back to {@link MainIngestionMonitorService} in main process. {@link MainIngestionMonitorService} will further dispatch status
  * reporting to all registered notifiers in main process.
  *  -- For COMPLETED status, it will stop ingestion and shutdown corresponding storage so main process can re-subscribe it for serving purpose.
  *  -- For ERROR status, it will also stop ingestion and shutdown storage, and it will also forward the ERROR status for main process to handle.
  * IsolatedIngestionServer itself is stateless and will not persist any ingestion status. When the child process encounters failure
- * and crash, {@link NativeIngestionMonitorService} will be responsible of respawning a new instance and resume all ongoing ingestion
+ * and crash, {@link MainIngestionMonitorService} will be responsible of respawning a new instance and resume all ongoing ingestion
  * tasks for fault tolerance purpose.
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {

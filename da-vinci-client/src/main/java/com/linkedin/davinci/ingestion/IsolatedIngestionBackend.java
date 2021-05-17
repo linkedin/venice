@@ -4,9 +4,9 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
-import com.linkedin.davinci.ingestion.regular.NativeIngestionMonitorService;
-import com.linkedin.davinci.ingestion.regular.NativeIngestionRequestClient;
-import com.linkedin.davinci.ingestion.regular.NativeIngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
+import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
+import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.RelayNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -16,7 +16,6 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -31,7 +30,7 @@ import org.apache.log4j.Logger;
  * ingestion service that serves local ingestion, as well as ingestion request client that sends commands to isolated
  * ingestion service process and ingestion listener that listens to ingestion reports from child process.
  * Since RocksDB storage can only be owned by a single process, we have decided to keep metadata partition storage opened
- * in child process and in the main process, we rely on {@link NativeIngestionStorageMetadataService} to serve as the in-memory
+ * in child process and in the main process, we rely on {@link MainIngestionStorageMetadataService} to serve as the in-memory
  * metadata cache and persist the metadata updates from main process to metadata partition in child process.
  * Topic partition ingestion requests will first be sent to child process and after COMPLETED is reported, they will be
  * re-subscribed in main process to serve read traffics for user application and receive future updates.
@@ -40,11 +39,11 @@ import org.apache.log4j.Logger;
  */
 public class IsolatedIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private static final Logger logger = Logger.getLogger(IsolatedIngestionBackend.class);
-  private final NativeIngestionStorageMetadataService storageMetadataService;
+  private final MainIngestionStorageMetadataService storageMetadataService;
   private final StorageService storageService;
   private final KafkaStoreIngestionService kafkaStoreIngestionService;
-  private final NativeIngestionRequestClient nativeIngestionRequestClient;
-  private final NativeIngestionMonitorService nativeIngestionMonitorService;
+  private final MainIngestionRequestClient mainIngestionRequestClient;
+  private final MainIngestionMonitorService mainIngestionMonitorService;
   private final ReadOnlyStoreRepository storeRepository;
   private final VeniceConfigLoader configLoader;
   private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap = new VeniceConcurrentHashMap<>();
@@ -57,24 +56,24 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.kafkaStoreIngestionService = storeIngestionService;
-    this.storageMetadataService = (NativeIngestionStorageMetadataService) storageMetadataService;
+    this.storageMetadataService = (MainIngestionStorageMetadataService) storageMetadataService;
     this.storageService = storageService;
     this.storeRepository = storeRepository;
     this.configLoader = configLoader;
 
     // Create the ingestion request client.
-    nativeIngestionRequestClient = new NativeIngestionRequestClient(servicePort);
+    mainIngestionRequestClient = new MainIngestionRequestClient(servicePort);
     // Create the forked isolated ingestion process.
-    isolatedIngestionServiceProcess = nativeIngestionRequestClient.startForkedIngestionProcess(configLoader);
+    isolatedIngestionServiceProcess = mainIngestionRequestClient.startForkedIngestionProcess(configLoader);
     // Create and start the ingestion report listener.
     try {
-      nativeIngestionMonitorService = new NativeIngestionMonitorService(this, listenerPort, servicePort);
-      nativeIngestionMonitorService.setMetricsRepository(metricsRepository);
-      nativeIngestionMonitorService.setStoreIngestionService(storeIngestionService);
-      nativeIngestionMonitorService.setStorageMetadataService((NativeIngestionStorageMetadataService) storageMetadataService);
-      nativeIngestionMonitorService.setConfigLoader(configLoader);
-      nativeIngestionMonitorService.setStoreRepository(storeRepository);
-      nativeIngestionMonitorService.startInner();
+      mainIngestionMonitorService = new MainIngestionMonitorService(this, listenerPort, servicePort);
+      mainIngestionMonitorService.setMetricsRepository(metricsRepository);
+      mainIngestionMonitorService.setStoreIngestionService(storeIngestionService);
+      mainIngestionMonitorService.setStorageMetadataService((MainIngestionStorageMetadataService) storageMetadataService);
+      mainIngestionMonitorService.setConfigLoader(configLoader);
+      mainIngestionMonitorService.setStoreRepository(storeRepository);
+      mainIngestionMonitorService.startInner();
       logger.info("Ingestion Report Listener started.");
     } catch (Exception e) {
       throw new VeniceException("Unable to start ingestion report listener.", e);
@@ -91,35 +90,35 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
       }
       getStoreIngestionService().startConsumption(storeConfig, partition);
     } else {
-      nativeIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreName(), partition);
-      nativeIngestionRequestClient.startConsumption(storeConfig.getStoreName(), partition);
+      mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreName(), partition);
+      mainIngestionRequestClient.startConsumption(storeConfig.getStoreName(), partition);
     }
   }
 
   @Override
   public void stopConsumption(VeniceStoreConfig storeConfig, int partition) {
     getStoreIngestionService().stopConsumption(storeConfig, partition);
-    nativeIngestionRequestClient.stopConsumption(storeConfig.getStoreName(), partition);
+    mainIngestionRequestClient.stopConsumption(storeConfig.getStoreName(), partition);
   }
 
   @Override
   public void killConsumptionTask(String topicName) {
     getStoreIngestionService().killConsumptionTask(topicName);
-    nativeIngestionRequestClient.killConsumptionTask(topicName);
+    mainIngestionRequestClient.killConsumptionTask(topicName);
   }
 
   @Override
   public void removeStorageEngine(String topicName) {
     getStorageService().removeStorageEngine(topicName);
-    nativeIngestionMonitorService.removedSubscribedTopicName(topicName);
-    nativeIngestionRequestClient.removeStorageEngine(topicName);
+    mainIngestionMonitorService.removedSubscribedTopicName(topicName);
+    mainIngestionRequestClient.removeStorageEngine(topicName);
   }
 
   @Override
   public void dropStoragePartitionGracefully(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds) {
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds);
     getStorageService().dropStorePartition(storeConfig, partition);
-    nativeIngestionRequestClient.unsubscribeTopicPartition(storeConfig.getStoreName(), partition);
+    mainIngestionRequestClient.unsubscribeTopicPartition(storeConfig.getStoreName(), partition);
   }
 
   @Override
@@ -146,7 +145,7 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
           /**
            * LeaderSessionIdChecker logic for ingestion isolation is included in {@link IsolatedIngestionServer}.
            */
-          messageCompleted = nativeIngestionRequestClient.promoteToLeader(storeConfig.getStoreName(), partition);
+          messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreName(), partition);
         }
         if (!messageCompleted) {
           Thread.sleep(100);
@@ -167,7 +166,7 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
           getStoreIngestionService().demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
           messageCompleted = true;
         } else {
-          messageCompleted = nativeIngestionRequestClient.demoteToStandby(storeConfig.getStoreName(), partition);
+          messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreName(), partition);
         }
         if (!messageCompleted) {
           Thread.sleep(100);
@@ -182,7 +181,7 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
   public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       getStoreIngestionService().addCommonNotifier(ingestionListener);
-      nativeIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 
@@ -190,7 +189,7 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
   public void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       getStoreIngestionService().addOnlineOfflineModelNotifier(ingestionListener);
-      nativeIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 
@@ -198,7 +197,7 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
   public void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       getStoreIngestionService().addLeaderFollowerModelNotifier(ingestionListener);
-      nativeIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 
@@ -223,7 +222,7 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
           // No-op. We should only report COMPLETED once when the partition is ready to serve in main process.
         }
       };
-      nativeIngestionMonitorService.addPushStatusNotifier(isolatedPushStatusNotifier);
+      mainIngestionMonitorService.addPushStatusNotifier(isolatedPushStatusNotifier);
     }
   }
 
@@ -256,18 +255,18 @@ public class IsolatedIngestionBackend implements DaVinciIngestionBackend, Venice
 
   public void close() {
     try {
-      nativeIngestionMonitorService.stopInner();
-      nativeIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.KAFKA_INGESTION_SERVICE);
-      nativeIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.STORAGE_SERVICE);
+      mainIngestionMonitorService.stopInner();
+      mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.KAFKA_INGESTION_SERVICE);
+      mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.STORAGE_SERVICE);
       isolatedIngestionServiceProcess.destroy();
-      nativeIngestionRequestClient.close();
+      mainIngestionRequestClient.close();
     } catch (Exception e) {
       logger.info("Unable to close IsolatedIngestionBackend", e);
     }
   }
 
   private boolean isTopicPartitionInLocal(String topicName, int partition) {
-    return nativeIngestionMonitorService.isTopicPartitionIngestedInIsolatedProcess(topicName, partition);
+    return mainIngestionMonitorService.isTopicPartitionIngestedInIsolatedProcess(topicName, partition);
   }
 
   private VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
