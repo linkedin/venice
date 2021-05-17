@@ -99,7 +99,8 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setName(request.queryParams(NAME));
         Store store = admin.getStore(veniceResponse.getCluster(), veniceResponse.getName());
         if (null == store) {
-          throw new VeniceNoStoreException(veniceResponse.getName());
+          veniceResponse.setError("Store " + request.queryParams(NAME) + " does not exist.");
+          return;
         }
         StoreInfo storeInfo = StoreInfo.fromStore(store);
         storeInfo.setColoToCurrentVersions(
