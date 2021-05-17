@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
@@ -24,6 +25,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.log4j.Logger;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -327,5 +329,56 @@ public class TopicManagerTest {
     manager.updateTopicCompactionPolicy(topic, false);
     Assert.assertFalse(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
     Assert.assertEquals(manager.getTopicMinLogCompactionLagMs(topic), 0L);
+  }
+
+  @Test
+  public void testGetConfigForNonExistingTopic() {
+    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getTopicConfig(nonExistingTopic));
+  }
+
+  @Test
+  public void testGetLatestOrEarliestOffsetForNonExistingTopic() {
+    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getLatestOffset(nonExistingTopic, 0));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getLatestOffsetAndRetry(nonExistingTopic, 0, 10));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getEarliestOffset(nonExistingTopic, 0));
+  }
+
+  @Test
+  public void testGetLatestProducerTimestampForNonExistingTopic() {
+    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getLatestProducerTimestampAndRetry(nonExistingTopic, 0, 10));
+  }
+
+  @Test
+  public void testGetAndUpdateTopicRetentionForNonExistingTopic() {
+    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getTopicRetention(nonExistingTopic));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.updateTopicRetention(nonExistingTopic, TimeUnit.DAYS.toMillis(1)));
+  }
+
+  @Test
+  public void testUpdateTopicCompactionPolicyForNonExistingTopic() {
+    String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.updateTopicCompactionPolicy(nonExistingTopic, true));
+  }
+
+  @Test
+  public void testTimeoutOnGettingMaxOffset() {
+    String topic = TestUtils.getUniqueString("topic");
+
+    KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
+    // Mock an admin client to pass topic existence check
+    KafkaAdminWrapper mockKafkaAdminWrapper = mock(KafkaAdminWrapper.class);
+    doReturn(true).when(mockKafkaAdminWrapper).containsTopic(eq(topic));
+    doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getKafkaAdminClient(any());
+    // Throw Kafka TimeoutException when trying to get max offset
+    KafkaConsumer<byte[], byte[]> mockKafkaConsumer = mock(KafkaConsumer.class);
+    doThrow(new TimeoutException()).when(mockKafkaConsumer).endOffsets(any(), any());
+    doReturn(mockKafkaConsumer).when(mockKafkaClientFactory).getKafkaConsumer(any());
+
+    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, mockKafkaClientFactory);
+    Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> topicManager.getLatestOffsetAndRetry(topic, 0, 10));
   }
 }
