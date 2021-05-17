@@ -11,7 +11,7 @@ import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
-import com.linkedin.davinci.ingestion.regular.NativeIngestionRequestClient;
+import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -263,7 +263,7 @@ public class DaVinciClientTest {
       dummyOffsetMetadata.topicName = Version.composeKafkaTopic(storeName, 1);
       dummyOffsetMetadata.partitionId = 0;
       dummyOffsetMetadata.payload = ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
-      NativeIngestionRequestClient requestClient = new NativeIngestionRequestClient(servicePort);
+      MainIngestionRequestClient requestClient = new MainIngestionRequestClient(servicePort);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertTrue(requestClient.updateMetadata(dummyOffsetMetadata));
       });

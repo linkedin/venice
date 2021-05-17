@@ -1,4 +1,4 @@
-package com.linkedin.davinci.ingestion.regular;
+package com.linkedin.davinci.ingestion.main;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
@@ -33,14 +33,14 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
- * NativeIngestionRequestClient sends requests to isolated ingestion process and retrieves responses.
+ * MainIngestionRequestClient sends requests to isolated ingestion process and retrieves responses.
  */
-public class NativeIngestionRequestClient implements Closeable {
-  private static final Logger logger = Logger.getLogger(NativeIngestionRequestClient.class);
+public class MainIngestionRequestClient implements Closeable {
+  private static final Logger logger = Logger.getLogger(MainIngestionRequestClient.class);
 
   private final IngestionRequestTransport ingestionRequestTransport;
 
-  public NativeIngestionRequestClient(int port) {
+  public MainIngestionRequestClient(int port) {
     ingestionRequestTransport = new IngestionRequestTransport(port);
   }
 
