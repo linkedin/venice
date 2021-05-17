@@ -1075,7 +1075,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public void completeMigration(String srcClusterName, String destClusterName, String storeName) {
-        this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+        this.updateClusterDiscovery(storeName, srcClusterName, destClusterName, srcClusterName);
     }
 
     @Override
@@ -1098,12 +1098,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Force update cluster discovery so that it will always point to the source cluster
         // Whichever cluster it currently belongs to does not matter
         String clusterDiscovered = this.discoverCluster(storeName).getFirst();
-        this.updateClusterDiscovery(storeName, clusterDiscovered, srcClusterName);
+        this.updateClusterDiscovery(storeName, clusterDiscovered, srcClusterName, srcClusterName);
     }
 
     @Override
-    public synchronized void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
-        ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(oldCluster).getStoreConfigAccessor();
+    public synchronized void updateClusterDiscovery(String storeName, String oldCluster, String newCluster, String initiatingCluster) {
+        ZkStoreConfigAccessor storeConfigAccessor = getVeniceHelixResource(initiatingCluster).getStoreConfigAccessor();
         StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
         if (storeConfig == null) {
             throw new VeniceException("Store config is empty!");

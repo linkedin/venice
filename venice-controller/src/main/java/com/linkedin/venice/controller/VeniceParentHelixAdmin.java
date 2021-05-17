@@ -2227,8 +2227,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
-    veniceHelixAdmin.updateClusterDiscovery(storeName, oldCluster, newCluster);
+  public void updateClusterDiscovery(String storeName, String oldCluster, String newCluster, String initiatingCluster) {
+    veniceHelixAdmin.updateClusterDiscovery(storeName, oldCluster, newCluster, initiatingCluster);
   }
 
   @Override
@@ -2286,7 +2286,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void completeMigration(String srcClusterName, String destClusterName, String storeName) {
-    veniceHelixAdmin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+    veniceHelixAdmin.updateClusterDiscovery(storeName, srcClusterName, destClusterName, srcClusterName);
   }
 
   @Override
