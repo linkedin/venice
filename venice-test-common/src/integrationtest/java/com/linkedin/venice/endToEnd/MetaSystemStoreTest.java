@@ -319,7 +319,7 @@ public class MetaSystemStoreTest {
     }
   }
 
-  @Test(timeOut = 90 * Time.MS_PER_SECOND)
+  @Test(timeOut = 360 * Time.MS_PER_SECOND)
   public void testDaVinciClientMetaStoreBasedRepositoryAutoDetectVersionChange() throws Exception {
     String regularVeniceStoreName = TestUtils.getUniqueString("venice_store");
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);

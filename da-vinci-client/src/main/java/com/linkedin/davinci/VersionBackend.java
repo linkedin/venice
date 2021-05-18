@@ -1,5 +1,8 @@
 package com.linkedin.davinci;
 
+import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -9,15 +12,6 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
-import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-
-import java.util.concurrent.atomic.AtomicReference;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.log4j.Logger;
-
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,8 +21,11 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -46,7 +43,7 @@ public class VersionBackend {
   private final boolean reportPushStatus;
   private final boolean suppressLiveUpdates;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
-  private final Map<Integer, CompletableFuture> subPartitionFutures = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, CompletableFuture> partitionFutures = new VeniceConcurrentHashMap<>();
   private final int stopConsumptionWaitRetriesNum;
   private final StoreBackendStats storeBackendStats;
 
@@ -93,7 +90,7 @@ public class VersionBackend {
     if (heartbeat != null) {
       heartbeat.cancel(true);
     }
-    for (Map.Entry<Integer, CompletableFuture> entry : subPartitionFutures.entrySet()) {
+    for (Map.Entry<Integer, CompletableFuture> entry : partitionFutures.entrySet()) {
       entry.getValue().cancel(true);
     }
     backend.getIngestionBackend().killConsumptionTask(version.kafkaTopicName());
@@ -143,7 +140,7 @@ public class VersionBackend {
   }
 
   synchronized void tryStopHeartbeat() {
-    if (heartbeat != null && subPartitionFutures.values().stream().allMatch(CompletableFuture::isDone)) {
+    if (heartbeat != null && partitionFutures.values().stream().allMatch(CompletableFuture::isDone)) {
       heartbeat.cancel(true);
       heartbeat = null;
     }
@@ -171,34 +168,6 @@ public class VersionBackend {
         null);
   }
 
-  synchronized boolean isReadyToServe(ComplementSet<Integer> partitions) {
-    return getSubPartitions(partitions).stream().allMatch(this::isSubPartitionReadyToServe);
-  }
-
-  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
-    Instant startTime = Instant.now();
-    List<Integer> subPartitions = getSubPartitions(partitions);
-    logger.info("Subscribing to sub-partitions " + subPartitions + " of " + this);
-
-    List<CompletableFuture> futures = new ArrayList<>(subPartitions.size());
-    for (Integer id : subPartitions) {
-      futures.add(subscribeSubPartition(id));
-    }
-
-    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-        .whenComplete((v, e) -> {
-          storeBackendStats.recordSubscribeDuration(Duration.between(startTime, Instant.now()));
-        });
-  }
-
-  synchronized void unsubscribe(ComplementSet<Integer> partitions) {
-    List<Integer> subPartitions = getSubPartitions(partitions);
-    logger.info("Unsubscribing from sub-partitions " + subPartitions + " of " + this);
-    for (Integer id : subPartitions) {
-      unsubscribeSubPartition(id);
-    }
-  }
-
   public int getUserPartition(int subPartition) {
     int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
     return PartitionUtils.getUserPartition(subPartition, amplificationFactor);
@@ -208,68 +177,86 @@ public class VersionBackend {
     return partitioner.getPartitionId(keyBytes, subPartitionCount);
   }
 
-  private List<Integer> getSubPartitions(ComplementSet<Integer> partitions) {
-    int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-    return PartitionUtils.getSubPartitions(
-        IntStream.range(0, version.getPartitionCount())
-            .filter(partitions::contains)
-            .boxed()
-            .collect(Collectors.toList()),
-        amplificationFactor);
-  }
-
   public int getAmplificationFactor() {
     PartitionerConfig partitionerConfig = version.getPartitionerConfig();
     return partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
   }
 
-  public boolean isSubPartitionSubscribed(Integer subPartition) {
-    return subPartitionFutures.containsKey(subPartition);
+  public boolean isPartitionSubscribed(int partition) {
+    return partitionFutures.containsKey(partition);
   }
 
-  public boolean isSubPartitionReadyToServe(Integer subPartition) {
-    CompletableFuture future = subPartitionFutures.get(subPartition);
+  public boolean isPartitionReadyToServe(int partition) {
+    CompletableFuture future = partitionFutures.get(partition);
     return future != null && future.isDone() && !future.isCompletedExceptionally();
   }
 
-  private synchronized CompletableFuture subscribeSubPartition(int subPartition) {
-    CompletableFuture future = subPartitionFutures.get(subPartition);
-    if (future != null) {
-      logger.info("Sub-partition " + subPartition + " of " + this + " is subscribed, ignoring subscribe request.");
-      return future;
-    }
-
-    // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
-    AbstractStorageEngine engine = storageEngine.get();
-    if (suppressLiveUpdates && engine != null && engine.containsPartition(subPartition)) {
-      return subPartitionFutures.computeIfAbsent(subPartition, k -> CompletableFuture.completedFuture(null));
-    }
-    // AtomicReference of storage engine will be updated internally.
-    backend.getIngestionBackend().startConsumption(config, subPartition);
-    tryStartHeartbeat();
-    return subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture());
+  synchronized boolean isReadyToServe(ComplementSet<Integer> partitions) {
+    return getPartitions(partitions).stream().allMatch(this::isPartitionReadyToServe);
   }
 
-  private synchronized void unsubscribeSubPartition(int subPartition) {
-    if (!subPartitionFutures.containsKey(subPartition)) {
-      logger.warn("Sub-partition " + subPartition + " of " + this + " is not subscribed, ignoring unsubscribe request.");
-      return;
+  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
+    Instant startTime = Instant.now();
+    List<Integer> partitionList = getPartitions(partitions);
+    logger.info("Subscribing to partitions " + partitionList + " of " + this);
+    List<CompletableFuture> futures = new ArrayList<>(partitionList.size());
+    for (int partition : partitionList) {
+      AbstractStorageEngine engine = storageEngine.get();
+      if (partitionFutures.containsKey(partition)) {
+        logger.info("Partition " + partition + " of " + this + " is subscribed, ignoring subscribe request.");
+      } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition * getAmplificationFactor())) {
+        /**
+         * If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
+         * Note: For now we could not completely hide the amplification concept here, since storage engine is not aware
+         * of amplification factor. We only need to check one sub-partition as all sub-partitions of a user partition
+         * are always subscribed/unsubscribed together.
+         */
+        partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
+      } else {
+        partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture());
+        // AtomicReference of storage engine will be updated internally.
+        backend.getIngestionBackend().startConsumption(config, partition);
+        tryStartHeartbeat();
+      }
+      futures.add(partitionFutures.get(partition));
     }
-    completeSubPartition(subPartition);
-    backend.getIngestionBackend().dropStoragePartitionGracefully(config, subPartition, stopConsumptionWaitRetriesNum);
-    subPartitionFutures.remove(subPartition);
+
+    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+        .whenComplete((v, e) -> {
+          storeBackendStats.recordSubscribeDuration(Duration.between(startTime, Instant.now()));
+        });
+  }
+
+  synchronized void unsubscribe(ComplementSet<Integer> partitions) {
+    List<Integer> partitionList = getPartitions(partitions);
+    logger.info("Unsubscribing from partitions " + partitions + " of " + this);
+
+    for (int partition : partitionList) {
+      if (!partitionFutures.containsKey(partition)) {
+        logger.warn("Partition " + partition + " of " + this + " is not subscribed, ignoring unsubscribe request.");
+        return;
+      }
+      completePartition(partition);
+      backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionWaitRetriesNum);
+      partitionFutures.remove(partition);
+    }
     tryStopHeartbeat();
   }
 
-  void completeSubPartition(int subPartition) {
-    logger.info("Sub-partition " + subPartition + " of " + this + " is ready to serve.");
-    subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).complete(null);
-    tryStopHeartbeat();
+  void completePartition(int partition) {
+    logger.info("Partition " + partition + " of " + this + " is ready to serve.");
+    partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture()).complete(null);
   }
 
-  void completeSubPartitionExceptionally(int subPartition, Throwable failure) {
-    logger.warn("Failed to subscribe to sub-partition " + subPartition + " of " + this, failure);
-    subPartitionFutures.computeIfAbsent(subPartition, k -> new CompletableFuture()).completeExceptionally(failure);
-    tryStopHeartbeat();
+  void completePartitionExceptionally(int partition, Throwable failure) {
+    logger.warn("Failed to subscribe to partition " + partition + " of " + this, failure);
+    partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture()).completeExceptionally(failure);
+  }
+
+  private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
+    return IntStream.range(0, version.getPartitionCount())
+        .filter(partitions::contains)
+        .boxed()
+        .collect(Collectors.toList());
   }
 }

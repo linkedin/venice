@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -42,7 +43,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
         mock(AggVersionedStorageEngineStats.class),
         null,
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        mock(ReadOnlyStoreRepository.class));
     clusterConfig = new VeniceClusterConfig(serverProps);
     storeConfig = new VeniceStoreConfig(storeName, serverProps, PersistenceType.ROCKS_DB);
     testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);

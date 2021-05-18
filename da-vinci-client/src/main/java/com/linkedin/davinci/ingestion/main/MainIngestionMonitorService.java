@@ -1,12 +1,11 @@
 package com.linkedin.davinci.ingestion.main;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
+import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
@@ -67,7 +66,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private IsolatedIngestionProcessStats isolatedIngestionProcessStats;
   private MainIngestionStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService storeIngestionService;
-  private ReadOnlyStoreRepository storeRepository;
 
   private VeniceConfigLoader configLoader;
   private long latestHeartbeatTimestamp = -1;
@@ -184,14 +182,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   public KafkaStoreIngestionService getStoreIngestionService() {
     return storeIngestionService;
-  }
-
-  public ReadOnlyStoreRepository getStoreRepository() {
-    return storeRepository;
-  }
-
-  public void setStoreRepository(ReadOnlyStoreRepository storeRepository) {
-    this.storeRepository = storeRepository;
   }
 
   public boolean isTopicPartitionIngestedInIsolatedProcess(String topicName, int partitionId) {

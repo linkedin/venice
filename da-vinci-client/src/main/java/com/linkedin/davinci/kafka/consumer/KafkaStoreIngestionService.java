@@ -37,6 +37,7 @@ import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -62,7 +63,9 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
@@ -153,6 +156,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final SharedKafkaProducerService sharedKafkaProducerService;
 
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+
+
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
       VeniceConfigLoader veniceConfigLoader,
       StorageMetadataService storageMetadataService,
@@ -190,6 +196,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
+    this.partitionStateSerializer = partitionStateSerializer;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
@@ -806,10 +813,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public synchronized boolean containsRunningConsumption(String topic) {
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      return true;
-    }
-    return false;
+    return consumerTask != null && consumerTask.isRunning();
   }
 
   @Override
@@ -966,8 +970,31 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return aggLagStats;
   }
 
-
   public LeaderFollowerStateType getLeaderStateFromPartitionConsumptionState(String topicName, int partitionId) {
     return getStoreIngestionTask(topicName).getLeaderState(partitionId);
+  }
+
+  /**
+   * updatePartitionOffsetRecords updates all sub-partitions latest offset records fetched from isolated ingestion process
+   * in main process, so main process's in-memory storage metadata service could be aware of the latest updates and will
+   * not re-start the ingestion from scratch.
+   */
+  public void updatePartitionOffsetRecords(String topicName, int partition, List<ByteBuffer> offsetRecordArray) {
+    int amplificationFactor = PartitionUtils.getAmplificationFactor(metadataRepo, topicName);
+    int offset = amplificationFactor * partition;
+    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+      OffsetRecord offsetRecord = new OffsetRecord(offsetRecordArray.get(subPartition - offset).array(), partitionStateSerializer);
+      storageMetadataService.put(topicName, subPartition, offsetRecord);
+    }
+  }
+
+  public List<ByteBuffer> getPartitionOffsetRecords(String topicName, int partition) {
+    int amplificationFactor = PartitionUtils.getAmplificationFactor(metadataRepo, topicName);
+    List<ByteBuffer> offsetRecordArray = new ArrayList<>();
+    for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+      OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, subPartition);
+      offsetRecordArray.add(ByteBuffer.wrap(offsetRecord.toBytes()));
+    }
+    return offsetRecordArray;
   }
 }

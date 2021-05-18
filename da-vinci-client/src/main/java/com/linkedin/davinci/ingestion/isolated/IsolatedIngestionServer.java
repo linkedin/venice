@@ -318,11 +318,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   public void reportIngestionStatus(IngestionTaskReport report) {
     IngestionReportType ingestionReportType = IngestionReportType.valueOf(report.reportType);
     if (ingestionReportType.equals(IngestionReportType.COMPLETED) || ingestionReportType.equals(IngestionReportType.ERROR)) {
-      int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, report.topicName.toString());
-      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(report.partitionId, amplificationFactor);
       // Fetch LeaderState from LeaderSubPartition of the user partition.
-      LeaderFollowerStateType leaderState = getStoreIngestionService().getLeaderStateFromPartitionConsumptionState(report.topicName.toString(), leaderSubPartition);
-      logger.info("Transferring leader state " + leaderState + " for topic: " + report.topicName + ", partition: " + report.partitionId + " from leaderPartition: " + leaderSubPartition);
+      LeaderFollowerStateType leaderState = getStoreIngestionService().getLeaderStateFromPartitionConsumptionState(report.topicName.toString(), report.partitionId);
+      logger.info("Transferring leader state " + leaderState + " for topic: " + report.topicName + ", partition: " + report.partitionId);
 
       setPartitionToBeUnsubscribed(report.topicName.toString(), report.partitionId);
 
@@ -339,13 +337,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
           logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
           // Set offset record in ingestion report.
-          List<ByteBuffer> offsetRecordArray = new ArrayList<>();
-          for (int subPartition : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
-            OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, subPartition);
-            offsetRecordArray.add(ByteBuffer.wrap(offsetRecord.toBytes()));
-            logger.info("Putting offsetRecord: " + offsetRecord.toString() + " for topic: " + topicName + ", subPartition: " + subPartition);
-          }
-          report.offsetRecordArray = offsetRecordArray;
+          report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
 
           // Set store version state in ingestion report.
           Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
@@ -405,18 +397,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private Future<?> submitStopConsumptionAndCloseStorageTask(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
-    int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, topicName);
     return longRunningTaskExecutor.submit(() -> {
       VeniceStoreConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
       // Make sure partition is not consuming so we can safely close the rocksdb partition
-      for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
-        long startTimeInMs = System.currentTimeMillis();
-        getStoreIngestionService().stopConsumptionAndWait(storeConfig, subPartitionId, 1, stopConsumptionWaitRetriesNum);
-        // Close RocksDB partition in Ingestion Service.
-        getStorageService().getStorageEngineRepository().getLocalStorageEngine(topicName).closePartition(subPartitionId);
-        logger.info("Partition: " + subPartitionId + " of topic: " + topicName + " closed in " + LatencyUtils.getElapsedTimeInMs(
-            startTimeInMs) + " ms.");
-      }
+      long startTimeInMs = System.currentTimeMillis();
+      getStoreIngestionService().stopConsumptionAndWait(storeConfig, report.partitionId, 1, stopConsumptionWaitRetriesNum);
+      // Close all RocksDB sub-Partitions in Ingestion Service.
+      getStorageService().closeStorePartition(storeConfig, partitionId);
+      logger.info("Partition: " + partitionId + " of topic: " + topicName + " closed in " + LatencyUtils.getElapsedTimeInMs(startTimeInMs) + " ms.");
     });
   }
 

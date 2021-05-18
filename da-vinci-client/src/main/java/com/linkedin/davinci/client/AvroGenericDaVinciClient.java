@@ -276,17 +276,19 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   }
 
   protected boolean isSubPartitionReadyToServe(VersionBackend versionBackend, int subPartition) {
-    if (daVinciConfig.isIsolated() && !subscription.contains(versionBackend.getUserPartition(subPartition))) {
+    int userPartition = versionBackend.getUserPartition(subPartition);
+    if (daVinciConfig.isIsolated() && !subscription.contains(userPartition)) {
       return false;
     }
-    return versionBackend.isSubPartitionReadyToServe(subPartition);
+    return versionBackend.isPartitionReadyToServe(userPartition);
   }
 
   protected boolean isSubPartitionSubscribed(VersionBackend versionBackend, int subPartition) {
+    int userPartition = versionBackend.getUserPartition(subPartition);
     if (daVinciConfig.isIsolated()) {
-      return subscription.contains(versionBackend.getUserPartition(subPartition));
+      return subscription.contains(userPartition);
     }
-    return versionBackend.isSubPartitionSubscribed(subPartition);
+    return versionBackend.isPartitionSubscribed(userPartition);
   }
 
   protected void throwIfNotReady() {

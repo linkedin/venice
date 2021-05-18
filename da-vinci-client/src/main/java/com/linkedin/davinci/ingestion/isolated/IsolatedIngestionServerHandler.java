@@ -46,6 +46,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -257,7 +258,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
 
     // Create StorageService
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
-    StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);
+    StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
     storageService.start();
     isolatedIngestionServer.setStorageService(storageService);
 
@@ -326,7 +327,6 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
             ((SubscriptionBasedReadOnlyStoreRepository)storeRepository).subscribe(storeName);
           }
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
-
           storageService.openStoreForNewPartition(storeConfig, partitionId);
           storeIngestionService.startConsumption(storeConfig, partitionId);
           break;

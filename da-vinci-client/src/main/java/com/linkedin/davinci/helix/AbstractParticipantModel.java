@@ -211,10 +211,8 @@ public abstract class AbstractParticipantModel extends StateModel {
      * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
      * will not create them again.
      */
-    for (int subPartition : getSubPartitions()) {
-      storageService.openStoreForNewPartition(storeConfig, subPartition);
-      storeIngestionService.startConsumption(storeConfig, subPartition);
-    }
+    storageService.openStoreForNewPartition(storeConfig, partition);
+    storeIngestionService.startConsumption(storeConfig, partition);
   }
 
   protected void removePartitionFromStoreGracefully() {
@@ -256,15 +254,11 @@ public abstract class AbstractParticipantModel extends StateModel {
      * RESET_OFFSET only happens when we want to drop the corresponding database, and this is independent
      * from the topic partition unsubscription.
      */
-    for (int subPartition : getSubPartitions()) {
-      getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), subPartition);
-    }
+    getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), partition);
 
     // Catch exception separately to ensure reset consumption offset would be executed for sure.
     try {
-      for (int subPartition : getSubPartitions()) {
-        getStorageService().dropStorePartition(getStoreConfig(), subPartition);
-      }
+      getStorageService().dropStorePartition(getStoreConfig(), partition);
     } catch (Exception e) {
       logger.error(
           "Error dropping the partition:" + partition + " in store:" + getStoreConfig().getStoreName());
@@ -321,14 +315,7 @@ public abstract class AbstractParticipantModel extends StateModel {
     final int RETRY_NUM = 100; // 5 mins
     int current = 0;
     while (current++ < RETRY_NUM) {
-      boolean allSubPartitionsNotConsuming = true;
-      for (int subPartition : getSubPartitions()) {
-        if (getStoreIngestionService().isPartitionConsuming(getStoreConfig(), subPartition)) {
-          allSubPartitionsNotConsuming = false;
-          break;
-        }
-      }
-      if (allSubPartitionsNotConsuming) {
+      if (!getStoreIngestionService().isPartitionConsuming(getStoreConfig(), partition)) {
         return;
       }
       getTime().sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
@@ -368,9 +355,7 @@ public abstract class AbstractParticipantModel extends StateModel {
   }
 
   protected void stopConsumption() {
-    for (int subPartition : getSubPartitions()) {
-      storeIngestionService.stopConsumption(storeConfig, subPartition);
-    }
+    storeIngestionService.stopConsumption(storeConfig, partition);
   }
 
   protected void stopConsumptionAndDropPartitionOnError() {
@@ -396,14 +381,6 @@ public abstract class AbstractParticipantModel extends StateModel {
 
   public int getPartition() {
     return partition;
-  }
-
-  public List<Integer> getSubPartitions() {
-    return PartitionUtils.getSubPartitions(partition, amplificationFactor);
-  }
-
-  public int getLeaderSubPartition() {
-    return PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
   }
 
   public Time getTime() {

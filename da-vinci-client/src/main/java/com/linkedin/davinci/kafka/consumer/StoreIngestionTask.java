@@ -319,6 +319,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final ReportStatusAdapter reportStatusAdapter;
 
+  protected final AmplificationAdapter amplificationAdapter;
+
   public StoreIngestionTask(
       KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
@@ -462,8 +464,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.amplificationFactor = amplificationFactor;
     this.subPartitionCount = storeVersionPartitionCount * amplificationFactor;
-
     this.reportStatusAdapter = new ReportStatusAdapter(new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion));
+    this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
   }
 
   public boolean isFutureVersion() {
@@ -524,7 +526,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void subscribePartition(String topic, int partition, Optional<LeaderFollowerStateType> leaderState) {
     throwIfNotRunning();
-    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, partition, nextSeqNum(), leaderState));
+    amplificationAdapter.subscribePartition(topic, partition, leaderState);
   }
 
   public synchronized void subscribePartition(String topic, int partition) {
@@ -536,7 +538,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void unSubscribePartition(String topic, int partition) {
     throwIfNotRunning();
-    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, partition, nextSeqNum()));
+    amplificationAdapter.unSubscribePartition(topic, partition);
   }
 
   /**
@@ -544,7 +546,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void resetPartitionConsumptionOffset(String topic, int partition) {
     throwIfNotRunning();
-    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, partition, nextSeqNum()));
+    amplificationAdapter.resetPartitionConsumptionOffset(topic, partition);
   }
 
   /**
@@ -1802,11 +1804,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * user-partition LeaderFollower status from child process to parent process in ingestion isolation.
    */
   public LeaderFollowerStateType getLeaderState(int partition) {
-    if (partitionConsumptionStateMap.containsKey(partition)) {
-      return partitionConsumptionStateMap.get(partition).getLeaderState();
-    }
-    // By default L/F state is STANDBY(follower)
-    return LeaderFollowerStateType.STANDBY;
+    return amplificationAdapter.getLeaderState(partition);
   }
 
   private void syncOffset(String topic, PartitionConsumptionState ps) {
@@ -2705,7 +2703,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return
    */
   public boolean isPartitionConsuming(int partitionId) {
-    return partitionConsumptionStateMap.containsKey(partitionId);
+    return amplificationAdapter.isPartitionConsuming(partitionId);
   }
 
   /**
@@ -3236,6 +3234,69 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
       report.run();
+    }
+  }
+
+  public class AmplificationAdapter {
+    private final int amplificationFactor;
+    public AmplificationAdapter(int amplificationFactor) {
+      this.amplificationFactor = amplificationFactor;
+    }
+
+    public void subscribePartition(String topic, int partition, Optional<LeaderFollowerStateType> leaderState) {
+      /**
+       * RT topic partition count : VT topic partition count is 1 : amp_factor. For every user partition, there should
+       * be only one sub-partition to act as leader to process and produce records from real-time topic partition to all
+       * sub-partitions of the same user partition of the version topic.
+       */
+      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
+      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+        if (leaderSubPartition == subPartition) {
+          consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, subPartition, nextSeqNum(), leaderState));
+        } else {
+          consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, subPartition, nextSeqNum(), Optional.empty()));
+        }
+      }
+    }
+
+    public void unSubscribePartition(String topic, int partition) {
+      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, subPartition, nextSeqNum()));
+      }
+    }
+
+    public void resetPartitionConsumptionOffset(String topic, int partition) {
+      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+        consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, subPartition, nextSeqNum()));
+      }
+    }
+
+    public void promoteToLeader(String topic, int partition, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
+      consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.STANDBY_TO_LEADER, topic, leaderSubPartition, nextSeqNum(), checker));
+    }
+
+    public void demoteToStandby(String topic, int partition, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
+      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
+      consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.LEADER_TO_STANDBY, topic, leaderSubPartition, nextSeqNum(), checker));
+    }
+
+    public LeaderFollowerStateType getLeaderState(int partition) {
+      int leaderSubPartition = PartitionUtils.getLeaderSubPartition(partition, amplificationFactor);
+      if (partitionConsumptionStateMap.containsKey(leaderSubPartition)) {
+        return partitionConsumptionStateMap.get(leaderSubPartition).getLeaderState();
+      }
+      // By default L/F state is STANDBY
+      return LeaderFollowerStateType.STANDBY;
+    }
+
+    public boolean isPartitionConsuming(int partition) {
+      for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
+        if (partitionConsumptionStateMap.containsKey(subPartition)) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 }

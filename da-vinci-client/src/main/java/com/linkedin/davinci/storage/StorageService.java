@@ -12,15 +12,18 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -31,9 +34,8 @@ import static com.linkedin.venice.meta.PersistenceType.*;
 
 
 /**
- * Storage interface to Venice Server. Manages creation and deletion of of Storage engines
- * and Partitions.
- *
+ * Storage interface to Venice Server, Da Vinci and Isolated Ingestion Service. Manages creation and deletion of storage
+ * engines and partitions.
  * Use StorageEngineRepository, if read only access is desired for the Storage Engines.
  */
 public class StorageService extends AbstractVeniceService {
@@ -47,14 +49,13 @@ public class StorageService extends AbstractVeniceService {
   private final RocksDBMemoryStats rocksDBMemoryStats;
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+  private final ReadOnlyStoreRepository storeRepository;
 
 
-  public StorageService(
-      VeniceConfigLoader configLoader,
-      AggVersionedStorageEngineStats storageEngineStats,
+  public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats,
       RocksDBMemoryStats rocksDBMemoryStats,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, ReadOnlyStoreRepository storeRepository) {
 
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
@@ -77,6 +78,7 @@ public class StorageService extends AbstractVeniceService {
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;
+    this.storeRepository = storeRepository;
     initInternalStorageEngineFactories();
     restoreAllStores(configLoader);
   }
@@ -119,15 +121,13 @@ public class StorageService extends AbstractVeniceService {
     logger.info("Done restoring all the stores persisted previously");
   }
 
-  // TODO Later change to Guice instead of Java reflections
-  // This method can also be called from an admin service to add new store.
-
   public synchronized AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partitionId) {
-
     AbstractStorageEngine engine = openStore(storeConfig);
     synchronized (engine) {
-      if (!engine.containsPartition(partitionId)) {
-        engine.addStoragePartition(partitionId);
+      for (int subPartition : getSubPartition(storeConfig.getStoreName(), partitionId)) {
+        if (!engine.containsPartition(subPartition)) {
+          engine.addStoragePartition(subPartition);
+        }
       }
     }
     return engine;
@@ -191,20 +191,33 @@ public class StorageService extends AbstractVeniceService {
   /**
    * Removes the Store, Partition from the Storage service.
    */
-  public synchronized void dropStorePartition(VeniceStoreConfig storeConfig, int subPartition) {
+  public synchronized void dropStorePartition(VeniceStoreConfig storeConfig, int partition) {
     String kafkaTopic = storeConfig.getStoreName();
-
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
       logger.warn("Storage engine " + kafkaTopic + " does not exist, ignoring drop partition request.");
       return;
     }
-    storageEngine.dropPartition(subPartition);
-    Set<Integer> subPartitions = storageEngine.getPartitionIds();
-    logger.info("Dropped sub-partition " + subPartition + " of " + kafkaTopic + ", subPartitions=" + subPartitions);
+    for (int subPartition : getSubPartition(kafkaTopic, partition)) {
+      storageEngine.dropPartition(subPartition);
+    }
+    Set<Integer> remainingPartitions = storageEngine.getPartitionIds();
+    logger.info("Dropped partition " + partition + " of " + kafkaTopic + ", remaining partitions=" + remainingPartitions);
 
-    if (subPartitions.isEmpty()) {
+    if (remainingPartitions.isEmpty()) {
       removeStorageEngine(kafkaTopic);
+    }
+  }
+
+  public synchronized void closeStorePartition(VeniceStoreConfig storeConfig, int partition) {
+    String kafkaTopic = storeConfig.getStoreName();
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
+    if (storageEngine == null) {
+      logger.warn("Storage engine " + kafkaTopic + " does not exist, ignoring close partition request.");
+      return;
+    }
+    for (int subPartition : getSubPartition(kafkaTopic, partition)) {
+      storageEngine.closePartition(subPartition);
     }
   }
 
@@ -297,5 +310,9 @@ public class StorageService extends AbstractVeniceService {
     if (lastException != null) {
       throw lastException;
     }
+  }
+
+  private List<Integer> getSubPartition(String topicName, int partition) {
+    return PartitionUtils.getSubPartitions(partition, PartitionUtils.getAmplificationFactor(storeRepository, topicName));
   }
 }

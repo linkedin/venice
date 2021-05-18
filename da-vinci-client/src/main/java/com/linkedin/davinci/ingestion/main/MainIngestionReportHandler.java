@@ -9,10 +9,8 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.utils.PartitionUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -53,23 +51,18 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     int partitionId = report.partitionId;
     long offset = report.offset;
     logger.info("Received ingestion report " + ingestionReportType.name() + " for topic: " + topicName + ", partition: " + partitionId + " from ingestion service.");
-    int amplificationFactor = PartitionUtils.getAmplificationFactor(mainIngestionMonitorService.getStoreRepository(), topicName);
     // TODO: Use more flexible pull model to sync storage metadata from child process to main process.
-    updateLocalStorageMetadata(report, amplificationFactor);
+    updateLocalStorageMetadata(report);
     // Relay the notification to parent service's listener.
     switch (ingestionReportType) {
       case COMPLETED:
-        for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
-          mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
-        }
+        mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
         // Set LeaderState passed from child process to cache.
         LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
         notifierHelper(notifier -> notifier.completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
         break;
       case ERROR:
-        for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
-          mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, subPartitionId);
-        }
+        mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
         notifierHelper(notifier -> notifier.error(topicName, partitionId, report.message.toString(), new VeniceException(report.message.toString())));
         break;
       case STARTED:
@@ -114,19 +107,14 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     mainIngestionMonitorService.getIngestionNotifierList().forEach(lambda);
   }
 
-  private void updateLocalStorageMetadata(IngestionTaskReport report, int amplificationFactor) {
+  private void updateLocalStorageMetadata(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     // Sync up offset record & store version state before report ingestion complete to parent process.
     if (mainIngestionMonitorService.getStorageMetadataService() != null) {
       if (!report.offsetRecordArray.isEmpty()) {
-        int idx = 0;
-        for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, amplificationFactor)) {
-          OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecordArray.get(idx).array(), partitionStateSerializer);
-          mainIngestionMonitorService.getStorageMetadataService().putOffsetRecord(topicName, subPartitionId, offsetRecord);
-          logger.info("Updated offsetRecord for subPartition: "  + subPartitionId + " of topic: " + topicName + " as " + offsetRecord.toString());
-          idx++;
-        }
+        mainIngestionMonitorService.getStoreIngestionService().updatePartitionOffsetRecords(topicName, partitionId,
+            report.offsetRecordArray);
       }
       if (report.storeVersionState != null) {
         StoreVersionState storeVersionState = IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());

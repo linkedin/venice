@@ -290,15 +290,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public synchronized void promoteToLeader(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
-    ConsumerAction newAction = new ConsumerAction(ConsumerActionType.STANDBY_TO_LEADER, topic, partitionId, nextSeqNum(), checker);
-    consumerActionsQueue.add(newAction);
+    amplificationAdapter.promoteToLeader(topic, partitionId, checker);
   }
 
   @Override
   public synchronized void demoteToStandby(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
-    ConsumerAction newAction = new ConsumerAction(ConsumerActionType.LEADER_TO_STANDBY, topic, partitionId, nextSeqNum(), checker);
-    consumerActionsQueue.add(newAction);
+    amplificationAdapter.demoteToStandby(topic, partitionId, checker);
   }
 
   @Override

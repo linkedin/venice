@@ -391,6 +391,7 @@ public class StoreIngestionTaskTest {
     doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(any());
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
+    // doReturn(amplificationFactor).when(PartitionUtils.getAmplificationFactor(any(), any()));
     StorageMetadataService offsetManager;
     logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
@@ -484,7 +485,7 @@ public class StoreIngestionTaskTest {
 
     Future testSubscribeTaskFuture = null;
     try {
-      for (int partition: PartitionUtils.getSubPartitions(partitions, amplificationFactor)) {
+      for (int partition: partitions) {
         storeIngestionTaskUnderTest.subscribePartition(topic, partition);
       }
 
@@ -570,13 +571,13 @@ public class StoreIngestionTaskTest {
           vtWriter.broadcastStartOfPush(new HashMap<>());
           vtWriter.broadcastEndOfPush(new HashMap<>());
           doReturn(vtWriter).when(mockWriterFactory).createBasicVeniceWriter(anyString(), anyBoolean(), any(), any());
-          doReturn(3l).when(veniceServerConfig).getServerPromotionToLeaderReplicaDelayMs();
+          doReturn(3L).when(veniceServerConfig).getServerPromotionToLeaderReplicaDelayMs();
           verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
           vtWriter.broadcastTopicSwitch(Arrays.asList(inMemoryKafkaBroker.getKafkaBootstrapServer()),
               Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
               System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
               new HashMap<>());
-          storeIngestionTaskUnderTest.promoteToLeader(topic, PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor), new LeaderFollowerParticipantModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
+          storeIngestionTaskUnderTest.promoteToLeader(topic, PARTITION_FOO, new LeaderFollowerParticipantModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
           try {
             rtWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
             rtWriter.delete(deleteKeyFoo, null).get();
