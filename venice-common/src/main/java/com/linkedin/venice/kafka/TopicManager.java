@@ -4,20 +4,15 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
+import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,25 +22,17 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
-import kafka.server.KafkaConfig;
 import org.apache.commons.io.IOUtils;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.offsets.OffsetRecord.*;
 
 
 /**
@@ -61,7 +48,6 @@ public class TopicManager implements Closeable {
 
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
-  private static final int KAFKA_POLLING_RETRY_ATTEMPT = 3;
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
 
   public static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = 5 * Time.MS_PER_DAY;
@@ -79,8 +65,6 @@ public class TopicManager implements Closeable {
   // aren't necessarily compromised with potentially new bad behavior.
   public static final boolean DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
 
-  public static final Duration DEFAULT_KAFKA_OFFSET_API_TIMEOUT = Duration.ofMinutes(1);
-
   // Immutable state
   private final String kafkaBootstrapServers;
   private final int kafkaOperationTimeoutMs;
@@ -89,17 +73,15 @@ public class TopicManager implements Closeable {
   private final KafkaClientFactory kafkaClientFactory;
   private final boolean isConcurrentTopicDeleteRequestsEnabled;
 
-  // Mutable, lazily initialized or populated, state
   private KafkaConsumer<byte[], byte[]> kafkaRawBytesConsumer;
-  private final Lazy<KafkaConsumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer;
   private final Lazy<KafkaAdminWrapper> kafkaAdmin;
+  private final PartitionOffsetFetcher partitionOffsetFetcher;
 
   // It's expensive to grab the topic config over and over again, and it changes infrequently.  So we temporarily cache
   // queried configs.
   Cache<String, Properties> topicConfigCache = Caffeine.newBuilder()
       .expireAfterWrite(5, TimeUnit.MINUTES)
       .build();
-
 
   //TODO: Consider adding a builder for this class as the number of constructors is getting high.
   public TopicManager(
@@ -108,19 +90,29 @@ public class TopicManager implements Closeable {
       long topicMinLogCompactionLagMs,
       boolean isConcurrentTopicDeleteRequestsEnabled,
       KafkaClientFactory kafkaClientFactory,
-      Optional<MetricsRepository> optionalMetricsRepository) {
+      Optional<MetricsRepository> optionalMetricsRepository,
+      Optional<PartitionOffsetFetcher> optionalPartitionOffsetFetcher
+  ) {
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
     this.isConcurrentTopicDeleteRequestsEnabled = isConcurrentTopicDeleteRequestsEnabled;
     this.kafkaClientFactory = kafkaClientFactory;
     this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
-    this.kafkaRecordConsumer = Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(getKafkaRecordConsumerProps()));
     this.kafkaAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaAdmin = kafkaClientFactory.getKafkaAdminClient(optionalMetricsRepository);
       logger.info(this.getClass().getSimpleName() + " is using kafka admin client: " + kafkaAdmin.getClassName());
       return kafkaAdmin;
     });
+    if (optionalPartitionOffsetFetcher.isPresent()) {
+      this.partitionOffsetFetcher = optionalPartitionOffsetFetcher.get();
+    } else {
+      this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
+          kafkaClientFactory,
+          kafkaAdmin,
+          kafkaOperationTimeoutMs
+      );
+    }
   }
 
   // This constructor is used mostly for testing purpose
@@ -135,6 +127,7 @@ public class TopicManager implements Closeable {
         topicMinLogCompactionLagMs,
         DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY,
         kafkaClientFactory,
+        Optional.empty(),
         Optional.empty()
     );
   }
@@ -406,7 +399,6 @@ public class TopicManager implements Closeable {
     if (!containsTopic(topicName)) {
       throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
     }
-
     return kafkaAdmin.get().getTopicConfig(topicName);
   }
 
@@ -527,7 +519,7 @@ public class TopicManager implements Closeable {
   public void ensureTopicIsDeletedAndBlockWithRetry(String topicName) throws ExecutionException {
     // Topic deletion may time out, so go ahead and retry the operation up the max number of attempts, if we
     // simply cannot succeed, bubble the exception up.
-    Integer attempts  = 0;
+    int attempts  = 0;
     while(true) {
       try {
         ensureTopicIsDeletedAndBlock(topicName);
@@ -581,8 +573,7 @@ public class TopicManager implements Closeable {
     if (!zkMetadataCreatedForTopic) {
       return false;
     }
-
-    List<PartitionInfo> partitionInfoList = getRawBytesConsumer().partitionsFor(topic);
+    List<PartitionInfo> partitionInfoList = partitionOffsetFetcher.partitionsFor(topic);
     if (partitionInfoList == null) {
       logger.warn("getConsumer().partitionsFor() returned null for topic: " + topic);
       return false;
@@ -643,59 +634,16 @@ public class TopicManager implements Closeable {
    * @param topic
    * @return a Map of partition to latest offset, or an empty map if there's any problem
    */
-  public synchronized Map<Integer, Long> getLatestOffsets(String topic) {
-    // To be safe, check whether the topic exists or not,
-    // since querying offset against non-existing topic could cause endless retrying.
-    if (!containsTopicAndAllPartitionsAreOnline(topic)) {
-      logger.warn("Topic: " + topic + " doesn't exist, returning empty map for latest offsets");
-      return Collections.emptyMap();
-    }
-    KafkaConsumer<byte[], byte[]> consumer = getRawBytesConsumer();
-    List<PartitionInfo> partitionInfoList = consumer.partitionsFor(topic);
-    if (null == partitionInfoList || partitionInfoList.isEmpty()) {
-      logger.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
-      return Collections.emptyMap();
-    }
-
-    Map<Integer, Long> latestOffsets = partitionInfoList.stream()
-        .map(pi -> pi.partition())
-        .collect(Collectors.toMap(p -> p, p -> getLatestOffset(consumer, topic, p, false)));
-
-    return latestOffsets;
+  public Map<Integer, Long> getLatestOffsets(String topic) {
+    return partitionOffsetFetcher.getLatestOffsets(topic);
   }
 
   public long getLatestOffsetAndRetry(String topic, int partition, int retries) {
-    int attempt = 0;
-    long offset;
-    VeniceOperationAgainstKafkaTimedOut lastException = new VeniceOperationAgainstKafkaTimedOut("This exception should not be thrown");
-    while (attempt < retries){
-      try {
-        offset = getLatestOffset(topic, partition);
-        return offset;
-      } catch (VeniceOperationAgainstKafkaTimedOut e){// topic and partition is listed in the exception object
-        logger.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
-        lastException = e;
-        attempt ++;
-      }
-    }
-    throw lastException;
+    return partitionOffsetFetcher.getLatestOffsetAndRetry(topic, partition, retries);
   }
 
   public long getLatestProducerTimestampAndRetry(String topic, int partition, int retries) {
-    int attempt = 0;
-    long timestamp;
-    VeniceOperationAgainstKafkaTimedOut lastException = new VeniceOperationAgainstKafkaTimedOut("This exception should not be thrown");
-    while (attempt < retries){
-      try {
-        timestamp = getLatestProducerTimestamp(topic, partition);
-        return timestamp;
-      } catch (VeniceOperationAgainstKafkaTimedOut e){// topic and partition is listed in the exception object
-        logger.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
-        lastException = e;
-        attempt ++;
-      }
-    }
-    throw lastException;
+    return partitionOffsetFetcher.getLatestProducerTimestampAndRetry(topic, partition, retries);
   }
 
   /**
@@ -707,103 +655,8 @@ public class TopicManager implements Closeable {
    * by default since this function will validate whether every topic partition has ISR, which could
    * fail {@link #getLatestOffset(String, int)} since some transient non-ISR could happen randomly.
    */
-  public synchronized long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
-    return getLatestOffset(getRawBytesConsumer(), topic, partition, true);
-  }
-
-  private synchronized Long getLatestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
-    if (doTopicCheck && !containsTopic(topic)) {
-      throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
-    }
-    if (partition < 0) {
-      throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
-    }
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    long latestOffset;
-    try {
-      Map<TopicPartition, Long> offsetMap = consumer.endOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
-      if (offsetMap.containsKey(topicPartition)) {
-        latestOffset = offsetMap.get(topicPartition);
-      } else {
-        throw new VeniceException("offset result returned from endOffsets does not contain entry: " + topicPartition);
-      }
-    } catch (Exception ex) {
-      if (ex instanceof  org.apache.kafka.common.errors.TimeoutException) {
-        throw new VeniceOperationAgainstKafkaTimedOut(
-            "Timeout exception when seeking to end to get latest offset" + " for topic: " + topic + " and partition: " + partition, ex);
-      } else {
-        throw ex;
-      }
-    }
-    return latestOffset;
-  }
-
-  /**
-   * If the topic is empty or all the messages are truncated (startOffset==endOffset), return -1;
-   * otherwise, return the producer timestamp of the last message in the selected partition of a topic
-   */
-  private synchronized Long getLatestProducerTimestamp(String topic, int partition) throws TopicDoesNotExistException {
-    if (!containsTopic(topic)) {
-      throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
-    }
-    if (partition < 0) {
-      throw new IllegalArgumentException("Cannot retrieve latest producer timestamp for invalid partition " + partition + " topic " + topic);
-    }
-
-    KafkaConsumer<KafkaKey, KafkaMessageEnvelope> consumer = kafkaRecordConsumer.get();
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-
-    long latestProducerTimestamp;
-    try {
-      Map<TopicPartition, Long> offsetByTopicPartition =
-          consumer.endOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
-      if (offsetByTopicPartition == null || !offsetByTopicPartition.containsKey(topicPartition)) {
-        throw new VeniceException("Got no results of finding end offsets for topic partition: " + topicPartition);
-      }
-      final long latestOffset = offsetByTopicPartition.get(topicPartition);
-
-      if (latestOffset <= 0) {
-        // empty topic
-        latestProducerTimestamp = -1;
-      } else {
-        consumer.assign(Collections.singletonList(topicPartition));
-        consumer.seekToBeginning(Collections.singletonList(topicPartition));
-        long earliestOffset = consumer.position(topicPartition);
-        if (earliestOffset == latestOffset) {
-          // empty topic
-          latestProducerTimestamp = -1;
-        } else {
-          // poll the last message and retrieve the producer timestamp
-          consumer.seek(topicPartition, latestOffset - 1);
-          ConsumerRecords records = ConsumerRecords.EMPTY;
-          int attempts = 0;
-          while (attempts++ < KAFKA_POLLING_RETRY_ATTEMPT && records.isEmpty()) {
-            logger.info("Trying to get the last record from topic: " + topicPartition.toString() + " at offset: " + (latestOffset - 1)
-                + ". Attempt#" + attempts + "/" + KAFKA_POLLING_RETRY_ATTEMPT);
-            records = consumer.poll(kafkaOperationTimeoutMs);
-          }
-          if (records.isEmpty()) {
-            /**
-             * Failed the job if we cannot get the last offset of the topic.
-             */
-            String errorMsg = "Failed to get the last record from topic: " + topicPartition.toString() +
-                " after " + KAFKA_POLLING_RETRY_ATTEMPT + " attempts";
-            logger.error(errorMsg);
-            throw new VeniceException(errorMsg);
-          }
-
-          // Get the latest record from the poll result
-          ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = (ConsumerRecord<KafkaKey, KafkaMessageEnvelope>) records.iterator().next();
-          latestProducerTimestamp = record.value().producerMetadata.messageTimestamp;
-        }
-      }
-    } catch (org.apache.kafka.common.errors.TimeoutException ex) {
-      throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to end to get latest offset"
-          + " for topic: " + topic + " and partition: " + partition, ex);
-    } finally {
-      consumer.assign(Collections.emptyList());
-    }
-    return latestProducerTimestamp;
+  public long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
+    return partitionOffsetFetcher.getLatestOffset(topic, partition);
   }
 
   /**
@@ -812,120 +665,22 @@ public class TopicManager implements Closeable {
    * 1. Any existing offset in the current topic partition.
    * 2. A future offset returned by {@link #getLatestOffset}: the last record offset + 1.
    */
-  public synchronized Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
-    int remainingAttempts = 5;
-    List<PartitionInfo> partitionInfoList = getRawBytesConsumer().partitionsFor(topic);
-    // N.B.: During unit test development, getting a null happened occasionally without apparent
-    //       reason. In their current state, the tests have been run with a high invocationCount and
-    //       no failures, so it may be a non-issue. If this happens again, and we find some test case
-    //       that can reproduce it, we may want to try adding a short amount of retries, and reporting
-    //       a bug to Kafka.
-    while (remainingAttempts > 0 && (null == partitionInfoList || partitionInfoList.isEmpty())) {
-      Utils.sleep(500);
-      partitionInfoList = getRawBytesConsumer().partitionsFor(topic);
-      remainingAttempts -= 1;
-    }
-    if (null == partitionInfoList || partitionInfoList.isEmpty()) {
-      throw new VeniceException("Cannot get partition info for topic: " + topic + ", partitionInfoList: " + partitionInfoList);
-    } else {
-      Map<TopicPartition, Long> timestampsToSearch = partitionInfoList.stream()
-          .collect(Collectors.toMap(partitionInfo -> new TopicPartition(topic, partitionInfo.partition()), ignoredParam -> timestamp));
-      return getOffsetsByTime(topic, timestampsToSearch, timestamp);
-    }
-  }
-
-  /**
-   * Return the beginning offset of a topic/partition. Synchronized because it calls #getConsumer()
-   *
-   * @throws TopicDoesNotExistException
-   */
-  public synchronized long getEarliestOffset(String topic, int partition) throws TopicDoesNotExistException {
-    return getEarliestOffset(getRawBytesConsumer(), topic, partition, true);
-  }
-
-  private synchronized Long getEarliestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
-    if (doTopicCheck && !containsTopic(topic)) {
-      throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
-    }
-    if (partition < 0) {
-      throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
-    }
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    long earliestOffset;
-    try {
-      Map<TopicPartition, Long> offsetMap = consumer.beginningOffsets(Collections.singletonList(topicPartition), DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
-      if (offsetMap.containsKey(topicPartition)) {
-        earliestOffset = offsetMap.get(topicPartition);
-      } else {
-        throw new VeniceException("offset result returned from beginningOffsets does not contain entry: " + topicPartition);
-      }
-    } catch (Exception ex) {
-      if (ex instanceof org.apache.kafka.common.errors.TimeoutException) {
-        throw new VeniceOperationAgainstKafkaTimedOut(
-            "Timeout exception when seeking to beginning to get earliest offset" + " for topic: " + topic + " and partition: " + partition, ex);
-      } else {
-        throw ex;
-      }
-    }
-    return earliestOffset;
+  public Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
+    return partitionOffsetFetcher.getOffsetsByTime(topic, timestamp);
   }
 
   /**
    * Get offsets for only one partition with a specific timestamp.
    */
-  public synchronized long getOffsetByTime(String topic, int partition, long timestamp) {
-    Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
-    timestampsToSearch.put(new TopicPartition(topic, partition), timestamp);
-    return getOffsetsByTime(topic, timestampsToSearch, timestamp).get(partition);
+  public long getOffsetByTime(String topic, int partition, long timestamp) {
+    return partitionOffsetFetcher.getOffsetByTime(topic, partition, timestamp);
   }
 
   /**
    * Get offsets for the selected partitions in `timestampsToSearch` with a specific timestamp
    */
-  public synchronized Map<Integer, Long> getOffsetsByTime(String topic, Map<TopicPartition, Long> timestampsToSearch, long timestamp) {
-    int expectedPartitionNum = timestampsToSearch.size();
-    Map<Integer, Long>  result = getRawBytesConsumer().offsetsForTimes(timestampsToSearch)
-        .entrySet()
-        .stream()
-        .collect(Collectors.toMap(
-            partitionToOffset ->
-                Utils.notNull(partitionToOffset.getKey(),"Got a null TopicPartition key out of the offsetsForTime API")
-                    .partition(),
-            partitionToOffset -> {
-              Optional<Long> offsetOptional = Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset());
-              if (offsetOptional.isPresent()){
-                return offsetOptional.get();
-              } else {
-                return getOffsetByTimeIfOutOfRange(partitionToOffset.getKey(), timestamp);
-              }
-            }));
-    // The given timestamp exceed the timestamp of the last message. So return the last offset.
-    if (result.isEmpty()) {
-      logger.warn("Offsets result is empty. Will complement with the last offsets.");
-      result = getRawBytesConsumer().endOffsets(timestampsToSearch.keySet())
-          .entrySet()
-          .stream()
-          .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset).getKey().partition(),
-              partitionToOffset -> partitionToOffset.getValue()));
-    } else if (result.size() != expectedPartitionNum) {
-      Map<TopicPartition, Long>  endOffests = getRawBytesConsumer().endOffsets(timestampsToSearch.keySet());
-      // Get partial offsets result.
-      logger.warn("Missing offsets for some partitions. Partition Number should be :" + expectedPartitionNum
-          + " but only got: " + result.size()+". Will complement with the last offsets.");
-
-      for (TopicPartition topicPartition : timestampsToSearch.keySet()) {
-        int partitionId = topicPartition.partition();
-        if (!result.containsKey(partitionId)) {
-          result.put(partitionId, endOffests.get(new TopicPartition(topic, partitionId)));
-        }
-      }
-    }
-    if (result.size() < expectedPartitionNum) {
-      throw new VeniceException(
-          "Failed to get offsets for all partitions. Got offsets for " + result.size() + " partitions, should be: "
-              + expectedPartitionNum);
-    }
-    return result;
+  public Map<Integer, Long> getOffsetsByTime(String topic, Map<TopicPartition, Long> timestampsToSearch, long timestamp) {
+    return partitionOffsetFetcher.getOffsetsByTime(topic, timestampsToSearch, timestamp);
   }
 
   /**
@@ -933,88 +688,8 @@ public class TopicManager implements Closeable {
    * the last record.  This method queries the time of the last message and compares it to the requested
    * timestamp in order to return either offset 0 or the last offset.
    */
-  protected synchronized long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp){
-    long latestOffset = getLatestOffset(topicPartition.topic(), topicPartition.partition());
-    if (latestOffset <= 0) {
-      long nextOffset = LOWEST_OFFSET + 1;
-      logger.info("End offset for topic " + topicPartition + " is " + latestOffset + "; return offset " + nextOffset);
-      return nextOffset;
-    }
-
-    long earliestOffset = getEarliestOffset(topicPartition.topic(), topicPartition.partition());
-    if (earliestOffset == latestOffset) {
-      /**
-       * This topic/partition is empty or retention delete the entire partition
-       */
-      logger.info("Both beginning offest and end offset is " + latestOffset + " for topic " + topicPartition
-          + "; it's empty; return offset " + latestOffset);
-      return latestOffset;
-    }
-
-    KafkaConsumer consumer = getRawBytesConsumer();
-    try {
-      consumer.assign(Collections.singletonList(topicPartition));
-      consumer.seek(topicPartition, latestOffset - 1);
-      ConsumerRecords records = ConsumerRecords.EMPTY;
-      /**
-       * We should retry to get the last record from that topic/partition, never return 0L here because 0L offset
-       * will result in replaying all the messages in real-time buffer. This function is mainly used during buffer
-       * replay for hybrid stores.
-       */
-      int attempts = 0;
-      while (attempts++ < KAFKA_POLLING_RETRY_ATTEMPT && records.isEmpty()) {
-        logger.info("Trying to get the last record from topic: " + topicPartition.toString() + " at offset: " + (latestOffset - 1)
-            + ". Attempt#" + attempts + "/" + KAFKA_POLLING_RETRY_ATTEMPT);
-        records = consumer.poll(kafkaOperationTimeoutMs);
-      }
-      if (records.isEmpty()) {
-        /**
-         * Failed the job if we cannot get the last offset of the topic.
-         */
-        String errorMsg = "Failed to get the last record from topic: " + topicPartition.toString() +
-            " after " + KAFKA_POLLING_RETRY_ATTEMPT + " attempts";
-        logger.error(errorMsg);
-        throw new VeniceException(errorMsg);
-      }
-
-      // Get the latest record from the poll result
-      ConsumerRecord record = (ConsumerRecord) records.iterator().next();
-
-      if (timestamp <= record.timestamp()) {
-        /**
-         * There could be a race condition in this function:
-         * 1. In function: {@link #getOffsetsByTime}, {@link KafkaConsumer#offsetsForTimes} is invoked.
-         * 2. The asked timestamp is out of range.
-         * 3. Some messages get produced to the topic.
-         * 4. {@link #getOffsetByTimeIfOutOfRange} gets invoked, and it realizes that the latest message's timestamp
-         * is higher than the seeking timestamp.
-         *
-         * In this case, we should call {@link #getOffsetByTime} again, since the seeking timestamp will be in the range
-         * instead of returning the earliest offset.
-         */
-        Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
-        timestampsToSearch.put(topicPartition,  timestamp);
-        Map<TopicPartition, OffsetAndTimestamp> result = consumer.offsetsForTimes(timestampsToSearch);
-        if (result.containsKey(topicPartition) && result.get(topicPartition) != null) {
-          OffsetAndTimestamp offsetAndTimestamp = result.get(topicPartition);
-          long resultOffset = offsetAndTimestamp.offset();
-          logger.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString()
-              + " for timestamp: " + timestamp);
-          return resultOffset;
-        }
-      }
-
-      /**
-       * 1. If the required timestamp is bigger than the timestamp of last record, return the offset after the last record.
-       * 2. Otherwise, return earlier offset to consume from the beginning.
-       */
-      long resultOffset = (timestamp > record.timestamp()) ? latestOffset : earliestOffset;
-      logger.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString()
-          + " for timestamp: " + timestamp);
-      return resultOffset;
-    } finally {
-      consumer.assign(Collections.emptyList());
-    }
+  protected long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp) {
+    return partitionOffsetFetcher.getOffsetByTimeIfOutOfRange(topicPartition, timestamp);
   }
 
   /**
@@ -1022,60 +697,19 @@ public class TopicManager implements Closeable {
    * @param topic
    * @return
    */
-  public synchronized List<PartitionInfo> getPartitions(String topic){
-    KafkaConsumer<byte[], byte[]> consumer = getRawBytesConsumer();
-    return consumer.partitionsFor(topic);
-  }
-
-  /**
-   * The first time this is called, it lazily initializes {@link #kafkaRawBytesConsumer}.
-   * Any method that uses this consumer must be synchronized.  Since the same
-   * consumer is returned each time and some methods modify the consumer's state
-   * we must guard against concurrent modifications.
-   *
-   * @return The internal {@link KafkaConsumer} instance.
-   */
-  private KafkaConsumer<byte[], byte[]> getRawBytesConsumer() {
-    return getRawBytesConsumer(false);
+  public List<PartitionInfo> getPartitions(String topic){
+    return partitionOffsetFetcher.partitionsFor(topic);
   }
 
   private synchronized KafkaConsumer<byte[], byte[]> getRawBytesConsumer(boolean closeAndRecreate) {
     if (this.kafkaRawBytesConsumer == null) {
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaRawBytesConsumerProps());
+      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRawBytesConsumerProps());
     } else if (closeAndRecreate) {
       this.kafkaRawBytesConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaRawBytesConsumerProps());
+      this.kafkaRawBytesConsumer = kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRawBytesConsumerProps());
       logger.info("Closed and recreated consumer.");
     }
     return this.kafkaRawBytesConsumer;
-  }
-
-  private Properties getKafkaRawBytesConsumerProps() {
-    Properties props = new Properties();
-    //This is a temporary fix for the issue described here
-    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
-    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    //Trying to avoid class loading via Kafka's ConfigDef class
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    return props;
-  }
-
-  private Properties getKafkaRecordConsumerProps() {
-    Properties props = new Properties();
-    //This is a temporary fix for the issue described here
-    //https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    //In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
-    //because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    //Trying to avoid class loading via Kafka's ConfigDef class
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
-    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    return props;
   }
 
   public String getKafkaBootstrapServers() {
@@ -1084,8 +718,7 @@ public class TopicManager implements Closeable {
 
   @Override
   public synchronized void close() throws IOException {
-    IOUtils.closeQuietly(kafkaRawBytesConsumer);
-    kafkaRecordConsumer.ifPresent(IOUtils::closeQuietly);
+    IOUtils.closeQuietly(partitionOffsetFetcher);
     kafkaAdmin.ifPresent(IOUtils::closeQuietly);
   }
 
