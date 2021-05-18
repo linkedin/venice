@@ -224,6 +224,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   public static final String SSL_KEY_STORE_PASSWORD_PROPERTY_NAME = "ssl.key.store.password.property.name";
   public static final String SSL_KEY_PASSWORD_PROPERTY_NAME= "ssl.key.password.property.name";
   public static final String JOB_EXEC_URL = "job.execution.url";
+  public static final String JOB_EXEC_ID = "job.execution.id";
+  public static final String JOB_SERVER_NAME = "job.server.name";
+
+
 
   /**
    * Config to enable the service that uploads push job statuses to the controller using
@@ -793,7 +797,10 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
            * sending these types of CM. If/when we add support for that in the controller, then we'll be able
            * to completely stop using the {@link VeniceWriter} from this class.
            */
-          pushJobSetting.incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
+          pushJobSetting.incrementalPushVersion = Optional.of(
+              String.valueOf(System.currentTimeMillis()) + "_" + props.getString(JOB_SERVER_NAME, "unknown_job_server")
+                  + "_" + props.getString(JOB_EXEC_ID, "unknown_exec_id"));
+          LOGGER.info("Incremental Push Version: " + pushJobSetting.incrementalPushVersion.get());
           getVeniceWriter(kafkaTopicInfo).broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());
           runJobAndUpdateStatus();
           getVeniceWriter(kafkaTopicInfo)
