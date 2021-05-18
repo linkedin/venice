@@ -125,7 +125,7 @@ public class DaVinciBackend implements Closeable {
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
     rocksDBMemoryStats = backendConfig.isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
-    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);
+    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
     storageService.start();
 
     VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
@@ -431,9 +431,8 @@ public class DaVinciBackend implements Closeable {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
-          for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, versionBackend.getAmplificationFactor())) {
-            versionBackend.completeSubPartition(subPartitionId);
-          }
+          versionBackend.completePartition(partitionId);
+          versionBackend.tryStopHeartbeat();
           reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.COMPLETED);
         }
       });
@@ -444,9 +443,8 @@ public class DaVinciBackend implements Closeable {
       ingestionReportExecutor.submit(() -> {
         VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
         if (versionBackend != null) {
-          for (int subPartitionId : PartitionUtils.getSubPartitions(partitionId, versionBackend.getAmplificationFactor())) {
-            versionBackend.completeSubPartitionExceptionally(subPartitionId, e);
-          }
+          versionBackend.completePartitionExceptionally(partitionId, e);
+          versionBackend.tryStopHeartbeat();
           reportPushStatus(kafkaTopic, partitionId, ExecutionStatus.ERROR);
         }
       });

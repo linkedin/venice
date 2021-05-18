@@ -43,7 +43,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.DiskHealthStats;
-import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.utils.Utils;
@@ -182,7 +181,7 @@ public class VeniceServer {
 
     // create and add StorageService. storeRepository will be populated by StorageService,
     storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats,
-        storeVersionStateSerializer, partitionStateSerializer);
+        storeVersionStateSerializer, partitionStateSerializer, metadataRepo);
 
     logger.info("Server will start with RocksDB offset store enabled");
     storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);

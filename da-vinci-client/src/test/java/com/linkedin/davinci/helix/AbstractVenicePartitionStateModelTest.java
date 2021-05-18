@@ -11,12 +11,16 @@ import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Collections;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
 import org.apache.helix.model.Message;
+import org.mockito.AdditionalAnswers;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
+
+import static org.mockito.ArgumentMatchers.*;
 
 
 public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends AbstractParticipantModel,
@@ -50,7 +54,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   public void setUp() {
     this.storeName =  TestUtils.getUniqueString("stateModelTestStore");
     this.resourceName = Version.composeKafkaTopic(storeName, version);
-    this.instanceName = "testInsatnce";
+    this.instanceName = "testInstance";
 
     mockStoreIngestionService = Mockito.mock(StoreIngestionService.class);
     mockStorageService = Mockito.mock(StorageService.class);

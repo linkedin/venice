@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.memory;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -43,7 +44,8 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
 
     service = new StorageService(configLoader, mock(AggVersionedStorageEngineStats.class), null,
-        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(), AvroProtocolDefinition.PARTITION_STATE.getSerializer(), mock(
+        ReadOnlyStoreRepository.class));
     storeConfig = new VeniceStoreConfig(STORE_NAME, serverProperties);
 
     testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);
