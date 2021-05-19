@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,15 +15,18 @@ public abstract class AdminTopicMetadataAccessor {
   private static final String EXECUTION_ID_KEY = "executionId";
   private static final long UNDEFINED_VALUE = -1;
 
-  public static Map<String, Long> generateMetadataMap(long offset, long executionId, boolean remoteConsumptionEnabled) {
+  public static Map<String, Long> generateMetadataMap(long localOffset, long upstreamOffset, long executionId) {
     Map<String, Long> metadata = new HashMap<>();
-    metadata.put(remoteConsumptionEnabled ? UPSTREAM_OFFSET_KEY : OFFSET_KEY, offset);
+    metadata.put(OFFSET_KEY, localOffset);
+    metadata.put(UPSTREAM_OFFSET_KEY, upstreamOffset);
     metadata.put(EXECUTION_ID_KEY, executionId);
     return metadata;
   }
 
-  public static long getOffset(Map<String, Long> metadata, boolean remoteConsumptionEnabled) {
-    return metadata.getOrDefault(remoteConsumptionEnabled ? UPSTREAM_OFFSET_KEY : OFFSET_KEY, UNDEFINED_VALUE);
+  public static Pair<Long, Long> getOffsets(Map<String, Long> metadata) {
+    long localOffset = metadata.getOrDefault(OFFSET_KEY, UNDEFINED_VALUE);
+    long upstreamOffset = metadata.getOrDefault(UPSTREAM_OFFSET_KEY, UNDEFINED_VALUE);
+    return new Pair<Long, Long>(localOffset, upstreamOffset);
   }
 
   public static long getExecutionId(Map<String, Long> metadata) {
