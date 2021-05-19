@@ -178,6 +178,27 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private long lastOffset = UNASSIGNED_VALUE;
   /**
+   * Track the latest consumed offset; this variable is updated as long as the consumer consumes new messages,
+   * no matter whether the message has any issue or not.
+   */
+  private long lastConsumedOffset = UNASSIGNED_VALUE;
+  /**
+   * The local offset value in ZK during initialization phase; the value will not be updated during admin topic consumption.
+   *
+   * Currently there are two potential offset: local offset and upstream offset, and we only update and
+   * maintain one of the them. While persisting the offset to ZK, we would like to keep the original value
+   * for the other one, so that rollback/roll-forward of the remote consumption feature can be faster.
+   */
+  private long localOffsetCheckpointAtStartTime = UNASSIGNED_VALUE;
+  /**
+   * The upstream offset value in ZK during initialization phase; the value will not be updated during admin topic consumption.
+   *
+   * Currently there are two potential offset: local offset and upstream offset, and we only update and
+   * maintain one of the them. While persisting the offset to ZK, we would like to keep the original value
+   * for the other one, so that rollback/roll-forward of the remote consumption feature can be faster.
+   */
+  private long upstreamOffsetCheckpointAtStartTime = UNASSIGNED_VALUE;
+  /**
    * Map of store names to their last succeeded execution id
    */
   private volatile ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
@@ -294,7 +315,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             logger.info("Consumed " + records.count() + " admin messages from kafka. Will queue them up for processing");
             recordsIterator = records.iterator();
             while (recordsIterator.hasNext()) {
-              undelegatedRecords.add(recordsIterator.next());
+              ConsumerRecord<KafkaKey, KafkaMessageEnvelope> newRecord = recordsIterator.next();
+              lastConsumedOffset = newRecord.offset();
+              undelegatedRecords.add(newRecord);
             }
           }
         } else {
@@ -346,7 +369,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void subscribe() {
     Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
     if (!metaData.isEmpty()) {
-      lastPersistedOffset = AdminTopicMetadataAccessor.getOffset(metaData, remoteConsumptionEnabled);
+      Pair<Long, Long> localAndUpstreamOffsets = AdminTopicMetadataAccessor.getOffsets(metaData);
+      localOffsetCheckpointAtStartTime = localAndUpstreamOffsets.getFirst();
+      upstreamOffsetCheckpointAtStartTime = localAndUpstreamOffsets.getSecond();
+      lastPersistedOffset = remoteConsumptionEnabled ? upstreamOffsetCheckpointAtStartTime : localOffsetCheckpointAtStartTime;
       lastPersistedExecutionId = AdminTopicMetadataAccessor.getExecutionId(metaData);
       lastOffset = lastPersistedOffset;
       lastDelegatedExecutionId = lastPersistedExecutionId;
@@ -541,13 +567,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     Put put = (Put) kafkaValue.payloadUnion;
     AdminOperation adminOperation = deserializer.deserialize(put.putValue.array(), put.schemaId);
     long executionId = adminOperation.executionId;
-    logger.info("Received admin message: " + adminOperation + " offset: " + record.offset());
     try {
       checkAndValidateMessage(adminOperation, record);
+      logger.info("Received admin message: " + adminOperation + " offset: " + record.offset());
       consecutiveDuplicateMessageCount = 0;
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
-      if (consecutiveDuplicateMessageCount++ < MAX_DUPLICATE_MESSAGE_LOGS) {
+      if (consecutiveDuplicateMessageCount < MAX_DUPLICATE_MESSAGE_LOGS) {
+        consecutiveDuplicateMessageCount++;
         logger.info(e.getMessage());
       } else if (consecutiveDuplicateMessageCount == MAX_DUPLICATE_MESSAGE_LOGS) {
         logger.info("It appears that controller is consuming from a low offset and encounters many admin messages that "
@@ -679,7 +706,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       // Skip since there are no new admin messages processed.
       return;
     }
-    Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(lastOffset, lastDelegatedExecutionId, remoteConsumptionEnabled);
+    Map<String, Long> metadata = remoteConsumptionEnabled
+        ? AdminTopicMetadataAccessor.generateMetadataMap(localOffsetCheckpointAtStartTime, lastOffset, lastDelegatedExecutionId)
+        : AdminTopicMetadataAccessor.generateMetadataMap(lastOffset, upstreamOffsetCheckpointAtStartTime, lastDelegatedExecutionId);
     adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
     lastPersistedOffset = lastOffset;
     lastPersistedExecutionId = lastDelegatedExecutionId;
@@ -779,7 +808,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void recordConsumptionLag() {
     try {
       long sourceAdminTopicEndOffset = sourceKafkaClusterTopicManager.getLatestOffsetAndRetry(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, 10);
-      stats.setAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastOffset);
+      stats.setAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastConsumedOffset);
       stats.setMaxAdminConsumptionOffsetLag(sourceAdminTopicEndOffset - lastPersistedOffset);
     } catch (Exception e) {
       logger.error("Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
