@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.router.api.path.VenicePath;
 import java.io.Closeable;
@@ -45,5 +46,12 @@ public interface StorageNodeClient extends Closeable {
 
   default CloseableHttpAsyncClient getHttpClientForHost(String host) {
     return null;
+  }
+
+  default void sendRestRequest(RestRequest request, Consumer<PortableHttpResponse> completedCallBack,
+      Consumer<Throwable> failedCallBack,
+      BooleanSupplier cancelledCallBack,
+      long queryStartTimeInNS) throws RouterException {
+    return;
   }
 }

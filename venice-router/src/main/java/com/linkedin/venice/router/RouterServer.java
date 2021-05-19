@@ -11,6 +11,7 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.Router;
 import com.linkedin.ddsstorage.router.impl.netty4.Router4Impl;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
+import com.linkedin.r2.transport.common.Client;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -59,6 +60,7 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
+import com.linkedin.venice.router.httpclient.R2StorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AdminOperationsStats;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
@@ -189,6 +191,8 @@ public class RouterServer extends AbstractVeniceService {
 
   private final AggHostHealthStats aggHostHealthStats;
 
+  private final Client r2client;
+
   public static void main(String args[]) throws Exception {
     VeniceProperties props;
     try {
@@ -205,7 +209,7 @@ public class RouterServer extends AbstractVeniceService {
     logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
     Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
-    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory);
+    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory, null);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -227,8 +231,8 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public RouterServer(VeniceProperties properties, List<D2Server> d2Servers, Optional<DynamicAccessController> accessController,
-      Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
-    this(properties, d2Servers, accessController, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
+      Optional<SSLEngineComponentFactory> sslEngineComponentFactory, Client r2client) {
+    this(properties, d2Servers, accessController, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME), r2client);
   }
 
   // for test purpose
@@ -241,8 +245,8 @@ public class RouterServer extends AbstractVeniceService {
       List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController,
       Optional<SSLEngineComponentFactory> sslFactory,
-      MetricsRepository metricsRepository) {
-    this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true);
+      MetricsRepository metricsRepository, Client r2client) {
+    this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true, r2client);
 
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, config.getSystemSchemaClusterName());
@@ -277,7 +281,7 @@ public class RouterServer extends AbstractVeniceService {
       List<D2Server> d2ServerList,
       Optional<DynamicAccessController> accessController,
       Optional<SSLEngineComponentFactory> sslFactory,
-      MetricsRepository metricsRepository, boolean isCreateHelixManager) {
+      MetricsRepository metricsRepository, boolean isCreateHelixManager, Client r2client) {
     config = new VeniceRouterConfig(properties);
     zkClient = new ZkClient(config.getZkConnection(), ZkClient.DEFAULT_SESSION_TIMEOUT,
         ZkClient.DEFAULT_CONNECTION_TIMEOUT);
@@ -298,6 +302,7 @@ public class RouterServer extends AbstractVeniceService {
     this.d2ServerList = d2ServerList;
     this.accessController = accessController;
     this.sslFactory = sslFactory;
+    this.r2client = r2client;
     verifySslOk();
   }
 
@@ -316,8 +321,9 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       List<D2Server> d2ServerList,
       Optional<SSLEngineComponentFactory> sslFactory,
-      HelixLiveInstanceMonitor liveInstanceMonitor){
-    this(properties, d2ServerList, Optional.empty(), sslFactory, new MetricsRepository(), false);
+      HelixLiveInstanceMonitor liveInstanceMonitor,
+      Client r2client){
+    this(properties, d2ServerList, Optional.empty(), sslFactory, new MetricsRepository(), false,  r2client);
     this.routingDataRepository = routingDataRepository;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.metadataRepository = metadataRepository;
@@ -382,6 +388,10 @@ public class RouterServer extends AbstractVeniceService {
       case APACHE_HTTP_ASYNC_CLIENT:
         logger.info("Router will use Apache_Http_Async_Client");
         storageNodeClient = new ApacheHttpAsyncStorageNodeClient(config, sslFactoryForRequests, metricsRepository, liveInstanceMonitor);
+        break;
+      case R2_CLIENT:
+        logger.info("Router will use R2 client");
+        storageNodeClient = new R2StorageNodeClient(r2client, sslFactoryForRequests);
         break;
       default:
         throw new VeniceException("Router client type " + config.getStorageNodeClientType().toString() + " is not supported!");

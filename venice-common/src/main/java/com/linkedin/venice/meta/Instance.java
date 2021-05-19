@@ -31,6 +31,10 @@ public class Instance {
    */
   private final int sslPort;
 
+  private final String url;
+  private final String sUrl;
+
+
   // TODO: generate nodeId from host and port, should be "host_port", or generate host and port from id.
   public Instance(String nodeId,
                   String host,
@@ -47,10 +51,16 @@ public class Instance {
     validatePort("port", port);
     this.port = port;
     this.sslPort = sslPort;
+    this.url = "http://" + host + ":" + port + "/";
+    this.sUrl = "https://" + host + ":" + sslPort + "/";
   }
 
   public static Instance fromHostAndPort(String hostName, int port) {
     return Instance.fromNodeId(hostName + "_" + port);
+  }
+
+  public String getHostUrl(boolean isSSL) {
+    return isSSL ? sUrl : url;
   }
 
   public static Instance fromNodeId(String nodeId){
