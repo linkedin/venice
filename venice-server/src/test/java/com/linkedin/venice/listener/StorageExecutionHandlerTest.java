@@ -1,9 +1,15 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.storage.DiskHealthCheckService;
+import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -13,12 +19,6 @@ import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
@@ -99,7 +99,7 @@ public class StorageExecutionHandlerTest {
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
         mockMetadataRetriever, null, false, false, 10, serverConfig,
-        mock(GenericRecordChunkingAdapter.class));
+        mock(StorageEngineBackedCompressorFactory.class));
     testHandler.channelRead(mockCtx, testRequest);
 
     waitUntilStorageExecutionHandlerRespond(outputArray);
@@ -133,7 +133,7 @@ public class StorageExecutionHandlerTest {
 
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
         mockMetadataRetriever, healthCheckService, false, false, 10, serverConfig,
-        mock(GenericRecordChunkingAdapter.class));
+        mock(StorageEngineBackedCompressorFactory.class));
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
@@ -227,7 +227,7 @@ public class StorageExecutionHandlerTest {
 
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, metadataRepo, schemaRepo,
-        mockMetadataRetriever, null, false, false, 10, serverConfig, mock(GenericRecordChunkingAdapter.class));
+        mockMetadataRetriever, null, false, false, 10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
     testHandler.channelRead(mockCtx, testRequest);
 
     waitUntilStorageExecutionHandlerRespond(outputArray);
@@ -285,7 +285,7 @@ public class StorageExecutionHandlerTest {
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, mock(StorageEngineRepository.class),
         mock(ReadOnlyStoreRepository.class), mock(ReadOnlySchemaRepository.class), mockMetadataRetriever, null, false, false,
-        10, serverConfig, mock(GenericRecordChunkingAdapter.class));
+        10, serverConfig, mock(StorageEngineBackedCompressorFactory.class));
     testHandler.channelRead(mockCtx, testRequest);
 
     waitUntilStorageExecutionHandlerRespond(outputArray);

@@ -3,16 +3,14 @@ package com.linkedin.davinci.ingestion.isolated;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
-import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
-import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
@@ -50,7 +48,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 import static java.lang.Thread.*;
@@ -114,9 +111,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private long heartbeatTimeInMs = -1;
   private int stopConsumptionWaitRetriesNum;
 
-  private final GenericRecordChunkingAdapter chunkingAdapter;
-  private final CompressorFactory compressorFactory;
-
   public IsolatedIngestionServer(int servicePort, long heartbeatTimeoutMs) {
     this.servicePort = servicePort;
     this.heartbeatTimeoutMs = heartbeatTimeoutMs;
@@ -132,8 +126,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
-    this.compressorFactory = new CompressorFactory();
-    this.chunkingAdapter = new GenericRecordChunkingAdapter(compressorFactory);
     logger.info("IsolatedIngestionServer created");
   }
 
@@ -194,8 +186,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
-
-    IOUtils.closeQuietly(compressorFactory);
 
     statusReportingExecutor.shutdown();
     try {
@@ -384,10 +374,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       return false;
     }
     return topicPartitionSubscriptionMap.get(topicName).getOrDefault(partition, new AtomicBoolean(true)).get();
-  }
-
-  public GenericRecordChunkingAdapter getChunkingAdapter() {
-    return chunkingAdapter;
   }
 
   /**

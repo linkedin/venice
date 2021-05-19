@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.notifier.LogNotifier;
@@ -10,7 +11,6 @@ import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
@@ -91,7 +91,7 @@ public class PushTimeoutTest {
         mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
         mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
-        mock(GenericRecordChunkingAdapter.class));
+        mock(StorageEngineBackedCompressorFactory.class));
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     leaderFollowerStoreIngestionTask.run();
 
@@ -175,7 +175,7 @@ public class PushTimeoutTest {
         mock(RocksDBMemoryStats.class), true, mock(AggKafkaConsumerService.class), mockVeniceServerConfig,
         false, null, 0, mock(ExecutorService.class), 0,
         mock(InternalAvroSpecificSerializer.class), false, mock(VenicePartitioner.class), 1, false, 1,
-        mock(GenericRecordChunkingAdapter.class));
+        mock(StorageEngineBackedCompressorFactory.class));
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0);
     /**
      * Since the mock consumer would show 0 subscription, the ingestion task will close after a few iteration.

@@ -210,16 +210,19 @@ public class ByteUtils {
   }
 
   public static boolean canUseBackedArray(ByteBuffer byteBuffer) {
-    return byteBuffer.array().length == byteBuffer.remaining();
+    return byteBuffer.hasArray() && byteBuffer.array().length == byteBuffer.remaining();
   }
 
   public static byte[] extractByteArray(ByteBuffer byteBuffer) {
     if (ByteUtils.canUseBackedArray(byteBuffer)) {
       // We could safely use the backed array.
       return byteBuffer.array();
+    } else {
+      byte[] value = new byte[byteBuffer.remaining()];
+      byteBuffer.mark();
+      byteBuffer.get(value);
+      byteBuffer.reset();
+      return value;
     }
-    byte[] value = new byte[byteBuffer.remaining()];
-    System.arraycopy(byteBuffer.array(), byteBuffer.position(), value, 0, byteBuffer.remaining());
-    return value;
   }
 }

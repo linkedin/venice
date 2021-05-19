@@ -99,7 +99,9 @@ public class VersionBackend {
   synchronized void delete() {
     logger.info("Deleting local version " + this);
     close();
-    backend.getIngestionBackend().removeStorageEngine(version.kafkaTopicName());
+    final String topicName = version.kafkaTopicName();
+    backend.getIngestionBackend().removeStorageEngine(topicName);
+    backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
   }
 
   @Override
@@ -165,7 +167,8 @@ public class VersionBackend {
         version.getCompressionStrategy(),
         true,
         backend.getSchemaRepository(),
-        null);
+        null,
+        backend.getCompressorFactory());
   }
 
   public int getUserPartition(int subPartition) {

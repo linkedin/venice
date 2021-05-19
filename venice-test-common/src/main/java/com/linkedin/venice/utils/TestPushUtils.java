@@ -26,7 +26,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
@@ -36,24 +35,23 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
-import org.apache.kafka.common.config.SslConfigs;
-import org.apache.samza.config.MapConfig;
-import org.apache.samza.system.OutgoingMessageEnvelope;
-import org.apache.samza.system.SystemProducer;
-import org.apache.samza.system.SystemStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
+import org.apache.kafka.common.config.SslConfigs;
+import org.apache.samza.config.MapConfig;
+import org.apache.samza.system.OutgoingMessageEnvelope;
+import org.apache.samza.system.SystemProducer;
+import org.apache.samza.system.SystemStream;
 import org.testng.Assert;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.meta.Version.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 
 
 public class TestPushUtils {
@@ -129,13 +127,13 @@ public class TestPushUtils {
       "  ] " +
       " } ";
 
-  public static final String INT_INT_SCHEMA_STRING = "{" +
+  public static final String INT_STRING_SCHEMA_STRING = "{" +
       "  \"namespace\" : \"example.avro\",  " +
       "  \"type\": \"record\",   " +
-      "  \"name\": \"IntToInt\",     " +
+      "  \"name\": \"IntToString\",     " +
       "  \"fields\": [           " +
       "       { \"name\": \"id\", \"type\": \"int\"},  " +
-      "       { \"name\": \"name\", \"type\": \"int\"}  " +
+      "       { \"name\": \"name\", \"type\": \"string\"}  " +
       "  ] " +
       " } ";
 
@@ -477,23 +475,23 @@ public class TestPushUtils {
         });
   }
 
-  public static Schema writeSimpleAvroFileWithIntToIntSchema(File parentDir, boolean fileNameWithAvroSuffix) throws IOException {
-    return writeSimpleAvroFileWithIntToIntSchema(parentDir, fileNameWithAvroSuffix, 100);
+  public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir, boolean fileNameWithAvroSuffix) throws IOException {
+    return writeSimpleAvroFileWithIntToStringSchema(parentDir, fileNameWithAvroSuffix, 100);
   }
 
-  public static Schema writeSimpleAvroFileWithIntToIntSchema(File parentDir, boolean fileNameWithAvroSuffix, int recordCount) throws IOException {
+  public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir, boolean fileNameWithAvroSuffix, int recordCount) throws IOException {
     String fileName;
     if (fileNameWithAvroSuffix) {
-      fileName = "simple_int2int.avro";
+      fileName = "simple_int2string.avro";
     } else {
-      fileName = "simple_int2int";
+      fileName = "simple_int2string";
     }
-    return writeAvroFile(parentDir, fileName, INT_INT_SCHEMA_STRING,
+    return writeAvroFile(parentDir, fileName, INT_STRING_SCHEMA_STRING,
         (recordSchema, writer) -> {
           for (int i = 1; i <= recordCount; ++i) {
             GenericRecord i2i = new GenericData.Record(recordSchema);
             i2i.put("id", i);
-            i2i.put("name", i);
+            i2i.put("name", "name " + Integer.toString(i));
             writer.append(i2i);
           }
         });

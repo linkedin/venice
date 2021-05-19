@@ -1,14 +1,16 @@
 package com.linkedin.davinci.storage.chunking;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -22,6 +24,7 @@ import org.apache.avro.util.Utf8;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
 import static org.mockito.Mockito.*;
 
 
@@ -234,10 +237,11 @@ public class ChunkingTest {
     doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey));
     doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey));
 
-    try (CompressorFactory compressorFactory = new CompressorFactory()) {
-      GenericRecordChunkingAdapter chunkingAdapter = new GenericRecordChunkingAdapter(compressorFactory);
-      GenericRecord value = chunkingAdapter.get(storageEngine, partition, ByteBuffer.wrap(keyBytes), true, null,
-          null, null, CompressionStrategy.NO_OP, true, schemaRepository, storeName);
+    try (StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(mock(
+        StorageMetadataService.class))) {
+      GenericRecord value =
+          GenericRecordChunkingAdapter.INSTANCE.get(storageEngine, partition, ByteBuffer.wrap(keyBytes), true, null,
+              null, null, CompressionStrategy.NO_OP, true, schemaRepository, storeName, compressorFactory);
 
       Assert.assertEquals(value.get("test"), record.get("test"));
     }

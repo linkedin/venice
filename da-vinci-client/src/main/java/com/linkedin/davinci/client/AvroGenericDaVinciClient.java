@@ -1,6 +1,14 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.DaVinciBackend;
+import com.linkedin.davinci.StoreBackend;
+import com.linkedin.davinci.VersionBackend;
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -8,7 +16,6 @@ import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.Store;
@@ -20,23 +27,6 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
-
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.davinci.DaVinciBackend;
-import com.linkedin.davinci.StoreBackend;
-import com.linkedin.davinci.VersionBackend;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
-import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
-
-import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.BinaryEncoder;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
-
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -46,6 +36,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -76,8 +71,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private AvroGenericStoreClient<K, V> veniceClient;
   private StoreBackend storeBackend;
   private static ReferenceCounted<DaVinciBackend> daVinciBackend;
-  private final CompressorFactory compressorFactory;
-  private final GenericChunkingAdapter chunkingAdapter;
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
@@ -99,8 +92,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     this.backendConfig = backendConfig;
     this.managedClients = managedClients;
     this.icProvider = icProvider;
-    this.compressorFactory = new CompressorFactory();
-    this.chunkingAdapter = new GenericChunkingAdapter(compressorFactory);
   }
 
   @Override
@@ -298,7 +289,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   }
 
   protected AbstractAvroChunkingAdapter<V> getChunkingAdapter() {
-    return chunkingAdapter;
+    return GenericChunkingAdapter.INSTANCE;
   }
 
   private D2ServiceDiscoveryResponseV2 discoverService() {
@@ -361,8 +352,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients, ICProvider icProvider) {
     if (daVinciBackend == null) {
-      GenericRecordChunkingAdapter chunkingAdapter = new GenericRecordChunkingAdapter(getCompressorFactory());
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, chunkingAdapter),
+      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider),
           backend -> {
         daVinciBackend = null;
         backend.close();
@@ -378,10 +368,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   // Visible for testing
   public static synchronized DaVinciBackend getBackend() {
     return daVinciBackend.get();
-  }
-
-  protected CompressorFactory getCompressorFactory() {
-    return compressorFactory;
   }
 
   @Override
@@ -424,7 +410,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       if (veniceClient != null) {
         veniceClient.close();
       }
-      IOUtils.closeQuietly(compressorFactory);
       daVinciBackend.release();
       logger.info("Client is closed successfully, storeName=" + getStoreName());
     } catch (Throwable e) {

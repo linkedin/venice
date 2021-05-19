@@ -96,7 +96,7 @@ public class PushStatusStoreTest {
     storeName = TestUtils.getUniqueString("store");
     String owner = "test";
     // set up push status store
-    TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA));
+    TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
     TestUtils.assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setLeaderFollowerModel(true)
@@ -157,7 +157,7 @@ public class PushStatusStoreTest {
       h2vProperties = getH2VProperties();
       h2vProperties.setProperty(INCREMENTAL_PUSH, "true");
       runH2V(h2vProperties, 1, cluster);
-      assertEquals(daVinciClient.get(1).get(), 1);
+      assertEquals(daVinciClient.get(1).get().toString(), "name 1");
     }
   }
 
@@ -196,7 +196,7 @@ public class PushStatusStoreTest {
     // Produce input data.
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
+    writeSimpleAvroFileWithIntToStringSchema(inputDir, true);
     Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
     return h2vProperties;
   }

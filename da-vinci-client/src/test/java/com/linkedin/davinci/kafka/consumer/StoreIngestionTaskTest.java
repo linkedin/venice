@@ -1,8 +1,23 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
+import com.linkedin.davinci.helix.LeaderFollowerStateModelNotifier;
+import com.linkedin.davinci.helix.OnlineOfflineStateModelNotifier;
+import com.linkedin.davinci.notifier.LogNotifier;
+import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggStoreIngestionStats;
+import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -11,8 +26,6 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
-import com.linkedin.davinci.helix.LeaderFollowerStateModelNotifier;
-import com.linkedin.davinci.helix.OnlineOfflineStateModelNotifier;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -35,9 +48,6 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.davinci.notifier.LogNotifier;
-import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.DeepCopyStorageMetadataService;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
@@ -48,15 +58,6 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.stats.AggStoreIngestionStats;
-import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.AbstractStoragePartition;
-import com.linkedin.davinci.store.StoragePartitionConfig;
-import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
@@ -480,7 +481,8 @@ public class StoreIngestionTaskTest {
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
         isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC, storeConfig, true,
-        false, "", leaderSubPartition, false, getVenicePartitioner(amplificationFactor), version.getPartitionCount(), false, amplificationFactor);
+        false, "", leaderSubPartition, false, getVenicePartitioner(amplificationFactor), version.getPartitionCount(), false, amplificationFactor,
+        new StorageEngineBackedCompressorFactory(mockStorageMetadataService));
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;

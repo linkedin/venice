@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.helix.LeaderFollowerParticipantModel;
@@ -8,10 +9,10 @@ import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -47,6 +48,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
@@ -125,8 +127,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceAddress;
 
-  private final GenericRecordChunkingAdapter chunkingAdapter;
-
   private final VeniceWriterFactory veniceWriterFactory;
 
   /**
@@ -137,6 +137,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *    entire ingestion task.
    */
   private final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
+
+  private final StorageEngineBackedCompressorFactory compressorFactory;
 
   /**
    * A set of boolean that check if partitions owned by this task have released the latch.
@@ -188,7 +190,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
       int amplificationFactor,
-      GenericRecordChunkingAdapter chunkingAdapter) {
+      StorageEngineBackedCompressorFactory compressorFactory) {
     super(
         consumerFactory,
         kafkaConsumerProperties,
@@ -239,7 +241,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
-    this.chunkingAdapter = chunkingAdapter;
+
+    this.compressorFactory = compressorFactory;
 
     this.veniceWriterFactory = writerFactory;
     this.veniceWriter = Lazy.of(() -> {
@@ -1428,12 +1431,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             if (transientRecord == null) {
               try {
                 long lookupStartTimeInNS = System.nanoTime();
-                originalValue = chunkingAdapter.get(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
+                originalValue = GenericRecordChunkingAdapter.INSTANCE.get(
+                    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
                     amplificationFactor != 1 && Version.isRealTimeTopic(consumerRecord.topic()) ?
                         venicePartitioner.getPartitionId(keyBytes, subPartitionCount) : consumerRecord.partition(),
                     ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
                     storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
-                    serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+                    serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName, compressorFactory);
                 storeIngestionStats.recordWriteComputeLookUpLatency(storeName,
                     LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
               } catch (Exception e) {
@@ -1445,10 +1449,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               //construct originalValue from this transient record only if it's not null.
               if (transientRecord.getValue() != null) {
                 try {
-                  originalValue =
-                      chunkingAdapter.constructValue(transientRecord.getValueSchemaId(), transientRecord.getValue(),
-                          transientRecord.getValueOffset(), transientRecord.getValueLen(),
-                          serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+                  originalValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(), transientRecord.getValue(),
+                      transientRecord.getValueOffset(), transientRecord.getValueLen(),
+                      serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
                 } catch (Exception e) {
                   writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
                   throw e;

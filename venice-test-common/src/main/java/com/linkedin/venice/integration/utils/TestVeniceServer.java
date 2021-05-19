@@ -1,22 +1,22 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.storage.DiskHealthCheckService;
+import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.StorageExecutionHandler;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.server.VeniceServer;
-import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
 import io.netty.channel.ChannelHandlerContext;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -58,11 +58,11 @@ public class TestVeniceServer extends VeniceServer {
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
-      GenericRecordChunkingAdapter chunkingAdapter) {
+      StorageEngineBackedCompressorFactory compressorFactory) {
 
     return new ListenerService(
         storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
-        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService, chunkingAdapter) {
+        metricsRepository, sslFactory, routerAccessController, storeAccessController, diskHealthService, compressorFactory) {
 
       @Override
       protected StorageExecutionHandler createRequestHandler(
@@ -76,11 +76,11 @@ public class TestVeniceServer extends VeniceServer {
           boolean fastAvroEnabled,
           boolean parallelBatchGetEnabled,
           int parallelBatchGetChunkSize,
-          GenericRecordChunkingAdapter chunkingAdapter) {
+          StorageEngineBackedCompressorFactory compressorFactory) {
 
         return new StorageExecutionHandler(
             executor, computeExecutor, storageEngineRepository, metadataRepository, schemaRepository, metadataRetriever, diskHealthService,
-            fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, chunkingAdapter) {
+            fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, compressorFactory) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             RequestHandler handler = requestHandler.get();

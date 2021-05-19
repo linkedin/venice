@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -9,7 +10,6 @@ import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -56,7 +56,8 @@ public class StoreIngestionTaskFactory {
       VenicePartitioner venicePartitioner,
       int storeVersionPartitionCount,
       boolean isIsolatedIngestion,
-      int amplificationFactor) {
+      int amplificationFactor,
+      StorageEngineBackedCompressorFactory compressorFactory) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -98,7 +99,7 @@ public class StoreIngestionTaskFactory {
           storeVersionPartitionCount,
           isIsolatedIngestion,
           amplificationFactor,
-          builder.chunkingAdapter);
+          compressorFactory);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.kafkaClientFactory,
@@ -179,7 +180,6 @@ public class StoreIngestionTaskFactory {
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
     private boolean isIsolatedIngestion;
-    private GenericRecordChunkingAdapter chunkingAdapter;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -365,13 +365,6 @@ public class StoreIngestionTaskFactory {
     public Builder setIsIsolatedIngestion(boolean isolatedIngestion) {
       if (!built) {
         this.isIsolatedIngestion = isolatedIngestion;
-      }
-      return this;
-    }
-
-    public Builder setChunkingAdapter(GenericRecordChunkingAdapter chunkingAdapter) {
-      if (!built) {
-        this.chunkingAdapter = chunkingAdapter;
       }
       return this;
     }

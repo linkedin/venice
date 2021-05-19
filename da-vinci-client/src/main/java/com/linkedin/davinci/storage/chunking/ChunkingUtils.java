@@ -1,21 +1,21 @@
 package com.linkedin.davinci.storage.chunking;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
-import java.util.Optional;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 
@@ -80,6 +80,7 @@ public class ChunkingUtils {
         null,
         false,
         null,
+        null,
         null);
   }
 
@@ -95,7 +96,8 @@ public class ChunkingUtils {
       CompressionStrategy compressionStrategy,
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
-      String storeName) {
+      String storeName,
+      StorageEngineBackedCompressorFactory compressorFactory) {
     long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
     reusedRawValue = store.get(partition, keyBuffer, reusedRawValue);
     if (null == reusedRawValue) {
@@ -103,7 +105,7 @@ public class ChunkingUtils {
     }
     return getFromStorage(
         reusedRawValue.array(), reusedRawValue.limit(), databaseLookupStartTimeInNS, adapter, store, partition, response,
-        reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
+        reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
   }
 
 
@@ -118,7 +120,7 @@ public class ChunkingUtils {
    *
    * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
    * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
-   * @see GenericRecordChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, Optional)
+   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)
    */
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
@@ -131,13 +133,14 @@ public class ChunkingUtils {
       CompressionStrategy compressionStrategy,
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
-      String storeName) {
+      String storeName,
+      StorageEngineBackedCompressorFactory compressorFactory) {
     long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
     byte[] value = store.get(partition, keyBuffer);
 
     return getFromStorage(
         value, (null == value ? 0 : value.length), databaseLookupStartTimeInNS, adapter, store, partition,
-        response, reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
+        response, reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
   }
 
   /**
@@ -151,7 +154,7 @@ public class ChunkingUtils {
    *
    * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
    * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
-   * @see GenericRecordChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, Optional)
+   * @see GenericChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)
    */
   private static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       byte[] value,
@@ -166,7 +169,8 @@ public class ChunkingUtils {
       CompressionStrategy compressionStrategy,
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
-      String storeName) {
+      String storeName,
+      StorageEngineBackedCompressorFactory compressorFactory) {
 
     if (null == value) {
       return null;
@@ -181,7 +185,7 @@ public class ChunkingUtils {
       }
 
       return adapter.constructValue(schemaId, value, valueLength, reusedValue, reusedDecoder, response, compressionStrategy,
-          fastAvroEnabled, schemaRepo, storeName);
+          fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
     } else if (schemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       throw new VeniceException("Found a record with invalid schema ID: " + schemaId);
     }
@@ -227,7 +231,7 @@ public class ChunkingUtils {
       response.incrementMultiChunkLargeValueCount();
     }
 
-    return adapter.constructValue(chunkedValueManifest.schemaId, assembledValueContainer, reusedValue, reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
+    return adapter.constructValue(chunkedValueManifest.schemaId, assembledValueContainer, reusedValue, reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory, store.getName());
   }
 
   private static String getExceptionMessageDetails(AbstractStorageEngine store, int partition, Integer chunkIndex) {

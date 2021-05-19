@@ -6,6 +6,7 @@ import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggStoreIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.davinci.storage.MetadataRetriever;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -14,7 +15,7 @@ import java.util.function.Consumer;
 /**
  * An interface for Store Ingestion Service for Venice.
  */
-public interface StoreIngestionService {
+public interface StoreIngestionService extends MetadataRetriever {
 
   /**
    * Starts consuming messages from Kafka Partition corresponding to Venice Partition.

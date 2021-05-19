@@ -1,9 +1,12 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -19,11 +22,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.utils.Pair;
-
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.NavigableMap;
@@ -46,7 +45,7 @@ public class KafkaStoreIngestionServiceTest {
   private ClusterInfoProvider mockClusterInfoProvider;
   private ReadOnlyStoreRepository mockMetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
-  private GenericRecordChunkingAdapter chunkingAdapter;
+  private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
 
@@ -57,7 +56,7 @@ public class KafkaStoreIngestionServiceTest {
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
-    chunkingAdapter = mock(GenericRecordChunkingAdapter.class);
+    compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     setupMockConfig();
   }
@@ -95,7 +94,7 @@ public class KafkaStoreIngestionServiceTest {
        Optional.empty(),
        Optional.empty(),
        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-       chunkingAdapter);
+       compressorFactory);
 
    String mockStoreName = "test";
    String mockSimilarStoreName = "testTest";
@@ -168,7 +167,7 @@ public class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        chunkingAdapter);
+        compressorFactory);
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";

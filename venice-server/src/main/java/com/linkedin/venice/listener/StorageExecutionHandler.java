@@ -1,6 +1,18 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.davinci.storage.DiskHealthCheckService;
+import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.chunking.BatchGetChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
@@ -13,7 +25,6 @@ import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
-import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
@@ -27,7 +38,6 @@ import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
-import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
@@ -43,15 +53,6 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.storage.DiskHealthCheckService;
-import com.linkedin.davinci.storage.MetadataRetriever;
-import com.linkedin.davinci.storage.chunking.BatchGetChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.ByteUtils;
@@ -124,7 +125,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final RocksDBComputeAccessMode rocksDBComputeAccessMode;
   private final VeniceServerConfig serverConfig;
   private final Map<String, VenicePartitioner> venicePartitioners = new VeniceConcurrentHashMap<>();
-  private final GenericRecordChunkingAdapter chunkingAdapter;
+  private final StorageEngineBackedCompressorFactory compressorFactory;
 
   private static class ReusableObjects {
     // reuse buffer for rocksDB value object
@@ -160,7 +161,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                   ReadOnlySchemaRepository schemaRepository,
                                   MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
                                   boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize,
-                                  VeniceServerConfig serverConfig, GenericRecordChunkingAdapter chunkingAdapter) {
+                                  VeniceServerConfig serverConfig, StorageEngineBackedCompressorFactory compressorFactory) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storageEngineRepository = storageEngineRepository;
@@ -175,7 +176,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     this.keyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
     this.rocksDBComputeAccessMode = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
     this.serverConfig = serverConfig;
-    this.chunkingAdapter = chunkingAdapter;
+    this.compressorFactory = compressorFactory;
   }
 
   @Override
@@ -637,13 +638,13 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     switch (rocksDBComputeAccessMode) {
       case SINGLE_GET:
-        reuseValueRecord = chunkingAdapter.get(store, partition, key, isChunked, reuseValueRecord,
-            binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName);
+        reuseValueRecord =
+            GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, reuseValueRecord,
+                binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName, compressorFactory);
         break;
       case SINGLE_GET_WITH_REUSE:
-        reuseValueRecord =
-            chunkingAdapter.get(storeName, store, partition, ByteUtils.extractByteArray(key),
-              reuseRawValue, reuseValueRecord, binaryDecoder, isChunked, compressionStrategy, fastAvroEnabled, this.schemaRepo, response);
+        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(storeName, store, partition, ByteUtils.extractByteArray(key),
+          reuseRawValue, reuseValueRecord, binaryDecoder, isChunked, compressionStrategy, fastAvroEnabled, this.schemaRepo, response, compressorFactory);
         break;
       default:
         throw new VeniceException("Unknown rocksDB compute storage operation");

@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.DaVinciIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
@@ -52,6 +53,7 @@ public class StoreBackendTest {
   MetricsRepository metricsRepository;
   StorageService storageService;
   DaVinciIngestionBackend ingestionBackend;
+  StorageEngineBackedCompressorFactory compressorFactory;
 
   @BeforeMethod
   void setup() {
@@ -71,6 +73,7 @@ public class StoreBackendTest {
     metricsRepository = new MetricsRepository();
     storageService = mock(StorageService.class);
     ingestionBackend = mock(DaVinciIngestionBackend.class);
+    compressorFactory = mock(StorageEngineBackedCompressorFactory.class);
     when(ingestionBackend.getStorageService()).thenReturn(storageService);
     backend = mock(DaVinciBackend.class);
     when(backend.getExecutor()).thenReturn(executor);
@@ -83,6 +86,7 @@ public class StoreBackendTest {
     when(backend.getLatestVersion(anyString(), anySet())).thenCallRealMethod();
     when(backend.getCurrentVersion(anyString(), anySet())).thenCallRealMethod();
     when(backend.getIngestionBackend()).thenReturn(ingestionBackend);
+    when(backend.getCompressorFactory()).thenReturn(compressorFactory);
 
     store = new ZKStore("test-store", null, 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS, 1);
@@ -280,6 +284,7 @@ public class StoreBackendTest {
     assertTrue(versionMap.isEmpty());
     assertEquals(FileUtils.sizeOfDirectory(baseDataPath), 0);
     verify(ingestionBackend, times(store.getVersions().size())).removeStorageEngine(any());
+    verify(compressorFactory, times(store.getVersions().size())).removeVersionSpecificCompressor(any());
   }
 
   @Test

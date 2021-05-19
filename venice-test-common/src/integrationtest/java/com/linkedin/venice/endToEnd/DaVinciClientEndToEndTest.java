@@ -23,6 +23,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.compression.CompressionStrategy.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
@@ -49,7 +50,7 @@ public class DaVinciClientEndToEndTest {
     final int partitionId = 1;
     String storeName = TestUtils.getUniqueString("batch-store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
-        params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
+        params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName()).setCompressionStrategy(GZIP)
         .setPartitionerParams(
             Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId))
         )
@@ -60,7 +61,7 @@ public class DaVinciClientEndToEndTest {
       client.subscribe(Collections.singleton(partitionId)).get();
       for (int i = 1; i <= 100; ++i) {
         Object value = client.get(i).get();
-        Assert.assertEquals(value, i);
+        Assert.assertEquals(value.toString(), "name " + i);
       }
     }
   }
@@ -73,7 +74,7 @@ public class DaVinciClientEndToEndTest {
       client.subscribeAll().get();
       for (int i = 1; i <= 100; ++i) {
         Object value = client.get(i).get();
-        Assert.assertEquals(value, i);
+        Assert.assertEquals(value.toString(), "name " + i);
       }
     }
   }
@@ -86,6 +87,7 @@ public class DaVinciClientEndToEndTest {
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setAmplificationFactor(amplificationFactor)
             .setLeaderFollowerModel(true)
+            .setCompressionStrategy(ZSTD_WITH_DICT)
             .setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId)));
@@ -96,7 +98,7 @@ public class DaVinciClientEndToEndTest {
       client.subscribe(Collections.singleton(partitionId)).get();
       for (int i = 1; i <= 100; ++i) {
         Object value = client.get(i).get();
-        Assert.assertEquals(value, i);
+        Assert.assertEquals(value.toString(), "name " + i);
       }
     }
   }
@@ -106,7 +108,7 @@ public class DaVinciClientEndToEndTest {
     // Produce input data.
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
+    writeSimpleAvroFileWithIntToStringSchema(inputDir, true);
 
     // Setup H2V job properties.
     Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
@@ -117,7 +119,7 @@ public class DaVinciClientEndToEndTest {
         .setPartitionCount(numPartitions); // Update the partition count.
     paramsConsumer.accept(params);
     try (ControllerClient controllerClient =
-        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, h2vProperties)) {
+        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", h2vProperties)) {
       ControllerResponse response = controllerClient.updateStore(storeName, params);
       Assert.assertFalse(response.isError(), response.getError());
 

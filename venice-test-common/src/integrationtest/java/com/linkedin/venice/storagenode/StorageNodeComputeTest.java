@@ -1,5 +1,6 @@
 package com.linkedin.venice.storagenode;
 
+import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -7,6 +8,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -24,6 +26,7 @@ import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -47,6 +51,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import static com.linkedin.venice.utils.ByteUtils.*;
 
 
 @Test(singleThreaded = true)
@@ -126,7 +132,7 @@ public class StorageNodeComputeTest {
   @DataProvider(name = "testPermutations")
   public static Object[][] testPermutations() {
     // Config dimensions:
-    CompressionStrategy[] compressionStrategies = new CompressionStrategy[]{CompressionStrategy.NO_OP, CompressionStrategy.GZIP};
+    CompressionStrategy[] compressionStrategies = new CompressionStrategy[]{CompressionStrategy.NO_OP, CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT};
     boolean[] yesAndNo = new boolean[]{true, false};
 
     List<Object[]> returnList = new ArrayList<>();
@@ -311,10 +317,9 @@ public class StorageNodeComputeTest {
   private void pushSyntheticDataForCompute(String topic, String keyPrefix, String valuePrefix, int numOfRecords,
                                            VeniceClusterWrapper veniceCluster, VeniceWriter<Object, byte[], byte[]> veniceWriter,
                                            int pushVersion, CompressionStrategy compressionStrategy, boolean valueLargerThan1MB) throws Exception {
-    veniceWriter.broadcastStartOfPush(false, valueLargerThan1MB, compressionStrategy, new HashMap<>());
     Schema valueSchema = Schema.parse(valueSchemaForCompute);
     // Insert test record
-    Future[] writerFutures = new Future[numOfRecords];
+    List<byte[]> values = new ArrayList<>(numOfRecords);
     for (int i = 0; i < numOfRecords; ++i) {
       GenericRecord value = new GenericData.Record(valueSchema);
       value.put("id", valuePrefix + i);
@@ -332,10 +337,34 @@ public class StorageNodeComputeTest {
       features.add(Float.valueOf((float)(i + 1)));
       features.add(Float.valueOf((float)((i + 1) * 10)));
       value.put("member_feature", features);
+      values.add(i, valueSerializer.serialize(topic, value));
+    }
 
-      byte[] compressedValue = compressorFactory.getCompressor(compressionStrategy).compress(valueSerializer.serialize(topic, value));
+    Optional<ByteBuffer> compressionDictionary = Optional.empty();
+    VeniceCompressor compressor;
+    if (compressionStrategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+      ZstdDictTrainer trainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 100 * BYTES_PER_KB);
+      for (byte[] value : values) {
+        trainer.addSample(value);
+      }
+
+      // Not using trainSamplesDirect since we need byte[] to create compressor.
+      byte[] compressionDictionaryBytes = trainer.trainSamples();
+      compressionDictionary = Optional.of(ByteBuffer.wrap(compressionDictionaryBytes));
+
+      compressor = compressorFactory.createVersionSpecificCompressorIfNotExist(compressionStrategy, topic, compressionDictionaryBytes);
+    } else {
+      compressor = compressorFactory.getCompressor(compressionStrategy);
+    }
+
+    veniceWriter.broadcastStartOfPush(false, valueLargerThan1MB, compressionStrategy, compressionDictionary, new HashMap<>());
+
+    Future[] writerFutures = new Future[numOfRecords];
+    for (int i = 0; i < numOfRecords; i++) {
+      byte[] compressedValue = compressor.compress(values.get(i));
       writerFutures[i] = veniceWriter.put(keyPrefix + i, compressedValue, valueSchemaId);
     }
+
     // wait synchronously for them to succeed
     for (int i = 0; i < numOfRecords; ++i) {
       writerFutures[i].get();

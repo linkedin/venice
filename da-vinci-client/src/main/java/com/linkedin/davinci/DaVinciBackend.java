@@ -1,12 +1,13 @@
 package com.linkedin.davinci;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.DaVinciIngestionBackend;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
-import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
+import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -18,7 +19,6 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -85,13 +85,13 @@ public class DaVinciBackend implements Closeable {
   private final PushStatusStoreWriter pushStatusStoreWriter;
   private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
   private final DaVinciIngestionBackend ingestionBackend;
+  private final StorageEngineBackedCompressorFactory compressorFactory;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
-      ICProvider icProvider,
-      GenericRecordChunkingAdapter chunkingAdapter) {
+      ICProvider icProvider) {
     VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
     this.configLoader = configLoader;
     metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
@@ -143,6 +143,8 @@ public class DaVinciBackend implements Closeable {
     // Start storage metadata service
     ((AbstractVeniceService)storageMetadataService).start();
 
+    compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
+
     ingestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
         configLoader,
@@ -155,7 +157,7 @@ public class DaVinciBackend implements Closeable {
         Optional.of(kafkaMessageEnvelopeSchemaReader),
         Optional.empty(),
         partitionStateSerializer,
-        chunkingAdapter);
+        compressorFactory);
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
 
@@ -273,6 +275,7 @@ public class DaVinciBackend implements Closeable {
     }
     storeByNameMap.clear();
     versionByTopicMap.clear();
+    compressorFactory.close();
 
     executor.shutdown();
     try {
@@ -361,6 +364,10 @@ public class DaVinciBackend implements Closeable {
 
   PushStatusStoreWriter getPushStatusStoreWriter() {
     return pushStatusStoreWriter;
+  }
+
+  public StorageEngineBackedCompressorFactory getCompressorFactory() {
+    return compressorFactory;
   }
 
   Optional<Version> getLatestVersion(String storeName, Set<Integer> faultyVersions) {
