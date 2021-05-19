@@ -2,6 +2,7 @@ package com.linkedin.davinci.ingestion.isolated;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
@@ -270,6 +271,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     StorageMetadataService storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     isolatedIngestionServer.setStorageMetadataService(storageMetadataService);
 
+    StorageEngineBackedCompressorFactory compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
+
     // Create KafkaStoreIngestionService
     KafkaStoreIngestionService storeIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -286,7 +289,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
         helixReadOnlyZKSharedSchemaRepository,
         null,
         true,
-        isolatedIngestionServer.getChunkingAdapter());
+        compressorFactory);
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);
     isolatedIngestionServer.setStoreIngestionService(storeIngestionService);

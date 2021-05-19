@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
@@ -15,10 +16,8 @@ import com.linkedin.davinci.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
-import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -97,7 +96,7 @@ import static org.apache.kafka.common.config.SslConfigs.*;
  *
  * Uses the "new" Kafka Consumer.
  */
-public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService, MetadataRetriever {
+public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService {
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger logger = Logger.getLogger(KafkaStoreIngestionService.class);
@@ -158,6 +157,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
+  private final StorageEngineBackedCompressorFactory compressorFactory;
+
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
       VeniceConfigLoader veniceConfigLoader,
@@ -170,10 +171,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
       Optional<ClientConfig> clientConfig,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      GenericRecordChunkingAdapter chunkingAdapter) {
+      StorageEngineBackedCompressorFactory compressorFactory) {
     this(storageEngineRepository, veniceConfigLoader, storageMetadataService, clusterInfoProvider, metadataRepo, schemaRepo,
         metricsRepository, rocksDBMemoryStats, kafkaMessageEnvelopeSchemaReader, clientConfig, partitionStateSerializer,
-        Optional.empty(), null, false, chunkingAdapter);
+        Optional.empty(), null, false, compressorFactory);
   }
 
   public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
@@ -190,13 +191,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository,
                                     ICProvider icProvider,
                                     boolean isIsolatedIngestion,
-                                    GenericRecordChunkingAdapter chunkingAdapter) {
+                                    StorageEngineBackedCompressorFactory compressorFactory) {
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionStateSerializer = partitionStateSerializer;
+    this.compressorFactory = compressorFactory;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
@@ -393,7 +395,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
         .setIsIsolatedIngestion(isIsolatedIngestion)
-        .setChunkingAdapter(chunkingAdapter)
         .build();
   }
 
@@ -495,7 +496,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitioner,
         version.getPartitionCount(),
         isIsolatedIngestion,
-        amplificationFactor);
+        amplificationFactor,
+        compressorFactory);
   }
 
   private static void shutdownExecutorService(ExecutorService executorService, boolean force) {
@@ -764,6 +766,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean killed = false;
       if (consumerTask.isRunning()) {
         consumerTask.kill();
+        compressorFactory.removeVersionSpecificCompressor(topicName);
         killed = true;
         logger.info("Killed consumption task for topic " + topicName);
       } else {

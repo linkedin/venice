@@ -1,19 +1,19 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.davinci.helix.HelixParticipationService;
-import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.stats.ThreadPoolStats;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -61,7 +61,7 @@ public class ListenerService extends AbstractVeniceService {
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
-      GenericRecordChunkingAdapter chunkingAdapter) {
+      StorageEngineBackedCompressorFactory compressorFactory) {
 
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
@@ -74,7 +74,7 @@ public class ListenerService extends AbstractVeniceService {
 
     StorageExecutionHandler requestHandler = createRequestHandler(
         executor, computeExecutor, storageEngineRepository, storeMetadataRepository, schemaRepository, metadataRetriever, diskHealthService,
-        serverConfig.isComputeFastAvroEnabled(), serverConfig.isEnableParallelBatchGet(), serverConfig.getParallelBatchGetChunkSize(), chunkingAdapter);
+        serverConfig.isComputeFastAvroEnabled(), serverConfig.isEnableParallelBatchGet(), serverConfig.getParallelBatchGetChunkSize(), compressorFactory);
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository, routingRepository, metricsRepository, sslFactory, serverConfig, routerAccessController,
@@ -157,9 +157,9 @@ public class ListenerService extends AbstractVeniceService {
       boolean fastAvroEnabled,
       boolean parallelBatchGetEnabled,
       int parallelBatchGetChunkSize,
-      GenericRecordChunkingAdapter chunkingAdapter) {
+      StorageEngineBackedCompressorFactory compressorFactory) {
     return new StorageExecutionHandler(
         executor, computeExecutor, storageEngineRepository, metadataRepository, schemaRepository, metadataRetriever, diskHealthService,
-        fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, chunkingAdapter);
+        fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig, compressorFactory);
   }
 }

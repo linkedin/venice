@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.WriteComputeAdapter;
@@ -35,8 +36,8 @@ public class IngestionTaskWriteComputeAdapter {
    * Apply write-compute operation on top of original value. A few of different schemas are used here
    * and should be handled carefully.
    *
-   * @param originalValue original value read from DB. It's can be null if the value is not existent. original
-   *                      value is read via {@link GenericRecordChunkingAdapter#INSTANCE#get()}
+   * @param originalValue original value read from DB. It can be null if the value is not existent. original
+   *                      value is read via {@link GenericRecordChunkingAdapter#INSTANCE#get()}}
    *                      and deserialized by the latest value schema. In some cases, this can be different
    *                      from "valueSchemaId"/"derivedSchemaId".
    * @param writeComputeBytes serialized write-compute operation.

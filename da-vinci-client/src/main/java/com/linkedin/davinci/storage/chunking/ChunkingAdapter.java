@@ -1,5 +1,6 @@
 package com.linkedin.davinci.storage.chunking;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -37,7 +38,8 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    */
   default VALUE constructValue(int schemaId, byte[] fullBytes, int bytesLength, VALUE reusedValue,
       BinaryDecoder reusedDecoder, ReadResponse response, CompressionStrategy compressionStrategy,
-      boolean fastAvroEnabled, ReadOnlySchemaRepository schemaRepo, String storeName) {
+      boolean fastAvroEnabled, ReadOnlySchemaRepository schemaRepo, String storeName,
+      StorageEngineBackedCompressorFactory compressorFactory, String versionTopic) {
     return constructValue(schemaId, fullBytes);
   }
 
@@ -59,7 +61,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
   /**
    * This function can be implemented by the adapters which need fewer parameters.
    *
-   * @see #constructValue(int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)
+   * @see #constructValue(int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, StorageEngineBackedCompressorFactory, String)
    */
   default VALUE constructValue(int schemaId, byte[] fullBytes) {
     throw new VeniceException("Not implemented.");
@@ -106,14 +108,16 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
       CompressionStrategy compressionStrategy,
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
-      String storeName){
+      String storeName,
+      StorageEngineBackedCompressorFactory compressorFactory,
+      String versionTopic){
     return constructValue(schemaId, chunksContainer);
   }
 
   /**
    * This function can be implemented by the adapters which need fewer parameters.
    *
-   * @see #constructValue(int, Object, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)
+   * @see #constructValue(int, Object, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, StorageEngineBackedCompressorFactory, String)
    */
   default VALUE constructValue(int schemaId, CHUNKS_CONTAINER chunksContainer) {
     throw new VeniceException("Not implemented.");

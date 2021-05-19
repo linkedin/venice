@@ -1,6 +1,5 @@
 package com.linkedin.davinci.storage.chunking;
 
-import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.serializer.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -10,11 +9,9 @@ import org.apache.avro.specific.SpecificRecord;
 
 public class SpecificRecordChunkingAdapter<V extends SpecificRecord> extends AbstractAvroChunkingAdapter<V> {
   private final Class<V> valueClass;
-  private final CompressorFactory compressorFactory;
 
-  public SpecificRecordChunkingAdapter(Class<V> c, CompressorFactory compressorFactory) {
+  public SpecificRecordChunkingAdapter(Class<V> c) {
     this.valueClass = c;
-    this.compressorFactory = compressorFactory;
   }
 
   @Override
@@ -27,10 +24,5 @@ public class SpecificRecordChunkingAdapter<V extends SpecificRecord> extends Abs
     } else {
       return ComputableSerializerDeserializerFactory.getComputableAvroSpecificDeserializer(writerSchema, valueClass);
     }
-  }
-
-  @Override
-  protected CompressorFactory getCompressorFactory() {
-    return compressorFactory;
   }
 }
