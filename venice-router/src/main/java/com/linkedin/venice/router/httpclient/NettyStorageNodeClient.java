@@ -287,13 +287,13 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
     }
 
     @Override
-    public byte[] getContentInBytes() throws IOException {
-      // NOTICE that do not call array() method directly here, because the ByteBuf here might not support array function
+    public ByteBuf getContentInByteBuf() {
+      // Can not directly return the `content()` as it needs to explicitly relase-ed after returning.
       ByteBuf byteBuf = response.content();
       byte[] results = new byte[byteBuf.readableBytes()];
       byteBuf.readBytes(results);
       byteBuf.release();
-      return results;
+      return Unpooled.wrappedBuffer(results);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
@@ -76,6 +77,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     HelixReadOnlySchemaRepository mockSchemaRepository = Mockito.mock(HelixReadOnlySchemaRepository.class);
     doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(Mockito.anyString());
 
+    Client r2client = Mockito.mock(Client.class);
     HelixExternalViewRepository mockRepo = Mockito.mock(HelixExternalViewRepository.class);
     doReturn(1).when(mockRepo).getNumberOfPartitions(Matchers.anyString());
 
@@ -120,7 +122,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
       RouterServer router = new RouterServer(builder.build(), mockRepo, mockHybridStoreQuotaRepository, mockMetadataRepository,
           mockSchemaRepository, mockStoreConfigRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()),
-          mockLiveInstanceMonitor);
+          mockLiveInstanceMonitor, r2client);
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, sslToStorageNodes);
     };
   }

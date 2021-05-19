@@ -36,6 +36,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -164,8 +165,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           path.markStorageNodeAsFast(storageNode.getNodeId());
         }
 
-        byte[] content = response.getContentInBytes();
-        responseFuture.setSuccess(Collections.singletonList(buildResponse(path, response, content)));
+        responseFuture.setSuccess(Collections.singletonList(buildResponse(path, response)));
 
       } catch (Throwable e) {
         responseFuture.setFailure(e);
@@ -249,13 +249,15 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
   }
 
-  protected FullHttpResponse buildResponse(VenicePath path, PortableHttpResponse serverResponse, byte[] serverResponseContent) {
+  protected FullHttpResponse buildResponse(VenicePath path, PortableHttpResponse serverResponse) throws IOException {
     int statusCode = serverResponse.getStatusCode();
+    ByteBuf content = serverResponse.getContentInByteBuf();
+
+
     if (PASS_THROUGH_ERROR_CODES.contains(statusCode)) {
-      return buildPlainTextResponse(HttpResponseStatus.valueOf(statusCode), serverResponseContent);
+      return buildPlainTextResponse(HttpResponseStatus.valueOf(statusCode), content);
     }
 
-    ByteBuf content = Unpooled.wrappedBuffer(serverResponseContent);
     CompressionStrategy contentCompression =
         VeniceResponseDecompressor.getCompressionStrategy(serverResponse.getFirstHeader(VENICE_COMPRESSION_STRATEGY));
 

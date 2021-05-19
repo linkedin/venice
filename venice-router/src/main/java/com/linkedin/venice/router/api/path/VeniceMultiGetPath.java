@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
@@ -151,6 +152,11 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
         SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
 
     return serializer.serializeObjects(routerKeyMap.values());
+  }
+
+  @Override
+  public void setRestRequestEntity(RestRequestBuilder builder) {
+    builder.setEntity(serializeRouterRequest());
   }
 
   private static Iterable<ByteBuffer> deserialize(byte[] content) {

@@ -1,23 +1,28 @@
 package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.router.api.ResourcePath;
+import com.linkedin.r2.message.rest.RestRequest;
+import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceResponseDecompressor;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
-import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
+import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.util.internal.ConcurrentSet;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.util.internal.ConcurrentSet;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
@@ -247,6 +252,26 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return composeRouterRequestInternal(storageNodeUri);
   }
 
+  public RestRequest composeRestRequest(String storageNodeUri) {
+    // set up header to pass map required by the Venice server
+    HashMap<String, String> headerMap = new HashMap<>();
+    setupVeniceHeaders(headerMap::put);
+
+    String uri = storageNodeUri + getLocation();
+    URI requestUri;
+
+    try {
+      requestUri = new URI(uri);
+    } catch (URISyntaxException e) {
+      throw new VeniceException("Failed to create URI for path " + uri, e);
+    }
+
+    RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod(getHttpMethod().toString()).setHeaders(headerMap);
+    setRestRequestEntity(builder);
+
+    return builder.build();
+  }
+
   public void setChunkedWriteHandler(ChannelHandlerContext ctx, VeniceChunkedWriteHandler chunkedWriteHandler,
       RouterStats<AggRouterHttpRequestStats> routerStats) {
     if (chunkedResponse.isPresent()) {
@@ -297,4 +322,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   public abstract ByteBuf getRequestBody();
 
   public abstract String getVeniceApiVersionHeader();
+
+  public void setRestRequestEntity(RestRequestBuilder builder) {
+  }
 }

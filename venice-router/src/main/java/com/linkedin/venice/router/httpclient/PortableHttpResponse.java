@@ -15,12 +15,11 @@ public interface PortableHttpResponse {
   int getStatusCode();
 
   /**
-   * Notice that this function can be invoked for only one time; the netty client implementation of this function
-   * will release the ByteBuf once the data are copied.
-   * @return response content as byte array
+   * Returns the response as ByteBuf.
+   * @return
    * @throws IOException
    */
-  byte[] getContentInBytes() throws IOException;
+  ByteBuf getContentInByteBuf() throws IOException;
 
   /**
    *

@@ -14,6 +14,8 @@ import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
@@ -55,7 +57,6 @@ import static com.linkedin.venice.HttpConstants.*;
 
 public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   private static final Logger logger = Logger.getLogger(ApacheHttpAsyncStorageNodeClient.class);
-  private final String scheme;
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
   private final int clientPoolSize;
@@ -80,7 +81,6 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   public ApacheHttpAsyncStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository,
       LiveInstanceMonitor monitor) {
-    this.scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
 
     int totalIOThreadNum = config.getIoThreadCountInPoolMode();
     int maxConnPerRoute = config.getMaxOutgoingConnPerRoute();
@@ -501,7 +501,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     poolStats.addStatsForRoute(host.getHost());
 
     //  http(s)://host:port/path
-    String address = scheme + host.getHost() + ":" + host.getPort() + "/";
+    String address = host.getHostUrl(sslFactory.isPresent());
     final HttpUriRequest routerRequest = path.composeRouterRequest(address);
     // set up header to pass map required by the Venice server
     path.setupVeniceHeaders((k, v) -> routerRequest.addHeader(k, v));
@@ -560,12 +560,12 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     }
 
     @Override
-    public byte[] getContentInBytes() throws IOException {
+    public ByteBuf getContentInByteBuf() throws IOException {
       byte[] contentToByte;
       try (InputStream contentStream = httpResponse.getEntity().getContent()) {
         contentToByte = IOUtils.toByteArray(contentStream);
       }
-      return contentToByte;
+      return Unpooled.wrappedBuffer(contentToByte);
     }
 
     @Override
