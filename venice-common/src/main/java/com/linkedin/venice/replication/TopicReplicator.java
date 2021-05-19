@@ -147,7 +147,7 @@ public abstract class TopicReplicator {
       getTopicManager().createTopic(srcTopicName,
                                     partitionCount,
                                     replicationFactor,
-                                    hybridStoreConfig.get().getRetentionTimeInMs(),
+                                    TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig.get()),
                                     false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
                                     Optional.empty(),
                                     false);
@@ -156,8 +156,9 @@ public abstract class TopicReplicator {
        * If real-time topic already exists, check whether its retention time is correct.
        */
       long topicRetentionTimeInMs = getTopicManager().getTopicRetention(srcTopicName);
-      if (topicRetentionTimeInMs != hybridStoreConfig.get().getRetentionTimeInMs()) {
-        getTopicManager().updateTopicRetention(srcTopicName, hybridStoreConfig.get().getRetentionTimeInMs());
+      long expectedRetentionTimeMs = TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig.get());
+      if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
+        getTopicManager().updateTopicRetention(srcTopicName, expectedRetentionTimeMs);
       }
     }
   }

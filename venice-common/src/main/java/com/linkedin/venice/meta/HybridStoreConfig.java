@@ -14,8 +14,6 @@ public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridC
 
   long getRewindTimeInSeconds();
 
-  long getRetentionTimeInMs();
-
   long getOffsetLagThresholdToGoOnline();
 
   void setRewindTimeInSeconds(long rewindTimeInSeconds);

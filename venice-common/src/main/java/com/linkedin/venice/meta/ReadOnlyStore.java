@@ -94,10 +94,6 @@ public class ReadOnlyStore implements Store {
       return this.delegate.getRewindTimeInSeconds();
     }
     @Override
-    public long getRetentionTimeInMs() {
-      return this.delegate.getRetentionTimeInMs();
-    }
-    @Override
     public long getOffsetLagThresholdToGoOnline() {
       return this.delegate.getOffsetLagThresholdToGoOnline();
     }

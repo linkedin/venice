@@ -2944,6 +2944,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersionNumber.get());
             }
 
+            if (bootstrapToOnlineTimeoutInHours.isPresent()) {
+                setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
+            }
+
             if (hybridStoreConfig.isPresent()) {
                 // To fix the final variable problem in the lambda expression
                 final HybridStoreConfig finalHybridConfig = hybridStoreConfig.get();
@@ -2987,7 +2991,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         if (getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
                             // RT already exists, ensure the retention is correct
                             getTopicManager().updateTopicRetention(Version.composeRealTimeTopic(storeName),
-                                finalHybridConfig.getRetentionTimeInMs());
+                                TopicManager.getExpectedRetentionTimeInMs(store, finalHybridConfig));
                         }
                     }
                     return store;
@@ -3044,10 +3048,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (readComputationEnabled.isPresent()) {
                 setReadComputationEnabled(clusterName, storeName, readComputationEnabled.get());
-            }
-
-            if (bootstrapToOnlineTimeoutInHours.isPresent()) {
-                setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
             }
 
             if (leaderFollowerModelEnabled.isPresent() && !leaderFollowerModelEnabled.get()) {
@@ -3126,7 +3126,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 && getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
                 // Ensure the topic retention is rolled back too
                 getTopicManager().updateTopicRetention(Version.composeRealTimeTopic(storeName),
-                    originalStore.getHybridStoreConfig().getRetentionTimeInMs());
+                    TopicManager.getExpectedRetentionTimeInMs(originalStore, originalStore.getHybridStoreConfig()));
             }
             logger.error("Successfully rolled back changes to store '" + storeName + "' in cluster: '" + clusterName
                 + "'. Will now throw the original exception (" + e.getClass().getSimpleName() + ").");

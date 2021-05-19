@@ -4,6 +4,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
@@ -604,7 +605,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   public long getRetentionTime() {
     HybridStoreConfig config = this.getHybridStoreConfig();
     if (config != null) {
-      return config.getRetentionTimeInMs();
+      return TopicManager.getExpectedRetentionTimeInMs(this, config);
     } else {
       return DEFAULT_RT_RETENTION_TIME;
     }
