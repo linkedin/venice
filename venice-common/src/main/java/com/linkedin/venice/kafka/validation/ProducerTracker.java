@@ -325,7 +325,7 @@ public class ProducerTracker {
       // Expected case, in steady state
       segment.getAndIncrementSequenceNumber();
     } else if (incomingSequenceNumber <= previousSequenceNumber) {
-      if (!hasPreviousSegment || tolerateMissingMsgs) {
+      if (!hasPreviousSegment) {
         // When hasPrevSegment is false, SN meets a producer for the first time. For hybrid + L/F case, a follower may never
         // see the record coming from samza producer before it is promoted to leader. This check prevents the first
         // message to be considered as "duplicated" and skipped.
@@ -336,6 +336,7 @@ public class ProducerTracker {
       // Although data duplication is a benign fault, we need to bubble up for two reasons:
       // 1. We want to short-circuit data validation, because the running checksum depends on exactly-once guarantees.
       // 2. The upstream caller can choose to avoid writing duplicate data, as an optimization.
+      // 3. We don't want to re-calculate checksum for duplicated msgs. It's an incorrect behavior.
       throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord);
     } else if (incomingSequenceNumber > previousSequenceNumber + 1) {
       // There is a gap in the sequence, so we are missing some data!

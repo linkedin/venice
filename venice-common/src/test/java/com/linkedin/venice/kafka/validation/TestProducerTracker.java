@@ -1,7 +1,9 @@
 package com.linkedin.venice.kafka.validation;
 
+import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.EndOfSegment;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -97,6 +99,14 @@ public class TestProducerTracker {
     return controlMessage;
   }
 
+  private ControlMessage getEndOfSegment() {
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
+    EndOfSegment endOfSegment = new EndOfSegment();
+    controlMessage.controlMessageUnion = endOfSegment;
+    return controlMessage;
+  }
+
   @Test
   public void testSequenceNumber() {
     int partitionId = 0;
@@ -183,8 +193,49 @@ public class TestProducerTracker {
         topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
     Assert.assertThrows(MissingDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, false));
-    producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, true);
+    Assert.assertThrows(DuplicateDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, true));
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSegmentNumber(), skipSegmentNumber);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), skipSequenceNumber);
+  }
+
+  @Test
+  public void testDuplicateMsgsDetected() {
+    int partitionId = 0;
+    Segment firstSegment = new Segment(partitionId, 0, CheckSumType.MD5);
+    long offset = 10;
+
+    // Send SOS
+    ControlMessage startOfSegment = getStartOfSegment();
+    KafkaMessageEnvelope startOfSegmentMessage = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE,
+        guid, firstSegment, Optional.empty(), startOfSegment); // sequence number is 0
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> controlMessageConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
+        getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, false);
+    Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 0);
+
+    // send EOS
+    ControlMessage endOfSegment = getEndOfSegment();
+    KafkaMessageEnvelope endOfSegmentMessage = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE,
+        guid, firstSegment, Optional.of(5), endOfSegment); // sequence number is 5
+    controlMessageConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
+        getControlMessageKey(endOfSegmentMessage), endOfSegmentMessage);
+    producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, true);
+    Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
+
+    // Send a put msg following EOS
+    Put firstPut = getPutMessage("first_message".getBytes());
+    KafkaMessageEnvelope firstMessage = getKafkaMessageEnvelope(MessageType.PUT,
+        guid, firstSegment, Optional.of(1), firstPut); // sequence number is 1
+    KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
+    Assert.assertThrows(DuplicateDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, true));
+    // The sequence number should not change
+    Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
   }
 }
