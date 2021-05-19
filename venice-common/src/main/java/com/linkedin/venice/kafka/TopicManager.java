@@ -6,6 +6,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -51,6 +53,8 @@ public class TopicManager implements Closeable {
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
 
   public static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = 5 * Time.MS_PER_DAY;
+  private static final long BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN = 2 * Time.MS_PER_DAY;
+
   public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   public static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   public static final int MAX_TOPIC_DELETE_RETRIES = 3;
@@ -725,5 +729,25 @@ public class TopicManager implements Closeable {
   // For testing only
   public void setTopicConfigCache(Cache<String, Properties> topicConfigCache) {
     this.topicConfigCache = topicConfigCache;
+  }
+
+  /**
+   * The default retention time for the RT topic is defined in {@link TopicManager#DEFAULT_TOPIC_RETENTION_POLICY_MS},
+   * but if the rewind time is larger than this, then the RT topic's retention time needs to be set even higher,
+   * in order to guarantee that buffer replays do not lose data. In order to achieve this, the retention time is
+   * set to the max of either:
+   *
+   * 1. {@link TopicManager#DEFAULT_TOPIC_RETENTION_POLICY_MS}; or
+   * 2. {@link HybridStoreConfig#getRewindTimeInSeconds()} + {@link Store#getBootstrapToOnlineTimeoutInHours()} + {@value #BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN};
+   *
+   * This is a convenience function, and thus must be ignored by the JSON machinery.
+   *
+   * @return the retention time for the RT topic, in milliseconds.
+   */
+  public static long getExpectedRetentionTimeInMs(Store store, HybridStoreConfig hybridConfig) {
+    long rewindTimeInMs = hybridConfig.getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+    long bootstrapToOnlineTimeInMs = store.getBootstrapToOnlineTimeoutInHours() * Time.MS_PER_HOUR;
+    long minimumRetentionInMs = rewindTimeInMs + bootstrapToOnlineTimeInMs + BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN;
+    return Math.max(minimumRetentionInMs, TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }
 }

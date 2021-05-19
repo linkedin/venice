@@ -37,6 +37,8 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -191,15 +193,21 @@ public class TestHybrid {
 
       //And real-time topic should exist now.
       assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName)));
+      // Creating a store object with default values since we're not updating bootstrap to online timeout
+      StoreProperties storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
+      storeProperties.name = storeName;
+      storeProperties.owner = "owner";
+      storeProperties.createdTime = System.currentTimeMillis();
+      Store store = new ZKStore(storeProperties);
       assertEquals(topicManager.getTopicRetention(Version.composeRealTimeTopic(storeName)),
-          hybridStoreConfig.getRetentionTimeInMs(), "RT retention not configured properly");
+          TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig), "RT retention not configured properly");
       // Make sure RT retention is updated when the rewind time is updated
       long newStreamingRewindSeconds = 600;
       hybridStoreConfig.setRewindTimeInSeconds(newStreamingRewindSeconds);
       controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setHybridRewindSeconds(newStreamingRewindSeconds));
       assertEquals(topicManager.getTopicRetention(Version.composeRealTimeTopic(storeName)),
-          hybridStoreConfig.getRetentionTimeInMs(), "RT retention not updated properly");
+          TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig), "RT retention not updated properly");
     }
   }
 

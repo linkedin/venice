@@ -4,6 +4,11 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
@@ -379,5 +384,33 @@ public class TopicManagerTest {
 
     TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, mockKafkaClientFactory);
     Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> topicManager.getLatestOffsetAndRetry(topic, 0, 10));
+  }
+
+  @Test
+  public void testMinimumExpectedRetentionTime() {
+    StoreProperties storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
+    storeProperties.name = "storeName";
+    storeProperties.owner = "owner";
+    storeProperties.createdTime = System.currentTimeMillis();
+    storeProperties.bootstrapToOnlineTimeoutInHours = 12;
+    Store store = new ZKStore(storeProperties);
+    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1);
+
+    // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) < 5 days, retention will be set to 5 days
+    Assert.assertEquals(TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 5 * Time.MS_PER_DAY);
+  }
+
+  @Test
+  public void testExpectedRetentionTime() {
+    StoreProperties storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
+    storeProperties.name = "storeName";
+    storeProperties.owner = "owner";
+    storeProperties.createdTime = System.currentTimeMillis();
+    storeProperties.bootstrapToOnlineTimeoutInHours = 3 * Time.HOURS_PER_DAY;
+    Store store = new ZKStore(storeProperties);
+    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1);
+
+    // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) > 5 days, retention will be set to the computed value
+    Assert.assertEquals(TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 7 * Time.MS_PER_DAY);
   }
 }

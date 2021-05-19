@@ -16,7 +16,6 @@ import org.codehaus.jackson.annotate.JsonProperty;
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 @org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
 public class HybridStoreConfigImpl implements HybridStoreConfig {
-  private static final long BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN = 2 * Time.MS_PER_DAY;
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
 
   private final StoreHybridConfig hybridConfig;
@@ -39,28 +38,6 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   @Override
   public long getRewindTimeInSeconds() {
     return this.hybridConfig.rewindTimeInSeconds;
-  }
-
-  /**
-   * The default retention time for the RT topic is defined in {@link TopicManager#DEFAULT_TOPIC_RETENTION_POLICY_MS},
-   * but if the rewind time is larger than this, then the RT topic's retention time needs to be set even higher,
-   * in order to guarantee that buffer replays do not lose data. In order to achieve this, the retention time is
-   * set to the max of either:
-   *
-   * 1. {@link TopicManager#DEFAULT_TOPIC_RETENTION_POLICY_MS}; or
-   * 2. {@link StoreHybridConfig#rewindTimeInSeconds} + {@value #BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN};
-   *
-   * This is a convenience function, and thus must be ignored by the JSON machinery.
-   *
-   * @return the retention time for the RT topic, in milliseconds.
-   */
-  @JsonIgnore
-  @com.fasterxml.jackson.annotation.JsonIgnore
-  @Override
-  public long getRetentionTimeInMs() {
-    long rewindTimeInMs = this.hybridConfig.rewindTimeInSeconds * Time.MS_PER_SECOND;
-    long minimumRetentionInMs = rewindTimeInMs + BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN;
-    return Math.max(minimumRetentionInMs, TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }
 
   @Override
