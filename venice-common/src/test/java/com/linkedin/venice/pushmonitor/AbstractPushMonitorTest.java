@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -343,7 +344,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = "hybridTestStore_v1";
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     AbstractPushMonitor testMonitor = getPushMonitor(true, mockReplicator);
@@ -393,7 +394,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = getTopic();
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));
@@ -443,7 +444,7 @@ public abstract class AbstractPushMonitorTest {
     String topic = getTopic();
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));

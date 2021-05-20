@@ -29,6 +29,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
@@ -174,7 +175,7 @@ public class TestHybrid {
           .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
       );
 
-      HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(streamingRewindSeconds, streamingMessageLag, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
+      HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(streamingRewindSeconds, streamingMessageLag, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE);
       // There should be no version on the store yet
       assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
           0, "The newly created store must have a current version of 0");

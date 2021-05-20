@@ -20,6 +20,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
@@ -290,7 +291,8 @@ public class  TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams
             .setPartitionCount(2)
             .setHybridRewindSeconds(10)
-            .setHybridOffsetLagThreshold(10),
+            .setHybridOffsetLagThreshold(10)
+            .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE),
         10,
         (parentController, clusterName, storeName, props, inputDir) -> {
           // Write batch data
@@ -304,6 +306,7 @@ public class  TestPushJobWithNativeReplication {
           Assert.assertNotNull(hybridConfig);
           Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), 10);
           Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 10);
+          Assert.assertEquals(hybridConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
 
           // Write Samza data (aggregated mode)
           SystemProducer veniceProducer = null;
@@ -321,9 +324,9 @@ public class  TestPushJobWithNativeReplication {
             veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
             veniceProducer.start();
 
-            //Verify the kafka URL being returned to Samza is the same as dc-0 kafka url.
+            //Verify the kafka URL being returned to Samza is the same as parent colo kafka url.
             Assert.assertEquals(((VeniceSystemProducer) veniceProducer).getKafkaBootstrapServers(),
-                childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+                parentController.getKafkaBootstrapServers(false));
           } finally {
             if (veniceProducer != null) {
               veniceProducer.stop();

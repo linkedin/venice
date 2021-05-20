@@ -33,6 +33,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
@@ -398,7 +399,8 @@ public class AdminExecutionTask implements Callable<Void> {
     if (message.hybridStoreConfig != null) {
       params.setHybridRewindSeconds(message.hybridStoreConfig.rewindTimeInSeconds)
           .setHybridOffsetLagThreshold(message.hybridStoreConfig.offsetLagThresholdToGoOnline)
-          .setHybridTimeLagThreshold(message.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds);
+          .setHybridTimeLagThreshold(message.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds)
+          .setHybridDataReplicationPolicy(DataReplicationPolicy.valueOf(message.hybridStoreConfig.dataReplicationPolicy));
     }
     params.setAccessControlled(message.accessControlled)
         .setCompressionStrategy(CompressionStrategy.valueOf(message.compressionStrategy))

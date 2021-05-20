@@ -15,6 +15,7 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -392,18 +393,28 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     //set incrementalPushEnabled to be false as hybrid and incremental are mutex
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
-    HybridStoreConfig hybridConfig = new HybridStoreConfigImpl(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-            .setHybridRewindSeconds(hybridConfig.getRewindTimeInSeconds())
-            .setHybridOffsetLagThreshold(hybridConfig.getOffsetLagThresholdToGoOnline()));
+            .setHybridRewindSeconds(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS))
+            .setHybridOffsetLagThreshold(1000L));
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
 
-    // test reverting hybrid store back to batch-only store; negative config value will undo hybrid setting
-    HybridStoreConfig revertHybridConfig = new HybridStoreConfigImpl(-1, -1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
+    // test updating hybrid data replication policy
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-        .setHybridRewindSeconds(revertHybridConfig.getRewindTimeInSeconds())
-        .setHybridOffsetLagThreshold(revertHybridConfig.getOffsetLagThresholdToGoOnline()));
+        .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE));
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getHybridStoreConfig().getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
+
+    // test reverting hybrid store back to batch-only store; negative config value will undo hybrid setting
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(-1)
+        .setHybridOffsetLagThreshold(-1)
+        .setHybridTimeLagThreshold(-1));
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
+
+    // test setting hybrid config with rewind time and time lag
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS))
+        .setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)));
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
 
     stopParticipant(additionalNode);
     delayParticipantJobCompletion(false);

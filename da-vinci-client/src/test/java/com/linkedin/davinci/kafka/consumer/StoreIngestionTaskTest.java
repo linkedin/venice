@@ -39,6 +39,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -343,13 +344,13 @@ public class StoreIngestionTaskTest {
 
   private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
     runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
-        Optional.of(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)),
+        Optional.of(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE)),
         Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
   private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled, int amplificationFactor) throws Exception {
     runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
-        Optional.of(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD)),
+        Optional.of(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE)),
         false, Optional.empty(), true, isLeaderFollowerModelEnabled, amplificationFactor);
   }
 
@@ -1582,7 +1583,7 @@ public class StoreIngestionTaskTest {
     when(mockTopicManager.getLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
 
     mockStorageMetadataService = new InMemoryStorageMetadataService();
-    hybridStoreConfig = Optional.of(new HybridStoreConfigImpl(10, 20, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD));
+    hybridStoreConfig = Optional.of(new HybridStoreConfigImpl(10, 20, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE));
     runTest(ALL_PARTITIONS, () -> {
           veniceWriter.broadcastStartOfPush(new HashMap<>());
           for (int i = 0; i < MESSAGES_BEFORE_EOP; i++) {

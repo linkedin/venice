@@ -7,10 +7,12 @@ package com.linkedin.venice.systemstore.schemas;
 
 @SuppressWarnings("all")
 public class StoreHybridConfig extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreHybridConfig\",\"namespace\":\"com.linkedin.venice.systemstore.schemas\",\"fields\":[{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"},{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"},{\"name\":\"producerTimestampLagThresholdToGoOnlineInSeconds\",\"type\":\"long\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreHybridConfig\",\"namespace\":\"com.linkedin.venice.systemstore.schemas\",\"fields\":[{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"},{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"},{\"name\":\"producerTimestampLagThresholdToGoOnlineInSeconds\",\"type\":\"long\"},{\"name\":\"dataReplicationPolicy\",\"type\":\"int\",\"doc\":\"Real-time Samza job data replication policy, and default is 'NON_AGGREGATE'\",\"default\":0}]}");
   public long rewindTimeInSeconds;
   public long offsetLagThresholdToGoOnline;
   public long producerTimestampLagThresholdToGoOnlineInSeconds;
+  /** Real-time Samza job data replication policy, and default is 'NON_AGGREGATE' */
+  public int dataReplicationPolicy;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -18,6 +20,7 @@ public class StoreHybridConfig extends org.apache.avro.specific.SpecificRecordBa
     case 0: return rewindTimeInSeconds;
     case 1: return offsetLagThresholdToGoOnline;
     case 2: return producerTimestampLagThresholdToGoOnlineInSeconds;
+    case 3: return dataReplicationPolicy;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -28,6 +31,7 @@ public class StoreHybridConfig extends org.apache.avro.specific.SpecificRecordBa
     case 0: rewindTimeInSeconds = (java.lang.Long)value$; break;
     case 1: offsetLagThresholdToGoOnline = (java.lang.Long)value$; break;
     case 2: producerTimestampLagThresholdToGoOnlineInSeconds = (java.lang.Long)value$; break;
+    case 3: dataReplicationPolicy = (java.lang.Integer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

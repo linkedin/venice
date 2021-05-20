@@ -21,8 +21,10 @@ public class TestHybridStoreConfig {
   public void deserializes() throws IOException {
     HybridStoreConfig fasterXml = fasterXmlMapper.readValue(serialized, HybridStoreConfig.class);
     Assert.assertEquals(fasterXml.getRewindTimeInSeconds(), 123L);
+    Assert.assertEquals(fasterXml.getDataReplicationPolicy(), DataReplicationPolicy.NON_AGGREGATE);
 
     HybridStoreConfig codehouse = codehouseMapper.readValue(serialized, HybridStoreConfig.class);
     Assert.assertEquals(codehouse.getRewindTimeInSeconds(), 123L);
+    Assert.assertEquals(fasterXml.getDataReplicationPolicy(), DataReplicationPolicy.NON_AGGREGATE);
   }
 }
