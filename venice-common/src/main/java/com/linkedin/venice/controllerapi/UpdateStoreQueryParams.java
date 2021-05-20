@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -75,6 +76,7 @@ public class UpdateStoreQueryParams extends QueryParams {
       updateStoreQueryParams.setHybridOffsetLagThreshold(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
       updateStoreQueryParams.setHybridRewindSeconds(hybridStoreConfig.getRewindTimeInSeconds());
       updateStoreQueryParams.setHybridTimeLagThreshold(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
+      updateStoreQueryParams.setHybridDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy());
     }
 
     ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();
@@ -203,6 +205,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Long> getHybridTimeLagThreshold() {
     return getLong(TIME_LAG_TO_GO_ONLINE);
+  }
+
+  public UpdateStoreQueryParams setHybridDataReplicationPolicy(DataReplicationPolicy dataReplicationPolicy) {
+    params.put(DATA_REPLICATION_POLICY, dataReplicationPolicy.name());
+    return this;
+  }
+  public Optional<DataReplicationPolicy> getHybridDataReplicationPolicy() {
+    return Optional.ofNullable(params.get(DATA_REPLICATION_POLICY)).map(DataReplicationPolicy::valueOf);
   }
 
   public UpdateStoreQueryParams setAccessControlled(boolean accessControlled) {

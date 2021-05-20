@@ -33,6 +33,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -788,6 +789,7 @@ public class TestAdminConsumptionTask {
     hybridConfig.rewindTimeInSeconds = 123L;
     hybridConfig.offsetLagThresholdToGoOnline = 1000L;
     hybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds = 300L;
+    hybridConfig.dataReplicationPolicy = DataReplicationPolicy.AGGREGATE.getValue();
     setStore.hybridStoreConfig = hybridConfig;
 
     ETLStoreConfigRecord etlStoreConfig = new ETLStoreConfigRecord();

@@ -41,6 +41,7 @@ public enum Arg {
   HYBRID_REWIND_SECONDS("hybrid-rewind-seconds", "hr", true, "for hybrid stores, how far back to rewind in the nearline stream after a batch push completes"),
   HYBRID_OFFSET_LAG("hybrid-offset-lag", "ho", true, "for hybrid stores, what is the offset lag threshold for the storage nodes' consumption to be considered ONLINE"),
   HYBRID_TIME_LAG("hybrid-time-lag", "ht", true, "for hybrid stores, servers cannot report ready-to-serve until they see a message with producer timestamp bigger than (current time - this threshold)"),
+  HYBRID_DATA_REPLICATION_POLICY("hybrid-data-replication-policy", "hdrp", true, "for hybrid stores, how real-time Samza data is replicated"),
   EXPECTED_ROUTER_COUNT("expected-router-count", "erc", true, "How many routers that a cluster should have."),
   VOLDEMORT_STORE("voldemort-store", "vs", true, "Voldemort store name"),
   MIGRATION_PUSH_STRATEGY("migration-push-strategy", "ps", true, "Migration push strategy, valid values: ["

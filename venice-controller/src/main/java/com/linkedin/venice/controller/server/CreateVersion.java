@@ -269,17 +269,6 @@ public class CreateVersion extends AbstractRoute {
             responseObject.setKafkaTopic(realTimeTopic);
             // disable amplificationFactor logic on real-time topic
             responseObject.setAmplificationFactor(1);
-            /*
-              If native replication is enabled and this is parent controller, response with source kafka bootstrap
-              severs to make Samza in aggregated mode produce to RT topic in the source Kafka cluster.
-             */
-            if (store.isNativeReplicationEnabled() && admin.isParent()) {
-              String sourceFabric = admin.getNativeReplicationSourceFabric(clusterName, store, Optional.empty());
-              String sourceKafkaBootstrapServers = admin.getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric).getFirst();
-              if (sourceKafkaBootstrapServers != null) {
-                responseObject.setKafkaBootstrapServers(sourceKafkaBootstrapServers);
-              }
-            }
             break;
           default:
             throw new VeniceException(pushTypeString + " is an unrecognized " + PUSH_TYPE);

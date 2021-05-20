@@ -7,7 +7,6 @@ import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
-import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
@@ -108,6 +107,10 @@ public class ReadOnlyStore implements Store {
     @Override
     public long getProducerTimestampLagThresholdToGoOnlineInSeconds() {
       return this.delegate.getProducerTimestampLagThresholdToGoOnlineInSeconds();
+    }
+    @Override
+    public DataReplicationPolicy getDataReplicationPolicy() {
+      return this.delegate.getDataReplicationPolicy();
     }
     @Override
     public HybridStoreConfig clone() {

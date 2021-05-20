@@ -17,18 +17,23 @@ import org.codehaus.jackson.annotate.JsonProperty;
 @org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
 public class HybridStoreConfigImpl implements HybridStoreConfig {
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
+  public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = -1L;
 
   private final StoreHybridConfig hybridConfig;
 
   public HybridStoreConfigImpl(
       @JsonProperty("rewindTimeInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("rewindTimeInSeconds") long rewindTimeInSeconds,
       @JsonProperty("offsetLagThresholdToGoOnline") @com.fasterxml.jackson.annotation.JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline,
-      @JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") long producerTimestampLagThresholdToGoOnlineInSeconds
+      @JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") long producerTimestampLagThresholdToGoOnlineInSeconds,
+      @JsonProperty("dataReplicationPolicy")@com.fasterxml.jackson.annotation.JsonProperty("dataReplicationPolicy") DataReplicationPolicy dataReplicationPolicy
   ) {
     this.hybridConfig = new StoreHybridConfig();
     this.hybridConfig.rewindTimeInSeconds = rewindTimeInSeconds;
     this.hybridConfig.offsetLagThresholdToGoOnline = offsetLagThresholdToGoOnline;
     this.hybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds = producerTimestampLagThresholdToGoOnlineInSeconds;
+    this.hybridConfig.dataReplicationPolicy = dataReplicationPolicy == null
+        ? DataReplicationPolicy.NON_AGGREGATE.getValue() // for deserializing old hybrid config that didn't have data replication policy
+        : dataReplicationPolicy.getValue();
   }
 
   HybridStoreConfigImpl(StoreHybridConfig config) {
@@ -61,6 +66,11 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   }
 
   @Override
+  public DataReplicationPolicy getDataReplicationPolicy() {
+    return DataReplicationPolicy.valueOf(this.hybridConfig.dataReplicationPolicy);
+  }
+
+  @Override
   public StoreHybridConfig dataModel() {
     return this.hybridConfig;
   }
@@ -85,6 +95,10 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   @com.fasterxml.jackson.annotation.JsonIgnore
   @org.codehaus.jackson.annotate.JsonIgnore
   public HybridStoreConfig clone(){
-    return new HybridStoreConfigImpl(getRewindTimeInSeconds(), getOffsetLagThresholdToGoOnline(), getProducerTimestampLagThresholdToGoOnlineInSeconds());
+    return new HybridStoreConfigImpl(
+        getRewindTimeInSeconds(),
+        getOffsetLagThresholdToGoOnline(),
+        getProducerTimestampLagThresholdToGoOnlineInSeconds(),
+        getDataReplicationPolicy());
   }
 }

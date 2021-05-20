@@ -13,6 +13,7 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -548,7 +549,7 @@ public class TestMetaDataHandler {
         TestUtils.createTestStore(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(), "test",
             System.currentTimeMillis());
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(Time.SECONDS_PER_DAY, 1,
-        TimeUnit.MINUTES.toSeconds(1));
+        TimeUnit.MINUTES.toSeconds(1), DataReplicationPolicy.NON_AGGREGATE);
     zkSharedStore.setHybridStoreConfig(hybridStoreConfig);
     SystemStore systemStore = new SystemStore(zkSharedStore, VeniceSystemStoreType.META_STORE, testStore);
     Mockito.doReturn(testStore).when(mockStoreRepository).getStore(storeName);

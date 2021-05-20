@@ -30,6 +30,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -155,14 +156,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
       Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
+      Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
 
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
       }
       if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
         final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
+        final DataReplicationPolicy finalHybridDataReplicationPolicy = hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE);
         systemStores.get(storeName)
-            .setHybridStoreConfig(new HybridStoreConfigImpl(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get(), finalHybridTimeLagThreshold));
+            .setHybridStoreConfig(new HybridStoreConfigImpl(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get(), finalHybridTimeLagThreshold, finalHybridDataReplicationPolicy));
       }
     }
 
@@ -1766,7 +1769,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(60, 20000, 0));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(60, 20000, 0, DataReplicationPolicy.NON_AGGREGATE));
     Assert.assertThrows(VeniceException.class, () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
 
     // veniceWriter.put should not be called if validation fails

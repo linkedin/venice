@@ -22,5 +22,7 @@ public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridC
 
   long getProducerTimestampLagThresholdToGoOnlineInSeconds();
 
+  DataReplicationPolicy getDataReplicationPolicy();
+
   HybridStoreConfig clone();
 }

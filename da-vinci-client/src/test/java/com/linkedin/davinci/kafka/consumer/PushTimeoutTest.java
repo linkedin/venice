@@ -16,6 +16,7 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -160,7 +161,7 @@ public class PushTimeoutTest {
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager();
 
     // Make the test store a hybrid store and build a high RT offset lag, so that to force the logic of checking base version topic
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100, 100, -1);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100, 100, -1, DataReplicationPolicy.NON_AGGREGATE);
 
     ExceptionCaptorNotifier exceptionCaptorNotifier = new ExceptionCaptorNotifier();
     Queue<VeniceNotifier> notifiers = new ArrayDeque<>();

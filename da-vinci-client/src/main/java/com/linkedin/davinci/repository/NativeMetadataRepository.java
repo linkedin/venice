@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ClusterInfoProvider;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -507,7 +508,10 @@ public abstract class NativeMetadataRepository
     if (storeProperties.hybrid) {
       hybridStoreConfig = new HybridStoreConfigImpl(storeProperties.hybridStoreConfig.rewindTimeInSeconds,
           storeProperties.hybridStoreConfig.offsetLagThresholdToGoOnline,
-          storeProperties.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds);
+          storeProperties.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds,
+          // DataReplicationPolicy is not added metadata value schema as metadata system store is deprecating
+          // and da-vinci does not need this field. Create hybridStoreConfig with default dataReplicationPolicy.
+          DataReplicationPolicy.NON_AGGREGATE);
     }
 
     PartitionerConfig partitionerConfig = null;

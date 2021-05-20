@@ -20,7 +20,7 @@ public class TestSystemStore {
         OfflinePushStrategy.WAIT_ALL_REPLICAS, -1, 10000l,
         10000l, null, null, 3);
     zkSharedSystemStore.setLargestUsedVersionNumber(-1);
-    zkSharedSystemStore.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100));
+    zkSharedSystemStore.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.NON_AGGREGATE));
     zkSharedSystemStore.setLeaderFollowerModelEnabled(true);
     zkSharedSystemStore.setWriteComputationEnabled(true);
     zkSharedSystemStore.setPartitionCount(1);
