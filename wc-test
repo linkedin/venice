@@ -62,7 +62,7 @@ if __name__ == "__main__":
       "curl -kfv '{url}/job/{job}/buildWithParameters' -u $(whoami):{apiToken} -F 'patch.diff=@{patch}'"
         .format(**params, patch=args.patch))
   else:
-    changes = run_command("git diff --patch --compact-summary origin/master")
+    changes = run_command("git diff --patch --find-renames --compact-summary origin/master")
     if not changes:
       raise SystemExit("No changes")
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
           .format(**params, changes=changes, name=revision))
 
     print("Submitted working copy {name} for testing:".format(name=revision))
-    print(run_command("git diff --compact-summary origin/master"))
+    print(run_command("git diff --find-renames --compact-summary origin/master"))
     print()
 
   build_url = re.findall("< Location: (https?://.+)", response)[0]
