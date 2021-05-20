@@ -1,8 +1,7 @@
-package com.linkedin.venice.compute;
+package com.linkedin.davinci.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
-import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
@@ -11,8 +10,7 @@ import org.apache.avro.generic.GenericRecord;
 public class HadamardProductOperator implements ReadComputeOperator  {
   @Override
   public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
-      Map<String, String> computationErrorMap, Map<String, Object> context, ComputeResponseWrapper responseWrapper) {
-    responseWrapper.incrementHadamardProductCount();
+      Map<String, String> computationErrorMap, Map<String, Object> context) {
     HadamardProduct hadamardProduct = (HadamardProduct) op.operation;
     try {
       List<Float> valueVector =  (List<Float>)valueRecord.get(hadamardProduct.field.toString());
