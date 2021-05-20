@@ -4,11 +4,11 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.compute.CosineSimilarityOperator;
-import com.linkedin.venice.compute.CountOperator;
-import com.linkedin.venice.compute.DotProductOperator;
-import com.linkedin.venice.compute.HadamardProductOperator;
-import com.linkedin.venice.compute.ReadComputeOperator;
+import com.linkedin.davinci.compute.CosineSimilarityOperator;
+import com.linkedin.davinci.compute.CountOperator;
+import com.linkedin.davinci.compute.DotProductOperator;
+import com.linkedin.davinci.compute.HadamardProductOperator;
+import com.linkedin.davinci.compute.ReadComputeOperator;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
@@ -675,7 +675,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         computationErrorMap.put(operator.getResultFieldName(op), msg);
         continue;
       }
-      operator.compute(computeRequestVersion, op, reuseValueRecord, reuseResultRecord, computationErrorMap, globalContext, response);
+      incrementOperatorCount(response, op);
+      operator.compute(computeRequestVersion, op, reuseValueRecord, reuseResultRecord, computationErrorMap, globalContext);
     }
 
     // fill the empty field in result schema
@@ -723,6 +724,22 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       default:
         throw new VeniceException("Not a valid admin action: " + adminRequest.getServerAdminAction().toString());
     }
+  }
 
+  private void incrementOperatorCount(ComputeResponseWrapper response, ComputeOperation operation){
+    switch(ComputeOperationType.valueOf(operation)){
+      case DOT_PRODUCT:
+        response.incrementDotProductCount();
+        break;
+      case COSINE_SIMILARITY:
+        response.incrementCosineSimilarityCount();
+        break;
+      case HADAMARD_PRODUCT:
+        response.incrementHadamardProductCount();
+        break;
+      case COUNT:
+        response.incrementCountOperatorCount();
+        break;
+    }
   }
 }

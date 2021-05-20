@@ -1,21 +1,19 @@
-package com.linkedin.venice.compute;
+package com.linkedin.davinci.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
-import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.venice.compute.ComputeOperationUtils.*;
+import static com.linkedin.davinci.compute.ComputeOperationUtils.*;
 
 
 public class CosineSimilarityOperator implements ReadComputeOperator {
   @Override
   public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
-      Map<String, String> computationErrorMap, Map<String, Object> context, ComputeResponseWrapper responseWrapper) {
-    responseWrapper.incrementCosineSimilarityCount();
+      Map<String, String> computationErrorMap, Map<String, Object> context) {
     CosineSimilarity cosineSimilarity = (CosineSimilarity) op.operation;
     try {
       List<Float> valueVector = (List<Float>) valueRecord.get(cosineSimilarity.field.toString());

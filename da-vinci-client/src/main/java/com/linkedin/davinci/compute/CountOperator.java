@@ -1,12 +1,9 @@
-package com.linkedin.venice.compute;
+package com.linkedin.davinci.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.Count;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
@@ -14,8 +11,7 @@ import org.apache.avro.generic.GenericRecord;
 public class CountOperator implements ReadComputeOperator {
   @Override
   public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
-      Map<String, String> computationErrorMap, Map<String, Object> context, ComputeResponseWrapper responseWrapper) {
-    responseWrapper.incrementCountOperatorCount();
+      Map<String, String> computationErrorMap, Map<String, Object> context) {
     Count count = (Count) op.operation;
     String resultFieldName = count.resultFieldName.toString();
     try {

@@ -1,4 +1,4 @@
-package com.linkedin.venice.compute;
+package com.linkedin.davinci.compute;
 
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.venice.exceptions.VeniceException;

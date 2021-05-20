@@ -43,7 +43,6 @@ dependencies {
     exclude group: 'org.mockito', module: 'mockito-all'
   }
   implementation libraries.rocksdbjni
-  implementation libraries.avroUtilFastserde
 
   implementation project(':venice-common')
   implementation project(':da-vinci-client')
