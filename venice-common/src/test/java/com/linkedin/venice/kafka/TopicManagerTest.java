@@ -338,10 +338,11 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testGetLatestOffsetForNonExistingTopic() {
+  public void testGetLatestOrEarliestOffsetForNonExistingTopic() {
     String nonExistingTopic = TestUtils.getUniqueString("non-existing-topic");
     Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getLatestOffset(nonExistingTopic, 0));
     Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getLatestOffsetAndRetry(nonExistingTopic, 0, 10));
+    Assert.assertThrows(TopicDoesNotExistException.class, () -> manager.getEarliestOffset(nonExistingTopic, 0));
   }
 
   @Test
