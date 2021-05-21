@@ -105,6 +105,11 @@ public class TestHybrid {
   public static final int STREAMING_RECORD_SIZE = 1024;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
+  /**
+   * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #tearDown()} function
+   *                 will take care of it. Besides, if any backend component of the shared cluster is stopped in
+   *                 the middle of the test, please restart them at the end of your test.
+   */
   private VeniceClusterWrapper sharedVenice;
 
   /**
@@ -1354,6 +1359,7 @@ public class TestHybrid {
     final int partitionCount = 2;
     final int keyCount = 20;
     VeniceClusterWrapper cluster;
+    boolean usedSharedCluster = false;
     if (useCustomizedView) {
       cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 1,
           100, false, false, extraProperties);
@@ -1375,6 +1381,7 @@ public class TestHybrid {
       HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
       admin.addCustomizedStateConfig(cluster.getClusterName(), customizedStateConfig);
     } else {
+      usedSharedCluster = true;
       cluster = sharedVenice;
     }
 
@@ -1424,7 +1431,9 @@ public class TestHybrid {
         }
       });
     }
-    cluster.close();
+    if (!usedSharedCluster) {
+      cluster.close();
+    }
   }
 
   private static Pair<KafkaKey, KafkaMessageEnvelope> getKafkaKeyAndValueEnvelope(byte[] keyBytes, byte[] valueBytes,
