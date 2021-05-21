@@ -226,7 +226,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
     public static final long CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5);
     public static final long CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS = 500;
-    public static final long WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS = 500;
+    public static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
+    public static final long HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
     private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
     private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
@@ -3269,13 +3270,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     Optional<String> notReadyReason = Optional.of("unknown");
     long startTime = System.currentTimeMillis();
+    long logTime = 0;
     for (long elapsedTime = 0; elapsedTime <= maxWaitTimeMs; elapsedTime = System.currentTimeMillis() - startTime) {
       if (pushMonitor.getOfflinePushOrThrow(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
         throw new VeniceException("Push " + topic + " has already failed.");
       }
 
       ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
-      notReadyReason = statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment);
+      notReadyReason = statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment, notReadyReason);
 
       if (!notReadyReason.isPresent()) {
         logger.info("After waiting for " + elapsedTime + "ms, resource allocation is completed for " + topic + ".");
@@ -3283,16 +3285,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(elapsedTime));
         return;
       }
-
-      logger.info("After waiting for " + elapsedTime + "ms, resource " + topic + " does not have enough nodes" +
-          ", strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
-      Utils.sleep(WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS);
+      if ((elapsedTime - logTime) > HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS) {
+          logger.info("After waiting for " + elapsedTime + "ms, resource assignment for: " + topic
+              + " is still not complete, strategy=" + strategy.toString() + ", replicationFactor="
+              + replicationFactor + ", reason=" + notReadyReason.get());
+          logTime = elapsedTime;
+      }
+      Utils.sleep(HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS);
     }
 
     // Time out, after waiting maxWaitTimeMs, there are not enough nodes assigned.
     pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(maxWaitTimeMs));
-    throw new VeniceException("After waiting for " + maxWaitTimeMs + "ms, resource " + topic + " does not have enough nodes" +
-        ", strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
+    throw new VeniceException("After waiting for " + maxWaitTimeMs + "ms, resource assignment for: " + topic
+        + " timed out, strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor
+        + ", reason=" + notReadyReason.get());
   }
 
     protected void deleteHelixResource(String clusterName, String kafkaTopic) {

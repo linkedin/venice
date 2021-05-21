@@ -26,6 +26,9 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
  */
 public abstract class PushStatusDecider {
   private final Logger logger = Logger.getLogger(PushStatusDecider.class);
+  private final static String REASON_NOT_IN_EV = "not yet in EXTERNALVIEW";
+  private final static String REASON_NOT_ENOUGH_PARTITIONS_IN_EV = "not enough partitions in EXTERNALVIEW";
+  private final static String REASON_UNDER_REPLICATED = "does not have enough replicas";
 
   private static Map<OfflinePushStrategy, PushStatusDecider> decidersMap = new HashMap<>();
 
@@ -164,36 +167,49 @@ public abstract class PushStatusDecider {
   /**
    * @return status details: if empty, push has enough replicas in every partition, otherwise, message contains details
    */
-  public Optional<String> hasEnoughNodesToStartPush(String kafkaTopic, int replicationFactor, ResourceAssignment resourceAssignment) {
+  public Optional<String> hasEnoughNodesToStartPush(String kafkaTopic, int replicationFactor,
+      ResourceAssignment resourceAssignment, Optional<String> previousReason) {
     if (!resourceAssignment.containsResource(kafkaTopic)) {
-      String reason = "not yet in EXTERNALVIEW";
-      logger.info("Routing data repository has not created assignment for resource: " + kafkaTopic + "(" + reason + ")");
+      String reason = REASON_NOT_IN_EV;
+      String message = "Routing data repository has not created assignment for resource: " + kafkaTopic + "(" + reason + ")";
+      logConditionally(reason, previousReason, message);
       return Optional.of(reason);
     }
 
     PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
     if (partitionAssignment.isMissingAssignedPartitions()) {
-      String reason = "not enough partitions in EXTERNALVIEW " +
+      String reason = REASON_NOT_ENOUGH_PARTITIONS_IN_EV +
           partitionAssignment.getAssignedNumberOfPartitions() + "/" + partitionAssignment.getExpectedNumberOfPartitions();
-      logger.info("There are " + reason + " assigned to resource: " + kafkaTopic);
+      String message = "There are " + reason + " assigned to resource: " + kafkaTopic;
+      logConditionally(reason, previousReason, message);
       return Optional.of(reason);
     }
 
-    ArrayList<Integer> underReplicatedPartition = new ArrayList<>();
+    StringBuilder underReplicatedPartitionString = new StringBuilder();
     for (Partition partition : partitionAssignment.getAllPartitions()) {
       if (!this.hasEnoughReplicasForOnePartition(partition.getWorkingInstances().size(), replicationFactor)) {
-        underReplicatedPartition.add(partition.getId());
-        logger.info("Partition: " + partition.getId() + " does not have enough replica for resource: " + kafkaTopic);
+        underReplicatedPartitionString.append(" ").append(partition.getId());
       }
     }
 
-    if (underReplicatedPartition.isEmpty()) {
+    if (underReplicatedPartitionString.length() == 0) {
       return Optional.empty();
     }
 
-    String reason = underReplicatedPartition.size() + " partitions under-replicated in EXTERNALVIEW";
-    logger.info(reason + " for resource '" + kafkaTopic + "': " + underReplicatedPartition.toString());
+    String reason = "Partitions: " + underReplicatedPartitionString.toString() + " " + REASON_UNDER_REPLICATED;
+    String message = reason + " for resource: " + kafkaTopic;
+    logConditionally(reason, previousReason, message);
     return Optional.of(reason);
+  }
+
+  private void logConditionally(String newReason, Optional<String> previousReason, String message) {
+    if (!previousReason.isPresent()) {
+      logger.info(message);
+      return;
+    }
+    if (!previousReason.get().equals(newReason)) {
+      logger.info(message);
+    }
   }
 
   public abstract OfflinePushStrategy getStrategy();
