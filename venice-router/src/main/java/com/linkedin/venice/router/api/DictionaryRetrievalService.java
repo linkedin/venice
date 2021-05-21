@@ -13,12 +13,14 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
+import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.netty.buffer.ByteBuf;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -29,18 +31,14 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpGet;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.HttpConstants.*;
 import static org.apache.http.HttpStatus.*;
 
 
@@ -174,7 +172,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     this.dictionaryRetrieverThread = new Thread(runnable);
   }
 
-  private CompletableFuture<byte[]> getDictionary(String store, int version){
+  private CompletableFuture<byte[]> getDictionary(String store, int version) {
     String kafkaTopic = Version.composeKafkaTopic(store, version);
     Instance instance = getOnlineInstance(kafkaTopic);
 
@@ -188,8 +186,12 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     logger.info("Downloading dictionary for resource: " + kafkaTopic + " from: " + instanceUrl);
 
-    final HttpGet get = new HttpGet(instanceUrl + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + store + "/" + version);
-    Future<HttpResponse> responseFuture = storageNodeClient.getHttpClientForHost(instance.getNodeId()).execute(get, null);
+    VeniceMetaDataRequest
+        request = new VeniceMetaDataRequest(instance, QueryAction.DICTIONARY.toString().toLowerCase() + "/" + store + "/" + version,
+        HTTP_GET, sslFactory.isPresent());
+    CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
+
+    storageNodeClient.sendRequest(request, responseFuture);
 
     return CompletableFuture.supplyAsync(() -> {
       VeniceException exception = null;
@@ -215,14 +217,16 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     }, executor);
   }
 
-  private byte[] getDictionaryFromResponse(HttpResponse response, String instanceUrl) {
+  private byte[] getDictionaryFromResponse(PortableHttpResponse response, String instanceUrl) {
     try {
-      int code = response.getStatusLine().getStatusCode();
+      int code = response.getStatusCode();
       if (code != SC_OK) {
         logger.warn("Dictionary fetch returns " + code + " for " + instanceUrl);
       } else {
-        HttpEntity entity = response.getEntity();
-        return IOUtils.toByteArray(entity.getContent());
+        ByteBuf byteBuf = response.getContentInByteBuf();
+        byte[] bytes = new byte[byteBuf.readableBytes()];
+        byteBuf.readBytes(bytes);
+        return bytes;
       }
     } catch (IOException e) {
       logger.warn("Dictionary fetch HTTP response error : " + e.getMessage() + " for " + instanceUrl);

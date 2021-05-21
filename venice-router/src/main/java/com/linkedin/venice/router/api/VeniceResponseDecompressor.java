@@ -117,8 +117,8 @@ public class VeniceResponseDecompressor {
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.SINGLE_GET);
     stats.recordCompressedResponseSize(storeName, response.content().readableBytes());
     long startTimeInNs = System.nanoTime();
-    ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(responseCompression,
-        response.content().nioBuffer(), RequestType.SINGLE_GET));
+    ByteBuf copy = response.content().isReadOnly() ? response.content().copy() : response.content();
+    ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(responseCompression, copy.nioBuffer(), RequestType.SINGLE_GET));
     stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(startTimeInNs));
 
     /**
@@ -287,9 +287,9 @@ public class VeniceResponseDecompressor {
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.MULTI_GET_STREAMING);
     stats.recordCompressedResponseSize(storeName, content.readableBytes());
     long startTimeInNs = System.nanoTime();
-    ByteBuf decompressedContent = decompressMultiGetRecords(responseCompression, content);
+    ByteBuf copy = content.isReadOnly() ? content.copy() : content;
+    ByteBuf decompressedContent = decompressMultiGetRecords(responseCompression, copy);
     stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(startTimeInNs));
-
     content.release();
     return new Pair<>(decompressedContent, CompressionStrategy.NO_OP);
   }
@@ -316,8 +316,9 @@ public class VeniceResponseDecompressor {
   }
 
   private ByteBuf decompressMultiGetRecords(CompressionStrategy compressionStrategy, ByteBuf data) {
+    ByteBuf copy = data.isReadOnly() ? data.copy() : data;
     Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(
-        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(data.array(), 0, data.readableBytes()));
+        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(copy.array(), 0, copy.readableBytes()));
     for (MultiGetResponseRecordV1 record : records) {
       record.value = decompressRecord(compressionStrategy, record.value, RequestType.MULTI_GET);
     }

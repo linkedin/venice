@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
@@ -152,6 +153,11 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
         routerKeyMap.values(),
         ByteBuffer.wrap(requestContent, 0, computeRequestLengthInBytes)
     );
+  }
+
+  @Override
+  public void setRestRequestEntity(RestRequestBuilder builder) {
+    builder.setEntity(serializeRouterRequest());
   }
 
   public int getValueSchemaId() {

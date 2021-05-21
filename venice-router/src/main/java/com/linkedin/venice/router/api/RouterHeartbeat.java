@@ -5,23 +5,23 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
+import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.HttpConstants.*;
 import static org.apache.http.HttpStatus.*;
 
 
@@ -38,20 +38,14 @@ public class RouterHeartbeat extends AbstractVeniceService {
    */
   public RouterHeartbeat(LiveInstanceMonitor monitor, VeniceHostHealth health,
       VeniceRouterConfig routerConfig, Optional<SSLEngineComponentFactory> sslFactory, StorageNodeClient storageNodeClient) {
-    boolean isPooled;
-    final Random random = new Random();
 
     // How long of a timeout we allow for a node to respond to a heartbeat request
     int heartbeatTimeoutMillis = (int)routerConfig.getHeartbeatTimeoutMs();
     long heartbeatCycleMillis = routerConfig.getHeartbeatCycleMs();
-    RequestConfig requestConfig = RequestConfig.custom()
-        .setConnectTimeout(heartbeatTimeoutMillis)
-        .setConnectionRequestTimeout(heartbeatTimeoutMillis)
-        .build();
 
     Runnable runnable = () -> {
       boolean running = true;
-      List<Future<HttpResponse>> responseFutures = new ArrayList<>();
+      List<CompletableFuture<PortableHttpResponse>> responseFutures = new ArrayList<>();
       List<Instance> instances = new ArrayList<>();
       while(running) {
         try {
@@ -59,16 +53,12 @@ public class RouterHeartbeat extends AbstractVeniceService {
           instances.clear();
           // send out all heartbeat requests in parallel
           for (Instance instance : monitor.getAllLiveInstances()) {
-            String instanceUrl = instance.getUrl(sslFactory.isPresent());
-            final HttpGet get = new HttpGet(instanceUrl + "/" + QueryAction.HEALTH.toString().toLowerCase());
-            get.setConfig(requestConfig);
-            CloseableHttpAsyncClient httpAsyncClient = storageNodeClient.getHttpClientForHost(instance.getNodeId());
-            // during warmup up it might return null
-            if (httpAsyncClient == null) {
-              logger.warn("Could not yet find http client for instance " + instanceUrl);
-              continue;
-            }
-            responseFutures.add(httpAsyncClient.execute(get, null));
+            VeniceMetaDataRequest
+                request = new VeniceMetaDataRequest(instance, QueryAction.HEALTH.toString().toLowerCase(), HTTP_GET, sslFactory.isPresent());
+            request.setTimeout(heartbeatTimeoutMillis);
+            CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
+            storageNodeClient.sendRequest(request, responseFuture);
+            responseFutures.add(responseFuture);
             instances.add(instance);
           }
 
@@ -81,9 +71,6 @@ public class RouterHeartbeat extends AbstractVeniceService {
             /**
              * If elapsed time exceeds timeout threshold already, check whether the response future
              * is complete already; if not, the heartbeat request is timeout already.
-             *
-             * Future.get(0, TimeUnit.MILLISECONDS) will throw TimeoutException immediately if
-             * the future is not complete yet.
              */
             double elapsedTime = LatencyUtils.getLatencyInMS(heartbeatStartTimeInNS);
             long timeoutLimit;
@@ -93,8 +80,12 @@ public class RouterHeartbeat extends AbstractVeniceService {
               timeoutLimit = (long)(heartbeatTimeoutMillis - elapsedTime);
             }
             try {
-              HttpResponse response = responseFutures.get(i).get(timeoutLimit, TimeUnit.MILLISECONDS);
-              int code = response.getStatusLine().getStatusCode();
+              PortableHttpResponse response = responseFutures.get(i).get(timeoutLimit, TimeUnit.MILLISECONDS);
+              // response might be null during warm-up period when client may not be initialized
+              if (response == null) {
+                continue;
+              }
+              int code = response.getStatusCode();
               if (code != SC_OK) {
                 logger.warn("Heartbeat returns " + code + " for " + instanceUrl);
                 health.setHostAsUnhealthy(instance);

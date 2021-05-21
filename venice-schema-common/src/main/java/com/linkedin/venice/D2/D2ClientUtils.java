@@ -21,6 +21,8 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static com.linkedin.venice.HttpConstants.*;
+
 
 public class D2ClientUtils {
   private static Logger logger = Logger.getLogger(D2ClientUtils.class);
@@ -103,7 +105,7 @@ public class D2ClientUtils {
       throw new VeniceException("Failed to create URI for path " + requestPath, e);
     }
 
-    return new RestRequestBuilder(requestUri).setMethod("GET").setHeaders(headers).build();
+    return new RestRequestBuilder(requestUri).setMethod(HTTP_GET).setHeaders(headers).build();
   }
 
   public static RestResponse sendD2GetRequest(String requestPath, D2Client client) {
@@ -125,7 +127,7 @@ public class D2ClientUtils {
       throw new VeniceException("Failed to create URI for path " + requestPath, e);
     }
 
-    RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod("POST").setHeaders(headers).setEntity(body);
+    RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod(HTTPS_POST).setHeaders(headers).setEntity(body);
     return builder.build();
   }
 }

@@ -9,6 +9,7 @@ import javax.servlet.http.HttpServletRequest;
 import org.apache.log4j.Logger;
 import spark.Request;
 
+import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
@@ -20,7 +21,7 @@ public class AbstractRoute {
 
   // A singleton of acl check function against store resource
   private static final ResourceAclCheck getAccessToStore = (cert, resourceName, aclClient) -> {
-    return aclClient.hasAccess(cert, resourceName, "GET");
+    return aclClient.hasAccess(cert, resourceName, HTTP_GET);
   };
   // A singleton of acl check function against topic resource
   private static final ResourceAclCheck writeAccessToTopic = (cert, resourceName, aclClient) -> {
@@ -133,7 +134,7 @@ public class AbstractRoute {
     X509Certificate certificate = getCertificate(request);
 
     String storeName = request.queryParams(NAME);
-    return accessController.get().isWhitelistUsers(certificate, storeName, "GET");
+    return accessController.get().isWhitelistUsers(certificate, storeName, HTTP_GET);
   }
 
   /**

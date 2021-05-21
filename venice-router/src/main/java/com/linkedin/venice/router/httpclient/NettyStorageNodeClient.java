@@ -35,8 +35,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.MultithreadEventLoopGroup;
-import io.netty.channel.epoll.EpollEventLoopGroup;
-import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.pool.ChannelHealthChecker;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -56,7 +54,6 @@ import io.netty.util.AsciiString;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.ImmediateEventExecutor;
 import io.netty.util.concurrent.Promise;
-import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
@@ -288,7 +285,7 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
 
     @Override
     public ByteBuf getContentInByteBuf() {
-      // Can not directly return the `content()` as it needs to explicitly relase-ed after returning.
+      // Can not directly return the `content()` as it needs to explicitly release-ed after returning.
       ByteBuf byteBuf = response.content();
       byte[] results = new byte[byteBuf.readableBytes()];
       byteBuf.readBytes(results);

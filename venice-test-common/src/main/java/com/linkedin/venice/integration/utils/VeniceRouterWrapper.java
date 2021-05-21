@@ -36,6 +36,7 @@ import static com.linkedin.venice.VeniceConstants.*;
  */
 public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware {
   public static final String SERVICE_NAME = "VeniceRouter";
+  public static final String MAX_RESPONSE_SIZE = "32000000";
 
   private RouterServer service;
   private VeniceProperties properties;
@@ -109,6 +110,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     final Map<String, Object> properties = new HashMap();
     properties.put(HttpClientFactory.HTTP_SSL_CONTEXT, sslEngineComponentFactory.get().getSSLContext());
     properties.put(HttpClientFactory.HTTP_SSL_PARAMS, sslEngineComponentFactory.get().getSSLParameters());
+    properties.put(HttpClientFactory.HTTP_MAX_RESPONSE_SIZE, MAX_RESPONSE_SIZE);
 
     return new TransportClientAdapter(transportClientFactory.getClient(properties));
   }

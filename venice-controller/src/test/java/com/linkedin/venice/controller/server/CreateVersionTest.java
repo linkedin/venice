@@ -29,6 +29,7 @@ import spark.Request;
 import spark.Response;
 import spark.Route;
 
+import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
@@ -73,7 +74,7 @@ public class CreateVersionTest {
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     // Not a whitelist user.
-    doReturn(false).when(accessClient).isWhitelistUsers(certificate, storeName, "GET");
+    doReturn(false).when(accessClient).isWhitelistUsers(certificate, storeName, HTTP_GET);
 
     /**
      * Create version should fail if user doesn't have "Write" method access to the topic
@@ -222,7 +223,7 @@ public class CreateVersionTest {
     CreateVersion createVersion = new CreateVersion(Optional.of(accessClient), false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
-    doReturn(true).when(accessClient).isWhitelistUsers(certificate, storeName, "GET");
+    doReturn(true).when(accessClient).isWhitelistUsers(certificate, storeName, HTTP_GET);
 
     /**
      * Create version should fail if the store is hybrid and incremental but the current version's incremental push

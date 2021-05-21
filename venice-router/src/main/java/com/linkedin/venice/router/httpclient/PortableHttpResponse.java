@@ -5,7 +5,7 @@ import java.io.IOException;
 
 
 /**
- * This interface exposes the commonalities between the Apache httpasyncclient and Netty.
+ * This interface exposes the commonalities between the Apache httpasyncclient and Netty and R2 client.
  */
 public interface PortableHttpResponse {
   /**
