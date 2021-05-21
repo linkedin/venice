@@ -701,22 +701,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
 
     /**
-     * Try to warm-up the Venice Client during start phase, and it may not work since it is possible that the passed d2
-     * client hasn't been fully started yet, when this happens, the warm-up will be delayed to the first query.
+     * Comment out this warm-up logic as it is failing test in samza-li-venice during PCL and blocking da-vinci-client release.
+     * We will uncomment it after the issue is resolved.
      */
-    try {
-      getKeySerializer(false);
-      logger.info("Store Client warm-up is done during start phase for store: " + getStoreName());
-    } catch (Exception e) {
-      logger.info("Got the following exception when trying to warm up client during start phase for store: "
-          + getStoreName() + ", and will kick off an async warm-up", e);
-      /**
-       * Kick off an async warm-up, and the D2 client could be ready during the async warm-up.
-       * If the D2 client isn't retry in the async warm-up phase, it will be delayed to the first query.
-       * Essentially, this is a best-effort.
-       */
-      CompletableFuture.runAsync(() -> getKeySerializer());
-    }
+    // warmUpVeniceClient();
   }
 
   @Override
@@ -736,6 +724,26 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   protected abstract AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader();
 
   public abstract RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException;
+
+  private void warmUpVeniceClient() {
+    /**
+     * Try to warm-up the Venice Client during start phase, and it may not work since it is possible that the passed d2
+     * client hasn't been fully started yet, when this happens, the warm-up will be delayed to the first query.
+     */
+    try {
+      getKeySerializer(false);
+      logger.info("Store Client warm-up is done during start phase for store: " + getStoreName());
+    } catch (Exception e) {
+      logger.info("Got the following exception when trying to warm up client during start phase for store: "
+          + getStoreName() + ", and will kick off an async warm-up", e);
+      /**
+       * Kick off an async warm-up, and the D2 client could be ready during the async warm-up.
+       * If the D2 client isn't retry in the async warm-up phase, it will be delayed to the first query.
+       * Essentially, this is a best-effort.
+       */
+      CompletableFuture.runAsync(() -> getKeySerializer());
+    }
+  }
 
   private void validateMultiGetResponseSchemaId(int schemaId) {
     int protocolVersion = ReadAvroProtocolDefinition.MULTI_GET_RESPONSE_V1.getProtocolVersion();
