@@ -52,8 +52,6 @@ import org.apache.http.pool.PoolStats;
 import org.apache.http.protocol.HttpContext;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.HttpConstants.*;
-
 
 public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   private static final Logger logger = Logger.getLogger(ApacheHttpAsyncStorageNodeClient.class);
@@ -485,6 +483,26 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     return clientWithConnManager;
   }
 
+  @Override
+  public void sendRequest(VeniceMetaDataRequest request, CompletableFuture<PortableHttpResponse> responseFuture) {
+    String host = request.getNodeId();
+    CloseableHttpAsyncClient client = getHttpClientForHost(host);
+    // during warmup up it might return null
+    if (client == null) {
+      responseFuture.complete(null);
+    }
+    HttpGet httpGet = new HttpGet(request.getUrl() + request.getQuery());
+
+    if (request.hasTimeout()) {
+      RequestConfig requestConfig = RequestConfig.custom()
+          .setConnectTimeout(request.getTimeout())
+          .setConnectionRequestTimeout(request.getTimeout())
+          .build();
+      httpGet.setConfig(requestConfig);
+    }
+
+    client.execute(httpGet, new HttpAsyncClientFutureCallBack(responseFuture::complete, responseFuture::completeExceptionally, () -> responseFuture.cancel(false)));
+  }
 
   @Override
   public void query(

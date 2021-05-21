@@ -36,11 +36,6 @@ public class VeniceSingleGetPath extends VenicePath {
   private final RouterKey routerKey;
   private final String partition;
 
-  public VeniceSingleGetPath(String resourceName, String key, String uri, VenicePartitionFinder partitionFinder)
-      throws RouterException {
-    this(resourceName, key, uri, partitionFinder, Optional.empty());
-  }
-
   public VeniceSingleGetPath(String resourceName, String key, String uri, VenicePartitionFinder partitionFinder,
       Optional<RouterStats<AggRouterHttpRequestStats>> stats) throws RouterException {
     super(resourceName, false, -1);

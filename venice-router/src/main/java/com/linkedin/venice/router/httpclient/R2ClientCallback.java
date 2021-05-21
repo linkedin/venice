@@ -40,7 +40,8 @@ public class R2ClientCallback implements Callback<RestResponse> {
   @Override
   public void onSuccess(RestResponse result) {
     int statusCode = result.getStatus();
-    if (statusCode >= 400) {
+    // Not found returns onErrror with Throwable, fail only for server errors
+    if (statusCode >= 500) {
       failedCallback.accept(new VeniceException("R2 client failed with http status code " + statusCode));
       return;
     }

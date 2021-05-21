@@ -13,6 +13,9 @@ public class HttpConstants {
   public static final String HTTP_PREFIX = HTTP + COLON_SLASH_SLASH;
   public static final String HTTPS_PREFIX = HTTPS + COLON_SLASH_SLASH;
   public static final String LOCALHOST = "localhost";
+  public static final String HTTP_GET = "GET";
+  public static final String HTTPS_POST = "POST";
+
 
   public static final String VENICE_OFFSET = "X-VENICE-OFFSET";
   public static final String VENICE_STORE_VERSION = "X-VENICE-STORE-VERSION";
