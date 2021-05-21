@@ -3155,6 +3155,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     public void reportCompleted(PartitionConsumptionState partitionConsumptionState, boolean forceCompletion) {
       if (amplificationFactor == 1) {
+        partitionConsumptionState.lagHasCaughtUp();
         notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
         return;
       }
@@ -3172,8 +3173,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
       for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-        if (partitionConsumptionStateMap.containsKey(subPartitionId)) {
-          partitionConsumptionStateMap.get(subPartitionId).completionReported();
+        PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartitionId);
+        if (subPartitionConsumptionState != null) {
+          subPartitionConsumptionState.lagHasCaughtUp();
+          subPartitionConsumptionState.completionReported();
         }
       }
     }
