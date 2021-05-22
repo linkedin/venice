@@ -17,7 +17,7 @@ import io.tehuti.metrics.stats.Rate;
 import java.util.function.Supplier;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.davinci.stats.StatsErrorCode.*;
+import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 
 /**

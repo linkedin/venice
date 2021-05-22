@@ -23,7 +23,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
-import static com.linkedin.davinci.stats.StatsErrorCode.NULL_DIV_STATS;
+import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
 public class AggVersionedDIVStatsTest {
   private static final int TEST_TIME = 10 *Time.MS_PER_SECOND;

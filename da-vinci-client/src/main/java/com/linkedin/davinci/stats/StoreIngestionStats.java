@@ -16,7 +16,7 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.function.Supplier;
 
-import static com.linkedin.davinci.stats.StatsErrorCode.*;
+import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 public class StoreIngestionStats extends AbstractVeniceStats {
   private StoreIngestionTask storeIngestionTask;

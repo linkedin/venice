@@ -220,6 +220,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean sharedKafkaProducerEnabled;
   private final int sharedProducerPoolSizePerKafkaCluster;
+  private final Set<String> kafkaProducerMetrics;
   /**
    * Boolean flag indicating if it is a Da Vinci application.
    */
@@ -342,6 +343,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     sharedKafkaProducerEnabled = serverProperties.getBoolean(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, false);
     sharedProducerPoolSizePerKafkaCluster = serverProperties.getInt(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, 8);
+
+    List<String> kafkaProducerMetricsList = serverProperties.getList(KAFKA_PRODUCER_METRICS, Arrays.asList("outgoing-byte-rate",
+        "record-send-rate","batch-size-max","batch-size-avg","buffer-available-bytes","buffer-exhausted-rate"));
+    kafkaProducerMetrics = new HashSet<>(kafkaProducerMetricsList);
+
     isDaVinciClient = serverProperties.getBoolean(INGESTION_USE_DA_VINCI_CLIENT, false);
     unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH,false);
   }
@@ -644,6 +650,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public int getSharedProducerPoolSizePerKafkaCluster() {
     return sharedProducerPoolSizePerKafkaCluster;
   }
+
+  public Set<String> getKafkaProducerMetrics() {
+    return kafkaProducerMetrics;
+  }
+
   public boolean isDaVinciClient() {
     return isDaVinciClient;
   }

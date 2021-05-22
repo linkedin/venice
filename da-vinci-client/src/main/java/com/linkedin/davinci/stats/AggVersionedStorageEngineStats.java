@@ -6,9 +6,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.AbstractVeniceAggVersionedStats;
 import com.linkedin.venice.stats.AbstractVeniceStatsReporter;
 import com.linkedin.venice.stats.Gauge;
+import com.linkedin.venice.stats.StatsErrorCode;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.log4j.Logger;
-
 
 public class AggVersionedStorageEngineStats extends AbstractVeniceAggVersionedStats<
     AggVersionedStorageEngineStats.StorageEngineStats,

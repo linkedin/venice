@@ -5,7 +5,7 @@ import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.function.Supplier;
 
-import static com.linkedin.davinci.stats.StatsErrorCode.NULL_DIV_STATS;
+import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
 public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
   public DIVStatsReporter(MetricsRepository metricsRepository, String storeName) {

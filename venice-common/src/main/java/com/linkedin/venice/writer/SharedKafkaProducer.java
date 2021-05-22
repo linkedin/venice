@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -7,13 +8,20 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Future;
@@ -34,7 +42,7 @@ import org.apache.log4j.Logger;
 /**
  * Implementation of the shared Kafka Producer for sending messages to Kafka.
  */
-public class SharedKafkaProducer implements KafkaProducerWrapper {
+public class SharedKafkaProducer implements KafkaProducerWrapper  {
   private static final Logger LOGGER = Logger.getLogger(SharedKafkaProducer.class);
 
   private final SharedKafkaProducerService sharedKafkaProducerService;
@@ -42,11 +50,22 @@ public class SharedKafkaProducer implements KafkaProducerWrapper {
   private final Set<String> producerTasks;
   private final KafkaProducerWrapper kafkaProducerWrapper;
 
-  public SharedKafkaProducer(SharedKafkaProducerService sharedKafkaProducerService, int id, KafkaProducerWrapper kafkaProducerWrapper) {
+  private long lastStatUpdateTsMs = 0;
+  private final Map<String, Double> reportedMetrics;
+  private SharedKafkaProducerStats sharedKafkaProducerStats;
+
+  public SharedKafkaProducer(SharedKafkaProducerService sharedKafkaProducerService, int id,
+      KafkaProducerWrapper kafkaProducerWrapper, MetricsRepository metricsRepository,
+      Set<String> metricsToBeReported) {
     this.sharedKafkaProducerService = sharedKafkaProducerService;
     this.id = id;
     producerTasks = new HashSet<>();
     this.kafkaProducerWrapper = kafkaProducerWrapper;
+    reportedMetrics = new HashMap<>();
+    metricsToBeReported.forEach(metric -> reportedMetrics.put(metric, (double)StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
+    if (reportedMetrics.size() > 0) {
+      sharedKafkaProducerStats = new SharedKafkaProducerStats(metricsRepository);
+    }
   }
 
   @Override
@@ -62,7 +81,8 @@ public class SharedKafkaProducer implements KafkaProducerWrapper {
    * @param callback - The callback function, which will be triggered when Kafka client sends out the message.
    * */
   @Override
-  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
+  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition,
+      Callback callback) {
     return kafkaProducerWrapper.sendMessage(topic, key, value, partition, callback);
   }
 
@@ -116,4 +136,115 @@ public class SharedKafkaProducer implements KafkaProducerWrapper {
     return "{Id: " + id + ", Task Count: " + getProducerTaskCount() + "}";
   }
 
+
+  /**
+   * Stats related api's.
+   *
+   * Following are the list of metrics available from a KafkaProducer client.
+   *
+   * connection-creation-total
+   * bufferpool-wait-time-total
+   * batch-split-total
+   * select-rate
+   * produce-throttle-time-max
+   * connection-close-total
+   * byte-total
+   * successful-reauthentication-rate
+   * outgoing-byte-rate
+   * record-send-total
+   * batch-size-max
+   * compression-rate
+   * failed-reauthentication-rate
+   * produce-throttle-time-avg
+   * iotime-total
+   * successful-authentication-total
+   * successful-authentication-no-reauth-total
+   * batch-split-rate
+   * count
+   * io-waittime-total
+   * failed-reauthentication-total
+   * request-rate
+   * buffer-available-bytes
+   * outgoing-byte-total
+   * buffer-exhausted-total
+   * buffer-exhausted-rate
+   * record-send-rate
+   * response-rate
+   * record-queue-time-avg
+   * metadata-age
+   * network-io-rate
+   * io-ratio
+   * request-total
+   * io-wait-ratio
+   * request-size-max
+   * successful-authentication-rate
+   * failed-authentication-rate
+   * network-io-total
+   * record-queue-time-max
+   * incoming-byte-total
+   * response-total
+   * incoming-byte-rate
+   * waiting-threads
+   * bufferpool-wait-ratio
+   * connection-close-rate
+   * request-size-avg
+   * records-per-request-avg
+   * connection-creation-rate
+   * record-size-avg
+   * record-retry-total
+   * record-error-total
+   * request-latency-avg
+   * connection-count
+   * io-wait-time-ns-avg
+   * record-error-rate
+   * requests-in-flight
+   * reauthentication-latency-max
+   * failed-authentication-total
+   * io-time-ns-avg
+   * compression-rate-avg
+   * record-retry-rate
+   * request-latency-max
+   * record-size-max
+   * select-total
+   * byte-rate
+   * successful-reauthentication-total
+   * buffer-total-bytes
+   * batch-size-avg
+   * reauthentication-latency-avg
+   *
+   *
+   * Currently we are reporting the following ones which may be interesting and useful to tune the producers config.
+   *
+   *  outgoing-byte-rate :
+   * 	record-send-rate :
+   * 	batch-size-max :
+   * 	batch-size-avg :
+   * 	buffer-available-bytes :
+   * 	buffer-exhausted-rate :
+   */
+  private synchronized void mayBeCalculateAllProducerMetrics() {
+    if (LatencyUtils.getElapsedTimeInMs(lastStatUpdateTsMs) < 60 * Time.MS_PER_SECOND) {
+      return;
+    }
+
+    //measure
+    Map<String, Double> metrics = kafkaProducerWrapper.getMeasurableProducerMetrics();
+    for (String metricName : reportedMetrics.keySet()) {
+      reportedMetrics.put(metricName, metrics.getOrDefault(metricName, (double)StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
+    }
+
+    lastStatUpdateTsMs = System.currentTimeMillis();
+  }
+
+  private class SharedKafkaProducerStats extends AbstractVeniceStats {
+    public SharedKafkaProducerStats(MetricsRepository metricsRepository) {
+      super(metricsRepository, "SharedKafkaProducer");
+      reportedMetrics.keySet().forEach(metric -> {
+        registerSensorIfAbsent("producer_" + id + "_" + metric, new Gauge(() -> {
+          mayBeCalculateAllProducerMetrics();
+          return reportedMetrics.get(metric);
+        }));
+      });
+    }
+  }
 }

@@ -1,7 +1,7 @@
 package com.linkedin.davinci.store.memory;
 
 import com.linkedin.davinci.config.VeniceStoreConfig;
-import com.linkedin.davinci.stats.StatsErrorCode;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.davinci.store.AbstractStorageEngine;
