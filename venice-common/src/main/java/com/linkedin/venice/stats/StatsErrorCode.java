@@ -1,8 +1,4 @@
-package com.linkedin.davinci.stats;
-
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+package com.linkedin.venice.stats;
 
 
 /**
@@ -144,7 +140,13 @@ public enum StatsErrorCode {
   /**
    * This may be used when kafka topic's offset lag measurement may fail due to any reason.
    */
-  LAG_MEASUREMENT_FAILURE(-23);
+  LAG_MEASUREMENT_FAILURE(-23),
+
+  /**
+   * Default value for kafka client metrics. This is used when emitting metric configured via {@link ConfigKeys#KAFKA_PRODUCER_METRICS}
+   * and that metric is missing from those returned by the Kafka client.
+   */
+  KAFKA_CLIENT_METRICS_DEFAULT(-24);
 
   public final int code;
 

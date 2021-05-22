@@ -21,7 +21,7 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.davinci.stats.StatsErrorCode;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;

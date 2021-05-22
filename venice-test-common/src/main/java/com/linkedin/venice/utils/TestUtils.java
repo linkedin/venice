@@ -41,6 +41,8 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.security.Permission;
+import java.util.Arrays;
+import java.util.HashSet;
 import org.apache.commons.io.FileUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -362,19 +364,27 @@ public class TestUtils {
     return new VeniceWriterFactory(factoryProperties);
   }
 
-  public static VeniceWriterFactory getVeniceWriterFactoryWithSharedProducer(Properties properties) {
+  public static SharedKafkaProducerService getSharedKafkaProducerService(Properties properties) {
     Properties factoryProperties = new Properties();
     factoryProperties.put(KAFKA_REQUEST_TIMEOUT_MS, 5000);
     factoryProperties.put(KAFKA_DELIVERY_TIMEOUT_MS, 5000);
     factoryProperties.putAll(properties);
-    SharedKafkaProducerService sharedKafkaProducerService = new SharedKafkaProducerService(factoryProperties, 1,
-        new SharedKafkaProducerService.KafkaProducerSupplier() {
+    SharedKafkaProducerService sharedKafkaProducerService =
+        new SharedKafkaProducerService(factoryProperties, 1, new SharedKafkaProducerService.KafkaProducerSupplier() {
           @Override
           public KafkaProducerWrapper getNewProducer(VeniceProperties props) {
             return new ApacheKafkaProducer(props);
           }
-        }, Optional.empty());
-    return new VeniceWriterFactory(factoryProperties, Optional.of(sharedKafkaProducerService));
+        }, new MetricsRepository(), new HashSet<>(Arrays.asList("outgoing-byte-rate",
+            "record-send-rate","batch-size-max","batch-size-avg","buffer-available-bytes","buffer-exhausted-rate")));
+    return sharedKafkaProducerService;
+  }
+
+  public static VeniceWriterFactory getVeniceWriterFactoryWithSharedProducer(Properties properties,
+      Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
+    Properties factoryProperties = new Properties();
+    factoryProperties.putAll(properties);
+    return new VeniceWriterFactory(factoryProperties, sharedKafkaProducerService);
   }
 
   public static KafkaClientFactory getVeniceConsumerFactory(KafkaBrokerWrapper kafka) {

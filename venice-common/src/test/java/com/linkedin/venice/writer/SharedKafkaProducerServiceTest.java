@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -75,7 +76,9 @@ public class SharedKafkaProducerServiceTest {
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
     properties.put(PROPERTIES_KAFKA_PREFIX + BUFFER_MEMORY_CONFIG, "16384");
 
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactoryWithSharedProducer(properties);
+
+    SharedKafkaProducerService sharedKafkaProducerService = TestUtils.getSharedKafkaProducerService(properties);
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactoryWithSharedProducer(properties, Optional.of(sharedKafkaProducerService));
 
     VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter1 = veniceWriterFactory.createVeniceWriter(topicName1, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
         Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1));
@@ -169,7 +172,8 @@ public class SharedKafkaProducerServiceTest {
   public void testProducerReuse() throws Exception {
     //VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     SharedKafkaProducerService sharedKafkaProducerService =
-        new SharedKafkaProducerService(getProperties(), 8, new ProducerSupplier(), Optional.empty());
+        new SharedKafkaProducerService(getProperties(), 8, new ProducerSupplier(), new MetricsRepository(),
+            Collections.EMPTY_SET);
 
     //Create at least 8 tasks to assign each producer a task.
     KafkaProducerWrapper producer1 = sharedKafkaProducerService.acquireKafkaProducer("task1");
@@ -198,7 +202,7 @@ public class SharedKafkaProducerServiceTest {
   @Test
   public void testProducerClosing() throws Exception {
     SharedKafkaProducerService sharedKafkaProducerService =
-        new SharedKafkaProducerService(getProperties(), 8, new ProducerSupplier(), Optional.empty());
+        new SharedKafkaProducerService(getProperties(), 8, new ProducerSupplier(), new MetricsRepository(), Collections.EMPTY_SET);
 
     KafkaProducerWrapper producer1 = sharedKafkaProducerService.acquireKafkaProducer("task1");
     sharedKafkaProducerService.releaseKafkaProducer("task1");

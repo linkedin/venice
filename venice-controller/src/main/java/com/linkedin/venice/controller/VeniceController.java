@@ -99,7 +99,7 @@ public class VeniceController {
     this.authorizerService = authorizerService;
     this.d2Client = d2Client;
     // Create Kafka client stats
-    this.kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats");
+    this.kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats", Optional.empty());
     createServices();
   }
 

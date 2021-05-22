@@ -1,15 +1,18 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.Optional;
 
 
 /**
  * This stats should work in the host level to measure stats of Kafka clients, like number of active clients.
  */
 public class KafkaClientStats extends AbstractVeniceStats {
+  private Optional<SharedKafkaProducerService> sharedKafkaProducerService;
+
   /**
    * Metric for active VeniceWriter numbers; once shared producer service is on, the number of VeniceWriter is not equal
    * to number of Kafka producer anymore.
@@ -24,52 +27,29 @@ public class KafkaClientStats extends AbstractVeniceStats {
   /**
    * Metric to keep track of number of currently active ingestion tasks that is using a shared producer instance.
    */
-  private final Sensor activeSharedProducerTasksCountSensor;
+  private Sensor sharedProducerActiveTasksCountSensor;
 
   /**
    * Metric to keep track of number of open shared producer instance.
    */
-  private final Sensor activeSharedProducerCountSensor;
+  private Sensor sharedProducerActiveCountSensor;
 
 
-  private final AtomicLong activeSharedProducerTasksCount;
-  private final AtomicLong activeSharedProducerCount;
-
-  public KafkaClientStats(MetricsRepository metricsRepository, String name) {
+  public KafkaClientStats(MetricsRepository metricsRepository, String name, Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
     super(metricsRepository, name);
-    activeSharedProducerTasksCount = new AtomicLong(0);
-    activeSharedProducerCount = new AtomicLong(0);
+    this.sharedKafkaProducerService = sharedKafkaProducerService;
+
     openVeniceWriterCount = registerSensor("open_venice_writer_count",
         new Gauge(() -> VeniceWriter.OPEN_VENICE_WRITER_COUNT.get()));
     veniceWriterFailedToCloseCount = registerSensor("venice_writer_failed_to_close_count",
         new Gauge(() -> VeniceWriter.VENICE_WRITER_CLOSE_FAILED_COUNT.get()));
-    activeSharedProducerTasksCountSensor = registerSensor("active_shared_producer_task_count",
-        new Gauge(() -> getActiveSharedProducerTasksCount()));
-    activeSharedProducerCountSensor = registerSensor("active_shared_producer_count",
-        new Gauge(() -> getActiveSharedProducerCount()));
+
+    if (sharedKafkaProducerService.isPresent()) {
+      sharedProducerActiveTasksCountSensor = registerSensor("shared_producer_active_task_count",
+          new Gauge(() -> sharedKafkaProducerService.get().getActiveSharedProducerTasksCount()));
+      sharedProducerActiveCountSensor = registerSensor("shared_producer_active_count",
+          new Gauge(() -> sharedKafkaProducerService.get().getActiveSharedProducerCount()));
+    }
   }
 
-  public long getActiveSharedProducerTasksCount() {
-    return activeSharedProducerTasksCount.get();
-  }
-
-  public void incrActiveSharedProducerTasksCount() {
-    activeSharedProducerTasksCount.incrementAndGet();
-  }
-
-  public void decrActiveSharedProducerTasksCount() {
-    activeSharedProducerTasksCount.decrementAndGet();
-  }
-
-  public long getActiveSharedProducerCount() {
-    return activeSharedProducerCount.get();
-  }
-
-  public void incrActiveSharedProducerCount() {
-    activeSharedProducerCount.incrementAndGet();
-  }
-
-  public void decrActiveSharedProducerCount() {
-    activeSharedProducerCount.decrementAndGet();
-  }
 }

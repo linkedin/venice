@@ -1,10 +1,15 @@
 package com.linkedin.venice.writer;
 
+import com.codahale.metrics.MetricRegistry;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.KafkaClientStats;
+import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
@@ -12,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
@@ -29,7 +35,6 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
 
   //This helps override kafka config for shared producer seperately than dedicated producer.
   public static final String SHARED_KAFKA_PRODUCER_CONFIG_PREFIX = "shared.producer.";
-  private final Optional<KafkaClientStats> kafkaClientStats;
 
   private final int numOfProducersPerKafkaCluster;
   private Properties producerProperties;
@@ -41,8 +46,22 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
   private final KafkaProducerSupplier kafkaProducerSupplier;
   private boolean closed = false;
 
+  //stats
+  private MetricsRepository metricsRepository;
+  private Set<String> producerMetricsToBeReported;
+  final AtomicLong activeSharedProducerTasksCount = new AtomicLong(0);
+  final AtomicLong activeSharedProducerCount = new AtomicLong(0);
+
+  /**
+   *
+   * @param properties -- List of properties to construct a kafka producer
+   * @param sharedProducerPoolCount  -- producer pool sizes
+   * @param kafkaProducerSupplier -- function to create a KafkaProducer object
+   * @param metricsRepository -- metric repository
+   * @param producerMetricsToBeReported -- a comma seperated list of KafkaProducer metrics that will exported as ingraph metrics
+   */
   public SharedKafkaProducerService(Properties properties, int sharedProducerPoolCount,
-      KafkaProducerSupplier kafkaProducerSupplier, Optional<KafkaClientStats> kafkaClientStats) {
+      KafkaProducerSupplier kafkaProducerSupplier, MetricsRepository metricsRepository, Set<String> producerMetricsToBeReported) {
     this.kafkaProducerSupplier = kafkaProducerSupplier;
     boolean sslToKafka = Boolean.valueOf(properties.getProperty(ConfigKeys.SSL_TO_KAFKA, "false"));
     if (!sslToKafka) {
@@ -66,9 +85,10 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
     }
 
     this.numOfProducersPerKafkaCluster = sharedProducerPoolCount;
-    producers = new SharedKafkaProducer[numOfProducersPerKafkaCluster];
+    this.producers = new SharedKafkaProducer[numOfProducersPerKafkaCluster];
 
-    this.kafkaClientStats = kafkaClientStats;
+    this.metricsRepository = metricsRepository;
+    this.producerMetricsToBeReported = producerMetricsToBeReported;
     logger.info("SharedKafkaProducer: is initialized");
   }
 
@@ -93,9 +113,7 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
             + sharedKafkaProducer.getProducerTaskCount());
         sharedKafkaProducer.close(kafkaProducerCloseTimeout);
         producers[sharedKafkaProducer.getId()] = null;
-        if (kafkaClientStats.isPresent()) {
-          kafkaClientStats.get().decrActiveSharedProducerCount();
-        }
+        decrActiveSharedProducerCount();
       } catch (Exception e) {
         logger.warn("SharedKafkaProducer: Error in closing kafka producer", e);
       }
@@ -121,12 +139,10 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
             "shared-producer-" + String.valueOf(i));
         KafkaProducerWrapper kafkaProducerWrapper =
             kafkaProducerSupplier.getNewProducer(new VeniceProperties(producerProperties));
-        sharedKafkaProducer = new SharedKafkaProducer(this, i, kafkaProducerWrapper);
+        sharedKafkaProducer = new SharedKafkaProducer(this, i, kafkaProducerWrapper, metricsRepository, producerMetricsToBeReported);
         producers[i] = sharedKafkaProducer;
         LOGGER.info("SharedKafkaProducer: Created Shared Producer instance: " + sharedKafkaProducer);
-        if (kafkaClientStats.isPresent()) {
-          kafkaClientStats.get().incrActiveSharedProducerCount();
-        }
+        incrActiveSharedProducerCount();
         break;
       }
     }
@@ -147,9 +163,7 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
     LOGGER.info(
         "SharedKafkaProducer: " + producerTaskName + " acquired the producer id: " + sharedKafkaProducer.getId());
     logProducerInstanceAssignments();
-    if (kafkaClientStats.isPresent()) {
-      kafkaClientStats.get().incrActiveSharedProducerTasksCount();
-    }
+    incrActiveSharedProducerTasksCount();
     return sharedKafkaProducer;
   }
 
@@ -164,9 +178,7 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
     LOGGER.info(
         "SharedKafkaProducer: " + producerTaskName + " released the producer id: " + sharedKafkaProducer.getId());
     logProducerInstanceAssignments();
-    if (kafkaClientStats.isPresent()) {
-      kafkaClientStats.get().decrActiveSharedProducerTasksCount();
-    }
+    decrActiveSharedProducerTasksCount();
   }
 
   /**
@@ -193,6 +205,25 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
 
   public interface KafkaProducerSupplier {
     KafkaProducerWrapper getNewProducer(VeniceProperties props);
+  }
+
+  public long getActiveSharedProducerTasksCount() {
+    return activeSharedProducerTasksCount.get();
+  }
+  public long getActiveSharedProducerCount() {
+    return activeSharedProducerCount.get();
+  }
+  private void incrActiveSharedProducerTasksCount() {
+    activeSharedProducerTasksCount.incrementAndGet();
+  }
+  private void decrActiveSharedProducerTasksCount() {
+    activeSharedProducerTasksCount.decrementAndGet();
+  }
+  private void incrActiveSharedProducerCount() {
+    activeSharedProducerCount.incrementAndGet();
+  }
+  private void decrActiveSharedProducerCount() {
+    activeSharedProducerCount.decrementAndGet();
   }
 
 }

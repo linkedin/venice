@@ -191,9 +191,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
 
-    // Create Kafka client stats
-    this.kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats");
-
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
 
@@ -214,7 +211,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         public KafkaProducerWrapper getNewProducer(VeniceProperties props) {
           return new ApacheKafkaProducer(props);
         }
-      }, Optional.of(this.kafkaClientStats));
+      }, metricsRepository, serverConfig.getKafkaProducerMetrics());
       logger.info("Shared kafka producer service is enabled");
     } else {
       sharedKafkaProducerService = null;
@@ -222,6 +219,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
 
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties, Optional.ofNullable(sharedKafkaProducerService));
+
+    // Create Kafka client stats
+    this.kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats", Optional.ofNullable(sharedKafkaProducerService));
+
 
     EventThrottler bandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),

@@ -607,6 +607,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER = "server.kafka.producer.pool.size.per.kafka.cluster";
 
+  /**
+   * a comma seperated list of kafka producer metrics that will be reported.
+   * For ex. "outgoing-byte-rate,record-send-rate,batch-size-max,batch-size-avg,buffer-available-bytes,buffer-exhausted-rate"
+   */
+  public static final String KAFKA_PRODUCER_METRICS = "list.of.producer.metrics.from.kafka";
+
 
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
