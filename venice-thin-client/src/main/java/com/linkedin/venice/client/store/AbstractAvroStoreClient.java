@@ -700,11 +700,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       this.schemaReader = null;
     }
 
-    /**
-     * Comment out this warm-up logic as it is failing test in samza-li-venice during PCL and blocking da-vinci-client release.
-     * We will uncomment it after the issue is resolved.
-     */
-    // warmUpVeniceClient();
+     warmUpVeniceClient();
   }
 
   @Override
