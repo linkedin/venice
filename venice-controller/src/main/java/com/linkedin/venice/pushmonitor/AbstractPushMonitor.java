@@ -226,21 +226,15 @@ public abstract class AbstractPushMonitor
 
   @Override
   public OfflinePushStatus getOfflinePushOrThrow(String topic) {
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
-      if (topicToPushMap.containsKey(topic)) {
-        return topicToPushMap.get(topic);
-      } else {
-        throw new VeniceException("Can not find offline push status for topic:" + topic);
-      }
+    if (topicToPushMap.containsKey(topic)) {
+      return topicToPushMap.get(topic);
+    } else {
+      throw new VeniceException("Can not find offline push status for topic:" + topic);
     }
   }
 
   protected OfflinePushStatus getOfflinePush(String topic) {
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
-      return topicToPushMap.get(topic);
-    }
+    return topicToPushMap.get(topic);
   }
 
   public ExecutionStatus getPushStatus(String topic) {
@@ -642,13 +636,11 @@ public abstract class AbstractPushMonitor
   }
 
   private Integer getStoreCurrentVersion(String storeName) {
-    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
-      Store store = metadataRepository.getStoreOrThrow(storeName);
-      if (store == null) {
-        return null;
-      }
-      return store.getCurrentVersion();
+    Store store = metadataRepository.getStoreOrThrow(storeName);
+    if (store == null) {
+      return null;
     }
+    return store.getCurrentVersion();
   }
 
   @Override
