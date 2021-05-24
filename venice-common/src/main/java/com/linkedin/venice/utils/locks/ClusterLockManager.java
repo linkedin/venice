@@ -30,6 +30,10 @@ public class ClusterLockManager {
     return new AutoCloseableLock(Collections.singletonList(perClusterLock.writeLock()));
   }
 
+  public AutoCloseableLock createClusterReadLock() {
+    return new AutoCloseableLock(Collections.singletonList(perClusterLock.readLock()));
+  }
+
   public AutoCloseableLock createStoreReadLock(String storeName) {
     // Take cluster-level read lock first, then store-level read lock
     ReentrantReadWriteLock storeReadWriteLock = prepareStoreLock(storeName);
@@ -40,6 +44,11 @@ public class ClusterLockManager {
     // Take cluster-level read lock first, then store-level write lock
     ReentrantReadWriteLock storeReadWriteLock = prepareStoreLock(storeName);
     return new AutoCloseableLock(Arrays.asList(perClusterLock.readLock(), storeReadWriteLock.writeLock()));
+  }
+
+  public AutoCloseableLock createStoreWriteLockOnly(String storeName) {
+    ReentrantReadWriteLock storeReadWriteLock = prepareStoreLock(storeName);
+    return new AutoCloseableLock(Collections.singletonList(storeReadWriteLock.writeLock()));
   }
 
   public void clear() {

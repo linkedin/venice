@@ -2,10 +2,14 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -385,5 +389,31 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Thread.sleep(1000);
     // Should not be blocked even though another thread is holding cluster-level read lock.
     veniceAdmin.getFutureVersion(clusterName, storeName);
+  }
+
+  @Test
+  public void testExternalViewDataChangeDeadLock() throws InterruptedException {
+    ExecutorService asyncExecutor = Executors.newSingleThreadExecutor();
+    String storeName = TestUtils.getUniqueString("test_store");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    asyncExecutor.submit(() -> {
+      // Add version. Hold store write lock and release it before polling EV status.
+      veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    });
+    Thread.sleep(500);
+
+    // Simulate node_removable request. Hold resourceAssignment synchronized block
+    VeniceHelixResources resources = veniceAdmin.getVeniceHelixResource(clusterName);
+    RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
+    ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+    synchronized (resourceAssignment) {
+      try {
+        resources.getPushMonitor().getOfflinePushOrThrow(storeName + "_v1");
+      } catch (VeniceException e) {
+        // Ignore VeniceException
+      }
+    }
+    // If there is a deadlock and then version cannot become online
+    TestUtils.waitForNonDeterministicCompletion(10000, TimeUnit.MILLISECONDS, () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
   }
 }
