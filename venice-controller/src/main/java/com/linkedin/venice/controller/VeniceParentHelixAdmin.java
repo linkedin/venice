@@ -954,7 +954,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public synchronized String getRealTimeTopic(String clusterName, String storeName){
+  public String getRealTimeTopic(String clusterName, String storeName){
     return veniceHelixAdmin.getRealTimeTopic(clusterName, storeName);
   }
 
@@ -966,7 +966,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * preserve incremental push topic in parent Kafka anymore
    */
   @Override
-  public synchronized Version getIncrementalPushVersion(String clusterName, String storeName) {
+  public Version getIncrementalPushVersion(String clusterName, String storeName) {
     Version incrementalPushVersion = veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName);
     String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
     ExecutionStatus status = getOffLinePushStatus(clusterName, incrementalPushTopic, Optional.empty()).getExecutionStatus();
@@ -1131,7 +1131,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public synchronized void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber) {
+  public void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber) {
     throw new VeniceUnsupportedOperationException("setStoreLargestUsedVersion", "This is only supported in the Child Controller.");
   }
 
