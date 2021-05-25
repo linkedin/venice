@@ -97,7 +97,6 @@ public class TestRouterHeartbeat {
     doReturn(future).when(httpAsyncClient).execute(any(), any());
 
     StorageNodeClient storageNodeClient = mock(StorageNodeClient.class);
-    doReturn(httpAsyncClient).when(storageNodeClient).getHttpClientForHost(anyString());
     return storageNodeClient;
   }
 

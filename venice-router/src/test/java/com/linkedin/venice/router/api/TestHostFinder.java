@@ -229,7 +229,6 @@ public class TestHostFinder {
     when(httpAsyncClient.execute(any(), any())).thenReturn(goodFuture).thenReturn(badFuture);
 
     StorageNodeClient storageNodeClient = mock(StorageNodeClient.class);
-    doReturn(httpAsyncClient).when(storageNodeClient).getHttpClientForHost(anyString());
     return storageNodeClient;
   }
 
