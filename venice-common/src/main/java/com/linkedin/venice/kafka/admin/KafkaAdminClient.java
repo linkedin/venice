@@ -94,11 +94,20 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   }
 
   @Override
-  public void setTopicConfig(String topicName, Properties topicProperties) {
+  public void setTopicConfig(String topicName, Properties topicProperties) throws TopicDoesNotExistException {
     Collection<ConfigEntry> entries = new ArrayList<>(topicProperties.stringPropertyNames().size());
     topicProperties.stringPropertyNames().forEach(key -> entries.add(new ConfigEntry(key, topicProperties.getProperty(key))));
     Map<ConfigResource, Config> configs = Collections.singletonMap(new ConfigResource(ConfigResource.Type.TOPIC, topicName), new Config(entries));
-    getKafkaAdminClient().alterConfigs(configs).all();
+    try {
+      getKafkaAdminClient().alterConfigs(configs).all().get();
+    } catch (ExecutionException | InterruptedException e) {
+      if (!containsTopic(topicName)) {
+        // We assume the exception was caused by a non-existent topic.
+        throw new TopicDoesNotExistException("Topic " + topicName + " does not exist");
+      }
+      // Topic exists. So not sure what caused the exception.
+      throw new VeniceException(e);
+    }
   }
 
   @Override

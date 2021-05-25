@@ -85,7 +85,10 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   }
 
   @Override
-  public void setTopicConfig(String topicName, Properties topicProperties) {
+  public void setTopicConfig(String topicName, Properties topicProperties) throws TopicDoesNotExistException {
+    if (!containsTopic(topicName)) {
+      throw new TopicDoesNotExistException("Topic " + topicName + " does not exist.");
+    }
     AdminUtils.changeTopicConfig(getZkUtils(), topicName, topicProperties);
   }
 
@@ -109,6 +112,9 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
 
   @Override
   public Properties getTopicConfig(String topicName) {
+    if (!containsTopic(topicName)) {
+      throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
+    }
     return AdminUtils.fetchEntityConfig(getZkUtils(), ConfigType.Topic(), topicName);
   }
 
