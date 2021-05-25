@@ -11,6 +11,8 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import java.util.ArrayList;
@@ -33,7 +35,11 @@ public enum VeniceSystemStoreType {
   // New Metadata system store
   META_STORE(String.format(Store.SYSTEM_STORE_FORMAT, "meta_store"), true, StoreMetaKey.SCHEMA$.toString(),
       StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(),
-      true, Method.READ_SYSTEM_STORE);
+      true, Method.READ_SYSTEM_STORE),
+
+  BATCH_JOB_HEARTBEAT_STORE(String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.BATCH_JOB_HEARTBEAT), false, BatchJobHeartbeatKey.SCHEMA$.toString(),
+          BatchJobHeartbeatValue.SCHEMA$.toString(), "",
+          true, Method.WRITE_SYSTEM_STORE);
 
   private final String prefix;
   private final boolean isStoreZkShared;

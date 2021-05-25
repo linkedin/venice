@@ -578,6 +578,13 @@ public class VeniceParentHelixAdmin implements Admin {
             calculateNumberOfPartitions(clusterName, metaSystemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
             getReplicationFactor(clusterName, metaSystemStoreName));
         writeEndOfPush(clusterName, metaSystemStoreName, version.getNumber(), true);
+      } else if (VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix().equals(storeName)) {
+        if (authorizerService.isPresent()) {
+          authorizerService.get().setupResource(new Resource(storeName));
+          logger.info("Set up wildcard ACL regex for " + storeName);
+        } else {
+          logger.warn("Skip setting up wildcard ACL regex for " + storeName + " since the authorizer service is not provided");
+        }
       }
     } finally {
       releaseAdminMessageLock(clusterName);

@@ -407,7 +407,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         initRoutines.add(new SystemSchemaInitializationRoutine(
             AvroProtocolDefinition.STORE_VERSION_STATE, multiClusterConfigs, this));
         initRoutines.add(new SystemSchemaInitializationRoutine(
-            AvroProtocolDefinition.BATCH_JOB_HEARTBEAT,
+                AvroProtocolDefinition.BATCH_JOB_HEARTBEAT,
                 multiClusterConfigs,
                 this,
                 Optional.of(BatchJobHeartbeatKey.SCHEMA$),
