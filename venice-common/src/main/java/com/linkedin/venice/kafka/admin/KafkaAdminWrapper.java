@@ -20,11 +20,11 @@ public interface KafkaAdminWrapper extends Closeable {
 
   Set<String> listAllTopics();
 
-  void setTopicConfig(String topicName, Properties topicProperties);
+  void setTopicConfig(String topicName, Properties topicProperties) throws TopicDoesNotExistException;
 
   Map<String, Long> getAllTopicRetentions();
 
-  Properties getTopicConfig(String topicName);
+  Properties getTopicConfig(String topicName) throws TopicDoesNotExistException;
 
   Properties getTopicConfigWithRetry(String topicName);
 

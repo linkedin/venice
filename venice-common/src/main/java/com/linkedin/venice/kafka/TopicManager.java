@@ -400,15 +400,16 @@ public class TopicManager implements Closeable {
   /**
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
-  public Properties getTopicConfig(String topicName) {
-    if (!containsTopic(topicName)) {
-      throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
-    }
-    return kafkaAdmin.get().getTopicConfig(topicName);
+  public Properties getTopicConfig(String topicName) throws TopicDoesNotExistException {
+    final Properties properties = kafkaAdmin.get().getTopicConfig(topicName);
+    topicConfigCache.put(topicName, properties);
+    return properties;
   }
 
-  public Properties getTopicConfigWithRetry(String topic) {
-    return kafkaAdmin.get().getTopicConfigWithRetry(topic);
+  public Properties getTopicConfigWithRetry(String topicName) {
+    final Properties properties = kafkaAdmin.get().getTopicConfigWithRetry(topicName);
+    topicConfigCache.put(topicName, properties);
+    return properties;
   }
 
   /**
@@ -419,13 +420,16 @@ public class TopicManager implements Closeable {
     Properties properties = topicConfigCache.getIfPresent(topicName);
     if (properties == null) {
       properties = getTopicConfigWithRetry(topicName);
-      topicConfigCache.put(topicName, properties);
     }
     return properties;
   }
 
   public Map<String, Properties> getAllTopicConfig() {
-    return kafkaAdmin.get().getAllTopicConfig();
+    final Map<String, Properties> topicConfigs = kafkaAdmin.get().getAllTopicConfig();
+    for (Map.Entry<String, Properties> topicConfig : topicConfigs.entrySet()) {
+      topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
+    }
+    return topicConfigs;
   }
 
   /**
