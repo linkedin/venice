@@ -863,4 +863,8 @@ public class Utils {
   public static <T> Set<T> setOf(T... objs) {
     return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(objs)));
   }
+
+  public static long calculateDurationMs(Time time, long startTimeMs) {
+    return time.getMilliseconds() - startTimeMs;
+  }
 }

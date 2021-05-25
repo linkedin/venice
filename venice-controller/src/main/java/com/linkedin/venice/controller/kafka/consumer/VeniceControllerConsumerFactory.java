@@ -45,7 +45,7 @@ public class VeniceControllerConsumerFactory extends KafkaClientFactory {
   }
 
   @Override
-  protected String getKafkaBootstrapServers() {
+  public String getKafkaBootstrapServers() {
     return controllerConfig.isSslToKafka() ? controllerConfig.getSslKafkaBootStrapServers() : controllerConfig.getKafkaBootstrapServers();
   }
 

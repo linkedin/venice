@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -111,7 +112,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   }
 
   @Override
-  public Properties getTopicConfig(String topicName) {
+  public Properties getTopicConfig(String topicName) throws TopicDoesNotExistException {
     ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, topicName);
     Collection<ConfigResource> configResources = Collections.singleton(resource);
     DescribeConfigsResult result = getKafkaAdminClient().describeConfigs(configResources);
@@ -123,6 +124,9 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
           configEntry.value()));
       return properties;
     } catch (Exception e) {
+      if (e.getCause() instanceof UnknownTopicOrPartitionException) {
+        throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
+      }
       throw new VeniceException("Failed to get topic configs for: " + topicName, e);
     }
   }

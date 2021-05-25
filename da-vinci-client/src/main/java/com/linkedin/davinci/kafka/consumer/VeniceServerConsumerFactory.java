@@ -57,7 +57,7 @@ public class VeniceServerConsumerFactory extends KafkaClientFactory {
   }
 
   @Override
-  protected String getKafkaBootstrapServers() {
+  public String getKafkaBootstrapServers() {
     return serverConfig.getKafkaBootstrapServers();
   }
 

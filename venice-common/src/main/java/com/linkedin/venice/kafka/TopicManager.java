@@ -114,7 +114,8 @@ public class TopicManager implements Closeable {
       this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
           kafkaClientFactory,
           kafkaAdmin,
-          kafkaOperationTimeoutMs
+          kafkaOperationTimeoutMs,
+          optionalMetricsRepository
       );
     }
   }
@@ -316,7 +317,7 @@ public class TopicManager implements Closeable {
    * @param topicProperties
    * @return true if the retention time gets updated; false if no update is needed.
    */
-  public boolean updateTopicRetention(String topicName, long retentionInMS, Properties topicProperties) {
+  public boolean updateTopicRetention(String topicName, long retentionInMS, Properties topicProperties) throws TopicDoesNotExistException {
     String retentionInMSStr = Long.toString(retentionInMS);
     if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
         !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
@@ -573,8 +574,7 @@ public class TopicManager implements Closeable {
    *         false if the topic does not exist at all or if it exists but isn't completely available
    */
   public synchronized boolean containsTopicAndAllPartitionsAreOnline(String topic, Integer expectedPartitionCount) {
-    boolean zkMetadataCreatedForTopic = containsTopic(topic);
-    if (!zkMetadataCreatedForTopic) {
+    if (!containsTopic(topic)) {
       return false;
     }
     List<PartitionInfo> partitionInfoList = partitionOffsetFetcher.partitionsFor(topic);
@@ -610,8 +610,7 @@ public class TopicManager implements Closeable {
    *         false if the topic exists fully or partially
    */
   public synchronized boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
-    boolean zkMetadataExistsForTopic = containsTopic(topic);
-    if (zkMetadataExistsForTopic) {
+    if (containsTopic(topic)) {
       logger.info("containsTopicInKafkaZK() returned true, meaning that the ZK path still exists for topic: " + topic);
       return false;
     }

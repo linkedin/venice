@@ -413,4 +413,13 @@ public class TopicManagerTest {
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) > 5 days, retention will be set to the computed value
     Assert.assertEquals(TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 7 * Time.MS_PER_DAY);
   }
+
+  @Test
+  public void testContainsTopicAndAllPartitionsAreOnline() {
+    String topic = TestUtils.getUniqueString("a-new-topic");
+    Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topic)); // Topic does not exist yet
+
+    manager.createTopic(topic, 1, 1, true);
+    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topic));
+  }
 }

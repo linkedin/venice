@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.admin;
 
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.stats.KafkaAdminWrapperStats;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -51,7 +52,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     kafkaAdmin.createTopic(topicName, numPartitions, replication, topicProperties);
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CREATE_TOPIC,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
   }
 
@@ -63,7 +64,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     // the occurrence rate at least
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.DELETE_TOPIC,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
   }
@@ -74,7 +75,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     Set<String> res = kafkaAdmin.listAllTopics();
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.LIST_ALL_TOPICS,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
   }
@@ -85,7 +86,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     kafkaAdmin.setTopicConfig(topicName, topicProperties);
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.SET_TOPIC_CONFIG,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
   }
 
@@ -95,18 +96,18 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     final Map<String, Long> res = kafkaAdmin.getAllTopicRetentions();
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_ALL_TOPIC_RETENTIONS,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
   }
 
   @Override
-  public Properties getTopicConfig(String topicName) {
+  public Properties getTopicConfig(String topicName) throws TopicDoesNotExistException {
     final long startTimeMs = time.getMilliseconds();
     final Properties res = kafkaAdmin.getTopicConfig(topicName);
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_CONFIG,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
   }
@@ -117,7 +118,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     final Properties res = kafkaAdmin.getTopicConfigWithRetry(topicName);
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_CONFIG_WITH_RETRY,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
   }
@@ -128,7 +129,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     final boolean res = kafkaAdmin.containsTopic(topic);
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
   }
@@ -139,7 +140,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     final Map<String, Properties> res = kafkaAdmin.getAllTopicConfig();
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_ALL_TOPIC_CONFIG,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
   }
@@ -150,7 +151,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     final boolean res = kafkaAdmin.isTopicDeletionUnderway();
     kafkaAdminWrapperStats.recordLatency(
         KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.IS_TOPIC_DELETION_UNDER_WAY,
-        calculateDurationMs(startTimeMs)
+        Utils.calculateDurationMs(time, startTimeMs)
     );
     return res;
   }
@@ -163,9 +164,5 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   @Override
   public String getClassName() {
     return String.format("%s delegated by %s", kafkaAdmin.getClassName(), InstrumentedKafkaAdmin.class.getName());
-  }
-
-  private long calculateDurationMs(final long startTimeMs) {
-    return time.getMilliseconds() - startTimeMs;
   }
 }

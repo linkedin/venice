@@ -64,8 +64,16 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         LOGGER.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
         return Collections.emptyMap();
       }
-      return partitionInfoList.stream().map(PartitionInfo::partition)
-          .collect(Collectors.toMap(p -> p, p -> getLatestOffset(topic, p, false)));
+      List<TopicPartition> topicPartitions = partitionInfoList.stream()
+          .map(partitionInfo -> new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
+          .collect(Collectors.toList());
+
+      Map<TopicPartition, Long> offsetsByTopicPartitions = kafkaRawBytesConsumer.get().endOffsets(topicPartitions, DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
+      Map<Integer, Long> offsetsByTopicPartitionIds = new HashMap<>(offsetsByTopicPartitions.size());
+      for (Map.Entry<TopicPartition, Long> offsetByTopicPartition : offsetsByTopicPartitions.entrySet()) {
+        offsetsByTopicPartitionIds.put(offsetByTopicPartition.getKey().partition(), offsetByTopicPartition.getValue());
+      }
+      return offsetsByTopicPartitionIds;
     }
   }
 
