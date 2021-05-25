@@ -723,7 +723,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // for RT topic block on deletion so that next create store does not see the lingering RT topic which could have different partition count
                 String rtTopic = Version.composeRealTimeTopic(storeName);
                 truncateKafkaTopic(rtTopic);
-                if (getTopicManager().containsTopic(rtTopic) && waitOnRTTopicDeletion) {
+                if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
                     throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
                 }
                 String metadataSystemStoreRTTopic =

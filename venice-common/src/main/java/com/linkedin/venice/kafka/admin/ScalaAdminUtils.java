@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Time;

@@ -416,7 +416,7 @@ public class TestUtils {
     }
 
     @Override
-    protected String getKafkaBootstrapServers() {
+    public String getKafkaBootstrapServers() {
       return kafkaBootstrapServers;
     }
 

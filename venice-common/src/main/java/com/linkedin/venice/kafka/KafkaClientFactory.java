@@ -94,7 +94,7 @@ public abstract class KafkaClientFactory {
 
   abstract protected String getKafkaZkAddress();
 
-  abstract protected String getKafkaBootstrapServers();
+  public abstract String getKafkaBootstrapServers();
 
   abstract protected KafkaClientFactory clone(String kafkaBootstrapServers, String kafkaZkAddress);
 }

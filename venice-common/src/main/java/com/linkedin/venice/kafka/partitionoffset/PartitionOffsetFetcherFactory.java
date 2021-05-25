@@ -2,7 +2,9 @@ package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.Lazy;
+import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 
@@ -14,24 +16,46 @@ public class PartitionOffsetFetcherFactory {
       Optional<MetricsRepository> optionalMetricsRepository,
       long kafkaOperationTimeoutMs
   ) {
-    return new PartitionOffsetFetcherImpl(
+    PartitionOffsetFetcher partitionOffsetFetcher = new PartitionOffsetFetcherImpl(
         Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRawBytesConsumerProps())),
         Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRecordConsumerProps())),
         Lazy.of(() -> kafkaClientFactory.getKafkaAdminClient(optionalMetricsRepository)),
         kafkaOperationTimeoutMs
     );
+    if (optionalMetricsRepository.isPresent()) {
+      return new InstrumentedPartitionOffsetFetcher(
+          partitionOffsetFetcher,
+          new PartitionOffsetFetcherStats(
+                  optionalMetricsRepository.get(),
+                  "PartitionOffsetFetcherStats_" + TehutiUtils.fixMalformedMetricName(kafkaClientFactory.getKafkaBootstrapServers())
+          ),
+          new SystemTime()
+      );
+    } else {
+      return partitionOffsetFetcher;
+    }
   }
 
   public static PartitionOffsetFetcher createDefaultPartitionOffsetFetcher(
       KafkaClientFactory kafkaClientFactory,
       Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
-      long kafkaOperationTimeoutMs
+      long kafkaOperationTimeoutMs,
+      Optional<MetricsRepository> optionalMetricsRepository
   ) {
-    return new PartitionOffsetFetcherImpl(
+    PartitionOffsetFetcher partitionOffsetFetcher = new PartitionOffsetFetcherImpl(
         Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRawBytesConsumerProps())),
         Lazy.of(() -> kafkaClientFactory.getKafkaConsumer(KafkaClientFactory.getKafkaRecordConsumerProps())),
         kafkaAdminWrapper,
         kafkaOperationTimeoutMs
     );
+    if (optionalMetricsRepository.isPresent()) {
+      return new InstrumentedPartitionOffsetFetcher(
+          partitionOffsetFetcher,
+          new PartitionOffsetFetcherStats(optionalMetricsRepository.get(), "PartitionOffsetFetcherStats_" + kafkaClientFactory.getKafkaBootstrapServers()),
+          new SystemTime()
+      );
+    } else {
+      return partitionOffsetFetcher;
+    }
   }
 }

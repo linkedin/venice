@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.admin;
 
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import java.io.Closeable;
 import java.util.Map;
 import java.util.Properties;
