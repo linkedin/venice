@@ -2069,7 +2069,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * model; incremental push is also a mutually exclusive feature with hybrid stores.
      */
     ControlMessageType type = ControlMessageType.valueOf(controlMessage);
-    logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
+    if (!isSegmentControlMsg(type)) {
+      logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
+    }
     switch(type) {
       case START_OF_PUSH:
         processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
@@ -3084,6 +3086,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void recordProcessedRecordStats(PartitionConsumptionState partitionConsumptionState, int processedRecordSize, int processedRecordNum) {
 
+  }
+
+  protected boolean isSegmentControlMsg(ControlMessageType msgType) {
+    if (ControlMessageType.START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType)) {
+      return true;
+    }
+    return false;
   }
 
   /**

@@ -1173,7 +1173,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       MessageType msgType = MessageType.valueOf(kafkaValue);
       if (msgType == MessageType.UPDATE && !produceToLocalKafka) {
         throw new VeniceMessageException(
-            consumerTaskId + " HasProducedToKafka: Received UPDATE message in non-leader. Topic: "
+            consumerTaskId + " hasProducedToKafka: Received UPDATE message in non-leader. Topic: "
                 + consumerRecord.topic() + " Partition " + consumerRecord.partition() + " Offset "
                 + consumerRecord.offset());
       }
@@ -1315,7 +1315,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           case START_OF_BUFFER_REPLAY:
             //this msg coming here is not possible;
             throw new VeniceMessageException(
-                consumerTaskId + " HasProducedToKafka: Received SOBR in L/F mode. Topic: " + consumerRecord.topic()
+                consumerTaskId + " hasProducedToKafka: Received SOBR in L/F mode. Topic: " + consumerRecord.topic()
                     + " Partition " + consumerRecord.partition() + " Offset " + consumerRecord.offset());
           case START_OF_INCREMENTAL_PUSH:
           case END_OF_INCREMENTAL_PUSH:
@@ -1340,18 +1340,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET));
             break;
         }
-        if (producedFinally) {
-          logger.info(consumerTaskId + " hasProducedToKafka: YES. ControlMessage: " + controlMessageType.name()
-              + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + consumerRecord.partition() + " Offset: "
-              + consumerRecord.offset());
-        } else {
-          logger.info(consumerTaskId + " hasPoducedToKafka: NO. ControlMessage: " + controlMessageType.name()
-              + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + consumerRecord.partition() + " Offset: "
-              + consumerRecord.offset());
+        if (!isSegmentControlMsg(controlMessageType)) {
+          if (producedFinally) {
+            logger.info(consumerTaskId + " hasProducedToKafka: YES. ControlMessage: " + controlMessageType.name()
+                + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + consumerRecord.partition() + " Offset: "
+                + consumerRecord.offset());
+          } else {
+            logger.info(consumerTaskId + " hasProducedToKafka: NO. ControlMessage: " + controlMessageType.name()
+                + ", received from  Topic: " + consumerRecord.topic() + " Partition: " + consumerRecord.partition() + " Offset: "
+                + consumerRecord.offset());
+          }
         }
       } else if (null == kafkaValue) {
         throw new VeniceMessageException(
-            consumerTaskId + " HasProducedToKafka: Given null Venice Message.  Topic: " + consumerRecord.topic()
+            consumerTaskId + " hasProducedToKafka: Given null Venice Message.  Topic: " + consumerRecord.topic()
                 + " Partition " + consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
         switch (msgType) {
@@ -1525,7 +1527,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
     } catch (Exception e) {
       throw new VeniceException(
-          consumerTaskId + " HasProducedToKafka: exception for message received from  Topic: " + consumerRecord.topic()
+          consumerTaskId + " hasProducedToKafka: exception for message received from  Topic: " + consumerRecord.topic()
               + " Partition: " + consumerRecord.partition() + ", Offset: " + consumerRecord.offset() + ". Bubbling up.",
           e);
     }
