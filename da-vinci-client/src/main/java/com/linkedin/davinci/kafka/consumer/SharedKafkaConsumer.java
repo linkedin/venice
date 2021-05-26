@@ -435,4 +435,9 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   public KafkaConsumerService getKafkaConsumerService() {
     return this.kafkaConsumerService;
   }
+
+  // Visible for testing
+  void setCurrentAssignment(Set<TopicPartition> assignment) {
+     this.currentAssignment = assignment;
+  }
 }

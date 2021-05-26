@@ -142,8 +142,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
           + " so this function will return the previously assigned shared consumer directly");
       return chosenConsumer;
     }
-    // Find the least loaded consumer
-    int maxAssignmentPerConsumer = Integer.MAX_VALUE;
+
+    int minAssignmentPerConsumer = Integer.MAX_VALUE;
     for (SharedKafkaConsumer consumer : consumers) {
       if (ingestionTask.isHybridMode()) {
         /**
@@ -151,14 +151,29 @@ public class KafkaConsumerService extends AbstractVeniceService {
          * all the store versions will consume the same RT topic with different offset.
          */
         if (checkWhetherConsumerHasSubscribedSameStore(consumer, versionTopic)) {
-          LOGGER.info("Current consumer has already subscribed the same store as the new topic: " + versionTopic + ", will skip it and try next consumer in consumer pool");
+          LOGGER.info("Current consumer has already subscribed the same store as the new topic: " + versionTopic + ", "
+              + "will skip it and try next consumer in consumer pool");
           continue;
         }
       }
+      /**
+       * Find the zero loaded consumer by topics. There is a delay between {@link SharedKafkaConsumer#attach(String, StoreIngestionTask)}
+       * and {@link SharedKafkaConsumer#assign(List)} partitions, so we should guarantee every {@link SharedKafkaConsumer}
+       * is assigned with {@linkStoreIngestionTask} first.
+       */
+      if (!isConsumerAssignedTopic(consumer)) {
+        chosenConsumer = consumer;
+        versionTopicToConsumerMap.put(versionTopic, chosenConsumer);
+        LOGGER.info("Assigned a shared consumer with index of " + consumers.indexOf(chosenConsumer) +
+            " without any assigned topic for topic: " + versionTopic);
+        return chosenConsumer;
+      }
 
+      // Find the least loaded consumer by partitions
+      // TODO Try to use a consumer pool level lock mechanism to ultimately eliminate the inconsistency of late assignment.
       int assignedPartitions = consumer.getAssignment().size();
-      if (assignedPartitions < maxAssignmentPerConsumer) {
-        maxAssignmentPerConsumer = assignedPartitions;
+      if (assignedPartitions < minAssignmentPerConsumer) {
+        minAssignmentPerConsumer = assignedPartitions;
         chosenConsumer = consumer;
       }
     }
@@ -167,7 +182,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
           + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
     }
     versionTopicToConsumerMap.put(versionTopic, chosenConsumer);
-    LOGGER.info("Assigned a shared consumer for topic: " + ingestionTask.kafkaVersionTopic);
+    LOGGER.info("Assigned a shared consumer with index of " + consumers.indexOf(chosenConsumer) + " for topic: "
+        + versionTopic + " with least # of partitions assigned: " + minAssignmentPerConsumer);
     return chosenConsumer;
   }
 
@@ -311,4 +327,19 @@ public class KafkaConsumerService extends AbstractVeniceService {
       LOGGER.info("Shared consumer thread: " + Thread.currentThread().getName() + " exited");
     }
   }
+
+  /**
+   * This function will check a consumer is assigned topic or not. Since we may not have too many consumers and this
+   * function will be only called when {@link KafkaConsumerService#getConsumer(StoreIngestionTask)} called at the
+   * first time.
+   */
+  private boolean isConsumerAssignedTopic(SharedKafkaConsumer consumer) {
+    for (Map.Entry<String, SharedKafkaConsumer> entry : versionTopicToConsumerMap.entrySet()) {
+      if (entry.getValue() == consumer) {
+        return true;
+      }
+    }
+    return false;
+  }
+
 }
