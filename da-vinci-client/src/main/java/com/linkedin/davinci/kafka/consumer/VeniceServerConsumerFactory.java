@@ -16,7 +16,7 @@ import static org.apache.kafka.common.config.SslConfigs.*;
 
 
 public class VeniceServerConsumerFactory extends KafkaClientFactory {
-  private final VeniceServerConfig serverConfig;
+  protected final VeniceServerConfig serverConfig;
 
   public VeniceServerConsumerFactory(VeniceServerConfig serverConfig) {
     this.serverConfig = serverConfig;
