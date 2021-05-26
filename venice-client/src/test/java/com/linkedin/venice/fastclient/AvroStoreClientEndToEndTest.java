@@ -5,6 +5,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.common.Client;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -48,6 +49,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -102,9 +104,11 @@ public class AvroStoreClientEndToEndTest {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false);
+    Properties props = new Properties();
+    props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
 
-    r2Client = ClientTestUtils.getR2Client();
+    r2Client = ClientTestUtils.getR2Client(true);
 
     d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
 

@@ -1,10 +1,13 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.ddsstorage.netty4.handlers.BasicHttpServerCodec;
+import com.linkedin.ddsstorage.netty4.http2.Http2PipelineInitializer;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -13,7 +16,9 @@ import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.AggServerQuotaTokenBucketStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.utils.Utils;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
@@ -37,6 +42,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final VerifySslHandler verifySsl = new VerifySslHandler();
   private final VeniceServerConfig serverConfig;
   private final ReadQuotaEnforcementHandler quotaEnforcer;
+  private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
 
@@ -87,6 +93,16 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     } else {
       this.quotaEnforcer = null;
     }
+
+    if (serverConfig.isHttp2InboundEnabled()) {
+      if (!sslFactory.isPresent()) {
+        throw new VeniceException("SSL is required when enabling HTTP2");
+      }
+      LOGGER.info("HTTP2 inbound request is supported");
+    } else {
+      LOGGER.info("HTTP2 inbound request isn't supported");
+    }
+    this.http2PipelineInitializerBuilder = new VeniceHttp2PipelineInitializerBuilder(serverConfig);
   }
 
   /*
@@ -96,45 +112,68 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     return quotaEnforcer;
   }
 
+  interface ChannelPipelineConsumer {
+    void accept(ChannelPipeline pipeline, boolean whetherNeedServerCodec);
+  }
+
   @Override
   public void initChannel(SocketChannel ch) {
     if (sslFactory.isPresent()){
       ch.pipeline()
           .addLast(new SSLInitializer(sslFactory.get()));
     }
-
-    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
-    ch.pipeline()
-        .addLast(statsHandler)
-        .addLast(new HttpServerCodec())
-        .addLast(new HttpObjectAggregator(serverConfig.getMaxRequestSize()))
-        .addLast(new OutboundHttpWrapperHandler(statsHandler))
-        .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
-
-    if (sslFactory.isPresent()){
-      ch.pipeline().addLast(verifySsl);
-      if (aclHandler.isPresent()) {
-        ch.pipeline().addLast(aclHandler.get());
+    ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
+      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+      pipeline.addLast(statsHandler);
+      if (whetherNeedServerCodec) {
+        pipeline.addLast(new HttpServerCodec());
+      } else {
+        // Hack!!!
+        /**
+         * {@link Http2PipelineInitializer#configurePipeline} will instrument {@link BasicHttpServerCodec} as the codec handler,
+         * which is different from the default server codec handler, and we would like to resume the original one for HTTP/1.1.
+         * This might not be necessary, but it will change the current behavior of HTTP/1.1 in Venice Server.
+         */
+        final String codecHandlerName = "http";
+        ChannelHandler codecHandler = pipeline.get(codecHandlerName);
+        if (codecHandler != null) {
+          // For HTTP/1.1 code path
+          if (!(codecHandler instanceof BasicHttpServerCodec)) {
+            throw new VeniceException("BasicHttpServerCodec is expected when the pipeline is instrumented by 'Http2PipelineInitializer'");
+          }
+          pipeline.remove(codecHandlerName);
+          pipeline.addLast(new HttpServerCodec());
+        }
       }
-      /**
-       * {@link #storeAclHandler} if present must come after {@link #aclHandler}
-       */
-      if (storeAclHandler.isPresent()) {
-        ch.pipeline().addLast(storeAclHandler.get());
+
+      pipeline.addLast(new HttpObjectAggregator(serverConfig.getMaxRequestSize()))
+          .addLast(new OutboundHttpWrapperHandler(statsHandler))
+          .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
+      if (sslFactory.isPresent()) {
+        pipeline.addLast(verifySsl);
+        if (aclHandler.isPresent()) {
+          pipeline.addLast(aclHandler.get());
+        }
+        /**
+         * {@link #storeAclHandler} if present must come after {@link #aclHandler}
+         */
+        if (storeAclHandler.isPresent()) {
+          pipeline.addLast(storeAclHandler.get());
+        }
       }
+      pipeline
+          .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.isComputeFastAvroEnabled(), serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
+      if (quotaEnforcer != null) {
+        pipeline.addLast(quotaEnforcer);
+      }
+      pipeline.addLast(requestHandler).addLast(new ErrorCatchingHandler());
+    };
+
+    if (serverConfig.isHttp2InboundEnabled()) {
+      Http2PipelineInitializer http2PipelineInitializer = http2PipelineInitializerBuilder.createHttp2PipelineInitializer(pipeline -> httpPipelineInitializer.accept(pipeline, false));
+      ch.pipeline().addLast(http2PipelineInitializer);
+    } else {
+      httpPipelineInitializer.accept(ch.pipeline(), true);
     }
-
-    ch.pipeline()
-        .addLast(new RouterRequestHttpHandler(statsHandler,
-            serverConfig.isComputeFastAvroEnabled(),
-            serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
-
-    if (quotaEnforcer != null) {
-      ch.pipeline().addLast(quotaEnforcer);
-    }
-
-    ch.pipeline()
-        .addLast(requestHandler)
-        .addLast(new ErrorCatchingHandler());
   }
 }

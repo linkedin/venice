@@ -1273,6 +1273,42 @@ public class ConfigKeys {
   public static final String SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS = "server.system.store.promotion.to.leader.replica.delay.seconds";
 
   /**
+   * Whether to support http/2 inbound request.
+   * When this feature is enabled, the server will support both http/1.1 and http/2.
+   */
+  public static final String SERVER_HTTP2_INBOUND_ENABLED = "server.http2.inbound.enabled";
+
+  /**
+   * Indicates the maximum number of concurrent streams that the sender will allow.  This limit is
+   * directional: it applies to the number of streams that the sender permits the receiver to create.
+   */
+  public static final String SERVER_HTTP2_MAX_CONCURRENT_STREAMS = "server.http2.max.concurrent.streams";
+
+  /**
+   * Indicates the size of the largest frame payload that the sender is willing to receive, in octets.
+   */
+  public static final String SERVER_HTTP2_MAX_FRAME_SIZE = "server.http2.max.frame.size";
+
+  /**
+   * Indicates the sender's initial window size (in octets) for stream-level flow control.
+   */
+  public static final String SERVER_HTTP2_INITIAL_WINDOW_SIZE = "server.http2.initial.window.size";
+
+  /**
+   * Allows the sender to inform the remote endpoint of the maximum size of the header compression
+   * table used to decode header blocks, in octets.
+   */
+  public static final String SERVER_HTTP2_HEADER_TABLE_SIZE = "server.http2.header.table.size";
+
+  /**
+   * This advisory setting informs a peer of the maximum size of header list that the sender is
+   * prepared to accept, in octets.  The value is based on the uncompressed size of header fields,
+   * including the length of the name and value in octets plus an overhead of 32 octets for each
+   * header field.
+   */
+  public static final String SERVER_HTTP2_MAX_HEADER_LIST_SIZE = "server.http2.max.header.list.size";
+
+  /**
    * This config defines whether SSL is enabled in controller.
    */
   public static final String CONTROLLER_SSL_ENABLED = "controller.ssl.enabled";

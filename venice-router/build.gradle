@@ -27,7 +27,7 @@ jar {
 dependencies {
     implementation libraries.routerApi
     implementation libraries.routerImpl
-    implementation libraries.routerNetty4
+    implementation libraries.ddsNettyBase
     implementation (libraries.netty4Lnkd) {
         exclude group: 'javax.servlet'
         exclude group: 'org.mockito', module: 'mockito-all'
