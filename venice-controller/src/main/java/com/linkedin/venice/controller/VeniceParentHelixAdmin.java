@@ -855,7 +855,7 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Cannot handle ACL operation since the authorizer is not set for principal ID " + principalId);
     }
     AuthorizerService authorizer = authorizerService.get();
-    Resource heartbeatStoreResource = new Resource(VeniceSystemStoreUtils.getBatchJobHeartbeatStoreName());
+    Resource heartbeatStoreResource = new Resource(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix());
     Principal batchJobPrincipal = new Principal(principalId);
     return authorizer.canAccess(Method.Write, heartbeatStoreResource, batchJobPrincipal);
   }
