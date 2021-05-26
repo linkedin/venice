@@ -37,6 +37,7 @@ public enum VeniceSystemStoreType {
       StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(),
       true, Method.READ_SYSTEM_STORE),
 
+  // This system store's prefix is used as its full name since it is not a per-user-store system store
   BATCH_JOB_HEARTBEAT_STORE(String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.BATCH_JOB_HEARTBEAT), false, BatchJobHeartbeatKey.SCHEMA$.toString(),
           BatchJobHeartbeatValue.SCHEMA$.toString(), "",
           true, Method.WRITE_SYSTEM_STORE);

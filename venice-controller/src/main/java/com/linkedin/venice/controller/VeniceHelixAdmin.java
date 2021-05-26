@@ -833,7 +833,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public BatchJobHeartbeatValue getBatchJobHeartbeatValue(BatchJobHeartbeatKey batchJobHeartbeatKey) {
         Utils.notNull(batchJobHeartbeatKey);
-        String storeName = VeniceSystemStoreUtils.getBatchJobHeartbeatStoreName();
+        String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
         String d2Service = discoverCluster(storeName).getSecond();
         return readValue(batchJobHeartbeatKey, storeName, d2Service, BatchJobHeartbeatValue.class);
     }
