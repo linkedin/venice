@@ -50,5 +50,7 @@ dependencies {
     exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
   }
 
+  implementation libraries.ddsNettyBase
+
   testImplementation project(':venice-router')
 }

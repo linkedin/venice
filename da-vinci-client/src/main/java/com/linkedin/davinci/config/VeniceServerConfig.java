@@ -226,6 +226,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final boolean isDaVinciClient;
 
+  private final boolean http2InboundEnabled;
+  private final int http2MaxConcurrentStreams;
+  private final int http2MaxFrameSize;
+  private final int http2InitialWindowSize;
+  private final int http2HeaderTableSize;
+  private final int http2MaxHeaderListSize;
+
   private final boolean unsubscribeAfterBatchpushEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
@@ -350,6 +357,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     isDaVinciClient = serverProperties.getBoolean(INGESTION_USE_DA_VINCI_CLIENT, false);
     unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH,false);
+
+    http2InboundEnabled = serverProperties.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
+    http2MaxConcurrentStreams = serverProperties.getInt(SERVER_HTTP2_MAX_CONCURRENT_STREAMS, 100);
+    http2MaxFrameSize = serverProperties.getInt(SERVER_HTTP2_MAX_FRAME_SIZE, 8 * 1024 * 1024);
+    http2InitialWindowSize = serverProperties.getInt(SERVER_HTTP2_INITIAL_WINDOW_SIZE, 8 * 1024 * 1024);
+    http2HeaderTableSize = serverProperties.getInt(SERVER_HTTP2_HEADER_TABLE_SIZE, 4096);
+    http2MaxHeaderListSize = serverProperties.getInt(SERVER_HTTP2_MAX_HEADER_LIST_SIZE, 8192);
   }
 
   public int getListenerPort() {
@@ -661,5 +675,29 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isUnsubscribeAfterBatchpushEnabled() {
     return unsubscribeAfterBatchpushEnabled;
+  }
+
+  public boolean isHttp2InboundEnabled() {
+    return http2InboundEnabled;
+  }
+
+  public int getHttp2MaxConcurrentStreams() {
+    return http2MaxConcurrentStreams;
+  }
+
+  public int getHttp2MaxFrameSize() {
+    return http2MaxFrameSize;
+  }
+
+  public int getHttp2InitialWindowSize() {
+    return http2InitialWindowSize;
+  }
+
+  public int getHttp2HeaderTableSize() {
+    return http2HeaderTableSize;
+  }
+
+  public int getHttp2MaxHeaderListSize() {
+    return http2MaxHeaderListSize;
   }
 }

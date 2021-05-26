@@ -74,7 +74,7 @@ ext.libraries = [
     r2Client: 'com.linkedin.container:pegasus-r2-client-factory:30.1.269',
     routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
     routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
-    routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
+    ddsNettyBase: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
     routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
     netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:' + ddsStorageCoreVersion,
     ddsStorageCommonBase: 'com.linkedin.dds-storage-core:dds-storage-common-base:' + ddsStorageCoreVersion,
