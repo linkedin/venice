@@ -106,17 +106,6 @@ public class OffsetRecord {
     this.partitionState.offset = offset;
   }
 
-  /**
-   * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
-   */
-  public long getEventTimeEpochMs() {
-    return this.partitionState.producerStates.values().stream()
-        .map(producerPartitionState -> producerPartitionState.messageTimestamp)
-        .sorted((o1, o2) -> o1.compareTo(o2) * -1)
-        .findFirst()
-        .orElse(-1L);
-  }
-
   public long getLatestProducerProcessingTimeInMs() {
     return this.partitionState.lastUpdate;
   }
@@ -285,7 +274,6 @@ public class OffsetRecord {
   public String toString() {
     return "OffsetRecord{" +
         "offset=" + getOffset() +
-        ", eventTimeEpochMs=" + getEventTimeEpochMs() +
         ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
         ", isEndOfPushReceived=" + isEndOfPushReceived() +
         ", databaseInfo=" + getDatabaseInfo() +
@@ -299,7 +287,6 @@ public class OffsetRecord {
   public String toSimplifiedString() {
     return "OffsetRecord{" +
         "offset=" + getOffset() +
-        ", eventTimeEpochMs=" + getEventTimeEpochMs() +
         ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() +
         ", isEndOfPushReceived=" + isEndOfPushReceived() +
         ", upstreamOffset=" + getUpstreamOffset() +
