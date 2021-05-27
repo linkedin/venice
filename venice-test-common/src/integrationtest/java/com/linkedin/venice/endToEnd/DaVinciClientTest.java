@@ -38,6 +38,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -229,7 +230,7 @@ public class DaVinciClientTest {
         .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
-        .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(10))
+        .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 5 * Time.MS_PER_SECOND)
         .build();
 
     try (

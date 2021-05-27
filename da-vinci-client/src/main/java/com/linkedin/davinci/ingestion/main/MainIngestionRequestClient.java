@@ -18,6 +18,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -56,8 +57,7 @@ public class MainIngestionRequestClient implements Closeable {
         }
       }
       // Start forking child ingestion process.
-      long heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS,
-          TimeUnit.SECONDS.toMillis(60));
+      long heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
       Process isolatedIngestionService = ForkedJavaProcess.exec(
           IsolatedIngestionServer.class,
           Arrays.asList(String.valueOf(ingestionServicePort), String.valueOf(heartbeatTimeoutMs)),
