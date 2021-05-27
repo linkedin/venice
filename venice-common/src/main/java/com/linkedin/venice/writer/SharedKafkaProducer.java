@@ -240,7 +240,9 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
     public SharedKafkaProducerStats(MetricsRepository metricsRepository) {
       super(metricsRepository, "SharedKafkaProducer");
       reportedMetrics.keySet().forEach(metric -> {
-        registerSensorIfAbsent("producer_" + id + "_" + metric, new Gauge(() -> {
+        String metricName = "producer_" + id + "_" + metric;
+        LOGGER.info("SharedKafkaProducer: Registering metric: " + metricName);
+        registerSensorIfAbsent(metricName, new Gauge(() -> {
           mayBeCalculateAllProducerMetrics();
           return reportedMetrics.get(metric);
         }));

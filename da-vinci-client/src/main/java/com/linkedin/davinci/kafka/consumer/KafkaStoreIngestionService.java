@@ -228,6 +228,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
 
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties, Optional.ofNullable(sharedKafkaProducerService));
+    VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter = new VeniceWriterFactory(veniceWriterProperties);
 
     // Create Kafka client stats
     this.kafkaClientStats = new KafkaClientStats(metricsRepository, "KafkaClientStats", Optional.ofNullable(sharedKafkaProducerService));
@@ -280,7 +281,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * used to report the replica status from Venice SN.
      */
     if (zkSharedSchemaRepository.isPresent()) {
-      this.metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactory, zkSharedSchemaRepository.get());
+      this.metaStoreWriter = new MetaStoreWriter(topicManagerRepository.getTopicManager(), veniceWriterFactoryForMetaStoreWriter, zkSharedSchemaRepository.get());
       this.metaSystemStoreReplicaStatusNotifier =
           new MetaSystemStoreReplicaStatusNotifier(serverConfig.getClusterName(), metaStoreWriter, metadataRepo,
               Instance.fromHostAndPort(Utils.getHostName(), serverConfig.getListenerPort()));
