@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.List;
@@ -80,7 +81,9 @@ public class InstanceStatusDecider {
       List<Replica> replicas = getReplicasForInstance(resources, instanceId);
       // Get and lock the resource assignment to avoid it's changed during the checking.
       ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+      long startTimeForAcquiringLockInMs = System.currentTimeMillis();
       synchronized (resourceAssignment) {
+        logger.info("Spent " + LatencyUtils.getElapsedTimeInMs(startTimeForAcquiringLockInMs) + "ms on acquiring ResourceAssignment lock.");
         // Get resource names from replicas hold by this instance.
         Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
 
