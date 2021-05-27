@@ -190,6 +190,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
       TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, irrelevantUpdateStoreParams);
 
       //verify all the datacenter is configured correctly.
+      TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(parentControllerClient, storeName, true);
       TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, storeName, true);
       TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, storeName, false);
       TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, storeName, false);
@@ -459,7 +460,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
          * Run admin command to convert all batch-only stores in the cluster to native replication
          */
         controllerResponse = parentControllerClient.configureNativeReplicationForCluster(true,
-            VeniceUserStoreType.BATCH_ONLY.toString(), newNativeReplicationSource, Optional.of("parent,dc-0"));
+            VeniceUserStoreType.BATCH_ONLY.toString(), newNativeReplicationSource, Optional.of("parent.parent,dc-0"));
         Assert.assertFalse(controllerResponse.isError());
 
         /**
@@ -490,7 +491,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
             VeniceUserStoreType.BATCH_ONLY.toString(), Optional.empty(), Optional.empty());
         Assert.assertFalse(controllerResponse.isError());
         controllerResponse = parentControllerClient.configureNativeReplicationForCluster(true,
-            VeniceUserStoreType.HYBRID_ONLY.toString(), newNativeReplicationSource, Optional.of("parent,dc-0"));
+            VeniceUserStoreType.HYBRID_ONLY.toString(), newNativeReplicationSource, Optional.of("parent.parent,dc-0"));
         Assert.assertFalse(controllerResponse.isError());
 
         /**
@@ -521,7 +522,7 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
             VeniceUserStoreType.HYBRID_ONLY.toString(), Optional.empty(), Optional.empty());
         Assert.assertFalse(controllerResponse.isError());
         controllerResponse = parentControllerClient.configureNativeReplicationForCluster(true,
-            VeniceUserStoreType.INCREMENTAL_PUSH.toString(), newNativeReplicationSource, Optional.of("parent,dc-0"));
+            VeniceUserStoreType.INCREMENTAL_PUSH.toString(), newNativeReplicationSource, Optional.of("parent.parent,dc-0"));
         Assert.assertFalse(controllerResponse.isError());
 
         /**
