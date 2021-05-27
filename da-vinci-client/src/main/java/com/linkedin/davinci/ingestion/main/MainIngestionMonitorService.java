@@ -239,7 +239,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       ingestionBackend.setIsolatedIngestionServiceProcess(client.startForkedIngestionProcess(configLoader));
 
       // Reset heartbeat time.
-      latestHeartbeatTimestamp = -1;
+      latestHeartbeatTimestamp = System.currentTimeMillis();
       // Open metadata partitions in child process for all previously subscribed topics.
       topicNameToPartitionSetMap.keySet().forEach(client::openStorageEngine);
       // All previously subscribed topics are stored in the keySet of this topic partition map.
@@ -267,11 +267,13 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     if (heartbeatClient.sendHeartbeatRequest()) {
       // Update heartbeat time.
       latestHeartbeatTimestamp = System.currentTimeMillis();
+    } else {
+      logger.warn("Failed to connect to forked ingestion process at " + currentTimeMillis + ", last successful timestamp: " + latestHeartbeatTimestamp);
     }
 
     if (latestHeartbeatTimestamp != -1) {
       if ((currentTimeMillis - latestHeartbeatTimestamp) > heartbeatTimeoutMs) {
-        logger.warn("Lost connection to forked ingestion process since timestamp, restarting forked process.");
+        logger.warn("Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp + ", restarting forked process.");
         restartForkedProcess();
       }
     }
