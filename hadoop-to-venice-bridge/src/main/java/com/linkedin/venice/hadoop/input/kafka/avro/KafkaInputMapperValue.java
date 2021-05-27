@@ -8,7 +8,7 @@ package com.linkedin.venice.hadoop.input.kafka.avro;
 @SuppressWarnings("all")
 /** The data protocol between Mapper and Reducer for KafkaInputFormat */
 public class KafkaInputMapperValue extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"KafkaInputMapperValue\",\"namespace\":\"com.linkedin.venice.hadoop.input.kafka.avro\",\"fields\":[{\"name\":\"valueType\",\"type\":{\"type\":\"enum\",\"name\":\"MapperValueType\",\"symbols\":[\"PUT\",\"DELETE\"]},\"doc\":\"The value type of the message\"},{\"name\":\"value\",\"type\":\"bytes\",\"doc\":\"The raw value bytes\"},{\"name\":\"offset\",\"type\":\"long\",\"doc\":\"The offset of the record in the original Kafka topic partition\"},{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"The schema id of the original record\"},{\"name\":\"chunkedKeySuffix\",\"type\":[\"null\",\"bytes\"],\"doc\":\"Chunked key suffix and this field is not null only when this value is a chunk of a large value\",\"default\":null}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"KafkaInputMapperValue\",\"namespace\":\"com.linkedin.venice.hadoop.input.kafka.avro\",\"fields\":[{\"name\":\"valueType\",\"type\":{\"type\":\"enum\",\"name\":\"MapperValueType\",\"symbols\":[\"PUT\",\"DELETE\"]},\"doc\":\"The value type of the message\"},{\"name\":\"value\",\"type\":\"bytes\",\"doc\":\"The raw value bytes\"},{\"name\":\"offset\",\"type\":\"long\",\"doc\":\"The offset of the record in the original Kafka topic partition\"},{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"The schema id of the original record\"},{\"name\":\"chunkedKeySuffix\",\"type\":[\"null\",\"bytes\"],\"doc\":\"Serialized chunked key suffix and this field is not null only when this value is a chunk of a large value\",\"default\":null}]}");
   /** The value type of the message */
   public com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType valueType;
   /** The raw value bytes */
@@ -17,7 +17,7 @@ public class KafkaInputMapperValue extends org.apache.avro.specific.SpecificReco
   public long offset;
   /** The schema id of the original record */
   public int schemaId;
-  /** Chunked key suffix and this field is not null only when this value is a chunk of a large value */
+  /** Serialized chunked key suffix and this field is not null only when this value is a chunk of a large value */
   public java.nio.ByteBuffer chunkedKeySuffix;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
