@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -210,6 +211,11 @@ public class DaVinciClusterAgnosticTest {
         assertEquals(parentControllerClient.discoverCluster(storeName).getCluster(), destCluster);
       });
     }
+    /**
+     * Add a pause between COMPLETE_MIGRATION and END_MIGRATION commands to make sure thin-client has detected the migration
+     * and re-direct to the dest cluster.
+     */
+    Utils.sleep(10 * Time.MS_PER_SECOND);
     String[] endMigration = {"--end-migration",
         "--url", parentController.getControllerUrl(),
         "--store", storeName,
