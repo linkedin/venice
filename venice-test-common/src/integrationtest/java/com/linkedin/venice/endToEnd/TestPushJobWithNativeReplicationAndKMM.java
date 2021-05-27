@@ -126,7 +126,7 @@ public class TestPushJobWithNativeReplicationAndKMM {
     UpdateStoreQueryParams enableLFAndNR = new UpdateStoreQueryParams()
         .setLeaderFollowerModel(true)
         .setNativeReplicationEnabled(true)
-        .setRegionsFilter("dc-2,parent");
+        .setRegionsFilter("dc-2,parent.parent");
     ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, enableLFAndNR);
     Assert.assertFalse(updateStoreResponse.isError());
     parentControllerClient.close();

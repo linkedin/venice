@@ -71,7 +71,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   // D2 service name for parent cluster
   public static final String VENICE_PARENT_D2_SERVICE = "VeniceParentController";
 
-  public static final String APP_RUNNING_FABRIC = "com.linkedin.app.env";
   /**
    * A global static counter to track how many factory one process would create.
    * In general, one factory is enough for one application; otherwise, if there are
@@ -176,10 +175,10 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     LOGGER.info(VENICE_PARENT_D2_ZK_HOSTS + ": " + veniceParentZKHosts);
     LOGGER.info(D2_ZK_HOSTS_PROPERTY + ": " + localVeniceZKHosts);
 
-    String runningFabric = config.get(APP_RUNNING_FABRIC);
+    String runningFabric = config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
     LOGGER.info("Running Fabric from config: " + runningFabric);
     if (runningFabric == null) {
-      runningFabric = System.getProperty(APP_RUNNING_FABRIC);
+      runningFabric = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
       LOGGER.info("Running Fabric from environment: " + runningFabric);
       if (runningFabric != null) {
         runningFabric = runningFabric.toLowerCase();

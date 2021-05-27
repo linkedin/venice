@@ -19,9 +19,11 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 
 
 /**
@@ -31,6 +33,8 @@ import static com.linkedin.venice.ConfigKeys.*;
  * {@link VeniceControllerClusterConfig}. TODO: remove one of them
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
+  private static final Logger LOGGER = Logger.getLogger(VeniceControllerConfig.class);
+
   private final int adminPort;
   private final int adminSecurePort;
   private final int controllerClusterReplica;
@@ -238,7 +242,26 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
-    this.regionName = props.getString(LOCAL_REGION_NAME, "");
+    String regionNameFromConfig = props.getString(LOCAL_REGION_NAME, "");
+    if (!Utils.isNullOrEmpty(regionNameFromConfig)) {
+      this.regionName = regionNameFromConfig + (parent ? ".parent" : "");
+    } else {
+      String regionNameFromEnv = null;
+      try {
+        regionNameFromEnv = System.getenv(ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME);
+        LOGGER.info("Region name from environment config: " + regionNameFromEnv);
+        if (regionNameFromEnv == null) {
+          regionNameFromEnv = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
+          LOGGER.info("Region name from System property: " + regionNameFromEnv);
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Error when trying to retrieve environment variable for region name; will use default value instead.", e);
+      }
+      this.regionName = Utils.isNullOrEmpty(regionNameFromEnv)
+                        ? ""
+                        : regionNameFromEnv + (parent ? ".parent" : "");
+    }
+    LOGGER.info("Final region name for this node: " + this.regionName);
     this.disabledRoutes = parseControllerRoutes(props, CONTROLLER_DISABLED_ROUTES, Collections.emptyList());
     this.adminTopicRemoteConsumptionEnabled = props.getBoolean(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, false);
     if (adminTopicRemoteConsumptionEnabled && (childDataCenterKafkaUrlMap == null || childDataCenterKafkaUrlMap.isEmpty())) {
