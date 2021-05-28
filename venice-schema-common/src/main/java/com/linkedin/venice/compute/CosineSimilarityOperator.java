@@ -1,4 +1,4 @@
-package com.linkedin.davinci.compute;
+package com.linkedin.venice.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
-import static com.linkedin.davinci.compute.ComputeOperationUtils.*;
+import static com.linkedin.venice.compute.ComputeOperationUtils.*;
 
 
 public class CosineSimilarityOperator implements ReadComputeOperator {

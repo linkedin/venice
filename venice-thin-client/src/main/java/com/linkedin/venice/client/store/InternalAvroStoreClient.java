@@ -2,17 +2,11 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
-import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.compute.ComputeRequestWrapper;
-import java.io.ByteArrayOutputStream;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryEncoder;
 
 
 /**
@@ -24,7 +18,7 @@ import org.apache.avro.io.BinaryEncoder;
  * end-user does not see these extra functions on the instances they get back from the
  * {@link com.linkedin.venice.client.store.ClientFactory}.
  */
-public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreClient<K, V> {
+public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadComputeStoreClient<K, V> {
 
   public CompletableFuture<byte[]> getRaw(String requestPath) {
     return getRaw(requestPath, Optional.empty(), 0);
@@ -54,22 +48,9 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
   public abstract CompletableFuture<byte[]> getRaw(final String requestPath, final Optional<ClientStats> stats,
       final long preRequestTimeInNS);
 
-  public abstract ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
-      final long preRequestTimeInNS) throws VeniceClientException;
-
   // The following function allows to pass one compute store client
   public abstract ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
       final InternalAvroStoreClient computeStoreClient, final long preRequestTimeInNS) throws VeniceClientException;
-
-  public abstract CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
-      Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException;
-
-  public abstract void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException;
-
-  public abstract void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS, BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) throws VeniceClientException;
 
   public Executor getDeserializationExecutor() {
     throw new VeniceClientException("getDeserializationExecutor is not supported!");

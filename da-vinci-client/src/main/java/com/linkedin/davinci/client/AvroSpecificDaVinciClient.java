@@ -27,7 +27,7 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
   }
 
   @Override
-  protected AbstractAvroChunkingAdapter<V> getChunkingAdapter() {
+  protected AbstractAvroChunkingAdapter<V> getAvroChunkingAdapter() {
     return chunkingAdapter;
   }
 }

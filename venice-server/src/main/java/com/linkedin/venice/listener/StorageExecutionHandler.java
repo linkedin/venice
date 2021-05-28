@@ -16,11 +16,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.davinci.compute.CosineSimilarityOperator;
-import com.linkedin.davinci.compute.CountOperator;
-import com.linkedin.davinci.compute.DotProductOperator;
-import com.linkedin.davinci.compute.HadamardProductOperator;
-import com.linkedin.davinci.compute.ReadComputeOperator;
+import com.linkedin.venice.compute.ReadComputeOperator;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
@@ -145,15 +141,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     };
   }
   private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
-
-  private final Map<Integer, ReadComputeOperator> computeOperators = new HashMap<Integer, ReadComputeOperator>() {
-    {
-      put(ComputeOperationType.DOT_PRODUCT.getValue(), new DotProductOperator());
-      put(ComputeOperationType.COSINE_SIMILARITY.getValue(), new CosineSimilarityOperator());
-      put(ComputeOperationType.HADAMARD_PRODUCT.getValue(), new HadamardProductOperator());
-      put(ComputeOperationType.COUNT.getValue(), new CountOperator());
-    }
-  };
 
   public StorageExecutionHandler(ThreadPoolExecutor executor, ThreadPoolExecutor computeExecutor,
                                   StorageEngineRepository storageEngineRepository,
@@ -521,7 +508,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     if (computeResultSchema == null) {
       computeResultSchema = Schema.parse(computeResultSchemaStr.toString());
       // sanity check on the result schema
-      ComputeUtils.checkResultSchema(computeResultSchema, valueSchema, computeRequestWrapper.getComputeRequestVersion(), (List) computeRequestWrapper.getOperations());
+      ComputeUtils.checkResultSchema(computeResultSchema, valueSchema, computeRequestWrapper.getComputeRequestVersion(), computeRequestWrapper.getOperations());
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }
 
@@ -623,7 +610,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       final int keyIndex,
       int partition,
       int computeRequestVersion,
-      List<Object> operations,
+      List<ComputeOperation> operations,
       CompressionStrategy compressionStrategy,
       Schema computeResultSchema,
       RecordSerializer<GenericRecord> resultSerializer,
@@ -666,18 +653,17 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     Map<String, String> computationErrorMap = new HashMap<>();
 
     // go through all operation
-    for (Object operation : operations) {
-      ComputeOperation op = (ComputeOperation) operation;
-      ReadComputeOperator operator = computeOperators.get(op.operationType);
-      String fieldName = operator.getOperatorFieldName(op);
+    for (ComputeOperation operation : operations) {
+      ReadComputeOperator operator = ComputeOperationType.valueOf(operation).getOperator();
+      String fieldName = operator.getOperatorFieldName(operation);
       if (reuseValueRecord.get(fieldName) == null) {
         String msg = "Failed to execute compute request as the field " + fieldName + " does not exist.";
-        operator.putDefaultResult(reuseResultRecord, operator.getResultFieldName(op));
-        computationErrorMap.put(operator.getResultFieldName(op), msg);
+        operator.putDefaultResult(reuseResultRecord, operator.getResultFieldName(operation));
+        computationErrorMap.put(operator.getResultFieldName(operation), msg);
         continue;
       }
-      incrementOperatorCount(response, op);
-      operator.compute(computeRequestVersion, op, reuseValueRecord, reuseResultRecord, computationErrorMap, globalContext);
+      incrementOperatorCount(response, operation);
+      operator.compute(computeRequestVersion, operation, reuseValueRecord, reuseResultRecord, computationErrorMap, globalContext);
     }
 
     // fill the empty field in result schema

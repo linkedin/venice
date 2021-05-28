@@ -15,8 +15,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.avro.Schema;
 
-import static com.linkedin.venice.VeniceConstants.*;
-
 
 public class ComputeUtils {
   public static final Pattern VALID_AVRO_NAME_PATTERN = Pattern.compile("\\A[A-Za-z_][A-Za-z0-9_]*\\z");

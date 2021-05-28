@@ -92,6 +92,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -1397,7 +1398,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Map<String, String> ssPartitionerParamsMap = partitionerParams
             .map(addToUpdatedConfigList(updatedConfigsList, PARTITIONER_PARAMS))
             .orElseGet(store.getPartitionerConfig()::getPartitionerParams);
-        partitionerConfigRecord.partitionerParams = Utils.getCharSequenceMapFromStringMap(ssPartitionerParamsMap);
+        partitionerConfigRecord.partitionerParams = CollectionUtils.getCharSequenceMapFromStringMap(ssPartitionerParamsMap);
         partitionerConfigRecord.amplificationFactor = amplificationFactor
             .map(addToUpdatedConfigList(updatedConfigsList, AMPLIFICATION_FACTOR))
             .orElseGet(store.getPartitionerConfig()::getAmplificationFactor);

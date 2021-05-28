@@ -47,6 +47,7 @@ import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -383,7 +384,7 @@ public class VeniceServer {
         logger.info("The server is already stopped, ignoring duplicate attempt.");
         return;
       }
-      for (AbstractVeniceService service : Utils.reversed(services)) {
+      for (AbstractVeniceService service : CollectionUtils.reversed(services)) {
         try {
           service.stop();
         } catch (Exception e) {

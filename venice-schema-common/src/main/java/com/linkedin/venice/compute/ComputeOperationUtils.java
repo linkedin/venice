@@ -1,11 +1,10 @@
-package com.linkedin.davinci.compute;
+package com.linkedin.venice.compute;
 
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.ComputablePrimitiveFloatList;
+import com.linkedin.venice.utils.CollectionUtils;
 import java.util.List;
-
-import static com.linkedin.venice.utils.Utils.*;
 
 
 /**
@@ -102,7 +101,7 @@ public class ComputeOperationUtils {
     for (; i < size; i++) {
       floats[i] = floatSupplier1.get(i) * floatSupplier2.get(i);
     }
-    return asUnmodifiableList(floats);
+    return CollectionUtils.asUnmodifiableList(floats);
   }
 
   public static float squaredL2Norm(List<Float> list) {

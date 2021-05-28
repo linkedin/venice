@@ -8,7 +8,7 @@ import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkAssembler;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.CollectionUtils;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -52,7 +52,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   }
 
   private Optional<VeniceWriterMessage> extractChunkedMessage(final byte[] keyBytes, List<KafkaInputMapperValue> mapperValues) {
-    Utils.assertCollectionsNotEmpty(mapperValues);
+    CollectionUtils.assertCollectionsNotEmpty(mapperValues);
     return getChunkAssembler().assembleAndGetValue(keyBytes, mapperValues).map(
         valueBytesAndSchemaId -> new VeniceWriterMessage(
             keyBytes,
@@ -69,7 +69,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   }
 
   private Optional<VeniceWriterMessage> extractNonChunkedMessage(final byte[] keyBytes, List<KafkaInputMapperValue> mapperValues) {
-    Utils.assertCollectionsNotEmpty(mapperValues);
+    CollectionUtils.assertCollectionsNotEmpty(mapperValues);
     // Only get the value with the largest offset for the purpose of compaction
     KafkaInputMapperValue lastValue = null;
     long largestOffset = Long.MIN_VALUE;

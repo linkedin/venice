@@ -48,15 +48,14 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -482,7 +481,7 @@ public abstract class NativeMetadataRepository
     for (StoreVersionState storeVersionState : currentVersionStates.currentVersionStates) {
       PartitionerConfig partitionerConfig =
           new PartitionerConfigImpl(storeVersionState.partitionerConfig.partitionerClass.toString(),
-              Utils.getStringMapFromCharSequenceMap(storeVersionState.partitionerConfig.partitionerParams),
+              CollectionUtils.getStringMapFromCharSequenceMap(storeVersionState.partitionerConfig.partitionerParams),
               storeVersionState.partitionerConfig.amplificationFactor);
 
       Version version = new VersionImpl(storeName, storeVersionState.versionNumber, storeVersionState.creationTime,
@@ -521,7 +520,7 @@ public abstract class NativeMetadataRepository
     PartitionerConfig partitionerConfig = null;
     if (storeProperties.partitionerConfig != null) {
       partitionerConfig = new PartitionerConfigImpl(storeProperties.partitionerConfig.partitionerClass.toString(),
-          Utils.getStringMapFromCharSequenceMap(storeProperties.partitionerConfig.partitionerParams),
+          CollectionUtils.getStringMapFromCharSequenceMap(storeProperties.partitionerConfig.partitionerParams),
           storeProperties.partitionerConfig.amplificationFactor);
     }
 
