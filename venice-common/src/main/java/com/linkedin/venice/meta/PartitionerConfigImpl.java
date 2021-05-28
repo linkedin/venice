@@ -3,7 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.CollectionUtils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -26,7 +26,7 @@ public class PartitionerConfigImpl implements PartitionerConfig {
      * TODO: once the full stack migrates to adopt modern avro versions (1.7+), we could specify `java.string` in schema,
      * then this kind of conversion can be avoided.
      */
-    this.partitionerConfig.partitionerParams = Utils.convertStringMapToCharSequenceMap(partitionerParams);
+    this.partitionerConfig.partitionerParams = CollectionUtils.convertStringMapToCharSequenceMap(partitionerParams);
     this.partitionerConfig.amplificationFactor = amplificationFactor;
   }
 
@@ -45,7 +45,7 @@ public class PartitionerConfigImpl implements PartitionerConfig {
 
   @Override
   public Map<String, String> getPartitionerParams() {
-    return Utils.convertCharSequenceMapToStringMap(this.partitionerConfig.partitionerParams);
+    return CollectionUtils.convertCharSequenceMapToStringMap(this.partitionerConfig.partitionerParams);
   }
 
   @Override
@@ -65,7 +65,7 @@ public class PartitionerConfigImpl implements PartitionerConfig {
 
   @Override
   public void setPartitionerParams(Map<String, String> partitionerParams) {
-    this.partitionerConfig.partitionerParams = Utils.convertStringMapToCharSequenceMap(partitionerParams);
+    this.partitionerConfig.partitionerParams = CollectionUtils.convertStringMapToCharSequenceMap(partitionerParams);
   }
 
   @Override

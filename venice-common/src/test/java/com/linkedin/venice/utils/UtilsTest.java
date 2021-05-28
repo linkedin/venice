@@ -1,22 +1,17 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.Store;
 
-import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static org.apache.avro.Schema.*;
 import static org.testng.Assert.*;
 
 
@@ -52,62 +47,6 @@ public class UtilsTest {
     } catch (VeniceException e) {
       //expected
     }
-  }
-
-  @Test
-  public void testListEquals() {
-    /** 1. Standard {@link java.util.ArrayList<Integer>} instances should compare properly. */
-
-    List<Integer> javaUtilArrayList1 = new ArrayList<>(), javaUtilArrayList2 = new ArrayList<>();
-    populateIntegerList(javaUtilArrayList1);
-    populateIntegerList(javaUtilArrayList2);
-
-    assertListEqualityBothWays(javaUtilArrayList1, javaUtilArrayList2,
-        "We cannot compare java.util.ArrayList<Integer> by referential equality properly!");
-
-    /**
-     * 2. {@link org.apache.avro.generic.GenericData.Array} should compare properly.
-     *
-     * (This is the main reason for having the {@link Utils#listEquals(List, List)} function).
-     */
-
-    List<Integer> avroArray = new GenericData.Array<>(3, createArray(create(Type.INT)));
-    populateIntegerList(avroArray);
-
-    // Sanity check. This works:
-    assertTrue(javaUtilArrayList1.equals(avroArray), "Java is broken!!!");
-
-    // But this doesn't (in Avro 1.4 only):
-    assertTrue(avroArray.equals(javaUtilArrayList1), "Avro is broken again somehow!!!");
-
-    /**
-     * N.B.: The bad behavior demonstrated by the above assert is the reason why we are using
-     * our own list equality implementation. If this assertion fails in the future (let's say,
-     * following an upgrade of Avro), then that means we can get rid of our
-     * {@link Utils#listEquals(List, List)} function.
-     *
-     * Updates: The Avro version is updated to 1.7.7, so the above assert is changed; however,
-     * in order to be compatible with clients who might still use Avro 1.4.1, we decided not
-     * to remove {@link Utils#listEquals(List, List)} function yet.
-     * More context: GenericData.Array.equals(Object o) in avro 1.4.1 checks whether 'o' is
-     * an instance of GenericData.Array, while GenericData.Array.equals(Object o) in avro
-     * 1.7.7 checks whether 'o' is an instance of List.
-     */
-
-    // Code under test
-    assertTrue(Utils.listEquals(javaUtilArrayList1, avroArray),
-        "We cannot compare java.util.ArrayList<Integer> with GenericData.Array properly!");
-    assertTrue(Utils.listEquals(avroArray, javaUtilArrayList1),
-        "We cannot compare GenericData.Array with java.util.ArrayList<Integer> properly!");
-
-    /** 3. Ensure that we verify content equality, not just referential equality */
-
-    List<Store> javaUtilArrayList3 = new ArrayList<>(), javaUtilArrayList4 = new ArrayList<>();
-    populateStoreList(javaUtilArrayList3);
-    populateStoreList(javaUtilArrayList4);
-
-    assertListEqualityBothWays(javaUtilArrayList3, javaUtilArrayList4,
-        "We cannot compare java.util.ArrayList<Object> by content equality properly!");
   }
 
   @Test
@@ -189,27 +128,5 @@ public class UtilsTest {
     Assert.assertFalse(Utils.directoryExists(nonExistingPath.toString()));
     Files.delete(directoryPath);
     Files.delete(filePath);
-  }
-
-  private void populateIntegerList(List<Integer> list) {
-    list.add(1);
-    list.add(2);
-    list.add(3);
-  }
-
-  private void populateStoreList(List<Store> list) {
-    list.add(TestUtils.createTestStore("store1", "owner1", 123));
-    list.add(TestUtils.createTestStore("store2", "owner1", 123));
-    list.add(TestUtils.createTestStore("store3", "owner1", 123));
-  }
-
-  private <T> void assertListEqualityBothWays(List<T> list1, List<T> list2, String errorMessage) {
-    // Sanity checks
-    assertTrue(list1.equals(list2), "Java is broken!!!");
-    assertTrue(list2.equals(list1), "Java is broken!!!");
-
-    // Code under test
-    assertTrue(Utils.listEquals(list2, list1), errorMessage);
-    assertTrue(Utils.listEquals(list1, list2), errorMessage);
   }
 }

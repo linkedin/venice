@@ -9,13 +9,19 @@ import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.AvroComputeRequestBuilderV3;
+import com.linkedin.venice.client.store.AvroGenericReadComputeStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.Store;
@@ -24,12 +30,16 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
 import java.util.Arrays;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DecoderFactory;
@@ -40,6 +50,7 @@ import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -52,7 +63,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
-public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
+public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, AvroGenericReadComputeStoreClient<K,V> {
   protected final Logger logger = Logger.getLogger(getClass());
 
   private static class ReusableObjects {
@@ -60,6 +71,15 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     final BinaryDecoder binaryDecoder = DecoderFactory.defaultFactory().createBinaryDecoder(new byte[16], null);
     final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
     final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    private static final int REUSABLE_MAP_CAPACITY = 100;
+    private static final float REUSABLE_MAP_LOAD_FACTOR = 0.75f;
+    // LRU cache for storing schema->record map for object reuse of value and result record
+    final LinkedHashMap<Schema, GenericRecord>
+        reuseValueRecordMap = new LinkedHashMap<Schema, GenericRecord>(REUSABLE_MAP_CAPACITY, REUSABLE_MAP_LOAD_FACTOR, true){
+      protected boolean removeEldestEntry(Map.Entry <Schema, GenericRecord> eldest) {
+        return size() > REUSABLE_MAP_CAPACITY;
+      }
+    };
   }
   private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
 
@@ -73,10 +93,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
 
   private RecordSerializer<K> keySerializer;
-  private AvroGenericStoreClient<K, V> veniceClient;
+  private AvroGenericReadComputeStoreClient<K, V> veniceClient;
   private StoreBackend storeBackend;
   private static ReferenceCounted<DaVinciBackend> daVinciBackend;
   private ObjectCacheBackend cacheBackend;
+  private static final Map<CharSequence, Schema> computeResultSchemaCache = new VeniceConcurrentHashMap<>();
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
@@ -186,12 +207,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
 
       if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
         V value = versionBackend.read(
-                subPartition,
-                keyBytes,
-                getChunkingAdapter(),
-                reusableObjects.binaryDecoder,
-                reusableObjects.rawValue,
-                reusableValue);
+            subPartition,
+            keyBytes,
+            getAvroChunkingAdapter(),
+            reusableObjects.binaryDecoder,
+            reusableObjects.rawValue,
+            reusableValue);
         return CompletableFuture.completedFuture(value);
       }
 
@@ -248,12 +269,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
 
         if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
           V value = versionBackend.read(
-                  subPartition,
-                  keyBytes,
-                  getChunkingAdapter(),
-                  reusableObjects.binaryDecoder,
-                  reusableObjects.rawValue,
-                  null); // TODO: Consider supporting object re-use for batch get as well.
+              subPartition,
+              keyBytes,
+              getAvroChunkingAdapter(),
+              reusableObjects.binaryDecoder,
+              reusableObjects.rawValue,
+              null); // TODO: Consider supporting object re-use for batch get as well.
           // The result should only contain entries for the keys that have a value associated with them
           if (value != null) {
             result.put(key, value);
@@ -296,6 +317,100 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
         return this.batchGetFromLocalStorage(keys);
       }
     }
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute() throws VeniceClientException {
+    return compute(Optional.empty(), Optional.empty(), 0);
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, Optional<ClientStats> streamingStats, final long preRequestTimeInNS){
+    return new AvroComputeRequestBuilderV3<>(getLatestValueSchema(), this, stats, streamingStats);
+  }
+
+  @Override
+  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
+      Schema resultSchema, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
+    throwIfNotReady();
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      VersionBackend versionBackend = versionRef.get();
+      if (null == versionBackend){
+        if (isVeniceQueryAllowed()){
+          return veniceClient.compute(computeRequestWrapper, keys, resultSchema, stats, preRequestTimeInNS);
+        }
+        storeBackend.getStats().recordBadRequest();
+        throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
+      }
+
+      Map<K, GenericRecord> result = new HashMap<>(keys.size());
+      Set<K> missingKeys = new HashSet<>();
+
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+
+      Schema valueSchema = computeRequestWrapper.getValueSchema();
+      GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
+
+      Map<String, Object> globalContext = new HashMap<>();
+      Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
+      for (K key : keys) {
+        byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
+        int subPartition = versionBackend.getSubPartition(keyBytes);
+
+        if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
+          GenericRecord computeResultValue =
+              versionBackend.compute(subPartition, keyBytes, getGenericRecordChunkingAdapter(), reusableObjects.binaryDecoder,
+                  reusableObjects.rawValue, reuseValueRecord, globalContext, computeRequestWrapper, computeResultSchema);
+
+          if (null != computeResultValue) {
+            result.put(key, computeResultValue);
+          }
+        } else if (isVeniceQueryAllowed()){
+          missingKeys.add(key);
+        } else if (!isSubPartitionSubscribed(versionBackend, subPartition)){
+          storeBackend.getStats().recordBadRequest();
+          throw new NonLocalAccessException(versionBackend.toString(), subPartition);
+        }
+      }
+
+      if (missingKeys.isEmpty()){
+        return CompletableFuture.completedFuture(result);
+      }
+
+      return veniceClient.compute(computeRequestWrapper, missingKeys, resultSchema, stats, preRequestTimeInNS)
+          .thenApply(veniceResult -> {
+            result.putAll(veniceResult);
+            return result;
+          });
+    }
+  }
+
+  private Schema getComputeResultSchema(ComputeRequestWrapper computeRequestWrapper){
+    // try to get the result schema from the cache
+    CharSequence computeResultSchemaStr = computeRequestWrapper.getResultSchemaStr();
+    Schema computeResultSchema = computeResultSchemaCache.get(computeResultSchemaStr);
+    if (computeResultSchema == null) {
+      computeResultSchema = Schema.parse(computeResultSchemaStr.toString());
+      // sanity check on the result schema
+      ComputeUtils.checkResultSchema(computeResultSchema, computeRequestWrapper.getValueSchema(), computeRequestWrapper.getComputeRequestVersion(), computeRequestWrapper.getOperations());
+      computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
+    }
+    return computeResultSchema;
+  }
+
+  @Override
+  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
+      StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS) throws VeniceClientException {
+    //TODO: implement streamingExecute
+    throw new VeniceClientException("'streamingExecute' is not supported.");
+  }
+
+  @Override
+  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
+      StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS, BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
+    //TODO: implement streamingExecute
+    throw new VeniceClientException("'streamingExecute' is not supported.");
   }
 
   public boolean isReady() {
@@ -341,8 +456,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     }
   }
 
-  protected AbstractAvroChunkingAdapter<V> getChunkingAdapter() {
+  protected AbstractAvroChunkingAdapter<V> getAvroChunkingAdapter() {
     return GenericChunkingAdapter.INSTANCE;
+  }
+
+  protected GenericRecordChunkingAdapter getGenericRecordChunkingAdapter() {
+    return GenericRecordChunkingAdapter.INSTANCE;
   }
 
   private D2ServiceDiscoveryResponseV2 discoverService() {
@@ -453,7 +572,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);
 
       if (isVeniceQueryAllowed()) {
-        veniceClient = getAndStartAvroClient(clientConfig);
+        veniceClient = (AvroGenericReadComputeStoreClient<K, V>) getAndStartAvroClient(clientConfig);
       }
 
       ready.set(true);

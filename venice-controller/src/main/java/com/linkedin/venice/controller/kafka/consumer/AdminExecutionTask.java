@@ -39,7 +39,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.CollectionUtils;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.Callable;
@@ -385,7 +385,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setPartitionCount(message.partitionNum);
     if (message.partitionerConfig != null) {
       params.setPartitionerClass(message.partitionerConfig.partitionerClass.toString())
-          .setPartitionerParams(Utils.getStringMapFromCharSequenceMap(message.partitionerConfig.partitionerParams))
+          .setPartitionerParams(CollectionUtils.getStringMapFromCharSequenceMap(message.partitionerConfig.partitionerParams))
           .setAmplificationFactor(message.partitionerConfig.amplificationFactor);
     }
     params.setStorageQuotaInByte(message.storageQuotaInByte)

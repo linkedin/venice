@@ -67,13 +67,13 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
@@ -2074,7 +2074,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // First time we receive a SOBR
         storeVersionState.get().startOfBufferReplay = startOfBufferReplay;
         storageMetadataService.put(kafkaVersionTopic, storeVersionState.get());
-      } else if (!Utils.listEquals(storeVersionState.get().startOfBufferReplay.sourceOffsets, startOfBufferReplay.sourceOffsets)) {
+      } else if (!CollectionUtils.listEquals(storeVersionState.get().startOfBufferReplay.sourceOffsets, startOfBufferReplay.sourceOffsets)) {
         // Something very wrong is going on ): ...
         throw new VeniceException("Unexpected: received multiple " + ControlMessageType.START_OF_BUFFER_REPLAY.name() +
             " control messages with inconsistent 'startOfBufferReplay.offsets' fields within the same topic!" +

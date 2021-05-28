@@ -1,4 +1,4 @@
-package com.linkedin.davinci.compute;
+package com.linkedin.venice.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.DotProduct;

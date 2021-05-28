@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils.locks;
 
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.List;
@@ -10,7 +11,7 @@ public class AutoCloseableLock implements AutoCloseable {
   private final List<Lock> locks;
 
   public AutoCloseableLock(List<Lock> locks) {
-    Utils.assertCollectionsNotEmpty(locks);
+    CollectionUtils.assertCollectionsNotEmpty(locks);
     for (Lock lock : locks) {
       lock.lock();
     }

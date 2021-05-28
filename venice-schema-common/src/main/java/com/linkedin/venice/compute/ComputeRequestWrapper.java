@@ -1,5 +1,6 @@
 package com.linkedin.venice.compute;
 
+import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
@@ -146,29 +147,29 @@ public class ComputeRequestWrapper {
    * with ComputeOperation V1.
    * @return
    */
-  public List<Object> getOperations() {
+  public List<ComputeOperation> getOperations() {
     switch (version) {
       case 1:
-        return ((ComputeRequestV1)computeRequest).operations;
+        return (List)((ComputeRequestV1)computeRequest).operations;
       case 2:
-        return ((ComputeRequestV2)computeRequest).operations;
+        return (List)((ComputeRequestV2)computeRequest).operations;
       case 3:
-        return ((ComputeRequestV3)computeRequest).operations;
+        return (List)((ComputeRequestV3)computeRequest).operations;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
   }
 
-  public void setOperations(List<Object> operations) {
+  public void setOperations(List<ComputeOperation> operations) {
     switch (version) {
       case 1:
-        ((ComputeRequestV1)computeRequest).operations = operations;
+        ((ComputeRequestV1)computeRequest).operations = (List)operations;
         break;
       case 2:
-        ((ComputeRequestV2)computeRequest).operations = operations;
+        ((ComputeRequestV2)computeRequest).operations = (List)operations;
         break;
       case 3:
-        ((ComputeRequestV3)computeRequest).operations = operations;
+        ((ComputeRequestV3)computeRequest).operations = (List)operations;
         break;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");

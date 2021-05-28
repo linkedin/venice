@@ -3,6 +3,11 @@ package com.linkedin.davinci;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.compute.ReadComputeOperator;
+import com.linkedin.venice.VeniceConstants;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -12,6 +17,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,8 +28,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.log4j.Logger;
 
@@ -177,6 +188,79 @@ public class VersionBackend {
         backend.getSchemaRepository(),
         null,
         backend.getCompressorFactory());
+  }
+
+  public GenericRecord compute(
+      int subPartition,
+      byte[] keyBytes,
+      AbstractAvroChunkingAdapter<GenericRecord> chunkingAdaptor,
+      BinaryDecoder binaryDecoder,
+      ByteBuffer reusableRawValue,
+      GenericRecord reusableValueRecord,
+      Map<String, Object> globalContext,
+      ComputeRequestWrapper computeRequestWrapper,
+      Schema computeResultSchema) {
+
+    reusableValueRecord = chunkingAdaptor.get(
+        version.getStoreName(),
+        getStorageEngineOrThrow(),
+        subPartition,
+        keyBytes,
+        reusableRawValue,
+        reusableValueRecord,
+        binaryDecoder,
+        version.isChunkingEnabled(),
+        version.getCompressionStrategy(),
+        true,
+        backend.getSchemaRepository(),
+        null,
+        backend.getCompressorFactory());
+
+    if (null == reusableValueRecord) {
+      return null;
+    }
+
+    List<ComputeOperation> operations = computeRequestWrapper.getOperations();
+    Map<String, String> computationErrorMap = new HashMap<>();
+    GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
+
+    //execute each operation
+    for (ComputeOperation computeOperation : operations) {
+      ReadComputeOperator operator = ComputeOperationType.valueOf(computeOperation).getOperator();
+      String operatorFieldName = operator.getOperatorFieldName(computeOperation);
+      if (null == reusableValueRecord.get(operatorFieldName)) {
+        String errorMessage = "Failed to execute compute request as the field " + operatorFieldName + " does not exist in the value record. " +
+            "Fields present in the value record are: " + getStringOfSchemaFieldNames(reusableValueRecord);
+        operator.putDefaultResult(resultRecord, operator.getResultFieldName(computeOperation));
+        computationErrorMap.put(operator.getResultFieldName(computeOperation), errorMessage);
+        continue;
+      }
+      operator.compute(computeRequestWrapper.getComputeRequestVersion(), computeOperation, reusableValueRecord, resultRecord,
+          computationErrorMap, globalContext);
+    }
+
+    Schema.Field computationErrorMapField = computeResultSchema.getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
+    if (null != computationErrorMapField && null == resultRecord.get(computationErrorMapField.pos())){
+      resultRecord.put(computationErrorMapField.pos(), computationErrorMap);
+    }
+
+    //fill empty fields in result schema
+    for (Schema.Field field : computeResultSchema.getFields()){
+      if (null == resultRecord.get(field.pos())){
+          resultRecord.put(field.pos(), reusableValueRecord.get(field.name()));
+      }
+    }
+
+    return resultRecord;
+  }
+
+  private String getStringOfSchemaFieldNames(GenericRecord valueRecord){
+    List<String> fieldNames = valueRecord.getSchema()
+        .getFields()
+        .stream()
+        .map(Schema.Field::name)
+        .collect(Collectors.toList());
+    return String.join(", ", fieldNames);
   }
 
   public int getUserPartition(int subPartition) {

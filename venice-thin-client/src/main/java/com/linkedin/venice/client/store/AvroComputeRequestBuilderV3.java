@@ -30,25 +30,25 @@ import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperatio
  * This class is package-private on purpose.
  * @param <K>
  */
-class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBuilder<K> {
+public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBuilder<K> {
   private static final Schema COUNT_RESULT_SCHEMA = Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT)));
   private static final String COUNT_SPEC = "count_spec";
   private List<Count> countLists = new LinkedList<>();
 
   private static final int computeRequestVersion = COMPUTE_REQUEST_VERSION_V3;
 
-  public AvroComputeRequestBuilderV3(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+  public AvroComputeRequestBuilderV3(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
       Optional<ClientStats> stats, Optional<ClientStats> streamingStats) {
     this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), false, null, null);
   }
 
-  public AvroComputeRequestBuilderV3(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+  public AvroComputeRequestBuilderV3(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
       Optional<ClientStats> stats, Optional<ClientStats> streamingStats, boolean reuseObjects,
       BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
     this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), reuseObjects, reusedEncoder, reusedOutputStream);
   }
 
-  public AvroComputeRequestBuilderV3(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+  public AvroComputeRequestBuilderV3(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
       Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time, boolean reuseObjects,
       BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
     super(latestValueSchema, storeClient, stats, streamingStats, time, reuseObjects, reusedEncoder, reusedOutputStream);
@@ -57,7 +57,6 @@ class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBuilder<K
   @Override
   protected Pair<Schema, String> getResultSchema() {
     Map<String, Object> computeSpec = getCommonComputeSpec();
-    List<Pair<CharSequence, CharSequence>> hadamardProductPairs = new LinkedList<>();
 
     List<Pair<CharSequence, CharSequence>> countPairs = new LinkedList<>();
     countLists.forEach( count -> {
@@ -104,7 +103,7 @@ class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBuilder<K
       computeOperation.operation = count;
       operations.add(computeOperation);
     });
-    computeRequestWrapper.setOperations((List)operations);
+    computeRequestWrapper.setOperations(operations);
     computeRequestWrapper.setValueSchema(latestValueSchema);
 
     return computeRequestWrapper;

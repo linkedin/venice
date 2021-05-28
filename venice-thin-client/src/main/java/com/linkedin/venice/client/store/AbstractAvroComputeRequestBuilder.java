@@ -45,7 +45,7 @@ import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperatio
  * this class and the new builder will include customized fields and APIs.
  * @param <K>
  */
-abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K>  {
+public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K>  {
   /**
    * Error map field can not be a static variable; after setting the error map field in a schema, the position of the
    * field will be updated, so the next time when we set the field in a new schema, it would fail because
@@ -68,7 +68,7 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
 
   private final Time time;
   protected final Schema latestValueSchema;
-  private final InternalAvroStoreClient storeClient;
+  private final AvroGenericReadComputeStoreClient storeClient;
   protected final String resultSchemaName;
   private final Optional<ClientStats> stats;
   private final Optional<ClientStats> streamingStats;
@@ -82,12 +82,12 @@ abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBui
   protected List<DotProduct> dotProducts = new LinkedList<>();
   protected List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
 
-  public AbstractAvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+  public AbstractAvroComputeRequestBuilder(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
       Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time) {
      this(latestValueSchema, storeClient, stats, streamingStats, time, false, null, null);
   }
 
-  public AbstractAvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+  public AbstractAvroComputeRequestBuilder(Schema latestValueSchema, AvroGenericReadComputeStoreClient storeClient,
       Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time, boolean reuseObjects,
       BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) {
 

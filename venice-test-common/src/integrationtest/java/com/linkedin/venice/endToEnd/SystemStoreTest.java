@@ -44,6 +44,7 @@ import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -413,13 +414,13 @@ public class SystemStoreTest {
       assertEquals(storeValueSchemas.valueSchemaMap.size(), 2);
 
       // CharSequence is not comparable. We have to peform the CharSequence to String map conversion so the get() from map won't fail.
-      Map<String, String> keySchemaMap = Utils.getStringMapFromCharSequenceMap(storeKeySchemas.keySchemaMap);
+      Map<String, String> keySchemaMap = CollectionUtils.getStringMapFromCharSequenceMap(storeKeySchemas.keySchemaMap);
       CharSequence keySchemaStr = keySchemaMap.get(Integer.toString(1));
       assertNotNull(keySchemaStr);
       assertEquals(keySchemaStr.toString(), STRING_SCHEMA);
       assertEquals(storeRepository.getKeySchema(regularVeniceStoreName).getSchema().toString(), STRING_SCHEMA);
 
-      Map<String, String> valueSchemaMap = Utils.getStringMapFromCharSequenceMap(storeValueSchemas.valueSchemaMap);
+      Map<String, String> valueSchemaMap = CollectionUtils.getStringMapFromCharSequenceMap(storeValueSchemas.valueSchemaMap);
       CharSequence valueSchemaStr = valueSchemaMap.get(Integer.toString(1));
       assertNotNull(valueSchemaStr);
       // We need to reparse the schema string so it won't have field ordering issue.

@@ -22,7 +22,7 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
 import com.linkedin.venice.meta.systemstore.schemas.TargetVersionStates;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -264,7 +264,7 @@ public class MetadataStoreWriter implements Closeable {
       partitionerConfig.amplificationFactor = inputPartitionerConfig.getAmplificationFactor();
       partitionerConfig.partitionerClass = inputPartitionerConfig.getPartitionerClass();
       partitionerConfig.partitionerParams =
-          Utils.getCharSequenceMapFromStringMap(inputPartitionerConfig.getPartitionerParams());
+          CollectionUtils.getCharSequenceMapFromStringMap(inputPartitionerConfig.getPartitionerParams());
       return partitionerConfig;
     }
     return null;

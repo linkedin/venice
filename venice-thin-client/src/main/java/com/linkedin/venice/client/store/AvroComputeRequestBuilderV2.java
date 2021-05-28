@@ -22,7 +22,7 @@ import static com.linkedin.venice.VeniceConstants.*;
  * This class is package-private on purpose.
  * @param <K>
  */
-class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K> {
+public class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K> {
 
   private static final int computeRequestVersion = COMPUTE_REQUEST_VERSION_V2;
 
@@ -49,7 +49,7 @@ class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K
     ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
     computeRequestWrapper.setValueSchema(latestValueSchema);
     computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
-    computeRequestWrapper.setOperations((List)getCommonComputeOperations());
+    computeRequestWrapper.setOperations(getCommonComputeOperations());
 
     return computeRequestWrapper;
   }
