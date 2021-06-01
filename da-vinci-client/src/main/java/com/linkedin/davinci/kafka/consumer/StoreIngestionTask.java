@@ -1508,6 +1508,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subscribedCount++;
         OffsetRecord record = storageMetadataService.getLastOffset(topic, partition);
 
+        // Initialize partition status;
+        reportStatusAdapter.initializePartitionStatus(partition);
         // First let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, amplificationFactor, record,
             hybridStoreConfig.isPresent(), isIncrementalPushEnabled, incrementalPushPolicy);
@@ -3109,6 +3111,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public class ReportStatusAdapter {
     private final IngestionNotificationDispatcher notificationDispatcher;
+    private final Map<Integer, AtomicBoolean> shouldCleanupStatus = new VeniceConcurrentHashMap<>();
+    private final Map<Integer, Map<SubPartitionStatus, AtomicBoolean>> statusReportMap = new VeniceConcurrentHashMap<>();
+    private final Map<Integer, CompletableFuture<Void>> canReportCompleted = new VeniceConcurrentHashMap<>();
 
     public ReportStatusAdapter(IngestionNotificationDispatcher notificationDispatcher) {
       this.notificationDispatcher = notificationDispatcher;
@@ -3175,6 +3180,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return;
       }
       int userPartition = partitionConsumptionState.getUserPartition();
+      // Initialize status reporting map.
+      statusReportMap.get(userPartition).putIfAbsent(SubPartitionStatus.COMPLETED, new AtomicBoolean(false));
       for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
         if (!partitionConsumptionStateMap.containsKey(subPartitionId)
             /**
@@ -3186,12 +3193,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           return;
         }
       }
-      notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
-      for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
-        PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartitionId);
-        if (subPartitionConsumptionState != null) {
-          subPartitionConsumptionState.lagHasCaughtUp();
-          subPartitionConsumptionState.completionReported();
+      /**
+       * We need to make sure END_OF_PUSH is reported first before COMPLETED can be reported, otherwise replica status could
+       * go back from COMPLETED to END_OF_PUSH_RECEIVED and version push would fail.
+       */
+      try {
+        canReportCompleted.get(userPartition).get();
+      } catch (InterruptedException | ExecutionException e) {
+        logger.info("Caught exception when waiting completion report condition", e);
+      }
+      // Make sure we only report once for each user partition.
+      if (statusReportMap.get(userPartition).get(SubPartitionStatus.COMPLETED).compareAndSet(false, true)) {
+        notificationDispatcher.reportCompleted(partitionConsumptionState, forceCompletion);
+        for (int subPartitionId : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+          PartitionConsumptionState subPartitionConsumptionState = partitionConsumptionStateMap.get(subPartitionId);
+          if (subPartitionConsumptionState != null) {
+            subPartitionConsumptionState.lagHasCaughtUp();
+            subPartitionConsumptionState.completionReported();
+          }
         }
       }
     }
@@ -3243,6 +3262,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return;
       }
       int userPartition = partitionConsumptionState.getUserPartition();
+      statusReportMap.get(userPartition).putIfAbsent(subPartitionStatus, new AtomicBoolean(false));
+      /**
+       * If we are reporting EOP, it means it is a fresh ingestion and COMPLETED reporting will have to wait until
+       * EOP has been reported.
+       */
+      if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
+        canReportCompleted.put(userPartition, new CompletableFuture<>());
+      }
       partitionConsumptionState.recordSubPartitionStatus(subPartitionStatus);
       for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(subPartition);
@@ -3250,7 +3277,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           return;
         }
       }
-      report.run();
+      // Make sure we only report once for each partition status.
+      if (statusReportMap.get(userPartition).get(subPartitionStatus).compareAndSet(false, true)) {
+        report.run();
+        if (subPartitionStatus.equals(SubPartitionStatus.END_OF_PUSH_RECEIVED)) {
+          canReportCompleted.get(userPartition).complete(null);
+        }
+      }
+    }
+
+    /**
+     * This method contains the actual cleanup logic. It relies on AtomicBoolean to make sure only the first subPartition
+     * gets the chance to re-initialize user-level partition status.
+     */
+    public void initializePartitionStatus(int subPartition) {
+      int userPartition = PartitionUtils.getUserPartition(subPartition, amplificationFactor);
+      // Make sure we only initialize once for each user partition.
+      if (shouldCleanupStatus.get(userPartition).compareAndSet(true, false)) {
+        statusReportMap.put(userPartition, new VeniceConcurrentHashMap<>());
+        /**
+         * By default, we are allowed to report COMPLETED, but if we found that EOP is being reported, we need to block
+         * completion reporting until EOP is fully reported.
+         */
+        canReportCompleted.put(userPartition, CompletableFuture.completedFuture(null));
+      }
+    }
+
+    /**
+     * Set up clean up flag for the first sub-partition to re-initialize report status. This prevents re-subscription of
+     * the same topic partition reuses old reporting status.
+     */
+    public void preparePartitionStatusCleanup(int userPartition) {
+      shouldCleanupStatus.put(userPartition, new AtomicBoolean(true));
     }
   }
 
@@ -3261,6 +3319,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     public void subscribePartition(String topic, int partition, Optional<LeaderFollowerStateType> leaderState) {
+      reportStatusAdapter.preparePartitionStatusCleanup(partition);
       /**
        * RT topic partition count : VT topic partition count is 1 : amp_factor. For every user partition, there should
        * be only one sub-partition to act as leader to process and produce records from real-time topic partition to all
