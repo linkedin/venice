@@ -32,6 +32,8 @@ public class DIVStats {
   private final Sensor localBrokerFollowerConsumerLatencySensor;
   private final Sensor producerFollowerConsumerLatencySensor;
   private final Sensor dataValidationLatencySensor;
+  private final Sensor leaderProducerCompletionLatencySensor;
+
 
   private Avg producerBrokerLatencyAvgMs = new Avg();
   private Min producerBrokerLatencyMinMs = new Min();
@@ -62,6 +64,9 @@ public class DIVStats {
   private Max producerFollowerConsumerLatencyMaxMs = new Max();
   private Avg dataValidationLatencyAvgMs = new Avg();
   private Max dataValidationLatencyMaxMs = new Max();
+
+  private Avg leaderProducerCompletionLatencyAvgMs = new Avg();
+  private Max leaderProducerCompletionLatencyMaxMs = new Max();
 
   private long benignLeaderOffsetRewindCount = 0;
   private long potentiallyLossyLeaderOffsetRewindCount = 0;
@@ -153,6 +158,13 @@ public class DIVStats {
     dataValidationLatencySensor = localRepository.sensor(sensorName);
     dataValidationLatencySensor.add(sensorName + dataValidationLatencyAvgMs.getClass().getSimpleName(), dataValidationLatencyAvgMs);
     dataValidationLatencySensor.add(sensorName + dataValidationLatencyMaxMs.getClass().getSimpleName(), dataValidationLatencyMaxMs);
+
+    sensorName = "leader_producer_completion_latency";
+    leaderProducerCompletionLatencySensor = localRepository.sensor(sensorName);
+    leaderProducerCompletionLatencySensor.add(sensorName + leaderProducerCompletionLatencyAvgMs.getClass().getSimpleName(),
+        leaderProducerCompletionLatencyAvgMs);
+    leaderProducerCompletionLatencySensor.add(sensorName + leaderProducerCompletionLatencyMaxMs.getClass().getSimpleName(),
+        producerSourceBrokerLatencyMaxMs);
   }
 
   public long getDuplicateMsg() {
@@ -357,6 +369,18 @@ public class DIVStats {
 
   public double getDataValidationLatencyMaxMs() {
     return dataValidationLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getLeaderProducerCompletionLatencyAvgMs() {
+    return leaderProducerCompletionLatencyAvgMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public double getLeaderProducerCompletionLatencyMaxMs() {
+    return leaderProducerCompletionLatencyMaxMs.measure(metricConfig, System.currentTimeMillis());
+  }
+
+  public void recordLeaderProducerCompletionLatencyMs(double value) {
+    leaderProducerCompletionLatencySensor.record(value);
   }
 
   public void recordDataValidationLatencyMs(double value) {
