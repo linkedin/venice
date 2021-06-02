@@ -405,6 +405,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastPersistedOffset = UNASSIGNED_VALUE;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
+      resetConsumptionLag();
       isSubscribed = false;
       logger.info("Unsubscribe from topic name: " + topic);
     }
@@ -823,5 +824,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     } catch (Exception e) {
       logger.error("Error when emitting admin consumption lag metrics; only log for warning; admin channel will continue to work.");
     }
+  }
+
+  /**
+   * When leadership handover or the host shutdown, we don't want to leave the lag metric to stay on a high value, since
+   * this specific host is not responsible for the admin topic anymore.
+   */
+  private void resetConsumptionLag() {
+    stats.setAdminConsumptionOffsetLag(0L);
+    stats.setMaxAdminConsumptionOffsetLag(0L);
   }
 }
