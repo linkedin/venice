@@ -122,4 +122,10 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderProducerFailure());
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderProducerFailure());
   }
+
+  public void recordLeaderProducerCompletionTime(String storeName, int version, double value) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderProducerCompletionLatencyMs(value));
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderProducerCompletionLatencyMs(value));
+  }
+
 }

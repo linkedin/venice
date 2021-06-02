@@ -16,6 +16,8 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Max;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -51,7 +53,7 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
   private final KafkaProducerWrapper kafkaProducerWrapper;
 
   private long lastStatUpdateTsMs = 0;
-  private final Map<String, Double> reportedMetrics;
+  private final Map<String, Double> kafkaProducerMetrics;
   private SharedKafkaProducerStats sharedKafkaProducerStats;
 
   public SharedKafkaProducer(SharedKafkaProducerService sharedKafkaProducerService, int id,
@@ -61,9 +63,9 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
     this.id = id;
     producerTasks = new HashSet<>();
     this.kafkaProducerWrapper = kafkaProducerWrapper;
-    reportedMetrics = new HashMap<>();
-    metricsToBeReported.forEach(metric -> reportedMetrics.put(metric, (double)StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
-    if (reportedMetrics.size() > 0) {
+    kafkaProducerMetrics = new HashMap<>();
+    metricsToBeReported.forEach(metric -> kafkaProducerMetrics.put(metric, (double)StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
+    if (kafkaProducerMetrics.size() > 0) {
       sharedKafkaProducerStats = new SharedKafkaProducerStats(metricsRepository);
     }
   }
@@ -83,12 +85,18 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
   @Override
   public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition,
       Callback callback) {
-    return kafkaProducerWrapper.sendMessage(topic, key, value, partition, callback);
+    long startNs = System.nanoTime();
+    Future<RecordMetadata> result = kafkaProducerWrapper.sendMessage(topic, key, value, partition, callback);
+    sharedKafkaProducerStats.recordProducerSendLatency(LatencyUtils.getLatencyInMS(startNs));
+    return result;
   }
 
   @Override
   public Future<RecordMetadata> sendMessage(ProducerRecord<KafkaKey, KafkaMessageEnvelope> record, Callback callback) {
-    return kafkaProducerWrapper.sendMessage(record, callback);
+    long startNs = System.nanoTime();
+    Future<RecordMetadata> result = kafkaProducerWrapper.sendMessage(record, callback);
+    sharedKafkaProducerStats.recordProducerSendLatency(LatencyUtils.getLatencyInMS(startNs));
+    return result;
   }
 
   @Override
@@ -229,24 +237,30 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
 
     //measure
     Map<String, Double> metrics = kafkaProducerWrapper.getMeasurableProducerMetrics();
-    for (String metricName : reportedMetrics.keySet()) {
-      reportedMetrics.put(metricName, metrics.getOrDefault(metricName, (double)StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
+    for (String metricName : kafkaProducerMetrics.keySet()) {
+      kafkaProducerMetrics.put(metricName, metrics.getOrDefault(metricName, (double)StatsErrorCode.KAFKA_CLIENT_METRICS_DEFAULT.code));
     }
 
     lastStatUpdateTsMs = System.currentTimeMillis();
   }
 
   private class SharedKafkaProducerStats extends AbstractVeniceStats {
+    private final Sensor producerSendLatencySensor;
     public SharedKafkaProducerStats(MetricsRepository metricsRepository) {
       super(metricsRepository, "SharedKafkaProducer");
-      reportedMetrics.keySet().forEach(metric -> {
+      kafkaProducerMetrics.keySet().forEach(metric -> {
         String metricName = "producer_" + id + "_" + metric;
         LOGGER.info("SharedKafkaProducer: Registering metric: " + metricName);
         registerSensorIfAbsent(metricName, new Gauge(() -> {
           mayBeCalculateAllProducerMetrics();
-          return reportedMetrics.get(metric);
+          return kafkaProducerMetrics.get(metric);
         }));
       });
+      producerSendLatencySensor = registerSensor("producer_" + id + "_send_api_latency", new Avg(), new Max());
+    }
+
+    public void recordProducerSendLatency(double value) {
+      producerSendLatencySensor.record(value);
     }
   }
 }

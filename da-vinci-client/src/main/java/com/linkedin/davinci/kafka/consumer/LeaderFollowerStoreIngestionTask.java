@@ -931,7 +931,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     String leaderTopic = consumerRecord.topic();
     long sourceTopicOffset = consumerRecord.offset();
     LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(this, consumerRecord, partitionConsumptionState, leaderTopic,
-        kafkaVersionTopic, partition, versionedDIVStats, logger, producedRecord);
+        kafkaVersionTopic, partition, versionedDIVStats, logger, producedRecord, System.nanoTime());
     partitionConsumptionState.setLastLeaderPersistFuture(producedRecord.getPersistedToDBFuture());
     produceFunction.apply(callback, sourceTopicOffset);
   }
@@ -1729,6 +1729,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     private final AggVersionedDIVStats versionedDIVStats;
     private final Logger logger;
     private final ProducedRecord producedRecord;
+    private final long produceTime;
 
     /**
      * The three mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
@@ -1743,7 +1744,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord,
         PartitionConsumptionState partitionConsumptionState,
         String feedTopic, String versionTopic, int partition, AggVersionedDIVStats versionedDIVStats, Logger logger,
-        ProducedRecord producedRecord) {
+        ProducedRecord producedRecord, long produceTime) {
       this.ingestionTask = ingestionTask;
       this.sourceConsumerRecord = sourceConsumerRecord;
       this.partitionConsumptionState = partitionConsumptionState;
@@ -1753,6 +1754,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       this.versionedDIVStats = versionedDIVStats;
       this.logger = logger;
       this.producedRecord = producedRecord;
+      this.produceTime = produceTime;
     }
 
     @Override
@@ -1785,6 +1787,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             throw new IllegalStateException("chunkedValueManifest.keysWithChunkIdSuffix is not in sync with chunks.");
           }
         }
+
+        //record just the time it took for this callback to be invoked before we do further processing here such as queuing to drainer.
+        //this indicates how much time kafka took to deliver the message to broker.
+        versionedDIVStats.recordLeaderProducerCompletionTime(storeName, versionNumber, LatencyUtils.getLatencyInMS(produceTime));
+
         int producedRecordNum = 0;
         int producedRecordSize = 0;
         //produce to drainer buffer service for further processing.
