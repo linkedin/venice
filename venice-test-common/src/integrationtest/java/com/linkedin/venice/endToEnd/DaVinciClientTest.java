@@ -10,8 +10,8 @@ import com.linkedin.davinci.client.NonLocalAccessException;
 import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -43,19 +43,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.apache.samza.system.SystemProducer;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
-
 import java.io.File;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -76,6 +65,14 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.samza.system.SystemProducer;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
@@ -741,7 +738,7 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
   public void testLiveUpdateSuppression(boolean enableIngestionIsolation) throws Exception {
     final String storeName = TestUtils.getUniqueString("store");
     cluster.useControllerClient(client -> {
@@ -787,11 +784,7 @@ public class DaVinciClientTest {
 
     CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig);
     DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
-    client.subscribeAll().get();
-    for (int i = 0; i < KEY_COUNT; i++) {
-      int result = client.get(i).get();
-      assertEquals(result, i);
-    }
+    client.subscribe(Collections.singleton(0)).get();
 
     VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(Version.composeRealTimeTopic(storeName),
         keySerializer, valueSerializer, false);
