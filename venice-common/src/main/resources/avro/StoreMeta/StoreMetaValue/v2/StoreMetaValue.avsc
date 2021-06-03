@@ -44,19 +44,7 @@
                     {"name": "rewindTimeInSeconds", "type": "long"},
                     {"name": "offsetLagThresholdToGoOnline", "type": "long"},
                     {"name": "producerTimestampLagThresholdToGoOnlineInSeconds", "type": "long"},
-                    {"name": "dataReplicationPolicy", "type": "int", "default": 0, "doc": "Real-time Samza job data replication policy, and default is 'NON_AGGREGATE'"},
-                    {
-                      "name": "bufferReplayPolicy",
-                      "type": "int",
-                      "doc": "Policy that will be used during buffer replay. rewindTimeInSeconds defines the delta. 0 => REWIND_FROM_EOP (replay from 'EOP - rewindTimeInSeconds'), 1 => REWIND_FROM_REFERENCE_TIME (replay from 'bufferReplayReferenceTimestampInMs - (rewindTimeInSeconds * 1000)'. bufferReplayReferenceTimestampInMs=-1 implies that the reference timestamp is the time the version was created.)",
-                      "default": 0
-                    },
-                    {
-                      "name": "bufferReplayReferenceTimestampInMs",
-                      "type": "int",
-                      "doc": "Reference timestamp to be used with bufferReplayPolicy for computing replay offsets.",
-                      "default": -1
-                    }
+                    {"name": "dataReplicationPolicy", "type": "int", "default": 0, "doc": "Real-time Samza job data replication policy, and default is 'NON_AGGREGATE'"}
                   ]
                 }
               ],
