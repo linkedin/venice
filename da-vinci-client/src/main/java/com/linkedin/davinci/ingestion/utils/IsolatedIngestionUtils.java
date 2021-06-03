@@ -53,6 +53,8 @@ import static com.linkedin.venice.ingestion.protocol.enums.IngestionAction.*;
  * IsolatedIngestionUtils class contains methods used for communication between ingestion client and server.
  */
 public class IsolatedIngestionUtils {
+  public static final String INGESTION_ISOLATION_CONFIG_PREFIX = "isolated";
+
   private static final Logger logger = Logger.getLogger(IsolatedIngestionUtils.class);
   private static final int D2_STARTUP_TIMEOUT = 60000;
 

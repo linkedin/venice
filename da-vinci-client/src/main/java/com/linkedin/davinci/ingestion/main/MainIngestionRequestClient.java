@@ -1,10 +1,10 @@
 package com.linkedin.davinci.ingestion.main;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.IngestionRequestTransport;
-import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
@@ -26,7 +26,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
@@ -68,14 +67,8 @@ public class MainIngestionRequestClient implements Closeable {
       IsolatedIngestionUtils.waitPortBinding(ingestionServicePort, 100);
       // Wait for server in forked child process to pass health check.
       waitHealthCheck(100);
-      InitializationConfigs initializationConfigs = new InitializationConfigs();
-      initializationConfigs.aggregatedConfigs = new HashMap<>();
-      configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
-      // Block restoring on disk store data as it has been restored on the main process when live update suppression is enabled.
-      if (configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists()) {
-        initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, "false");
-        initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_METADATA_PARTITION_ENABLED, "false");
-      }
+
+      InitializationConfigs initializationConfigs = buildInitializationConfig(configLoader);
       logger.info("Sending initialization aggregatedConfigs to child process: " + initializationConfigs.aggregatedConfigs);
       ingestionRequestTransport.sendRequest(IngestionAction.INIT, initializationConfigs);
       logger.info("Isolated ingestion service initialization finished.");
@@ -248,7 +241,30 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionRequestTransport.close();
   }
 
-  private void waitHealthCheck(int maxAttempt) throws Exception {
+  public InitializationConfigs buildInitializationConfig(VeniceConfigLoader configLoader) {
+    InitializationConfigs initializationConfigs = new InitializationConfigs();
+    initializationConfigs.aggregatedConfigs = new HashMap<>();
+    /**
+     * The reason of not to restore the data partitions during initialization of storage service is:
+     * 1. During first fresh start up with no data on disk, we don't need to restore anything
+     * 2. During fresh start up with data on disk (aka bootstrap), we will receive messages to subscribe to the partition
+     * and it will re-open the partition on demand.
+     * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
+     * should not try to open it. The remaining ingestion tasks will open the storage engines.
+     */
+    initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, Boolean.toString(false));
+    if (configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists()) {
+      initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_METADATA_PARTITION_ENABLED, Boolean.toString(false));
+    }
+    // Put all configs into request payload.
+    configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
+    // Override ingestion isolation's customized configs.
+    configLoader.getCombinedProperties().clipAndFilterNamespace(INGESTION_ISOLATION_CONFIG_PREFIX).toProperties()
+        .forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
+    return initializationConfigs;
+  }
+
+  private void waitHealthCheck(int maxAttempt) {
     long waitTime = 100;
     int retryCount = 0;
     while (true) {

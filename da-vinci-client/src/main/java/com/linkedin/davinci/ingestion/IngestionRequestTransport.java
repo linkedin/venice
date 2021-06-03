@@ -80,6 +80,9 @@ public class IngestionRequestTransport implements Closeable {
     } catch (InterruptedException e) {
       throw new VeniceException("Caught interrupted exception ", e);
     }
+    if (response == null) {
+      throw new VeniceException("Received null response from ingestion process.");
+    }
     if (logger.isDebugEnabled()) {
       logger.debug("IngestionRequestTransport received response: " + response);
     }
@@ -97,9 +100,7 @@ public class IngestionRequestTransport implements Closeable {
       }
     } finally {
       // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
-      if (response != null) {
-        response.release();
-      }
+      response.release();
     }
   }
 
