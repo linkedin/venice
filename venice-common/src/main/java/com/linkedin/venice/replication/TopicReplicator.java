@@ -163,9 +163,15 @@ public abstract class TopicReplicator {
     }
   }
 
-  protected long getRewindStartTime(Optional<HybridStoreConfig> hybridStoreConfig) {
-    // TODO to get a more deterministic timestamp across colo we could use the timestamp from the EOP control message.
-    return getTimer().getMilliseconds() - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+  protected long getRewindStartTime(Optional<HybridStoreConfig> hybridStoreConfig, long versionCreationTimeInMs) {
+    switch (hybridStoreConfig.get().getBufferReplayPolicy()) {
+      // TODO to get a more deterministic timestamp across colo we could use the timestamp from the SOP/EOP control message.
+      case REWIND_FROM_SOP:
+        return versionCreationTimeInMs - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+      case REWIND_FROM_EOP:
+      default:
+        return getTimer().getMilliseconds() - hybridStoreConfig.get().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+    }
   }
 
   abstract public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store);

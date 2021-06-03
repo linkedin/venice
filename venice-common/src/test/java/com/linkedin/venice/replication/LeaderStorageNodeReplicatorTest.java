@@ -18,6 +18,7 @@ import org.apache.kafka.common.PartitionInfo;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.meta.BufferReplayPolicy.*;
 import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
@@ -58,6 +59,7 @@ public class LeaderStorageNodeReplicatorTest {
     Version version = new VersionImpl(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
     doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
@@ -87,6 +89,7 @@ public class LeaderStorageNodeReplicatorTest {
     version.setPushStreamSourceAddress(nativeReplicationSourceAddress);
     doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);

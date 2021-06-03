@@ -1,11 +1,8 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
-import com.linkedin.venice.utils.Time;
 import java.util.Objects;
-import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 
@@ -18,6 +15,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
 public class HybridStoreConfigImpl implements HybridStoreConfig {
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
   public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = -1L;
+  public static final long DEFAULT_BUFFER_REPLAY_REFERENCE_TIMESTAMP_MS = -1L;
 
   private final StoreHybridConfig hybridConfig;
 
@@ -25,7 +23,8 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
       @JsonProperty("rewindTimeInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("rewindTimeInSeconds") long rewindTimeInSeconds,
       @JsonProperty("offsetLagThresholdToGoOnline") @com.fasterxml.jackson.annotation.JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline,
       @JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") @com.fasterxml.jackson.annotation.JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") long producerTimestampLagThresholdToGoOnlineInSeconds,
-      @JsonProperty("dataReplicationPolicy")@com.fasterxml.jackson.annotation.JsonProperty("dataReplicationPolicy") DataReplicationPolicy dataReplicationPolicy
+      @JsonProperty("dataReplicationPolicy")@com.fasterxml.jackson.annotation.JsonProperty("dataReplicationPolicy") DataReplicationPolicy dataReplicationPolicy,
+      @JsonProperty("bufferReplayPolicy")@com.fasterxml.jackson.annotation.JsonProperty("bufferReplayPolicy") BufferReplayPolicy bufferReplayPolicy
   ) {
     this.hybridConfig = new StoreHybridConfig();
     this.hybridConfig.rewindTimeInSeconds = rewindTimeInSeconds;
@@ -34,6 +33,8 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
     this.hybridConfig.dataReplicationPolicy = dataReplicationPolicy == null
         ? DataReplicationPolicy.NON_AGGREGATE.getValue() // for deserializing old hybrid config that didn't have data replication policy
         : dataReplicationPolicy.getValue();
+    this.hybridConfig.bufferReplayPolicy = bufferReplayPolicy == null ? BufferReplayPolicy.REWIND_FROM_EOP.getValue() :
+        bufferReplayPolicy.getValue();
   }
 
   HybridStoreConfigImpl(StoreHybridConfig config) {
@@ -71,6 +72,11 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   }
 
   @Override
+  public BufferReplayPolicy getBufferReplayPolicy() {
+    return BufferReplayPolicy.valueOf(this.hybridConfig.bufferReplayPolicy);
+  }
+
+  @Override
   public StoreHybridConfig dataModel() {
     return this.hybridConfig;
   }
@@ -99,6 +105,7 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
         getRewindTimeInSeconds(),
         getOffsetLagThresholdToGoOnline(),
         getProducerTimestampLagThresholdToGoOnlineInSeconds(),
-        getDataReplicationPolicy());
+        getDataReplicationPolicy(),
+        getBufferReplayPolicy());
   }
 }

@@ -45,6 +45,7 @@ public class ControllerApiConstants {
   public static final String OFFSET_LAG_TO_GO_ONLINE = "offset_lag_to_go_online";
   public static final String TIME_LAG_TO_GO_ONLINE = "time_lag_to_go_online";
   public static final String DATA_REPLICATION_POLICY = "data_replication_policy";
+  public static final String BUFFER_REPLAY_POLICY = "buffer_replay_policy";
   public static final String COMPRESSION_STRATEGY = "compression_strategy";
   public static final String CLIENT_DECOMPRESSION_ENABLED = "client_decompression_enabled";
   public static final String CHUNKING_ENABLED = "chunking_enabled";

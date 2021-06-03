@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -28,7 +29,8 @@ public class TestStoreJsonSerializer {
         throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
         store.increaseVersion();
-        HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1000, 1000, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE);
+        HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1000, 1000, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
         store.setHybridStoreConfig(hybridStoreConfig);
         store.setReadQuotaInCU(100);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
@@ -40,10 +42,12 @@ public class TestStoreJsonSerializer {
         Assert.assertEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
 
         // Verify consistency between the two equals()...
-        newStore.setHybridStoreConfig(new HybridStoreConfigImpl(1000, 1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE));
+        newStore.setHybridStoreConfig(new HybridStoreConfigImpl(1000, 1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
         Assert.assertNotEquals(store, newStore);
         Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
-        newStore.setHybridStoreConfig(new HybridStoreConfigImpl(1, 1000, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE));
+        newStore.setHybridStoreConfig(new HybridStoreConfigImpl(1, 1000, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP));
         Assert.assertNotEquals(store, newStore);
         Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
     }

@@ -29,6 +29,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -99,6 +100,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.meta.BufferReplayPolicy.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.mockito.Mockito.*;
@@ -166,7 +168,9 @@ public class TestHybrid {
           .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
       );
 
-      HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(streamingRewindSeconds, streamingMessageLag, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE);
+      HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(streamingRewindSeconds, streamingMessageLag,
+          HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
+          REWIND_FROM_EOP);
       // There should be no version on the store yet
       assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
           0, "The newly created store must have a current version of 0");
@@ -209,12 +213,18 @@ public class TestHybrid {
   @DataProvider(name = "testPermutations", parallel = false)
   public static Object[][] testPermutations() {
     return new Object[][]{
-        {false, false, false},
-        {false, true, false},
-        {false, true, true},
-        {true, false, false},
-        {true, true, false},
-        {true, true, true}
+        {false, false, false, REWIND_FROM_EOP},
+        {false, true, false, REWIND_FROM_EOP},
+        {false, true, true, REWIND_FROM_EOP},
+        {true, false, false, REWIND_FROM_EOP},
+        {true, true, false, REWIND_FROM_EOP},
+        {true, true, true, REWIND_FROM_EOP},
+        {false, false, false, REWIND_FROM_SOP},
+        {false, true, false, REWIND_FROM_SOP},
+        {false, true, true, REWIND_FROM_SOP},
+        {true, false, false, REWIND_FROM_SOP},
+        {true, true, false, REWIND_FROM_SOP},
+        {true, true, true, REWIND_FROM_SOP}
     };
   }
 
@@ -233,7 +243,7 @@ public class TestHybrid {
    * @param chunkingEnabled Whether chunking should be enabled (only supported in {@param isLeaderFollowerModelEnabled} is true).
    */
   @Test(dataProvider = "testPermutations", timeOut = 180 * Time.MS_PER_SECOND, groups = {"flaky"})
-  public void testHybridEndToEnd(boolean multiDivStream, boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled) throws Exception {
+  public void testHybridEndToEnd(boolean multiDivStream, boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled, BufferReplayPolicy bufferReplayPolicy) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();
     if (isLeaderFollowerModelEnabled) {
@@ -281,6 +291,7 @@ public class TestHybrid {
                                                                                   .setHybridOffsetLagThreshold(streamingMessageLag)
                                                                                   .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
                                                                                   .setChunkingEnabled(chunkingEnabled)
+                                                                                  .setHybridBufferReplayPolicy(bufferReplayPolicy)
         );
 
         Assert.assertFalse(response.isError());
