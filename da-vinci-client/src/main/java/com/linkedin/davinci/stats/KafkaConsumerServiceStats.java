@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -18,7 +19,11 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor consumerRecordsProducingToWriterBufferLatencySensor;
   private final Sensor detectedDeletedTopicNumSensor;
   private final Sensor detectedNoRunningIngestionTopicNumSensor;
+
   private final Sensor consumerSelectionForTopicError;
+  private final Sensor maxPartitionsPerConsumer;
+  private final Sensor minPartitionsPerConsumer;
+  private final Sensor avgPartitionsPerConsumer;
 
   public KafkaConsumerServiceStats(MetricsRepository metricsRepository) {
     super(metricsRepository, "kafka_consumer_service");
@@ -35,6 +40,10 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
     // To monitor cases when a shared consumer cannot be selected
     consumerSelectionForTopicError = registerSensor("consumer_selection_for_topic_error", new Count());
+
+    minPartitionsPerConsumer = registerSensor("min_partitions_per_consumer", new Gauge());
+    maxPartitionsPerConsumer = registerSensor("max_partitions_per_consumer", new Gauge());
+    avgPartitionsPerConsumer = registerSensor("avg_partitions_per_consumer", new Gauge());
   }
 
   public void recordPollRequestLatency(double latency) {
@@ -64,5 +73,17 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordConsumerSelectionForTopicError() {
     consumerSelectionForTopicError.record();
+  }
+
+  public void recordMinPartitionsPerConsumer(int count) {
+    minPartitionsPerConsumer.record(count);
+  }
+
+  public void recordMaxPartitionsPerConsumer(int count) {
+    maxPartitionsPerConsumer.record(count);
+  }
+
+  public void recordAvgPartitionsPerConsumer(int count) {
+    avgPartitionsPerConsumer.record(count);
   }
 }
