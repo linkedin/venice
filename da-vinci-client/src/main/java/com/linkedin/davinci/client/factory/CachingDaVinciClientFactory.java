@@ -24,7 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 
 
-public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCloseable, Closeable {
+public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closeable {
   private static final Logger logger = Logger.getLogger(CachingDaVinciClientFactory.class);
 
   protected boolean closed;
@@ -33,7 +33,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
   protected final VeniceProperties backendConfig;
   protected final Optional<Set<String>> managedClients;
   protected final ICProvider icProvider;
-  protected final Map<String, AvroGenericDaVinciClient> cachedClients = new HashMap<>();
+  protected final Map<String, AvroGenericDaVinciClient> sharedClients = new HashMap<>();
   protected final List<DaVinciClient> isolatedClients = new ArrayList<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
 
@@ -64,7 +64,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
     }
     closed = true;
 
-    List<DaVinciClient> clients = new ArrayList<>(cachedClients.values());
+    List<DaVinciClient> clients = new ArrayList<>(sharedClients.values());
     clients.addAll(isolatedClients);
     logger.info("Closing client factory, clientCount=" + clients.size());
     for (DaVinciClient client : clients) {
@@ -74,7 +74,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
         logger.error("Unable to close a client, storeName=" + client.getStoreName(), e);
       }
     }
-    cachedClients.clear();
+    sharedClients.clear();
     isolatedClients.clear();
     configs.clear();
     logger.info("Client factory is closed successfully, clientCount=" + clients.size());
@@ -156,7 +156,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, AutoCl
                                       + ", requested=" + config.getNonLocalAccessPolicy());
       }
 
-      client = cachedClients.computeIfAbsent(storeName,
+      client = sharedClients.computeIfAbsent(storeName,
           k -> clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider));
 
       if (!clientClass.isInstance(client)) {
