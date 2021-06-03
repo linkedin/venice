@@ -16,6 +16,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
@@ -61,9 +62,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
@@ -104,6 +107,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.DecoderFactory;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -213,6 +219,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Map<String, KafkaConsumerWrapper> consumerMap;
 
   protected Set<Integer> availableSchemaIds;
+  protected Set<Integer> deserializedSchemaIds;
   protected int idleCounter = 0;
 
   // This indicates whether it polls nothing from Kafka
@@ -383,6 +390,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storeName = Version.parseStoreFromKafkaTopicName(kafkaVersionTopic);
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.availableSchemaIds = new HashSet<>();
+    this.deserializedSchemaIds = new HashSet<>();
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
     this.consumerMap = new VeniceConcurrentHashMap<>();
 
@@ -2645,6 +2653,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
         waitReadyToProcessDataRecord(put.schemaId);
+        deserializeValue(put.schemaId, put.putValue);
         break;
       case UPDATE:
         Update update = (Update) kafkaValue.payloadUnion;
@@ -2738,6 +2747,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       Thread.sleep(SCHEMA_POLLING_DELAY_MS);
+    }
+  }
+
+  /**
+   * Deserialize a value using the schema that serializes it. Exception will be thrown and ingestion will fail if the
+   * value cannot be deserialized. Currently the deserialization dry-run won't happen in the following cases:
+   *
+   * 1. Value is chunked. A single piece of value cannot be deserialized. In this case, the schema id is not added in
+   *    availableSchemaIds by {@link StoreIngestionTask#waitValueSchemaAvailable}.
+   * 2. Value is compressed, which cannot be deserialized without decompression.
+   * 3. Ingestion isolation is enabled, in which ingestion happens on forked process instead of this main process.
+   */
+  private void deserializeValue(int schemaId, ByteBuffer value) {
+    if (!availableSchemaIds.contains(schemaId) || deserializedSchemaIds.contains(schemaId)) {
+      return;
+    }
+    Optional<StoreVersionState> state = storageMetadataService.getStoreVersionState(this.kafkaVersionTopic);
+    if (!state.isPresent() || state.get().compressionStrategy != CompressionStrategy.NO_OP.getValue()) {
+      return;
+    }
+    SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, schemaId);
+    if (valueSchema != null) {
+      Schema schema = valueSchema.getSchema();
+      new AvroGenericDeserializer<>(schema, schema).deserialize(value);
+      logger.info("Value deserialization succeeded with schema [" + schemaId + "] for " + storeName);
+      deserializedSchemaIds.add(schemaId);
     }
   }
 

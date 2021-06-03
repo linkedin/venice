@@ -27,6 +27,9 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -48,6 +51,23 @@ public class DaVinciClusterAgnosticTest {
   private final static int METADATA_STORE_VERSION = 1;
   private final static String INT_KEY_SCHEMA = "\"int\"";
   private final static String INT_VALUE_SCHEMA = "\"int\"";
+  public static final String RECORD_VALUE_SCHEMA = "{" +
+      "  \"namespace\": \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"TestRecord\",     " +
+      "  \"fields\": [           " +
+      "       {\"name\": \"field1\", \"type\": \"int\"}  " +
+      "  ] " +
+      " } ";
+  public static final String NEW_RECORD_VALUE_SCHEMA = "{" +
+      "  \"namespace\": \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"TestRecord\",     " +
+      "  \"fields\": [           " +
+      "       {\"name\": \"field1\", \"type\": \"int\"},  " +
+      "       {\"name\": \"field2\", \"type\": \"int\", \"default\": 0}" +
+      "  ] " +
+      " } ";
   private final static String FABRIC = "dc-0";
 
   private VeniceMultiClusterWrapper multiClusterVenice;
@@ -222,5 +242,66 @@ public class DaVinciClusterAgnosticTest {
         "--cluster-src", srcCluster,
         "--cluster-dest", destCluster};
     AdminTool.main(endMigration);
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testDaVinciVersionSwap() throws Exception {
+    int keyCount = 10;
+    String cluster = clusterNames[0];
+    String storeName = TestUtils.getUniqueString("test-version-swap");
+    Schema schema = Schema.parse(RECORD_VALUE_SCHEMA);
+    GenericRecord record1 = new GenericData.Record(schema);
+    record1.put("field1", 1);
+    try (ControllerClient parentControllerClient = new ControllerClient(cluster, parentController.getControllerUrl())) {
+      // Create venice store and materialize the corresponding metadata system store
+      assertFalse(parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, RECORD_VALUE_SCHEMA).isError());
+      VersionCreationResponse response = TestUtils.createVersionWithBatchData(parentControllerClient, storeName, INT_KEY_SCHEMA,
+          RECORD_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record1)), 1);
+      assertFalse(parentControllerClient.materializeMetadataStoreVersion(storeName, METADATA_STORE_VERSION).isError(),
+          "Failed to materialize metadata store version");
+      // Verify the data can be ingested by classic Venice before proceeding.
+      TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), parentControllerClient, 30,
+          TimeUnit.SECONDS, Optional.empty());
+      String metadataStoreTopicName =
+          Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName), METADATA_STORE_VERSION);
+      TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopicName, parentControllerClient, 30,
+          TimeUnit.SECONDS, Optional.empty());
+      multiClusterVenice.getClusters().get(cluster).refreshAllRouterMetaData();
+
+      VeniceProperties backendConfig = new PropertyBuilder()
+          .put(DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+          .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+          .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+          .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+          .build();
+      D2Client daVinciD2 = D2TestUtils.getAndStartD2Client(multiClusterVenice.getZkServerWrapper().getAddress());
+
+      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(daVinciD2, new MetricsRepository(), backendConfig)) {
+        DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+
+        client.subscribeAll().get();
+        for (int k = 0; k < keyCount; k++) {
+          GenericData.Record value = (GenericData.Record) client.get(k).get();
+          assertEquals(value.get("field1"), 1);
+        }
+
+        // Add a new value schema and push batch data
+        assertFalse(parentControllerClient.addValueSchema(storeName, NEW_RECORD_VALUE_SCHEMA).isError());
+        schema = Schema.parse(NEW_RECORD_VALUE_SCHEMA);
+        GenericData.Record record2 = new GenericData.Record(schema);
+        record2.put("field1", 2);
+        record2.put("field2", 2);
+        TestUtils.createVersionWithBatchData(parentControllerClient, storeName, INT_KEY_SCHEMA,
+            NEW_RECORD_VALUE_SCHEMA, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record2)), 2);
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          for (int k = 0; k < keyCount; k++) {
+            GenericData.Record value = (GenericData.Record) client.get(k).get();
+            assertEquals(value.get("field1"), 2);
+            assertEquals(value.get("field2"), 2);
+          }
+        });
+      }
+    }
   }
 }

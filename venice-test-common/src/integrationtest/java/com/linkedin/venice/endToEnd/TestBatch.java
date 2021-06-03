@@ -515,7 +515,7 @@ public abstract class TestBatch {
     }, storeName, null, false);
   }
 
-  @Test(timeOut = TEST_TIMEOUT, invocationCount = 3)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testLeaderFollowerStateModel() throws Exception {
     testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
