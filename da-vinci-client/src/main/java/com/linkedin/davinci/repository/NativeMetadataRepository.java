@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
@@ -509,9 +510,12 @@ public abstract class NativeMetadataRepository
       hybridStoreConfig = new HybridStoreConfigImpl(storeProperties.hybridStoreConfig.rewindTimeInSeconds,
           storeProperties.hybridStoreConfig.offsetLagThresholdToGoOnline,
           storeProperties.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds,
-          // DataReplicationPolicy is not added metadata value schema as metadata system store is deprecating
-          // and da-vinci does not need this field. Create hybridStoreConfig with default dataReplicationPolicy.
-          DataReplicationPolicy.NON_AGGREGATE);
+          // DataReplicationPolicy and BufferReplayPolicy are not added to metadata value schema as metadata system
+          // store is deprecating and da-vinci does not need these fields. Create hybridStoreConfig with default
+          // dataReplicationPolicy and bufferReplayPolicy.
+          DataReplicationPolicy.NON_AGGREGATE,
+          BufferReplayPolicy.REWIND_FROM_EOP
+      );
     }
 
     PartitionerConfig partitionerConfig = null;

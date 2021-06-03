@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -395,7 +396,8 @@ public class TopicManagerTest {
     storeProperties.createdTime = System.currentTimeMillis();
     storeProperties.bootstrapToOnlineTimeoutInHours = 12;
     Store store = new ZKStore(storeProperties);
-    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1, DataReplicationPolicy.NON_AGGREGATE);
+    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1,
+        DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) < 5 days, retention will be set to 5 days
     Assert.assertEquals(TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 5 * Time.MS_PER_DAY);
@@ -409,7 +411,8 @@ public class TopicManagerTest {
     storeProperties.createdTime = System.currentTimeMillis();
     storeProperties.bootstrapToOnlineTimeoutInHours = 3 * Time.HOURS_PER_DAY;
     Store store = new ZKStore(storeProperties);
-    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1, DataReplicationPolicy.NON_AGGREGATE);
+    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1,
+        DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) > 5 days, retention will be set to the computed value
     Assert.assertEquals(TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 7 * Time.MS_PER_DAY);

@@ -39,6 +39,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -344,13 +345,17 @@ public class StoreIngestionTaskTest {
 
   private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
     runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
-        Optional.of(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE)),
+        Optional.of(new HybridStoreConfigImpl(100, 100,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP)),
         Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
   private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled, int amplificationFactor) throws Exception {
     runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
-        Optional.of(new HybridStoreConfigImpl(100, 100, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE)),
+        Optional.of(new HybridStoreConfigImpl(100, 100,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP)),
         false, Optional.empty(), true, isLeaderFollowerModelEnabled, amplificationFactor);
   }
 
@@ -451,8 +456,6 @@ public class StoreIngestionTaskTest {
 
     AggKafkaConsumerService aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
     doReturn(inMemoryKafkaConsumer).when(aggKafkaConsumerService).getConsumer(any(), any());
-    //doReturn(LeaderFollowerStateType.STANDBY).when(mockKafkaStoreIngestionService).loadLeaderStateFromIsolatedIngestionService(anyString(), anyInt());
-
     EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
     EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);
     StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()
@@ -1583,7 +1586,9 @@ public class StoreIngestionTaskTest {
     when(mockTopicManager.getLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
 
     mockStorageMetadataService = new InMemoryStorageMetadataService();
-    hybridStoreConfig = Optional.of(new HybridStoreConfigImpl(10, 20, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE));
+    hybridStoreConfig = Optional.of(new HybridStoreConfigImpl(10, 20,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP));
     runTest(ALL_PARTITIONS, () -> {
           veniceWriter.broadcastStartOfPush(new HashMap<>());
           for (int i = 0; i < MESSAGES_BEFORE_EOP; i++) {

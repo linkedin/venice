@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -213,6 +214,15 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<DataReplicationPolicy> getHybridDataReplicationPolicy() {
     return Optional.ofNullable(params.get(DATA_REPLICATION_POLICY)).map(DataReplicationPolicy::valueOf);
+  }
+
+  public UpdateStoreQueryParams setHybridBufferReplayPolicy(BufferReplayPolicy bufferReplayPolicy) {
+    params.put(BUFFER_REPLAY_POLICY, bufferReplayPolicy.name());
+    return this;
+  }
+
+  public Optional<BufferReplayPolicy> getHybridBufferReplayPolicy() {
+    return Optional.ofNullable(params.get(BUFFER_REPLAY_POLICY)).map(BufferReplayPolicy::valueOf);
   }
 
   public UpdateStoreQueryParams setAccessControlled(boolean accessControlled) {

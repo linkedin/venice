@@ -15,40 +15,41 @@ public class TestSystemStore {
   public void testSystemStoreAccessor() {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.META_STORE;
     // Setup zk shared store
-    Store zkSharedSystemStore = new ZKStore(systemStoreType.getZkSharedStoreName(), "test_zk_shared_store_owner", 10l,
+    Store zkSharedSystemStore = new ZKStore(systemStoreType.getZkSharedStoreName(), "test_zk_shared_store_owner", 10L,
         PersistenceType.IN_MEMORY, RoutingStrategy.HASH, ReadStrategy.FASTER_OF_TWO_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS, -1, 10000l,
-        10000l, null, null, 3);
+        OfflinePushStrategy.WAIT_ALL_REPLICAS, -1, 10000L,
+        10000L, null, null, 3);
     zkSharedSystemStore.setLargestUsedVersionNumber(-1);
-    zkSharedSystemStore.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.NON_AGGREGATE));
+    zkSharedSystemStore.setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP));
     zkSharedSystemStore.setLeaderFollowerModelEnabled(true);
     zkSharedSystemStore.setWriteComputationEnabled(true);
     zkSharedSystemStore.setPartitionCount(1);
     // Setup a regular Venice store
     String testStoreName = "test_store";
-    Store veniceStore = new ZKStore(testStoreName, "test_customer", 0l,
+    Store veniceStore = new ZKStore(testStoreName, "test_customer", 0L,
         PersistenceType.ROCKS_DB, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 0, 1000l,
-        1000l, null, null, 1);
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, 0, 1000L,
+        1000L, null, null, 1);
 
     SystemStore systemStore = new SystemStore(zkSharedSystemStore, systemStoreType, veniceStore);
 
     // Test all the get accessors
     assertEquals(systemStore.getName(), systemStoreType.getSystemStoreName(testStoreName));
     assertEquals(systemStore.getOwner(), "test_zk_shared_store_owner");
-    assertEquals(systemStore.getCreatedTime(), 10l);
+    assertEquals(systemStore.getCreatedTime(), 10L);
     assertEquals(systemStore.getCurrentVersion(), 0);
     assertEquals(systemStore.getPersistenceType(), PersistenceType.IN_MEMORY);
     assertEquals(systemStore.getRoutingStrategy(), RoutingStrategy.HASH);
     assertEquals(systemStore.getReadStrategy(), ReadStrategy.FASTER_OF_TWO_ONLINE);
     assertEquals(systemStore.getOffLinePushStrategy(), OfflinePushStrategy.WAIT_ALL_REPLICAS);
     assertEquals(systemStore.getLargestUsedVersionNumber(), 0);
-    assertEquals(systemStore.getStorageQuotaInByte(), 10000l);
+    assertEquals(systemStore.getStorageQuotaInByte(), 10000L);
     assertEquals(systemStore.getPartitionCount(), 1);
     assertEquals(systemStore.getPartitionerConfig().getPartitionerClass(), DefaultVenicePartitioner.class.getName());
     assertTrue(systemStore.isEnableReads());
     assertTrue(systemStore.isEnableWrites());
-    assertEquals(systemStore.getReadQuotaInCU(), 10000l);
+    assertEquals(systemStore.getReadQuotaInCU(), 10000L);
     assertTrue(systemStore.isHybrid());
     assertEquals(systemStore.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertTrue(systemStore.getClientDecompressionEnabled());

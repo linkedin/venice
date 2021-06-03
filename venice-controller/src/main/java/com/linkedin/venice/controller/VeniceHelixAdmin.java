@@ -55,6 +55,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
@@ -2867,6 +2868,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
         Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
         Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
+        Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
         Optional<Boolean> accessControlled = params.getAccessControlled();
         Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
         Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
@@ -2895,10 +2897,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
 
         Optional<HybridStoreConfig> hybridStoreConfig;
-        if (hybridRewindSeconds.isPresent()|| hybridOffsetLagThreshold.isPresent()
-            || hybridTimeLagThreshold.isPresent() || hybridDataReplicationPolicy.isPresent()) {
+        if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()
+            || hybridTimeLagThreshold.isPresent() || hybridDataReplicationPolicy.isPresent()
+            || hybridBufferReplayPolicy.isPresent()) {
             HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
-                originalStore, hybridRewindSeconds, hybridOffsetLagThreshold, hybridTimeLagThreshold, hybridDataReplicationPolicy);
+                originalStore, hybridRewindSeconds, hybridOffsetLagThreshold, hybridTimeLagThreshold, hybridDataReplicationPolicy,
+                hybridBufferReplayPolicy);
             hybridStoreConfig = Optional.ofNullable(hybridConfig);
         } else {
             hybridStoreConfig = Optional.empty();
@@ -3199,7 +3203,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     protected static HybridStoreConfig mergeNewSettingsIntoOldHybridStoreConfig(Store oldStore,
             Optional<Long> hybridRewindSeconds, Optional<Long> hybridOffsetLagThreshold,
-            Optional<Long> hybridTimeLagThreshold, Optional<DataReplicationPolicy> hybridDataReplicationPolicy) {
+            Optional<Long> hybridTimeLagThreshold, Optional<DataReplicationPolicy> hybridDataReplicationPolicy,
+            Optional<BufferReplayPolicy> bufferReplayPolicy) {
         if (!hybridRewindSeconds.isPresent() && !hybridOffsetLagThreshold.isPresent() && !oldStore.isHybrid()){
             return null; //For the nullable union in the avro record
         }
@@ -3218,7 +3223,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     : oldHybridConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
                 hybridDataReplicationPolicy.isPresent()
                     ? hybridDataReplicationPolicy.get()
-                    : oldHybridConfig.getDataReplicationPolicy()
+                    : oldHybridConfig.getDataReplicationPolicy(),
+                bufferReplayPolicy.isPresent()
+                    ? bufferReplayPolicy.get()
+                    : oldHybridConfig.getBufferReplayPolicy()
             );
         } else {
             // switching a non-hybrid store to hybrid; must specify:
@@ -3234,7 +3242,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // a partition is ready to serve
                 hybridOffsetLagThreshold.orElse(DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD),
                 hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD),
-                hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE)
+                hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE),
+                bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP)
             );
         }
         if (hybridConfig.getRewindTimeInSeconds() > 0 && hybridConfig.getOffsetLagThresholdToGoOnline() < 0

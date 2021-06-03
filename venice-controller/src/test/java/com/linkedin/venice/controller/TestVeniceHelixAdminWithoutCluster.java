@@ -4,6 +4,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -73,10 +74,13 @@ public class TestVeniceHelixAdminWithoutCluster {
     Optional<Long> lagOffset = Optional.of(1500L);
     Optional<Long> timeLag = Optional.of(300L);
     Optional<DataReplicationPolicy> dataReplicationPolicy = Optional.of(DataReplicationPolicy.AGGREGATE);
-    HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+    Optional<BufferReplayPolicy> bufferReplayPolicy = Optional.of(BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store,
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
     Assert.assertNull(hybridStoreConfig, "passing empty optionals and a non-hybrid store should generate a null hybrid config");
 
-    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, rewind, lagOffset, timeLag, dataReplicationPolicy);
+    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, rewind, lagOffset, timeLag,
+        dataReplicationPolicy, bufferReplayPolicy);
     Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
     Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
@@ -84,7 +88,8 @@ public class TestVeniceHelixAdminWithoutCluster {
     Assert.assertEquals(hybridStoreConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
 
     // It's okay that time lag threshold or data replication policy is not specified
-    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, rewind, lagOffset, Optional.empty(), Optional.empty());
+    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, rewind, lagOffset,
+        Optional.empty(), Optional.empty(), Optional.empty());
     Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
     Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);

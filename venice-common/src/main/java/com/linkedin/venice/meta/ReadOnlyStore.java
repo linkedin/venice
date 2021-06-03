@@ -112,6 +112,12 @@ public class ReadOnlyStore implements Store {
     public DataReplicationPolicy getDataReplicationPolicy() {
       return this.delegate.getDataReplicationPolicy();
     }
+
+    @Override
+    public BufferReplayPolicy getBufferReplayPolicy() {
+      return this.delegate.getBufferReplayPolicy();
+    }
+
     @Override
     public HybridStoreConfig clone() {
       return this.delegate.clone();

@@ -30,6 +30,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
@@ -157,6 +158,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
       Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
       Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
+      Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
 
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
@@ -164,8 +166,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
         final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
         final DataReplicationPolicy finalHybridDataReplicationPolicy = hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE);
+        final BufferReplayPolicy finalHybridBufferReplayPolicy = hybridBufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP);
         systemStores.get(storeName)
-            .setHybridStoreConfig(new HybridStoreConfigImpl(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get(), finalHybridTimeLagThreshold, finalHybridDataReplicationPolicy));
+            .setHybridStoreConfig(new HybridStoreConfigImpl(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get(),
+                finalHybridTimeLagThreshold, finalHybridDataReplicationPolicy, finalHybridBufferReplayPolicy));
       }
     }
 
@@ -1769,7 +1773,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
-    store.setHybridStoreConfig(new HybridStoreConfigImpl(60, 20000, 0, DataReplicationPolicy.NON_AGGREGATE));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(60, 20000, 0, DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP));
     Assert.assertThrows(VeniceException.class, () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
 
     // veniceWriter.put should not be called if validation fails
