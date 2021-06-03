@@ -49,7 +49,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
 
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
-  private final List<SharedKafkaConsumer> consumers = new ArrayList<>();
+  private final List<SharedKafkaConsumer> consumers;
+  private final List<Integer> consumerPartitionsNumSubscribed;
   /**
    * This field is used to maintain the mapping between version topic and the corresponding ingestion task.
    * In theory, One version topic should only be mapped to one ingestion task, and if this assumption is violated
@@ -77,6 +78,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
     String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, new DaemonThreadFactory("venice-shared-consumer-for-" + kafkaUrl));
+    consumerPartitionsNumSubscribed = new ArrayList<>(numOfConsumersPerKafkaCluster);
+    consumers = new ArrayList<>(numOfConsumersPerKafkaCluster);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign an unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
@@ -85,6 +88,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       SharedKafkaConsumer newConsumer = new SharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties), this, sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker);
       consumerExecutor.submit(new ConsumptionTask(newConsumer));
       consumers.add(newConsumer);
+      consumerPartitionsNumSubscribed.add(0);
     }
     consumerExecutor.shutdown();
 
@@ -310,7 +314,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
               }
             }
             stats.recordConsumerRecordsProducingToWriterBufferLatency(LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
-
+            recordPartitionsPerConsumerSensor();
             bandwidthThrottler.maybeThrottle(totalBytes);
             recordsThrottler.maybeThrottle(records.count());
           } else {
@@ -342,6 +346,37 @@ public class KafkaConsumerService extends AbstractVeniceService {
       }
     }
     return false;
+  }
+
+  private void recordPartitionsPerConsumerSensor() {
+    int totalPartitions = 0;
+    int minPartitionsPerConsumer = Integer.MAX_VALUE;
+    int maxPartitionsPerConsumer = Integer.MIN_VALUE;
+    int avgPartitionsPerConsumer = -1;
+
+    if (consumerPartitionsNumSubscribed.isEmpty()) {
+      minPartitionsPerConsumer = -1;
+      maxPartitionsPerConsumer = -1;
+    } else {
+      for (int partitionsNum : consumerPartitionsNumSubscribed) {
+        totalPartitions += partitionsNum;
+        minPartitionsPerConsumer = Math.max(minPartitionsPerConsumer, partitionsNum);
+        maxPartitionsPerConsumer = Math.min(minPartitionsPerConsumer, partitionsNum);
+      }
+      avgPartitionsPerConsumer = totalPartitions / consumerPartitionsNumSubscribed.size();
+    }
+
+    stats.recordAvgPartitionsPerConsumer(avgPartitionsPerConsumer);
+    stats.recordMaxPartitionsPerConsumer(maxPartitionsPerConsumer);
+    stats.recordMinPartitionsPerConsumer(minPartitionsPerConsumer);
+  }
+
+  public void setPartitionsNumSubscribed(SharedKafkaConsumer consumer, int assignedPartitions) {
+    if (consumers.contains(consumer)) {
+      consumerPartitionsNumSubscribed.set(consumers.indexOf(consumer), assignedPartitions);
+    } else {
+      throw new VeniceException("Shared consumer cannot be found in KafkaConsumerService.");
+    }
   }
 
 }

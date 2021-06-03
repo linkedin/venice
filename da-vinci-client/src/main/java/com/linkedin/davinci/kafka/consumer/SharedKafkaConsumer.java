@@ -128,6 +128,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     } else {
       this.currentAssignment = this.delegate.getAssignment();
     }
+    kafkaConsumerService.setPartitionsNumSubscribed(this, this.currentAssignment.size());
   }
 
   @Override
