@@ -249,7 +249,15 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
 
     // Create StorageService
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
-    StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository);
+    /**
+     * The reason of not to restore the data partitions during initialization of storage service is:
+     * 1. During first fresh start up with no data on disk, we don't need to restore anything
+     * 2. During fresh start up with data on disk (aka bootstrap), we will receive messages to subscribe to the partition
+     * and it will re-open the partition on demand.
+     * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
+     * should not try to open it. The remaining ingestion tasks will open the storage engines.
+     */
+    StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository, false, true);
     storageService.start();
     isolatedIngestionServer.setStorageService(storageService);
 

@@ -17,7 +17,6 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -183,8 +182,8 @@ public class VeniceServer {
 
     // Create and add StorageService. storeRepository will be populated by StorageService
     if (veniceConfigLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats,
-          storeVersionStateSerializer, partitionStateSerializer, metadataRepo, false);
+      // Venice Server does not require bootstrap step, so there is no need to open and close all local storage engines.
+      storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, metadataRepo, false, false);
       logger.info("Create " + MainIngestionStorageMetadataService.class.getName() + " for ingestion isolation.");
       MainIngestionStorageMetadataService ingestionStorageMetadataService = new MainIngestionStorageMetadataService(veniceConfigLoader.getVeniceServerConfig().getIngestionServicePort(), partitionStateSerializer, new MetadataUpdateStats(metricsRepository));
       services.add(ingestionStorageMetadataService);

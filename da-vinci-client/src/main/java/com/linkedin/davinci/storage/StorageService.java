@@ -56,7 +56,7 @@ public class StorageService extends AbstractVeniceService {
       RocksDBMemoryStats rocksDBMemoryStats,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, ReadOnlyStoreRepository storeRepository,
-      boolean restoreLocalStores) {
+      boolean restoreDataPartitions, boolean restoreMetadataPartitions) {
 
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
@@ -81,8 +81,8 @@ public class StorageService extends AbstractVeniceService {
     this.partitionStateSerializer = partitionStateSerializer;
     this.storeRepository = storeRepository;
     initInternalStorageEngineFactories();
-    if (restoreLocalStores) {
-      restoreAllStores(configLoader);
+    if (restoreDataPartitions || restoreMetadataPartitions) {
+      restoreAllStores(configLoader, restoreDataPartitions, restoreMetadataPartitions);
     }
   }
 
@@ -90,7 +90,7 @@ public class StorageService extends AbstractVeniceService {
       RocksDBMemoryStats rocksDBMemoryStats,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer, ReadOnlyStoreRepository storeRepository) {
-    this(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository, true);
+    this(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer, storeRepository, true, true);
   }
 
   /**
@@ -104,7 +104,7 @@ public class StorageService extends AbstractVeniceService {
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
   }
 
-  private void restoreAllStores(VeniceConfigLoader configLoader) {
+  private void restoreAllStores(VeniceConfigLoader configLoader, boolean restoreDataPartitions, boolean restoreMetadataPartitions) {
     logger.info("Start restoring all the stores persisted previously");
     for (Map.Entry<PersistenceType, StorageEngineFactory> entry : persistenceTypeToStorageEngineFactoryMap.entrySet()) {
       PersistenceType pType = entry.getKey();
@@ -118,8 +118,8 @@ public class StorageService extends AbstractVeniceService {
          */
         VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName, pType);
         // Load the metadata & data restore settings from config loader.
-        storeConfig.setRestoreMetadataPartition(configLoader.getCombinedProperties().getBoolean(ConfigKeys.SERVER_RESTORE_METADATA_PARTITION_ENABLED, true));
-        storeConfig.setRestoreDataPartitions(configLoader.getCombinedProperties().getBoolean(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, true));
+        storeConfig.setRestoreDataPartitions(restoreDataPartitions);
+        storeConfig.setRestoreMetadataPartition(restoreMetadataPartitions);
         AbstractStorageEngine storageEngine = openStore(storeConfig);
         Set<Integer> partitionIds = storageEngine.getPartitionIds();
 
@@ -264,7 +264,7 @@ public class StorageService extends AbstractVeniceService {
   public void cleanupAllStores(VeniceConfigLoader configLoader) {
     // Load local storage and delete them safely.
     // TODO Just clean the data dir in case loading and deleting is too slow.
-    restoreAllStores(configLoader);
+    restoreAllStores(configLoader, true, true);
     logger.info("Start cleaning up all the stores persisted previously");
     storageEngineRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
       String storeName = storageEngine.getName();

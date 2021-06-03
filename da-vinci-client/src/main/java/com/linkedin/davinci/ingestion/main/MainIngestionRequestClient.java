@@ -244,18 +244,8 @@ public class MainIngestionRequestClient implements Closeable {
   public InitializationConfigs buildInitializationConfig(VeniceConfigLoader configLoader) {
     InitializationConfigs initializationConfigs = new InitializationConfigs();
     initializationConfigs.aggregatedConfigs = new HashMap<>();
-    /**
-     * The reason of not to restore the data partitions during initialization of storage service is:
-     * 1. During first fresh start up with no data on disk, we don't need to restore anything
-     * 2. During fresh start up with data on disk (aka bootstrap), we will receive messages to subscribe to the partition
-     * and it will re-open the partition on demand.
-     * 3. During crash recovery restart, partitions that are already ingestion will be opened by parent process and we
-     * should not try to open it. The remaining ingestion tasks will open the storage engines.
-     */
-    initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, Boolean.toString(false));
-    if (configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists()) {
-      initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_METADATA_PARTITION_ENABLED, Boolean.toString(false));
-    }
+
+    // initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, Boolean.toString(false));
     // Put all configs into request payload.
     configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
     // Override ingestion isolation's customized configs.
