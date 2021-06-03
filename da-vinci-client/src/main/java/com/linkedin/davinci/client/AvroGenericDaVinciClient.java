@@ -1,14 +1,5 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.davinci.DaVinciBackend;
-import com.linkedin.davinci.StoreBackend;
-import com.linkedin.davinci.VersionBackend;
-import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
-import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
-import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -27,6 +18,21 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.DaVinciBackend;
+import com.linkedin.davinci.StoreBackend;
+import com.linkedin.davinci.VersionBackend;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.log4j.Logger;
+
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -36,11 +42,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.BinaryEncoder;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -341,7 +342,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
             .put(ZOOKEEPER_ADDRESS, zkAddress)
             .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
-            .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
+            .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
                 daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
             .put(INGESTION_USE_DA_VINCI_CLIENT, true)
             .build();
@@ -349,14 +350,15 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
     return new VeniceConfigLoader(config, config);
   }
 
-  private synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
+  private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients, ICProvider icProvider) {
     if (daVinciBackend == null) {
-      daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider),
+      daVinciBackend = new ReferenceCounted<>(
+          new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider),
           backend -> {
-        daVinciBackend = null;
-        backend.close();
-      });
+            daVinciBackend = null;
+            backend.close();
+          });
     } else if (VeniceSystemStoreType.getSystemStoreType(clientConfig.getStoreName()) != VeniceSystemStoreType.META_STORE) {
       // Do not increment DaVinciBackend reference count for meta system store da-vinci clients. Once the last user da-vinci
       // client is released the backend can be safely deleted since meta system stores are meaningless without user stores

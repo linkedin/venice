@@ -92,6 +92,7 @@ public class DaVinciBackend implements Closeable {
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider) {
+    logger.info("Creating Da Vinci backend");
     VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
     this.configLoader = configLoader;
     metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())

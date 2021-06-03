@@ -1,17 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.davinci.DaVinciUserApp;
-import com.linkedin.davinci.client.AvroGenericDaVinciClient;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.NonLocalAccessException;
-import com.linkedin.davinci.client.NonLocalAccessPolicy;
-import com.linkedin.davinci.client.StorageClass;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
-import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -43,8 +31,32 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.DaVinciUserApp;
+import com.linkedin.davinci.client.AvroGenericDaVinciClient;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.NonLocalAccessException;
+import com.linkedin.davinci.client.NonLocalAccessPolicy;
+import com.linkedin.davinci.client.StorageClass;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.samza.system.SystemProducer;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
+
 import java.io.File;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -62,14 +74,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.apache.samza.system.SystemProducer;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
@@ -113,6 +117,31 @@ public class DaVinciClientTest {
       assertThrows(NullPointerException.class, AvroGenericDaVinciClient::getBackend);
     } catch (AssertionError e) {
       throw new AssertionError(method.getName() + " leaked DaVinciBackend.", e);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testConcurrentGetAndStart() throws Exception {
+    String storeName1 = cluster.createStore(KEY_COUNT);
+    String storeName2 = cluster.createStore(KEY_COUNT);
+
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    VeniceProperties backendConfig = new PropertyBuilder()
+                                         .put(DATA_BASE_PATH, baseDataPath)
+                                         .put(PERSISTENCE_TYPE, ROCKS_DB)
+                                         .build();
+
+    for (int i = 0; i < 10; ++i) {
+      MetricsRepository metricsRepository = new MetricsRepository();
+      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+        CompletableFuture.allOf(
+            CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName1, new DaVinciConfig()).start()),
+            CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName2, new DaVinciConfig()).start()),
+            CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName1, new DaVinciConfig().setIsolated(true)).start()),
+            CompletableFuture.runAsync(() -> factory.getGenericAvroClient(storeName2, new DaVinciConfig().setIsolated(true)).start())
+        ).get();
+      }
+      assertThrows(NullPointerException.class, AvroGenericDaVinciClient::getBackend);
     }
   }
 
