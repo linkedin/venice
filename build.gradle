@@ -46,7 +46,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 
 // Internal LinkedIn Kafka release
 def internalKafkaGroup = 'com.linkedin.kafka'
-def internalKafkaVersion = '2.3.0.29'
+def internalKafkaVersion = '2.3.0.30'
 
 def ddsStorageCoreVersion = '13.0.16'
 
