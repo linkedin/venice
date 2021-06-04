@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -19,6 +20,8 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.common.Metric;
+import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
@@ -217,5 +220,24 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     if (kafkaConsumer != null) {
       kafkaConsumer.close();
     }
+  }
+
+  @Override
+  public Map<MetricName, Double> getMeasurableConsumerMetrics() {
+    Map<MetricName, Double> extractedMetrics = new HashMap<>();
+    Map<MetricName, ? extends Metric> metrics = kafkaConsumer.metrics();
+    for (Map.Entry<MetricName, ? extends Metric> entry : metrics.entrySet()) {
+      try {
+        Object value = entry.getValue().metricValue();
+        if (value instanceof Double) {
+          extractedMetrics.put(entry.getKey(), (Double) value);
+        }
+      } catch (Exception e) {
+        logger.info("Caught exception: " + e.getMessage() + " when attempting to get consumer metrics. "
+            + "Incomplete metrics might be returned.");
+      }
+    }
+
+    return extractedMetrics;
   }
 }
