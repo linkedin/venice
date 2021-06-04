@@ -236,6 +236,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean unsubscribeAfterBatchpushEnabled;
 
+  private final boolean enableKafkaConsumerOffsetCollection;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
@@ -367,6 +369,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart = serverProperties.getInt(
         OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
+
+    enableKafkaConsumerOffsetCollection = serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -707,5 +711,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() {
     return offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
+  }
+
+  public boolean isKafkaConsumerOffsetCollectionEnabled() {
+    return enableKafkaConsumerOffsetCollection;
   }
 }

@@ -4,10 +4,13 @@ import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 
@@ -52,4 +55,8 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
   Set<TopicPartition> paused();
 
   Set<TopicPartition> getAssignment();
+
+  default public Map<MetricName, Double> getMeasurableConsumerMetrics() {return Collections.EMPTY_MAP;} ;
+
+  default Optional<Long> getLatestOffset(String topic, int partition) { return Optional.empty(); }
 }

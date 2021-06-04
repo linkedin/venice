@@ -34,7 +34,7 @@ public class SharedKafkaConsumerTest {
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime);
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false);
     String existingTopic1 = "existingTopic1";
     String existingTopic2 = "existingTopic2";
     String existingTopicWithoutIngestionTask1 = "existingTopicWithoutIngestionTask1";
@@ -105,7 +105,7 @@ public class SharedKafkaConsumerTest {
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime);
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false);
     String nonExistingTopic1 = "nonExistingTopic1";
     Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>();
     doReturn(topicListReturnedByConsumer).when(consumer).listTopics();
@@ -140,7 +140,7 @@ public class SharedKafkaConsumerTest {
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime);
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false);
     String existingTopic1 = "existingTopic1";
     String nonExistingTopic1 = "nonExistingTopic1";
     Map<String, List<PartitionInfo>> staledTopicListReturnedByConsumer = new HashMap<>();
