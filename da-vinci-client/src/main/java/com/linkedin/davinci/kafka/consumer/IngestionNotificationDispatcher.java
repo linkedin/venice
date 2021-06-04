@@ -16,6 +16,7 @@ import org.apache.log4j.Logger;
  */
 class IngestionNotificationDispatcher {
   public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
+  public static long QUOTA_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
 
   private final Logger logger;
   private final Queue<VeniceNotifier> notifiers;
@@ -23,6 +24,8 @@ class IngestionNotificationDispatcher {
   private final BooleanSupplier isCurrentVersion;
 
   private long lastProgressReportTime = 0;
+  private long lastQuotaReportTime = 0;
+  private HybridStoreQuotaStatus lastQuotaStatusReported = HybridStoreQuotaStatus.UNKNOWN;
 
   public IngestionNotificationDispatcher(Queue<VeniceNotifier> notifiers, String topic, BooleanSupplier isCurrentVersion) {
     this.logger = Logger.getLogger(IngestionNotificationDispatcher.class.getSimpleName() + " for [ Topic: " + topic + " ] ");
@@ -77,8 +80,8 @@ class IngestionNotificationDispatcher {
     report(pcs, reportType.name(), function, () -> true);
   }
 
-  void report(PartitionConsumptionState pcs, HybridStoreQuotaStatus reportType, NotifierFunction function) {
-    report(pcs, reportType.name(), function, () -> true);
+  void report(PartitionConsumptionState pcs, HybridStoreQuotaStatus reportType, NotifierFunction function, PreNotificationCheck preCheck) {
+    report(pcs, reportType.name(), function, preCheck);
   }
 
   void reportStarted(PartitionConsumptionState pcs) {
@@ -139,13 +142,27 @@ class IngestionNotificationDispatcher {
 
   void reportQuotaNotViolated(PartitionConsumptionState pcs) {
     report(pcs, HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED,
-        notifier -> notifier.quotaNotViolated(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()));
+        notifier -> notifier.quotaNotViolated(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()),
+        () -> checkQuotaStatusReported(HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED)
+    );
   }
 
   void reportQuotaViolated(PartitionConsumptionState pcs) {
     report(pcs, HybridStoreQuotaStatus.QUOTA_VIOLATED,
-        notifier -> notifier.quotaViolated(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset())
+        notifier -> notifier.quotaViolated(topic, pcs.getUserPartition(), pcs.getOffsetRecord().getOffset()),
+        () -> checkQuotaStatusReported(HybridStoreQuotaStatus.QUOTA_VIOLATED)
     );
+  }
+
+  private boolean checkQuotaStatusReported(HybridStoreQuotaStatus status) {
+    long timeElapsed = System.currentTimeMillis() - lastQuotaReportTime;
+    if (!lastQuotaStatusReported.equals(status) || timeElapsed >= QUOTA_REPORT_INTERVAL) {
+      lastQuotaReportTime = System.currentTimeMillis();
+      lastQuotaStatusReported = status;
+      return true;
+    } else {
+      return false;
+    }
   }
 
   void reportProgress(PartitionConsumptionState pcs) {
