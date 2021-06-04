@@ -46,8 +46,7 @@ class IngestionNotificationDispatcher {
 
   private void report(PartitionConsumptionState pcs, String reportType, NotifierFunction function, PreNotificationCheck preCheck) {
     if (null == pcs) {
-      // Problem: calling pcs.getUserPartition() with pcs null.
-      logger.info("Partition " + pcs.getUserPartition() + " has been unsubscribed, no need to report " + reportType);
+      logger.info("Partition has been unsubscribed, no need to report " + reportType);
       return;
     }
     if (!preCheck.apply()) {
