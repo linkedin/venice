@@ -73,7 +73,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   private final SpecificDatumWriter writer;
 
   /** Maintains the mapping between protocol version and the corresponding {@link SpecificDatumReader<SPECIFIC_RECORD>} */
-  private final Map<Integer, SpecificDatumReader<SPECIFIC_RECORD>> readerMap = new HashMap<>();
+  private final Map<Integer, VeniceSpecificDatumReader<SPECIFIC_RECORD>> readerMap = new HashMap<>();
 
   /** The schema of the {@link SpecificRecord} which is compiled in the current version of the code. */
   private final Schema compiledProtocol;
@@ -299,7 +299,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
        * are so slow sometimes.
        */
 
-      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = readerMap.get(protocolVersion);
+      VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = readerMap.get(protocolVersion);
 
       Decoder decoder = createBinaryDecoder(
           bytes,                         // The bytes array we wish to decode
@@ -339,7 +339,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   }
 
   private void cacheDatumReader(int protocolVersion, Schema protocolSchema) {
-    SpecificDatumReader<SPECIFIC_RECORD> datumReader = new SpecificDatumReader<>(protocolSchema, compiledProtocol);
+    VeniceSpecificDatumReader<SPECIFIC_RECORD> datumReader = new VeniceSpecificDatumReader<>(protocolSchema, compiledProtocol);
     this.readerMap.put(protocolVersion, datumReader);
   }
 
