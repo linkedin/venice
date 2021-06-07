@@ -51,6 +51,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -213,6 +214,8 @@ public class DaVinciBackend implements Closeable {
 
     storeRepository.registerStoreDataChangedListener(storeChangeListener);
     cacheBackend.ifPresent(objectCacheBackend -> storeRepository.registerStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
+
+    logger.info("Finished initialization of Da Vinci backend");
   }
 
   protected synchronized void bootstrap(Optional<Set<String>> managedClients, Map<Version, List<Integer>> bootstrapVersions) {
@@ -290,6 +293,7 @@ public class DaVinciBackend implements Closeable {
 
   @Override
   public synchronized void close() {
+    logger.info("Shutting down DaVinciBackend, called from: " + Arrays.toString(currentThread().getStackTrace()));
     storeRepository.unregisterStoreDataChangedListener(storeChangeListener);
     cacheBackend.ifPresent(objectCacheBackend -> storeRepository.unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
     for (StoreBackend storeBackend : storeByNameMap.values()) {
@@ -320,9 +324,12 @@ public class DaVinciBackend implements Closeable {
     try {
       ingestionBackend.close();
       ingestionService.stop();
+      logger.info("KafkaStoreIngestionService has been closed.");
       storageService.stop();
+      logger.info("StorageService has been closed.");
       if (zkClient != null) {
         zkClient.close();
+        logger.info("ZooKeeper Client has been closed.");
       }
       metricsRepository.close();
       storeRepository.clear();
