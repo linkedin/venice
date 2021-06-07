@@ -52,7 +52,7 @@ public class IngestionRequestTransport implements Closeable {
       @Override
       public void initChannel(SocketChannel ch) throws Exception {
         ch.pipeline().addLast(new HttpResponseDecoder());
-        ch.pipeline().addLast(new HttpObjectAggregator(1024 * 1024));
+        ch.pipeline().addLast(new HttpObjectAggregator(1024 * 1024 * 64));
         ch.pipeline().addLast(new HttpRequestEncoder());
         ch.pipeline().addLast(getResponseHandler());
       }

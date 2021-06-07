@@ -114,9 +114,11 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     try {
       if (!metricsRequestScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
         metricsRequestScheduler.shutdownNow();
+        logger.info("Metrics request scheduler has been shutdown.");
       }
       if (!heartbeatCheckScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
         heartbeatCheckScheduler.shutdownNow();
+        logger.info("Heartbeat check scheduler has been shutdown.");
       }
 
     } catch (InterruptedException e) {

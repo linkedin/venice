@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.utils.Time.*;
 import static java.lang.Thread.*;
 
 
@@ -90,6 +91,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
    * fail out early and avoid race condition.
    */
   private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Double> metricsMap = new VeniceConcurrentHashMap<>();
   private final long heartbeatTimeoutMs;
 
   private ChannelFuture serverFuture;
@@ -104,7 +106,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private boolean isInitiated = false;
   private IsolatedIngestionRequestClient reportClient;
-  private long heartbeatTimeInMs = -1;
+  private long heartbeatTimeInMs = System.currentTimeMillis();
   private int stopConsumptionWaitRetriesNum;
   private DefaultIngestionBackend ingestionBackend;
 
@@ -127,7 +129,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   public IsolatedIngestionServer(int servicePort) {
-    this(servicePort, TimeUnit.MILLISECONDS.toMillis(60));
+    this(servicePort, 60 * MS_PER_SECOND);
   }
 
   @Override
@@ -166,9 +168,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       if (storeIngestionService != null) {
         storeIngestionService.stop();
       }
+      logger.info("StoreIngestionService has been shutdown.");
       if (storageService != null) {
         storageService.stop();
       }
+      logger.info("StorageService has been shutdown.");
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Ingestion Service", e);
     }
@@ -291,6 +295,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     return stopConsumptionWaitRetriesNum;
   }
 
+  public Map<String, Double> getMetricsMap() {
+    return metricsMap;
+  }
+
   public void updateHeartbeatTime() {
     this.heartbeatTimeInMs = System.currentTimeMillis();
   }
@@ -406,8 +414,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         logger.debug("Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat on server: " + heartbeatTimeInMs);
       }
 
-      if ((heartbeatTimeInMs != -1) && ((currentTimeMillis - heartbeatTimeInMs) > heartbeatTimeoutMs)) {
-        logger.warn("Lost connection to parent process, will shutdown the ingestion backend gracefully.");
+      if ((currentTimeMillis - heartbeatTimeInMs) > heartbeatTimeoutMs) {
+        logger.warn("Lost connection to parent process after " + heartbeatTimeoutMs + "ms, will shutdown the ingestion backend gracefully.");
         isShuttingDown.set(true);
         try {
           stop();

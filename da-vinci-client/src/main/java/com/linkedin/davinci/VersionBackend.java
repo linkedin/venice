@@ -93,15 +93,23 @@ public class VersionBackend {
     for (Map.Entry<Integer, CompletableFuture> entry : partitionFutures.entrySet()) {
       entry.getValue().cancel(true);
     }
-    backend.getIngestionBackend().killConsumptionTask(version.kafkaTopicName());
+    try {
+      backend.getIngestionBackend().killConsumptionTask(version.kafkaTopicName());
+    } catch (VeniceException e) {
+      logger.error("Encounter exception when killing consumption task: " + e);
+    }
   }
 
   synchronized void delete() {
     logger.info("Deleting local version " + this);
     close();
     final String topicName = version.kafkaTopicName();
-    backend.getIngestionBackend().removeStorageEngine(topicName);
-    backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
+    try {
+      backend.getIngestionBackend().removeStorageEngine(topicName);
+      backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
+    } catch (VeniceException e) {
+      logger.error("Encounter exception when removing version storage of topic: " + topicName, e);
+    }
   }
 
   @Override
