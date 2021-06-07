@@ -236,7 +236,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     for (String ingestionIsolationStatsClassName : veniceProperties.getString(SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST, "").split(",")) {
       if (ingestionIsolationStatsClassName.length() != 0) {
         Class<? extends AbstractVeniceStats> ingestionIsolationStatsClass = ReflectUtils.loadClass(ingestionIsolationStatsClassName);
-        if (!ingestionIsolationStatsClass.isAssignableFrom(AbstractVeniceStats.class)) {
+        if (!AbstractVeniceStats.class.isAssignableFrom(ingestionIsolationStatsClass)) {
           throw new VeniceException("Class: " + ingestionIsolationStatsClassName + " does not extends AbstractVeniceStats");
         }
         AbstractVeniceStats ingestionIsolationStats =
@@ -378,7 +378,11 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       isolatedIngestionServer.getMetricsRepository().metrics().forEach((name, metric) -> {
         if (metric != null) {
           try {
-            report.aggregatedMetrics.put(name, metric.value());
+            // Best-effort to reduce metrics delta size sent from child process to main process.
+            if (metric.value() != isolatedIngestionServer.getMetricsMap().get(name)) {
+              report.aggregatedMetrics.put(name, metric.value());
+            }
+            isolatedIngestionServer.getMetricsMap().put(name, metric.value());
           } catch (Exception e) {
             String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
             if (!isolatedIngestionServer.getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {

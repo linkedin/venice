@@ -79,27 +79,27 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
 
   @Override
   public void stopConsumption(VeniceStoreConfig storeConfig, int partition) {
-    super.stopConsumption(storeConfig, partition);
     mainIngestionRequestClient.stopConsumption(storeConfig.getStoreName(), partition);
+    super.stopConsumption(storeConfig, partition);
   }
 
   @Override
   public void killConsumptionTask(String topicName) {
-    super.killConsumptionTask(topicName);
     mainIngestionRequestClient.killConsumptionTask(topicName);
+    super.killConsumptionTask(topicName);
   }
 
   @Override
   public void removeStorageEngine(String topicName) {
-    super.removeStorageEngine(topicName);
     mainIngestionMonitorService.removedSubscribedTopicName(topicName);
     mainIngestionRequestClient.removeStorageEngine(topicName);
+    super.removeStorageEngine(topicName);
   }
 
   @Override
   public void dropStoragePartitionGracefully(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds) {
-    super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds);
     mainIngestionRequestClient.unsubscribeTopicPartition(storeConfig.getStoreName(), partition);
+    super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds);
   }
 
   @Override
@@ -208,6 +208,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
 
   public void setIsolatedIngestionServiceProcess(Process process) {
     if (isolatedIngestionServiceProcess != null) {
+      logger.info("Destroying previous isolated ingestion process.");
       isolatedIngestionServiceProcess.destroy();
     }
     isolatedIngestionServiceProcess = process;
