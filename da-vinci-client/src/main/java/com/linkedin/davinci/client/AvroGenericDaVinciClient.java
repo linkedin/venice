@@ -28,6 +28,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
 
+import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
@@ -404,13 +405,16 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
 
   private static synchronized void initBackend(ClientConfig clientConfig, VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients, ICProvider icProvider, Optional<ObjectCacheConfig> cacheBackend) {
+    Logger staticLogger = Logger.getLogger(AvroGenericDaVinciClient.class);
     if (daVinciBackend == null) {
+      staticLogger.info("Da Vinci Backend does not exist, initializing it for client: " + clientConfig.getStoreName());
       daVinciBackend = new ReferenceCounted<>(new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheBackend),
           backend -> {
             daVinciBackend = null;
             backend.close();
           });
     } else if (VeniceSystemStoreType.getSystemStoreType(clientConfig.getStoreName()) != VeniceSystemStoreType.META_STORE) {
+      staticLogger.info("Da Vinci Backend exists, reusing exsiting backend for client: " + clientConfig.getStoreName());
       // Do not increment DaVinciBackend reference count for meta system store da-vinci clients. Once the last user da-vinci
       // client is released the backend can be safely deleted since meta system stores are meaningless without user stores
       // and they are cheap to re-bootstrap.
@@ -455,6 +459,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       ready.set(true);
       logger.info("Client is started successfully, storeName=" + getStoreName());
     } catch (Throwable e) {
+      logger.info("Failed to initialize Da Vinci Backend, releasing it now. ", e);
       daVinciBackend.release();
       throw new VeniceClientException("Unable to start Da Vinci client, storeName=" + getStoreName(), e);
     }
@@ -469,6 +474,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
       if (veniceClient != null) {
         veniceClient.close();
       }
+      logger.info("Releasing reference of Da Vinci backend, called from: " + Arrays.toString(
+          Thread.currentThread().getStackTrace()));
       daVinciBackend.release();
       logger.info("Client is closed successfully, storeName=" + getStoreName());
       if (cacheBackend != null) {
