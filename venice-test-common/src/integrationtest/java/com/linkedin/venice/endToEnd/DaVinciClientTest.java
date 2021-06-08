@@ -14,10 +14,12 @@ import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.ComputeRequestBuilder;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -42,8 +44,10 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -59,12 +63,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.apache.avro.Schema;
@@ -101,7 +109,12 @@ public class DaVinciClientTest {
   private final List<Float> companiesEmbedding = generateRandomFloatList(100);
   private final List<Float> pymkCosineSimilarityEmbedding = generateRandomFloatList(100);
 
+  private static final String KEY_PREFIX = "key_";
   private static final String VALUE_PREFIX = "id_";
+  private static final int MAX_KEY_LIMIT = 1000;
+  private static final String NON_EXISTING_KEY1 = "a_unknown_key";
+  private static final String NON_EXISTING_KEY2 = "z_unknown_key";
+  private static final int NON_EXISTING_KEY_NUM = 2;
 
   private static final String VALUE_SCHEMA_FOR_COMPUTE = "{" +
       "  \"namespace\": \"example.compute\",    " +
@@ -137,6 +150,12 @@ public class DaVinciClientTest {
       "         {   \"default\": [], \n  \"name\": \"companiesEmbedding\",  \"type\": {  \"items\": \"float\",  \"type\": \"array\"   }  } " +
       "  ]       " +
       " }       ";
+
+ private static final String KEY_SCHEMA_STEAMING_COMPUTE = "\"string\"";
+
+  private static final String VALUE_SCHEMA_STREAMING_COMPUTE = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n"
+      + "\"fields\": [\n" + "  {\"name\": \"int_field\", \"type\": \"int\"},\n"
+      + "  {\"name\": \"float_field\", \"type\": \"float\"}\n" + "]\n" + "}";
 
   @BeforeClass
   public void setup() {
@@ -1005,6 +1024,16 @@ public class DaVinciClientTest {
       for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
         Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
       }
+
+      computeResult = client.compute()
+          .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
+          .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
+          .streamingExecute(keySetForCompute).get();
+
+      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
+        Assert.assertEquals(((HashMap<String, String>) entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
+      }
+
       client.unsubscribeAll();
     }
 
@@ -1029,6 +1058,15 @@ public class DaVinciClientTest {
           .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
           .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
           .execute(keySetForCompute).get();
+
+      for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
+        Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1);
+      }
+
+      computeResult = clientForMissingField.compute()
+          .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
+          .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
+          .streamingExecute(keySetForCompute).get();
 
       for (Map.Entry<Integer, GenericRecord> entry : computeResult.entrySet()) {
         Assert.assertEquals(((HashMap<String, String>)entry.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 1);
@@ -1131,6 +1169,102 @@ public class DaVinciClientTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testComputeStreamingExecute() throws ExecutionException, InterruptedException, TimeoutException {
+
+    //Setup Store
+    final String storeName = TestUtils.getUniqueString( "store");
+    cluster.useControllerClient(client -> TestUtils.assertCommand(
+        client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_STEAMING_COMPUTE,
+            VALUE_SCHEMA_STREAMING_COMPUTE)));
+
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    String topic = newVersion.getKafkaTopic();
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STEAMING_COMPUTE);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STREAMING_COMPUTE);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+
+    int applicationListenerPort = Utils.getFreePort();
+    int servicePort = Utils.getFreePort();
+
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(SERVER_INGESTION_MODE, ISOLATED)
+        .put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, applicationListenerPort)
+        .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
+        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, cluster.getZk().getAddress())
+        .build();
+
+    int numRecords = 10000;
+
+    //setup keyset to test
+    Set<String> keySet = new TreeSet<>();
+    /**
+     * {@link NON_EXISTING_KEY1}: "a_unknown_key" will be with key index: 0 internally, and we want to verify
+     * whether the code could handle non-existing key with key index: 0
+     */
+    keySet.add(NON_EXISTING_KEY1);
+    for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
+      keySet.add(KEY_PREFIX + i);
+    }
+    keySet.add(NON_EXISTING_KEY2);
+
+    DaVinciConfig config = new DaVinciConfig();
+    config.setNonLocalAccessPolicy(NonLocalAccessPolicy.QUERY_VENICE);
+
+    try (
+        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+        DaVinciClient<String, Integer> client = factory.getAndStartGenericAvroClient(storeName, config)) {
+
+      //push data to store and subscribe client
+      pushDataToStoreForStreamingCompute(writer, VALUE_SCHEMA_STREAMING_COMPUTE, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID, numRecords);
+      client.subscribeAll().get();
+
+      // Test compute with streaming execute using custom provided callback
+      AtomicInteger computeResultCnt = new AtomicInteger(0);
+      Map<String, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
+      CountDownLatch computeLatch = new CountDownLatch(1);
+
+      ComputeRequestBuilder<String> computeRequestBuilder = client.compute().project("int_field");
+      computeRequestBuilder.streamingExecute(keySet, new StreamingCallback<String, GenericRecord>() {
+        @Override
+        public void onRecordReceived(String key, GenericRecord value) {
+          computeResultCnt.incrementAndGet();
+          if (null != value) {
+            finalComputeResultMap.put(key, value);
+          }
+        }
+
+        @Override
+        public void onCompletion(Optional<Exception> exception) {
+          computeLatch.countDown();
+          if (exception.isPresent()) {
+            Assert.fail("Exception: " + exception.get() + " is not expected");
+          }
+        }
+      });
+      computeLatch.await();
+
+      Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
+      Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing key
+      verifyStreamingComputeResult(finalComputeResultMap);
+
+      // Test compute with streaming execute using default callback
+      CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture = computeRequestBuilder.streamingExecute(keySet);
+      Map<String, GenericRecord> computeResultMap = computeFuture.get();
+      Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
+      verifyStreamingComputeResult(computeResultMap);
+
+      client.unsubscribeAll();
+    }
+  }
+
   private void pushSyntheticDataToStore(VeniceWriter<Object, Object, byte[]> writer, String schema, boolean skip, int valueSchemaId, int numRecords)
       throws ExecutionException, InterruptedException {
     writer.broadcastStartOfPush(Collections.emptyMap());
@@ -1147,6 +1281,31 @@ public class DaVinciClientTest {
       writer.put(i, value, valueSchemaId).get();
     }
     writer.broadcastEndOfPush(Collections.emptyMap());
+  }
+
+  private void pushDataToStoreForStreamingCompute(VeniceWriter<Object, Object, byte[]> writer, String valueSchemaString,
+      int valueSchemaId, int numRecords) throws ExecutionException, InterruptedException {
+    writer.broadcastStartOfPush(Collections.emptyMap());
+    Schema.Parser schemaParser = new Schema.Parser();
+    Schema valueSchema = schemaParser.parse(valueSchemaString);
+
+    for (int i = 0; i < numRecords; i++){
+      GenericRecord valueRecord = new GenericData.Record(valueSchema);
+      valueRecord.put("int_field", i);
+      valueRecord.put("float_field", i + 100.0f);
+      writer.put(KEY_PREFIX + i, valueRecord,   valueSchemaId).get();
+    }
+
+    writer.broadcastEndOfPush(Collections.emptyMap());
+  }
+
+  private void verifyStreamingComputeResult(Map<String, GenericRecord> resultMap) {
+    for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
+      String key = KEY_PREFIX + i;
+      GenericRecord record = resultMap.get(key);
+      Assert.assertEquals(record.get("int_field"), i);
+      Assert.assertNull(record.get("float_field"));
+    }
   }
 
   private List<Float> generateRandomFloatList(int listSize) {

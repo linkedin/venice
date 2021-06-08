@@ -401,16 +401,77 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
       StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS) throws VeniceClientException {
-    //TODO: implement streamingExecute
-    throw new VeniceClientException("'streamingExecute' is not supported.");
+    compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS, null, null);
   }
 
   @Override
   public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
       StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS, BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
-    //TODO: implement streamingExecute
-    throw new VeniceClientException("'streamingExecute' is not supported.");
+
+    if (handleCallbackForEmptyKeySet(keys, callback)){
+      return;
+    }
+
+    throwIfNotReady();
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+      VersionBackend versionBackend = versionRef.get();
+      if (null == versionBackend) {
+        if (isVeniceQueryAllowed()) {
+          veniceClient.compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS,
+              reusedEncoder, reusedOutputStream);
+          return;
+        }
+        storeBackend.getStats().recordBadRequest();
+        callback.onCompletion(Optional.of(new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName())));
+        return;
+      }
+
+      Set<K> missingKeys = new HashSet<>();
+
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      Schema valueSchema = computeRequestWrapper.getValueSchema();
+      GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
+
+      Map<String, Object> globalContext = new HashMap<>();
+      Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
+
+      for (K key : keys) {
+        byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
+        int subPartition = versionBackend.getSubPartition(keyBytes);
+
+        if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
+          GenericRecord computeResultValue =
+              versionBackend.compute(subPartition, keyBytes, getGenericRecordChunkingAdapter(), reusableObjects.binaryDecoder,
+                  reusableObjects.rawValue, reuseValueRecord, globalContext, computeRequestWrapper, computeResultSchema);
+
+            callback.onRecordReceived(key, computeResultValue);
+        } else if (isVeniceQueryAllowed()){
+          missingKeys.add(key);
+        } else if (!isSubPartitionSubscribed(versionBackend, subPartition)){
+          storeBackend.getStats().recordBadRequest();
+          callback.onCompletion(Optional.of(new NonLocalAccessException(versionBackend.toString(), subPartition)));
+          return;
+        }
+      }
+
+      if (missingKeys.isEmpty()){
+        callback.onCompletion(Optional.empty());
+        return;
+      }
+
+      veniceClient.compute(computeRequestWrapper, missingKeys, resultSchema, callback, preRequestTimeInNS,
+          reusedEncoder, reusedOutputStream);
+    }
+  }
+
+  private boolean handleCallbackForEmptyKeySet(Set<K> keys, StreamingCallback callback) {
+    if (keys.isEmpty()) {
+      // no result for empty key set
+      callback.onCompletion(Optional.empty());
+      return true;
+    }
+    return false;
   }
 
   public boolean isReady() {
