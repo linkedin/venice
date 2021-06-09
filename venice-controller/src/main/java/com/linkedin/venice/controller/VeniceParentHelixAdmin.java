@@ -1404,7 +1404,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
         // Before setting, verify the resulting partitionerConfig can be built
         try {
-          PartitionUtils.getVenicePartitioner(partitionerConfigRecord.partitionerClass.toString(), partitionerConfigRecord.amplificationFactor, new VeniceProperties(partitionerConfigRecord.partitionerParams), getReadOnlyZKSharedSchemaRepository().getKeySchema(storeName).getSchema());
+          PartitionUtils.getVenicePartitioner(partitionerConfigRecord.partitionerClass.toString(), partitionerConfigRecord.amplificationFactor, new VeniceProperties(partitionerConfigRecord.partitionerParams), getKeySchema(clusterName, storeName).getSchema());
         } catch (Exception e) {
           throw new VeniceException("Partitioner Configs invalid, please verify that partitioner configs like classpath and parameters are correct!", e);
         }
