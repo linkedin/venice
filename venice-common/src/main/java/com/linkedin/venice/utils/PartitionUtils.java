@@ -13,6 +13,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.Properties;
+import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
@@ -122,8 +123,16 @@ public class PartitionUtils {
       String partitionerClass,
       int amplificationFactor,
       VeniceProperties params) {
+    return getVenicePartitioner(partitionerClass, amplificationFactor, params, null);
+  }
+
+  public static VenicePartitioner getVenicePartitioner(
+      String partitionerClass,
+      int amplificationFactor,
+      VeniceProperties params,
+      Schema keySchema) {
     VenicePartitioner partitioner = ReflectUtils.callConstructor(ReflectUtils.loadClass(partitionerClass),
-        new Class<?>[]{VeniceProperties.class}, new Object[]{params});
+        new Class<?>[]{VeniceProperties.class, Schema.class}, new Object[]{params, keySchema});
     if (amplificationFactor == 1) {
       return partitioner;
     }
