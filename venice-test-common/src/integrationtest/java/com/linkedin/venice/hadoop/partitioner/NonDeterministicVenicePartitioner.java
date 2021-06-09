@@ -4,6 +4,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Random;
+import org.apache.avro.Schema;
 
 
 /**
@@ -18,6 +19,10 @@ public class NonDeterministicVenicePartitioner extends VenicePartitioner {
 
   public NonDeterministicVenicePartitioner(VeniceProperties props) {
     super(props);
+  }
+
+  public NonDeterministicVenicePartitioner(VeniceProperties props, Schema schema) {
+    super(props, schema);
   }
 
   @Override
