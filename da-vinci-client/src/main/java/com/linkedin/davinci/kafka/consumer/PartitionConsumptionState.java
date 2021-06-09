@@ -35,6 +35,7 @@ public class PartitionConsumptionState {
   private boolean errorReported;
   private boolean lagCaughtUp;
   private boolean completionReported;
+  private boolean isSubscribed;
   private LeaderFollowerStateType leaderState;
 
   /**
@@ -127,6 +128,7 @@ public class PartitionConsumptionState {
     this.errorReported = false;
     this.lagCaughtUp = false;
     this.completionReported = false;
+    this.isSubscribed = true;
     this.processedRecordNum = 0;
     this.processedRecordSize = 0;
     this.processedRecordSizeSinceLastSync = 0;
@@ -183,6 +185,12 @@ public class PartitionConsumptionState {
   }
   public void completionReported() {
     this.completionReported = true;
+  }
+  public boolean isSubscribed() {
+    return isSubscribed;
+  }
+  public void unsubscribe() {
+    this.isSubscribed = false;
   }
   public boolean isLatchReleased() {
     return isLatchReleased;
