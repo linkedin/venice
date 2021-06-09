@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
+import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 
 import java.security.MessageDigest;
@@ -48,7 +49,11 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
   }
 
   public DefaultVenicePartitioner(VeniceProperties props) {
-    super(props);
+    this(props, null);
+  }
+
+  public DefaultVenicePartitioner(VeniceProperties props, Schema schema) {
+    super(props, schema);
   }
 
   public int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
