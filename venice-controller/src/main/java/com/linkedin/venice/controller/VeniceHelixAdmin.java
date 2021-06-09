@@ -1849,9 +1849,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public String getRealTimeTopic(String clusterName, String storeName){
         checkControllerMastership(clusterName);
         TopicManager topicManager = getTopicManager();
-        Set<String> currentTopics = getTopicManager().listTopics();
         String realTimeTopic = Version.composeRealTimeTopic(storeName);
-        if (currentTopics.contains(realTimeTopic)){
+        if (topicManager.containsTopic(realTimeTopic)) {
             return realTimeTopic;
         } else {
             VeniceHelixResources resources = getVeniceHelixResource(clusterName);

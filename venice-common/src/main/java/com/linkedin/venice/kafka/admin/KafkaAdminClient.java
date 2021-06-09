@@ -161,9 +161,6 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   @Override
   public boolean containsTopic(String topic) {
     try {
-      // Another way of doing this... not sure which is better:
-      // return getKafkaAdminClient().listTopics().names().get().contains(topic);
-
       Collection<String> topicNames = Collections.singleton(topic);
       TopicDescription topicDescription = getKafkaAdminClient().describeTopics(topicNames).values().get(topic).get();
 
@@ -179,10 +176,10 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
         // Topic doesn't exist...
         return false;
       } else {
-        throw new VeniceException("Failed to list topics in order to find out if '" + topic + " exists!", e);
+        throw new VeniceException("Failed to check if '" + topic + " exists!", e);
       }
     } catch (Exception e) {
-      throw new VeniceException("Failed to list topics in order to find out if '" + topic + " exists!", e);
+      throw new VeniceException("Failed to check if '" + topic + " exists!", e);
     }
   }
 
