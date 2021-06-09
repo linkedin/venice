@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -52,6 +53,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final IsolatedIngestionBackend ingestionBackend;
   private final ScheduledExecutorService metricsRequestScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
+  private final ExecutorService longRunningTaskExecutor = Executors.newSingleThreadExecutor();
   private final MainIngestionRequestClient metricsClient;
   private final MainIngestionRequestClient heartbeatClient;
   // Topic name to partition set map, representing all topic partitions being ingested in Isolated Ingestion Backend.
@@ -109,21 +111,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    metricsRequestScheduler.shutdown();
-    heartbeatCheckScheduler.shutdown();
-    try {
-      if (!metricsRequestScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-        metricsRequestScheduler.shutdownNow();
-        logger.info("Metrics request scheduler has been shutdown.");
-      }
-      if (!heartbeatCheckScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-        heartbeatCheckScheduler.shutdownNow();
-        logger.info("Heartbeat check scheduler has been shutdown.");
-      }
-
-    } catch (InterruptedException e) {
-      currentThread().interrupt();
-    }
+    shutdownScheduler(metricsRequestScheduler, "Metrics collection");
+    shutdownScheduler(heartbeatCheckScheduler, "Heartbeat check");
+    shutdownScheduler(longRunningTaskExecutor, "Long running task");
 
     heartbeatClient.close();
     metricsClient.close();
@@ -239,19 +229,26 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private void restartForkedProcess() {
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(servicePort)) {
       ingestionBackend.setIsolatedIngestionServiceProcess(client.startForkedIngestionProcess(configLoader));
+      logger.info("Forked process has been recovered.");
+    }
+    // Use async long running task scheduler to avoid blocking periodic heartbeat jobs.
+    longRunningTaskExecutor.execute(this::resumeOngoingIngestionTasks);
+  }
 
-      // Reset heartbeat time.
-      latestHeartbeatTimestamp = System.currentTimeMillis();
+  private void resumeOngoingIngestionTasks() {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(servicePort)) {
+      logger.info("Start to recover ongoing ingestion tasks: " + topicNameToPartitionSetMap);
       // Open metadata partitions in child process for all previously subscribed topics.
       topicNameToPartitionSetMap.keySet().forEach(client::openStorageEngine);
       // All previously subscribed topics are stored in the keySet of this topic partition map.
       topicNameToPartitionSetMap.forEach((topicName, partitionSet) -> {
         partitionSet.forEach(partitionId -> {
           client.startConsumption(topicName, partitionId);
+          logger.info("Recovered ingestion task for topic: " + topicName + ", partition: " + partitionId);
         });
       });
+      logger.info("All ongoing ingestion tasks has resumed.");
     }
-    logger.info("Restart forked process completed");
   }
 
   private void collectIngestionServiceMetrics() {
@@ -278,6 +275,18 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         logger.warn("Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp + ", restarting forked process.");
         restartForkedProcess();
       }
+    }
+  }
+
+  private void shutdownScheduler(ExecutorService scheduler, String schedulerName) {
+    scheduler.shutdown();
+    try {
+      if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+        scheduler.shutdownNow();
+        logger.info(schedulerName + " scheduler has been shutdown.");
+      }
+    } catch (InterruptedException e) {
+      currentThread().interrupt();
     }
   }
 }
