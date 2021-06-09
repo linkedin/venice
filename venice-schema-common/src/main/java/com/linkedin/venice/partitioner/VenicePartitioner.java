@@ -1,8 +1,11 @@
 package com.linkedin.venice.partitioner;
 
+import com.linkedin.venice.exceptions.PartitionerSchemaMismatchException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Properties;
+import org.apache.avro.Schema;
+
 
 /**
  * Determines partitioning, which is used for producing messages into the right
@@ -16,11 +19,16 @@ public abstract class VenicePartitioner {
     protected final VeniceProperties props; // available for sub-classes to use.
 
     public VenicePartitioner() {
-        this(new VeniceProperties(new Properties()));
+        this(new VeniceProperties(new Properties()), null);
     }
 
     public VenicePartitioner(VeniceProperties props) {
+        this(props, null);
+    }
+
+    public VenicePartitioner(VeniceProperties props, Schema schema) {
         this.props = props;
+        checkSchema(schema);
     }
 
     /**
@@ -46,4 +54,17 @@ public abstract class VenicePartitioner {
     }
 
     public abstract int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions);
+
+    /**
+     * Implementors of this class can optionally provide an implementation of this function,
+     * which can perform validation of schemas to be certain that they are compatible with the
+     *  partitioner implementation.
+     *
+     * @param keySchema the schema do be validated.  Can be null
+     * @return
+     * @throws PartitionerSchemaMismatchException should the provided schema not match the partitioner (with a message that explains why).
+     */
+    protected boolean checkSchema(Schema keySchema) throws PartitionerSchemaMismatchException {
+        return true;
+    }
 }
