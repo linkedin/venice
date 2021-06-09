@@ -1573,6 +1573,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (consumptionState != null) {
           consumerUnSubscribeAllTopics(consumptionState);
         }
+        /**
+         * The subscribed flag is turned off, so that drainer thread will skip messages for this partition.
+         * Basically, now is the cut off time; all buffered messages in drainer queue will be dropped, to speed up
+         * the unsubscribe process.
+         */
+        consumptionState.unsubscribe();
 
         // Drain the buffered message by last subscription.
         waitForAllMessageToBeProcessedFromTopicPartition(topic, partition, consumptionState);
@@ -1710,7 +1716,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     int partitionId = record.partition();
     String msg;
-    if (null == partitionConsumptionState) {
+    if (null == partitionConsumptionState || !partitionConsumptionState.isSubscribed()) {
       msg = "Topic " + kafkaVersionTopic + " Partition " + partitionId + " has been unsubscribed, skip this record";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         logger.info(msg + " that has offset " + record.offset());
