@@ -309,15 +309,15 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
 
     IngestionTaskReport report = createIngestionTaskReport(topicName, partitionId);
+    IngestionCommandType ingestionCommandType =  IngestionCommandType.valueOf(ingestionTaskCommand.commandType);
     try {
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("IsolatedIngestionServer has not been initiated.");
       }
       VeniceStoreConfig storeConfig = isolatedIngestionServer.getConfigLoader().getStoreConfig(topicName);
-      StorageService storageService = isolatedIngestionServer.getStorageService();
       KafkaStoreIngestionService storeIngestionService = isolatedIngestionServer.getStoreIngestionService();
 
-      switch (IngestionCommandType.valueOf(ingestionTaskCommand.commandType)) {
+      switch (ingestionCommandType) {
         case START_CONSUMPTION:
           ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
           // For subscription based store repository, we will need to subscribe to the store explicitly.
@@ -376,6 +376,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       report.isPositive = false;
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
+    logger.info("Completed ingestion command " + ingestionCommandType +  " for topic: " + topicName + ", partition: " + partitionId);
     return report;
   }
 
