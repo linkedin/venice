@@ -175,6 +175,10 @@ public class DIVStats {
     duplicateMsg += 1;
   }
 
+  public void setDuplicateMsg(long count) {
+    this.duplicateMsg = count;
+  }
+
   public long getMissingMsg() {
     return missingMsg;
   }
@@ -183,12 +187,20 @@ public class DIVStats {
     missingMsg += 1;
   }
 
+  public void setMissingMsg(long count) {
+    this.missingMsg = count;
+  }
+
   public long getCorruptedMsg() {
     return corruptedMsg;
   }
 
   public void recordCorruptedMsg() {
     corruptedMsg += 1;
+  }
+
+  public void setCorruptedMsg(long count) {
+    this.corruptedMsg = count;
   }
 
   public long getSuccessMsg() {
@@ -395,6 +407,10 @@ public class DIVStats {
     return benignLeaderOffsetRewindCount;
   }
 
+  public void setBenignLeaderOffsetRewindCount(long count) {
+    this.benignLeaderOffsetRewindCount = count;
+  }
+
   public void recordPotentiallyLossyLeaderOffsetRewind() {
     potentiallyLossyLeaderOffsetRewindCount += 1;
   }
@@ -403,11 +419,19 @@ public class DIVStats {
     return potentiallyLossyLeaderOffsetRewindCount;
   }
 
+  public void setPotentiallyLossyLeaderOffsetRewindCount(long count) {
+    this.potentiallyLossyLeaderOffsetRewindCount = count;
+  }
+
   public void recordLeaderProducerFailure() {
     leaderProducerFailureCount += 1;
   }
 
   public long getLeaderProducerFailure() {
     return leaderProducerFailureCount;
+  }
+
+  public void setLeaderProducerFailure(long count) {
+    this.leaderProducerFailureCount = count;
   }
 }

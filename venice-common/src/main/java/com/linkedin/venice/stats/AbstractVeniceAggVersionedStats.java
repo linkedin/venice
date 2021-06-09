@@ -1,6 +1,5 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -8,7 +7,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -135,6 +133,11 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     if (backupVersion != versionedDIVStats.getBackupVersion()) {
       versionedDIVStats.setBackupVersion(backupVersion);
     }
+
+    /**
+     * Since versions are changed, update the total stats accordingly.
+     */
+    updateTotalStats(storeName);
   }
 
   @Override
@@ -159,5 +162,34 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   public boolean isFutureVersion(String storeName, int version) {
     VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats = getVersionedStats(storeName);
     return versionedStats.getFutureVersion() == version;
+  }
+
+  /**
+   * return {@link Store#NON_EXISTING_VERSION} if future version doesn't exist.
+   */
+  protected int getFutureVersion(String storeName) {
+    return getVersionedStats(storeName).getFutureVersion();
+  }
+
+  /**
+   * return {@link Store#NON_EXISTING_VERSION} if current version doesn't exist.
+   */
+  protected int getCurrentVersion(String storeName) {
+    return getVersionedStats(storeName).getCurrentVersion();
+  }
+
+  /**
+   * return {@link Store#NON_EXISTING_VERSION} if backup version doesn't exist.
+   */
+  protected int getBackupVersion(String storeName) {
+    return getVersionedStats(storeName).getBackupVersion();
+  }
+
+  /**
+   * Some versioned stats might always increasing; in this case, the value in the total stats should be updated with
+   * the aggregated values across the new version list.
+   */
+  protected void updateTotalStats(String storeName) {
+    // no-op
   }
 }
