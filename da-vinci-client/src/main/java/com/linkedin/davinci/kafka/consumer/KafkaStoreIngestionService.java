@@ -51,6 +51,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
@@ -508,7 +509,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         cacheBackend);
   }
 
-  private static void shutdownExecutorService(ExecutorService executorService, boolean force) {
+  private static void shutdownExecutorService(ExecutorService executorService, boolean force, String name) {
     if (null == executorService) {
       return;
     }
@@ -518,10 +519,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       executorService.shutdown();
     }
     try {
+      long startTimeMs = System.currentTimeMillis();
       if (!executorService.awaitTermination(60, TimeUnit.SECONDS) && !force) {
+        logger.error("Couldn't stop the thread pool: " + name + " after " + LatencyUtils.getElapsedTimeInMs(startTimeMs) + "(ms)");
         executorService.shutdownNow();
+        if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
+          logger.error("Still couldn't stop the thread pool: " + name + " after " + LatencyUtils.getElapsedTimeInMs(startTimeMs) + "(ms)");
+        }
       }
     } catch (InterruptedException e) {
+      logger.warn("Received interruptedException in stopping thread pool: " + name);
+      executorService.shutdownNow();
       Thread.currentThread().interrupt();
     }
   }
@@ -533,18 +541,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public void stopInner() throws Exception {
     IOUtils.closeQuietly(participantStoreConsumptionTask);
-    shutdownExecutorService(participantStoreConsumerExecutorService, true);
+    shutdownExecutorService(participantStoreConsumerExecutorService, true, "participantStoreConsumerExecutorService");
 
     /*
      * We would like to gracefully shutdown {@link #ingestionExecutorService},
      * so that it will have an opportunity to checkpoint the processed offset.
      */
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
-    shutdownExecutorService(ingestionExecutorService, false);
-    shutdownExecutorService(cacheWarmingExecutorService, true);
+    shutdownExecutorService(ingestionExecutorService, false, "ingestionExecutorService");
+    shutdownExecutorService(cacheWarmingExecutorService, true, "cacheWarmingExecutorService");
 
     IOUtils.closeQuietly(aggKafkaConsumerService);
-    IOUtils.closeQuietly(storeBufferService);
 
     onlineOfflineNotifiers.forEach(VeniceNotifier::close);
     leaderFollowerNotifiers.forEach(VeniceNotifier::close);
@@ -554,6 +561,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     //close it the very end to make sure all ingestion task have released the shared producers.
     IOUtils.closeQuietly(sharedKafkaProducerService);
+
+    //close drainer service at the very end as it does not depend on any other service.
+    IOUtils.closeQuietly(storeBufferService);
 
     IOUtils.closeQuietly(topicManagerRepository);
     IOUtils.closeQuietly(topicManagerRepositoryJavaBased);
