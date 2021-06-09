@@ -38,11 +38,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class ForkedJavaProcess extends Process {
   private static final Logger LOGGER = Logger.getLogger(ForkedJavaProcess.class);
 
-  /**
-   * Debug mode is only intended for debugging individual forked processes, as it will block the forked JVM until
-   * the debugger is attached. Debug mode is not intended to be used as part of the regular suite.
-   */
-  private static final boolean DEBUG = false;
   private static final String JAVA_PATH = Paths.get(System.getProperty("java.home"), "bin", "java").toString();
   private static final List<String> DEFAULT_JAVA_ARGS = new ArrayList() {{
     // Inherit Java tmp folder setting from parent process.
@@ -53,6 +48,15 @@ public final class ForkedJavaProcess extends Process {
       inherit all JVM arguments from parent process. Users can provide JVM arguments to override these settings.
      */
     for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+      /**
+       * Explicitly block JVM debugging setup in forked process as (1) it is not used anywhere (2) debug port binding
+       * will conflict with main process
+       */
+      if (arg.startsWith("-Xdebug") || arg.startsWith("-agentlib:jdwp") || arg.startsWith("-Xrunjdwp")) {
+        LOGGER.info("Skipping debug related arguments in forked process:" + arg);
+        continue;
+      }
+
       if (arg.startsWith("-Dlog4j2")) {
         add(arg);
       }
@@ -84,12 +88,6 @@ public final class ForkedJavaProcess extends Process {
     command.add("-cp");
     command.add(getClasspath());
 
-    int debugPort = 0;
-    if (DEBUG) {
-      debugPort = Utils.getFreePort();
-      command.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=" + debugPort);
-    }
-
     command.addAll(DEFAULT_JAVA_ARGS);
     // Add user provided customized JVM arguments for child process.
     command.addAll(jvmArgs);
@@ -98,7 +96,7 @@ public final class ForkedJavaProcess extends Process {
     command.addAll(args);
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    Logger logger = Logger.getLogger((extraLoggerName.isPresent() ? extraLoggerName.get() + ", " : "") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process) + (DEBUG ? ", debugPort=" + debugPort : ""));
+    Logger logger = Logger.getLogger((extraLoggerName.isPresent() ? extraLoggerName.get() + ", " : "") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
     return new ForkedJavaProcess(process, logger);
   }
 
