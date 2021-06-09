@@ -14,6 +14,7 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -39,6 +40,8 @@ public class AbstractTestVeniceParentHelixAdmin {
   static int KAFKA_REPLICA_FACTOR = 3;
   static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
   static final int MAX_PARTITION_NUM = 1024;
+  static final String TEST_SCHEMA = "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", "
+      + "\"type\":\"int\"}]}";
 
   final String clusterName = "test-cluster";
   final String coloName = "test-colo";
@@ -70,6 +73,8 @@ public class AbstractTestVeniceParentHelixAdmin {
 
     internalAdmin = mock(VeniceHelixAdmin.class);
     doReturn(topicManager).when(internalAdmin).getTopicManager();
+    SchemaEntry mockEntry = new SchemaEntry(0, TEST_SCHEMA);
+    doReturn(mockEntry).when(internalAdmin).getKeySchema(anyString(), anyString());
 
     zkClient = mock(ZkClient.class);
     doReturn(zkClient).when(internalAdmin).getZkClient();
