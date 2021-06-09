@@ -221,6 +221,17 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   }
 
   @Override
+  public void close(int closeTimeOutMs, boolean doFlush) {
+    if (producer != null) {
+      if (doFlush) {
+        close(closeTimeOutMs);
+      } else {
+        producer.close(closeTimeOutMs, TimeUnit.MILLISECONDS);
+      }
+    }
+  }
+
+  @Override
   public Map<String, Double> getMeasurableProducerMetrics() {
     Map<String, Double> extractedMetrics = new HashMap<>();
     for (Map.Entry<MetricName, ? extends Metric> entry : producer.metrics().entrySet()) {

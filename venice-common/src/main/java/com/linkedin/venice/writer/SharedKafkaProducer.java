@@ -110,8 +110,17 @@ public class SharedKafkaProducer implements KafkaProducerWrapper  {
   }
 
   @Override
+  public void close(int closeTimeOutMs, boolean doFlush) {
+    kafkaProducerWrapper.close(closeTimeOutMs, doFlush);
+  }
+
+  @Override
   public void close(String topic, int closeTimeoutMs) {
-    sharedKafkaProducerService.releaseKafkaProducer(topic);
+    if (sharedKafkaProducerService.isRunning()) {
+      sharedKafkaProducerService.releaseKafkaProducer(topic);
+    } else {
+      LOGGER.info("SharedKafkaProducer: is already closed can't release the producer for topic: " + topic);
+    }
   }
 
   @Override

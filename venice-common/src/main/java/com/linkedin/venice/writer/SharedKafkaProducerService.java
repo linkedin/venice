@@ -2,6 +2,7 @@ package com.linkedin.venice.writer;
 
 import com.codahale.metrics.MetricRegistry;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.KafkaClientStats;
@@ -44,7 +45,7 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
   private final SharedKafkaProducer[] producers;
   private final Map<String, SharedKafkaProducer> producerTaskToProducerMap = new VeniceConcurrentHashMap<>();
   private final KafkaProducerSupplier kafkaProducerSupplier;
-  private boolean closed = false;
+  private volatile boolean isRunning = true;
 
   //stats
   private MetricsRepository metricsRepository;
@@ -99,9 +100,11 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
 
   @Override
   public synchronized void stopInner() throws Exception {
+    isRunning = false;
+    logger.info("SharedKafkaProducer: is being closed");
     //This map should be empty when this is called.
     if (!producerTaskToProducerMap.isEmpty()) {
-      logger.error("SharedKafkaProducer: is being closed, but following producerTasks are still using the shared producers. {"
+      logger.error("SharedKafkaProducer: following producerTasks are still using the shared producers. {"
           + producerTaskToProducerMap.keySet().stream().collect(Collectors.joining(",")) + "}");
     }
 
@@ -111,17 +114,24 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
         //Force close all the producer even if there are active producerTask assigned to it.
         logger.info("SharedKafkaProducer: Closing producer: " + sharedKafkaProducer + ", Currently assigned task: "
             + sharedKafkaProducer.getProducerTaskCount());
-        sharedKafkaProducer.close(kafkaProducerCloseTimeout);
+        sharedKafkaProducer.close(kafkaProducerCloseTimeout, false);
         producers[sharedKafkaProducer.getId()] = null;
         decrActiveSharedProducerCount();
       } catch (Exception e) {
         logger.warn("SharedKafkaProducer: Error in closing kafka producer", e);
       }
     });
-    closed = true;
+  }
+
+  public boolean isRunning() {
+    return isRunning;
   }
 
   public synchronized KafkaProducerWrapper acquireKafkaProducer(String producerTaskName) {
+    if (!isRunning) {
+      throw new VeniceException("SharedKafkaProducer: is already closed, can't assign new producer for task:" + producerTaskName);
+    }
+
     SharedKafkaProducer sharedKafkaProducer = null;
 
     if (producerTaskToProducerMap.containsKey(producerTaskName)) {
@@ -168,6 +178,10 @@ public class SharedKafkaProducerService extends AbstractVeniceService {
   }
 
   public synchronized void releaseKafkaProducer(String producerTaskName) {
+    if (!isRunning) {
+      throw new VeniceException("SharedKafkaProducer: is already closed, can't release the producer for task:" + producerTaskName);
+    }
+
     if (!producerTaskToProducerMap.containsKey(producerTaskName)) {
       LOGGER.error("SharedKafkaProducer: " + producerTaskName + " does not have a producer");
       return;
