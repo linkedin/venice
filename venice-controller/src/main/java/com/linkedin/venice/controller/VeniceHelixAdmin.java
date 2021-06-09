@@ -2098,7 +2098,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE ?
                     resources.getMetadataRepository()
                         .getStore(VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName)) : store;
-            if (!store.containsVersion(versionNumber)) {
+            Optional<Version> versionToBeDeleted = store.getVersion(versionNumber);
+            if (!versionToBeDeleted.isPresent()) {
                 logger.info("Version: " + versionNumber + " doesn't exist in store: " + storeName + ", will skip `deleteOneStoreVersion`");
                 return;
             }
@@ -2108,7 +2109,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
             killOfflinePush(clusterName, resourceName, true);
 
-            if (!store.isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
+            if (!versionToBeDeleted.get().isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
                 // Do not delete topic replicator during store migration
                 // In such case, the topic replicator will be deleted after store migration, triggered by a new push job
                 if (!storeToCheckOngoingMigration.isMigrating()) {
@@ -3033,9 +3034,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         String realTimeTopic = Version.composeRealTimeTopic(storeName);
                         truncateKafkaTopic(realTimeTopic);
                         // Also remove the Brooklin replication streams
-                        if (!store.isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
-                            store.getVersions().stream().forEach(version ->
-                                onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName()));
+                        if (onlineOfflineTopicReplicator.isPresent()) {
+                            store.getVersions().stream().forEach(version -> {
+                                if (!version.isLeaderFollowerModelEnabled()) {
+                                    onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName());
+                                }
+                            });
                         }
                         if (store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled()) {
                             // Disabling hybrid configs for a L/F store
