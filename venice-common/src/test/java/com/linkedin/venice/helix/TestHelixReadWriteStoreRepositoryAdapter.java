@@ -100,6 +100,12 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
       assertTrue(readOnlyRepo.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
       assertTrue(writeRepoAdapter.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
     });
+    writeRepoAdapter.deleteStore(newRepositoryUnSupportedZKSharedSystemStoreName);
+    // Verify the store via read only repo
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertFalse(readOnlyRepo.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
+      assertFalse(writeRepoAdapter.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));
+    });
   }
 
   @Test
@@ -124,7 +130,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     });
 
     // Other existing types of zk shared system store can still be added/deleted
-    String newRepositoryUnSupportedZKSharedSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(cluster);
+    String newRepositoryUnSupportedZKSharedSystemStoreName = VeniceSystemStoreType.METADATA_STORE.getSystemStoreName(cluster);
     writeRepoAdapter.addStore(TestUtils.createTestStore(newRepositoryUnSupportedZKSharedSystemStoreName, "test_unsupported_system_store_owner", 0));
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertTrue(readOnlyRepo.hasStore(newRepositoryUnSupportedZKSharedSystemStoreName));

@@ -99,6 +99,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * To decide whether to initialize push status store related components.
    */
   private final boolean isDaVinciPushStatusStoreEnabled;
+
+  private final boolean zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
+
   /**
    * Used to decide if an instance is stale.
    */
@@ -246,6 +249,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED, false);
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds = props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled =  props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+    this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled = props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs = props.getLong(CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS, TimeUnit.HOURS.toMillis(1));
     String regionNameFromConfig = props.getString(LOCAL_REGION_NAME, "");
     if (!Utils.isNullOrEmpty(regionNameFromConfig)) {
@@ -491,6 +495,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isDaVinciPushStatusStoreEnabled() {
     return isDaVinciPushStatusStoreEnabled;
+  }
+
+  public boolean isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled() {
+    return zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
   }
 
   public long getSystemStoreAclSynchronizationDelayMs() {

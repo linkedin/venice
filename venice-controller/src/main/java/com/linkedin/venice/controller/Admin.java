@@ -515,8 +515,6 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     void materializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber);
 
-    void createDaVinciPushStatusStore(String clusterName, String storeName);
-
     /**
      * Dematerialize the specified Zk shared metadata store version for the given Venice store name and set the
      * storeMetadataSystemStoreEnabled flag to false. This should only be called when we no longer want metadata system
@@ -526,12 +524,6 @@ public interface Admin extends AutoCloseable, Closeable {
      * unintentionally when store migration is finishing.
      */
     void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber, boolean deleteRT);
-
-    /**
-     * Delete all versions and topics of Da Vinci push status store.
-     * Same as dematerializeMetadataStoreVersion.
-     */
-    void deleteDaVinciPushStatusStore(String clusterName, String storeName);
 
     /**
      * provision a new set of ACL for a venice store and it's associated kafka topic.

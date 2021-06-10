@@ -233,6 +233,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isZkSharedMetadataSystemSchemaStoreAutoCreationEnabled();
   }
 
+  public boolean isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled() {
+    return getCommonConfig().isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled();
+  }
+
   public long getSystemStoreAclSynchronizationDelayMs() {
     return getCommonConfig().getSystemStoreAclSynchronizationDelayMs();
   }

@@ -106,6 +106,9 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
       veniceStoreName = VeniceSystemStoreType.META_STORE.extractRegularStoreName(storeName);
     }
+    if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+      veniceStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.extractRegularStoreName(storeName);
+    }
     StoreConfig config = storeConfigMap.get().get(veniceStoreName);
     if (config != null) {
       return Optional.of(config.cloneStoreConfig());
