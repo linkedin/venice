@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.davinci.kafka.consumer.AbstractStoreBufferService;
 import com.linkedin.davinci.kafka.consumer.StoreBufferService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
@@ -10,7 +11,7 @@ import java.util.List;
 
 
 public class StoreBufferServiceStats extends AbstractVeniceStats {
-  private StoreBufferService workerService = null;
+  private AbstractStoreBufferService workerService = null;
 
   private Sensor totalMemoryUsageSensor;
   private Sensor totalRemainingMemorySensor;
@@ -19,7 +20,7 @@ public class StoreBufferServiceStats extends AbstractVeniceStats {
   private List<Sensor> preDrainerSensors = new ArrayList<>(2);
 
 
-  public StoreBufferServiceStats(MetricsRepository metricsRepository, StoreBufferService workerService) {
+  public StoreBufferServiceStats(MetricsRepository metricsRepository, AbstractStoreBufferService workerService) {
     super(metricsRepository, "StoreBufferService");
     this.workerService = workerService;
     totalMemoryUsageSensor = registerSensor("total_memory_usage", new Gauge(

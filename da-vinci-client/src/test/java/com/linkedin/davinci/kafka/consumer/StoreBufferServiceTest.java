@@ -53,7 +53,6 @@ public class StoreBufferServiceTest {
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null);
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null);
     verify(mockTask).setLastDrainerException(e);
-
     bufferService.stop();
   }
 

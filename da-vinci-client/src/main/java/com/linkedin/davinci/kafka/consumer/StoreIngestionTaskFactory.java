@@ -176,7 +176,7 @@ public class StoreIngestionTaskFactory {
     private AggStoreIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedStorageIngestionStats versionedStorageIngestionStats;
-    private StoreBufferService storeBufferService;
+    private AbstractStoreBufferService storeBufferService;
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
     private AggKafkaConsumerService aggKafkaConsumerService;
@@ -311,7 +311,7 @@ public class StoreIngestionTaskFactory {
       return this;
     }
 
-    public Builder setStoreBufferService(StoreBufferService storeBufferService) {
+    public Builder setStoreBufferService(AbstractStoreBufferService storeBufferService) {
       if (!built) {
         this.storeBufferService = storeBufferService;
       }

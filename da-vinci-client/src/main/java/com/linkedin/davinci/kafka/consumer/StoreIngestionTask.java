@@ -159,7 +159,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final EventThrottler unorderedRecordsThrottler;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
-  protected final StoreBufferService storeBufferService;
+  protected final AbstractStoreBufferService storeBufferService;
   /** Persists the exception thrown by {@link StoreBufferService}. */
   protected Exception lastDrainerException = null;
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
@@ -341,7 +341,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      StoreBufferService storeBufferService,
+      AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean isIncrementalPushEnabled,

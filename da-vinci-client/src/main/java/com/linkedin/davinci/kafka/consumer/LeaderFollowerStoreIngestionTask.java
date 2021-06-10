@@ -172,7 +172,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      StoreBufferService storeBufferService,
+      AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean isIncrementalPushEnabled,

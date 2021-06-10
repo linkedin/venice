@@ -247,6 +247,56 @@ public abstract class TestRestartServerDuringIngestion {
     }
   }
 
+
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  public void testIngestionDrainer() throws Exception {
+    // Create a store
+    String stringSchemaStr = "\"string\"";
+    AvroSerializer serializer = new AvroSerializer(Schema.parse(stringSchemaStr));
+
+    String storeName = TestUtils.getUniqueString("test_store");
+    String veniceUrl = cluster.getMasterVeniceController().getControllerUrl();
+    Properties properties = new Properties();
+    properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
+    properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
+    TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
+
+    TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
+
+    // Create a new version
+    VersionCreationResponse versionCreationResponse = null;
+    try (ControllerClient controllerClient =
+        new ControllerClient(cluster.getClusterName(), veniceUrl)) {
+      versionCreationResponse =
+          controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
+              Version.guidBasedDummyPushId(), false, true, false, Optional.empty(),
+              Optional.empty(), Optional.empty(), false, -1);
+    }
+    String topic = versionCreationResponse.getKafkaTopic();
+    String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
+
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
+      veniceWriter.broadcastStartOfPush(false, Collections.emptyMap());
+
+      Map<byte[], byte[]> sortedInputRecords = generateInput(1000, false, 0, serializer);
+      int cur = 0;
+      for (Map.Entry<byte[], byte[]> entry : sortedInputRecords.entrySet()) {
+        veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
+      }
+
+      veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+
+      // Wait push completed.
+      TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+          () -> cluster.getMasterVeniceController()
+              .getVeniceAdmin()
+              .getOffLinePushStatus(cluster.getClusterName(), topic)
+              .getExecutionStatus()
+              .equals(ExecutionStatus.COMPLETED));
+    }
+  }
+
   private void restartAllRouters() {
     for (VeniceRouterWrapper router : cluster.getVeniceRouters()) {
       cluster.stopVeniceRouter(router.getPort());
