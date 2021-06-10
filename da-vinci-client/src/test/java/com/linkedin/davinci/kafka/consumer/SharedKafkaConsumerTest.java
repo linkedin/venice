@@ -34,16 +34,20 @@ public class SharedKafkaConsumerTest {
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false);
+    TopicExistenceChecker topicExistenceChecker = new TopicExistenceChecker() {
+      @Override
+      public boolean checkTopicExists(String topic) {
+        return !topic.equalsIgnoreCase("nonExistingTopic1");
+      }
+    };
+
+    SharedKafkaConsumer sharedConsumer =
+        new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
+
     String existingTopic1 = "existingTopic1";
     String existingTopic2 = "existingTopic2";
     String existingTopicWithoutIngestionTask1 = "existingTopicWithoutIngestionTask1";
     String nonExistingTopic1 = "nonExistingTopic1";
-    Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>();
-    topicListReturnedByConsumer.put(existingTopic1, Collections.emptyList());
-    topicListReturnedByConsumer.put(existingTopic2, Collections.emptyList());
-    topicListReturnedByConsumer.put(existingTopicWithoutIngestionTask1, Collections.emptyList());
-    doReturn(topicListReturnedByConsumer).when(consumer).listTopics();
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(existingTopic1, 1));
     assignmentReturnedConsumer.add(new TopicPartition(existingTopic2, 1));
@@ -105,10 +109,15 @@ public class SharedKafkaConsumerTest {
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false);
+    TopicExistenceChecker topicExistenceChecker = new TopicExistenceChecker() {
+      @Override
+      public boolean checkTopicExists(String topic) {
+        return !topic.equalsIgnoreCase("nonExistingTopic1");
+      }
+    };
+
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
     String nonExistingTopic1 = "nonExistingTopic1";
-    Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>();
-    doReturn(topicListReturnedByConsumer).when(consumer).listTopics();
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(nonExistingTopic1, 1));
     doReturn(assignmentReturnedConsumer).when(consumer).getAssignment();
@@ -131,6 +140,7 @@ public class SharedKafkaConsumerTest {
     verify(consumer, times(1)).poll(1000);
   }
 
+
   @Test
   public void testIngestionTaskBehaviorWhenConsumerListTopicsReturnStaledInfo() throws InterruptedException {
     KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
@@ -140,19 +150,28 @@ public class SharedKafkaConsumerTest {
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false);
+    TopicExistenceChecker topicExistenceChecker = new TopicExistenceChecker() {
+      int invocationCount = 0;
+      @Override
+      public boolean checkTopicExists(String topic) {
+        invocationCount++;
+        //couldn't find a better way to simulate this.
+        //6 because this api will be called 2 for each poll invocation for 2 topics.
+        if (invocationCount < 6) {
+          return topic.equalsIgnoreCase("existingTopic1");
+        } else {
+          return topic.equalsIgnoreCase("nonExistingTopic1");
+        }
+      }
+    };
+
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
     String existingTopic1 = "existingTopic1";
     String nonExistingTopic1 = "nonExistingTopic1";
     Map<String, List<PartitionInfo>> staledTopicListReturnedByConsumer = new HashMap<>();
     staledTopicListReturnedByConsumer.put(existingTopic1, Collections.emptyList());
     Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>(staledTopicListReturnedByConsumer);
     topicListReturnedByConsumer.put(nonExistingTopic1, Collections.emptyList());
-    doReturn(topicListReturnedByConsumer).when(consumer).listTopics();
-    when(consumer.listTopics()).thenReturn(
-        staledTopicListReturnedByConsumer,
-        staledTopicListReturnedByConsumer,
-        topicListReturnedByConsumer
-    );
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(existingTopic1, 1));
     assignmentReturnedConsumer.add(new TopicPartition(nonExistingTopic1, 1));
@@ -187,4 +206,5 @@ public class SharedKafkaConsumerTest {
     verify(consumerServiceStats, times(2)).recordDetectedDeletedTopicNum(1);
     verify(ingestionTaskForNonExistingTopic1, never()).setLastConsumerException(any());
   }
+
 }

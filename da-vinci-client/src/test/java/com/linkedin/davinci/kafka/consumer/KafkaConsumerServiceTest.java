@@ -51,7 +51,7 @@ public class KafkaConsumerServiceTest {
 
     KafkaConsumerService consumerService = new KafkaConsumerService(factory, properties, 1000l,
         2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaConsumerServiceStats.class),
-        TimeUnit.MINUTES.toMillis(1), false);
+        TimeUnit.MINUTES.toMillis(1), false, mock(TopicExistenceChecker.class));
 
     KafkaConsumerWrapper assignedConsumerForTask1 = consumerService.getConsumer(task1);
     KafkaConsumerWrapper assignedConsumerForTask2 = consumerService.getConsumer(task2);
@@ -104,7 +104,7 @@ public class KafkaConsumerServiceTest {
 
     KafkaConsumerService consumerService = new KafkaConsumerService(factory, properties, 1000l,
         2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaConsumerServiceStats.class),
-        TimeUnit.MINUTES.toMillis(1), false);
+        TimeUnit.MINUTES.toMillis(1), false, mock(TopicExistenceChecker.class));
 
     String storeName = TestUtils.getUniqueString("test_consumer_service");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);

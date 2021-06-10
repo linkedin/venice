@@ -104,23 +104,27 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   private Map<TopicPartition, Double> topicPartitionCurrentOffset = new VeniceConcurrentHashMap<>();
   private Map<TopicPartition, Double> topicPartitionEndOffset = new VeniceConcurrentHashMap<>();
 
-  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service, final long nonExistingTopicCleanupDelayMS, boolean enableOffsetCollection) {
-    this(delegate, service, 1000, nonExistingTopicCleanupDelayMS, enableOffsetCollection);
+  private final TopicExistenceChecker topicExistenceChecker;
+
+  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service, final long nonExistingTopicCleanupDelayMS,
+      boolean enableOffsetCollection, TopicExistenceChecker topicExistenceChecker) {
+    this(delegate, service, 1000, nonExistingTopicCleanupDelayMS, enableOffsetCollection, topicExistenceChecker);
   }
 
   public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
-      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, boolean enableOffsetCollection) {
-    this(delegate, service, sanitizeTopicSubscriptionAfterPollTimes, nonExistingTopicCleanupDelayMS, new SystemTime(), enableOffsetCollection);
+      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, boolean enableOffsetCollection, TopicExistenceChecker topicExistenceChecker) {
+    this(delegate, service, sanitizeTopicSubscriptionAfterPollTimes, nonExistingTopicCleanupDelayMS, new SystemTime(), enableOffsetCollection, topicExistenceChecker);
   }
 
   SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
-      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, Time time, boolean enableOffsetCollection) {
+      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, Time time, boolean enableOffsetCollection, TopicExistenceChecker topicExistenceChecker) {
     this.delegate = delegate;
     this.kafkaConsumerService = service;
     this.sanitizeTopicSubscriptionAfterPollTimes = sanitizeTopicSubscriptionAfterPollTimes;
     this.nonExistingTopicCleanupDelayMS = nonExistingTopicCleanupDelayMS;
     this.time = time;
     this.enableOffsetCollection = enableOffsetCollection;
+    this.topicExistenceChecker = topicExistenceChecker;
   }
 
 
@@ -219,12 +223,12 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     if (assignment.isEmpty()) {
       return;
     }
-    Map<String, List<PartitionInfo>> existingTopicPartitions = listTopics();
     Set<String> nonExistingTopics = new HashSet<>();
     long currentTimestamp = time.getMilliseconds();
     assignment.forEach( tp -> {
       String topic = tp.topic();
-      if (!existingTopicPartitions.containsKey(topic)) {
+      boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic);
+      if (!isExistingTopic) {
         nonExistingTopics.add(topic);
       } else {
         /**
