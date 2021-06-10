@@ -14,6 +14,8 @@ dependencies {
   implementation project(':venice-schema-common')
   implementation project(':venice-common') //TODO, pull venice writer out of venice common so this is a smaller dependency
 
+  implementation libraries.helix
+
   implementation (libraries.brooklinKafkaTransport) {
     exclude group: 'org.apache.kafka'
   }
