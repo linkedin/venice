@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop.utils;
 
-import com.linkedin.events.prop.Prop;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import org.apache.hadoop.mapred.JobConf;

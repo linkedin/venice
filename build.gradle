@@ -169,6 +169,9 @@ subprojects {
       // These are global exclusions that will apply to the entire project
       exclude group: 'backport-util-concurrent'
       exclude group: 'com.intellij.annotations'
+      exclude group: 'com.linkedin.avro-schemas'
+      // exclude group: 'com.linkedin.container'
+      exclude group: 'com.linkedin.container-core'
       exclude group: 'com.linkedin.linkedin-kafka-clients'
       exclude group: 'com.linkedin.util', module: 'util-sql'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
