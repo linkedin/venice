@@ -1025,7 +1025,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     public boolean checkTopicExists(String topic) {
       boolean isExistingTopic = true;
-      String storeName = Version.parseStoreFromKafkaTopicName(topic);
+
+      String storeName = Version.isRealTimeTopic(topic) ? Version.parseStoreFromRealTimeTopic(topic) : Version.parseStoreFromKafkaTopicName(topic);
+
       try {
         Store store = metadataRepo.getStoreOrThrow(storeName);
         if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
