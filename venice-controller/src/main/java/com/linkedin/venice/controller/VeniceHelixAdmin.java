@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.schemaregistry.AvroIncompatibleSchemaException;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.VeniceStateModel;

@@ -37,6 +37,7 @@ dependencies {
 
   implementation libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
   implementation libraries.commonsCodec
+  implementation libraries.commonsLang
 
   implementation (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
     // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency

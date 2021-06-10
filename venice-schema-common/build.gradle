@@ -32,6 +32,7 @@ dependencies {
 
     api libraries.avroUtilCompatibilityHelper
     api libraries.commonsIo
+    api libraries.commonsLang
 
     api (libraries.d2Client) {
         exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesn't exist in repo */

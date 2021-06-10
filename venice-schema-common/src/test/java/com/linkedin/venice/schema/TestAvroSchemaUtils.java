@@ -1,7 +1,7 @@
 package com.linkedin.venice.schema;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
-import com.linkedin.schemaregistry.KafkaSchemaVerifier;
+import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import org.apache.avro.Schema;
@@ -235,7 +235,7 @@ public class TestAvroSchemaUtils {
         "  } ]\n" +
         "}";
 
-    KafkaSchemaVerifier.get().verifyCompatibility(Schema.parse(schemaStr), Schema.parse(schemaStr));
+    AvroSchemaVerifier.get().verifyCompatibility(Schema.parse(schemaStr), Schema.parse(schemaStr));
 
     AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
 
