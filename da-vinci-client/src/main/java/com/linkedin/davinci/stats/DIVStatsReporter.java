@@ -94,6 +94,8 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
         new DIVStatsCounter(this, () -> (double) getStats().getPotentiallyLossyLeaderOffsetRewindCount()));
     registerSensor("leader_producer_failure_count",
         new DIVStatsCounter(this, () -> (double) getStats().getLeaderProducerFailure()));
+    registerSensor("benign_leader_producer_failure_count",
+        new DIVStatsCounter(this, () -> (double) getStats().getBenignLeaderProducerFailure()));
 
   }
 

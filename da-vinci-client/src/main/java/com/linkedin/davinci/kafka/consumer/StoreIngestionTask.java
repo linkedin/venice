@@ -3068,7 +3068,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * The purpose of this function is to wait for the complete processing (including persistence to disk) of all the messages
    * those were consumed from this kafka {topic, partition} prior to calling this function.
-   * This is a common function to be used in O/O and L/F models for all scenarios.
    * This will make the calling thread to block.
    * @param topic
    * @param partition
@@ -3077,53 +3076,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected void waitForAllMessageToBeProcessedFromTopicPartition(String topic, int partition,
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
-    final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
-
     /**
      * This will wait for all the messages to be processed (persisted to disk) that are already
      * queued up to drainer till now.
      */
     storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
-
-    /**
-     * In case of L/F model in Leader we first produce to local kafka then queue to drainer from kafka callback thread.
-     * The above waiting is not sufficient enough since it only waits for whatever was queue prior to calling the
-     * above api. This alone would not guarantee that all messages from that topic partition
-     * has been processed completely. Additionally we need to wait for the last leader producer future to complete.
-     *
-     * Practically the above is not needed for Leader at all if we are waiting for the future below. But waiting does not
-     * cause any harm and also keep this function simple. Otherwise we might have to check if this is the Leader for the partition.
-     *
-     * The code should only be effective in L/F model Leader instances as lastFuture should be null in all other scenarios.
-     */
-    if (partitionConsumptionState != null) {
-      /**
-       * The following logic will make sure all the records queued in the buffer queue will be processed completely.
-       */
-      try {
-        CompletableFuture<Void> lastQueuedRecordPersistedFuture = partitionConsumptionState.getLastQueuedRecordPersistedFuture();
-        if (lastQueuedRecordPersistedFuture != null) {
-          lastQueuedRecordPersistedFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
-        }
-      } catch (Exception e) {
-        logger.error("Got exception while waiting for the latest queued record future to be completed for topic: "
-            + topic + " partition: " + partition, e);
-      }
-      try {
-        Future<Void> lastFuture = partitionConsumptionState.getLastLeaderPersistFuture();
-        if (lastFuture != null) {
-          long synchronizeStartTimeInNS = System.nanoTime();
-          lastFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
-          storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
-        }
-      } catch (Exception e) {
-        logger.error(
-            "Got exception while waiting for the latest producer future to be completed " + " for topic: " + topic + " partition: " + partition, e);
-        //No need to fail the push job; just record the failure.
-        versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
-      }
-    }
-
   }
 
   protected DelegateConsumerRecordResult delegateConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
