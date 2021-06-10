@@ -71,6 +71,7 @@ public class DIVStats {
   private long benignLeaderOffsetRewindCount = 0;
   private long potentiallyLossyLeaderOffsetRewindCount = 0;
   private long leaderProducerFailureCount = 0;
+  private long benignLeaderProducerFailureCount = 0;
 
   public DIVStats() {
     String sensorName = "producer_to_broker_latency";
@@ -433,5 +434,17 @@ public class DIVStats {
 
   public void setLeaderProducerFailure(long count) {
     this.leaderProducerFailureCount = count;
+  }
+
+  public void recordBenignLeaderProducerFailure() {
+    benignLeaderProducerFailureCount += 1;
+  }
+
+  public long getBenignLeaderProducerFailure() {
+    return benignLeaderProducerFailureCount;
+  }
+
+  public void setBenignLeaderProducerFailure(long count) {
+    this.benignLeaderProducerFailureCount = count;
   }
 }

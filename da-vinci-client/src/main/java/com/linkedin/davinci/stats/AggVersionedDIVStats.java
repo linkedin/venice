@@ -132,6 +132,11 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderProducerFailure());
   }
 
+  public void recordBenignLeaderProducerFailure(String storeName, int version) {
+    Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordBenignLeaderProducerFailure());
+    Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordBenignLeaderProducerFailure());
+  }
+
   public void recordLeaderProducerCompletionTime(String storeName, int version, double value) {
     Utils.computeIfNotNull(getTotalStats(storeName), stat -> stat.recordLeaderProducerCompletionLatencyMs(value));
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderProducerCompletionLatencyMs(value));
@@ -146,6 +151,9 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     // Update total producer failure count
     resetTotalStats(storeName, existingVersions, stat -> stat.getLeaderProducerFailure(),
         (stat, count) -> stat.setLeaderProducerFailure(count));
+    // Update total benign leader producer failure count
+    resetTotalStats(storeName, existingVersions, stat -> stat.getBenignLeaderProducerFailure(),
+        (stat, count) -> stat.setBenignLeaderProducerFailure(count));
     // Update total benign leader offset rewind count
     resetTotalStats(storeName, existingVersions, stat -> stat.getBenignLeaderOffsetRewindCount(),
         (stat, count) -> stat.setBenignLeaderOffsetRewindCount(count));

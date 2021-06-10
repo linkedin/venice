@@ -69,9 +69,11 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import org.apache.avro.generic.GenericRecord;
@@ -82,6 +84,7 @@ import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
+import static java.util.concurrent.TimeUnit.*;
 
 
 /**
@@ -1536,6 +1539,72 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           consumerTaskId + " hasProducedToKafka: exception for message received from  Topic: " + consumerRecord.topic()
               + " Partition: " + consumerRecord.partition() + ", Offset: " + consumerRecord.offset() + ". Bubbling up.",
           e);
+    }
+  }
+
+  /**
+   * Besides draining messages in the drainer queue, wait for the last producer future.
+   */
+  @Override
+  protected void waitForAllMessageToBeProcessedFromTopicPartition(String topic, int partition,
+      PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+    super.waitForAllMessageToBeProcessedFromTopicPartition(topic, partition, partitionConsumptionState);
+    final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
+
+    /**
+     * In case of L/F model in Leader we first produce to local kafka then queue to drainer from kafka callback thread.
+     * The above waiting is not sufficient enough since it only waits for whatever was queue prior to calling the
+     * above api. This alone would not guarantee that all messages from that topic partition
+     * has been processed completely. Additionally we need to wait for the last leader producer future to complete.
+     *
+     * Practically the above is not needed for Leader at all if we are waiting for the future below. But waiting does not
+     * cause any harm and also keep this function simple. Otherwise we might have to check if this is the Leader for the partition.
+     *
+     * The code should only be effective in L/F model Leader instances as lastFuture should be null in all other scenarios.
+     */
+    if (partitionConsumptionState != null) {
+      /**
+       * The following logic will make sure all the records queued in the buffer queue will be processed completely.
+       */
+      try {
+        CompletableFuture<Void> lastQueuedRecordPersistedFuture = partitionConsumptionState.getLastQueuedRecordPersistedFuture();
+        if (lastQueuedRecordPersistedFuture != null) {
+          lastQueuedRecordPersistedFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+        }
+      } catch (InterruptedException e) {
+        logger.warn("Got interrupted while waiting for the last queued record to be persisted for topic: " + topic
+            + " partition: " + partition + ". Will throw the interrupt exception", e);
+        throw e;
+      } catch (Exception e) {
+        logger.error("Got exception while waiting for the latest queued record future to be completed for topic: "
+            + topic + " partition: " + partition, e);
+      }
+      Future<Void> lastFuture = null;
+      try {
+        lastFuture = partitionConsumptionState.getLastLeaderPersistFuture();
+        if (lastFuture != null) {
+          long synchronizeStartTimeInNS = System.nanoTime();
+          lastFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+          storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
+        }
+      } catch (InterruptedException e) {
+        logger.warn("Got interrupted while waiting for the last leader producer future for topic: " + topic
+            + " partition: " + partition + ". No data loss. Will throw the interrupt exception", e);
+        versionedDIVStats.recordBenignLeaderProducerFailure(storeName, versionNumber);
+        throw e;
+      } catch (TimeoutException e) {
+        logger.error("Timeout on waiting for the last leader producer future for topic: " + topic
+            + " partition: " + partition + ". No data loss.", e);
+        lastFuture.cancel(true);
+        partitionConsumptionState.setLastLeaderPersistFuture(null);
+        versionedDIVStats.recordBenignLeaderProducerFailure(storeName, versionNumber);
+      } catch (Exception e) {
+        logger.error(
+            "Got exception while waiting for the latest producer future to be completed for topic: " + topic + " partition: " + partition, e);
+        partitionConsumptionState.setLastLeaderPersistFuture(null);
+        //No need to fail the push job; just record the failure.
+        versionedDIVStats.recordBenignLeaderProducerFailure(storeName, versionNumber);
+      }
     }
   }
 
