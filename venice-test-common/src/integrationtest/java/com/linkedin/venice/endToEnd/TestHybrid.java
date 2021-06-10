@@ -1501,6 +1501,7 @@ public class TestHybrid {
     serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
     extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
     extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+    extraProperties.setProperty(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, "true");
     cluster.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
 
     return cluster;

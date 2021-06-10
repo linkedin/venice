@@ -125,7 +125,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   /**
    * Store buffer service to persist data into local bdb for all the stores.
    */
-  private final StoreBufferService storeBufferService;
+  private final AbstractStoreBufferService storeBufferService;
 
   private final AggKafkaConsumerService aggKafkaConsumerService;
 
@@ -315,10 +315,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
     this.versionedStorageIngestionStats =
         new AggVersionedStorageIngestionStats(metricsRepository, metadataRepo);
-    this.storeBufferService = new StoreBufferService(
-        serverConfig.getStoreWriterNumber(),
-        serverConfig.getStoreWriterBufferMemoryCapacity(),
-        serverConfig.getStoreWriterBufferNotifyDelta());
+    if (serverConfig.isDedicatedDrainerQueueEnabled()) {
+      this.storeBufferService = new SeparatedStoreBufferService(serverConfig);
+    } else {
+      this.storeBufferService = new StoreBufferService(serverConfig.getStoreWriterNumber(),
+          serverConfig.getStoreWriterBufferMemoryCapacity(), serverConfig.getStoreWriterBufferNotifyDelta());
+    }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
     /**
      * Collect metrics for {@link #storeBufferService}.

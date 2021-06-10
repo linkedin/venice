@@ -62,7 +62,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
       AggVersionedStorageIngestionStats versionedStorageIngestionStats,
-      StoreBufferService storeBufferService,
+      AbstractStoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
       boolean isIncrementalPushEnabled,

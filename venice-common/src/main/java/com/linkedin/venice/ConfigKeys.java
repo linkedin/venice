@@ -282,6 +282,8 @@ public class ConfigKeys {
   public static final String MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER = "max.state.transition.thread.number";
   public static final String MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER = "max.leader.follower.state.transition.thread.number";
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
+  public static final String SORTED_INPUT_DRAINER_SIZE = "sorted.input.drainer.size";
+  public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
   public static final String OFFSET_DATABASE_CACHE_SIZE = "offset.database.cache.size";
@@ -499,6 +501,12 @@ public class ConfigKeys {
    * Unsubscribe from kakfa topic once a batch-store push finishes
    */
   public static final String SERVER_UNSUB_AFTER_BATCHPUSH = "server.unsub.after.batch.push";
+
+  /**
+   * Use a seprate drainer queue for sorted ingestion and un-sorted ingestion.
+   */
+  public static final String SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED = "server.dedicated.drainer.queue.for.sorted.input.enabled";
+
 
   /**
    * A boolean config to specify if we are using Da Vinci client for ingestion. This config will be parsed by

@@ -57,6 +57,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int storeWriterNumber;
 
   /**
+   * Thread pool size of sorted ingestion drainer when dedicatedDrainerQueue is enabled.
+   */
+  private final int drainerPoolSizeSortedInput;
+
+  /**
+   * Thread pool size of unsorted ingestion drainer when dedicatedDrainerQueue is enabled.
+   */
+  private final int drainerPoolSizeUnsortedInput;
+
+
+  /**
    * Buffer capacity being used by each writer.
    * We need to be careful when tuning this param.
    * If the queue capacity is too small, the throughput will be impacted greatly,
@@ -237,6 +248,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean unsubscribeAfterBatchpushEnabled;
 
   private final boolean enableKafkaConsumerOffsetCollection;
+  private final boolean dedicatedDrainerQueueEnabled;
+
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -249,6 +262,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     maxOnlineOfflineStateTransitionThreadNumber = serverProperties.getInt(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100);
     maxLeaderFollowerStateTransitionThreadNumber = serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
+    drainerPoolSizeSortedInput = serverProperties.getInt(SORTED_INPUT_DRAINER_SIZE, 8);
+    drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
+
     // To miminize the GC impact during heavy ingestion.
     storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 10 * 1024 * 1024); // 10MB
     storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 1 * 1024 * 1024); // 1MB
@@ -369,8 +385,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart = serverProperties.getInt(
         OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
-
     enableKafkaConsumerOffsetCollection = serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, false);
+    dedicatedDrainerQueueEnabled = serverProperties.getBoolean(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -715,5 +731,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isKafkaConsumerOffsetCollectionEnabled() {
     return enableKafkaConsumerOffsetCollection;
+  }
+
+  public boolean isDedicatedDrainerQueueEnabled() {
+    return dedicatedDrainerQueueEnabled;
+  }
+
+  public int getDrainerPoolSizeSortedInput() {
+    return drainerPoolSizeSortedInput;
+  }
+
+  public int getDrainerPoolSizeUnsortedInput() {
+    return drainerPoolSizeUnsortedInput;
   }
 }

@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +44,7 @@ import static java.util.stream.Collectors.*;
  * and data processing is the slowest part. If we find that polling is also slow later on, we may consider to adopt a consumer
  * thread pool to speed up polling from local Kafka brokers.
  */
-public class StoreBufferService extends AbstractVeniceService {
+public class StoreBufferService extends AbstractStoreBufferService {
   /**
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
@@ -222,14 +221,14 @@ public class StoreBufferService extends AbstractVeniceService {
      * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
      * positive for most of time to guarantee even partition assignment.
-      */
+     */
     int topicHash = Math.abs(topic.hashCode() / 2);
     return Math.abs((topicHash + consumerRecord.partition()) % this.drainerNum);
   }
 
+  @Override
   public void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      StoreIngestionTask ingestionTask, ProducedRecord producedRecord)
-      throws InterruptedException {
+      StoreIngestionTask ingestionTask, ProducedRecord producedRecord) throws InterruptedException {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord);
     Optional<CompletableFuture<Void>> recordFuture = Optional.empty();
     if (producedRecord == null) {
@@ -265,7 +264,7 @@ public class StoreBufferService extends AbstractVeniceService {
   }
 
   protected void internalDrainBufferedRecordsFromTopicPartition(String topic, int partition,int retryNum,
-                                                                int sleepIntervalInMS) throws InterruptedException {
+      int sleepIntervalInMS) throws InterruptedException {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fakeRecord = new ConsumerRecord<>(topic, partition, -1, null, null);
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord);
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
@@ -310,14 +309,17 @@ public class StoreBufferService extends AbstractVeniceService {
     }
   }
 
+  @Override
   public int getDrainerCount() {
     return blockingQueueArr.size();
   }
 
+  @Override
   public long getDrainerQueueMemoryUsage(int index) {
     return blockingQueueArr.get(index).getMemoryUsage();
   }
 
+  @Override
   public long getTotalMemoryUsage() {
     long totalUsage = 0;
     for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
@@ -326,6 +328,7 @@ public class StoreBufferService extends AbstractVeniceService {
     return totalUsage;
   }
 
+  @Override
   public long getTotalRemainingMemory() {
     long totalRemaining = 0;
     for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
@@ -334,6 +337,7 @@ public class StoreBufferService extends AbstractVeniceService {
     return totalRemaining;
   }
 
+  @Override
   public long getMaxMemoryUsagePerDrainer() {
     long maxUsage = 0;
     boolean slowDrainerExists = false;
@@ -373,6 +377,7 @@ public class StoreBufferService extends AbstractVeniceService {
     return drainerList.get(i).topicToTimeSpent;
   }
 
+  @Override
   public long getMinMemoryUsagePerDrainer() {
     long minUsage = Long.MAX_VALUE;
     for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {

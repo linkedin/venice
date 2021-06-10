@@ -221,6 +221,7 @@ public class StoreIngestionTaskTest {
   @BeforeClass(alwaysRun = true)
   public void suiteSetUp() throws Exception {
     taskPollingService = Executors.newFixedThreadPool(1);
+
     storeBufferService = new StoreBufferService(3, 10000, 1000);
     storeBufferService.start();
   }
