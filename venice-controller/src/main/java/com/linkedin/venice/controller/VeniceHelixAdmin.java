@@ -431,6 +431,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
                 Optional.of(metadataSystemStoreUpdate), true));
         }
+        if (multiClusterConfigs.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()) {
+            // Add routine to create zk shared da vinci push status system store
+            UpdateStoreQueryParams daVinciPushStatusSystemStoreUpdate = new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
+                .setHybridOffsetLagThreshold(1).setHybridTimeLagThreshold(TimeUnit.MINUTES.toSeconds(1)) // 1 mins
+                .setLeaderFollowerModel(true).setWriteComputationEnabled(true)
+                .setPartitionCount(1);
+            initRoutines.add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE,
+                multiClusterConfigs, this, Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
+                Optional.of(daVinciPushStatusSystemStoreUpdate), true));
+        }
         ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
         // Create the controller cluster if required.
@@ -551,8 +561,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Find out the cluster first
         Optional<StoreConfig> storeConfig = storeConfigRepo.getStoreConfig(storeName);
         if (!storeConfig.isPresent()) {
-            if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE ||
-                VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
+            if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.METADATA_STORE) {
                 // Use the corresponding Venice store name to get cluster information
                 storeConfig = storeConfigRepo.getStoreConfig(
                     VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName));
@@ -711,10 +720,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 for (Version version : storeRepository.getStore(VeniceSystemStoreType.METADATA_STORE.getPrefix()).getVersions()) {
                     dematerializeMetadataStoreVersion(clusterName, storeName, version.getNumber(), !store.isMigrating());
                 }
-            }
-            // clean up DaVinciPushStatusStore
-            if (store.isDaVinciPushStatusStoreEnabled()) {
-                deleteDaVinciPushStatusStore(clusterName, storeName);
             }
             // Delete All versions and push statues
             deleteAllVersionsInStore(clusterName, storeName);
@@ -955,23 +960,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             destControllerClient.materializeMetadataStoreVersion(storeName, destMetadataStoreCurrentVersion);
-        }
-
-        if (srcStore.isDaVinciPushStatusStoreEnabled()) {
-          // Create Da Vinci push status system store in the destination cluster.
-          String exceptionMessage = "Cannot proceed with the store migration for store: " + storeName + ". ";
-          StoreResponse storeResponse = destControllerClient.getStore(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getPrefix());
-          if (storeResponse.isError() || storeResponse.getStore() == null) {
-            throw new VeniceException(exceptionMessage + "Failed to get store: " + VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE
-                + " in the destination cluster: " + destClusterName);
-          }
-          int destPushStatusStoreCurrentVersion = storeResponse.getStore().getCurrentVersion();
-          if (destPushStatusStoreCurrentVersion <= 0) {
-            throw new VeniceException(exceptionMessage + "Invalid push status store current version: "
-                + destPushStatusStoreCurrentVersion + " in the destination cluster: " + destClusterName);
-          }
-
-          destControllerClient.createDaVinciPushStatusStore(storeName);
         }
 
         Consumer<String> versionMigrationConsumer = migratingStoreName -> {
@@ -1459,6 +1447,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
                     if (null != systemStoreType && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
                         produceSnapshotToMetaStoreRT(clusterName, systemStoreType.extractRegularStoreName(storeName));
+                    }
+                    if (null != systemStoreType && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+                        setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
                     }
 
                     Store store = repository.getStore(storeName);
@@ -2807,6 +2798,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return store;
         });
     }
+
     /**
      * This function will check whether the store update will cause the case that a store can not have the specified
      * hybrid store and incremental push configs.
@@ -4736,39 +4728,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    @Override
-    public void createDaVinciPushStatusStore(String clusterName, String storeName) {
-        checkControllerMastership(clusterName);
-        if (!multiClusterConfigs.getCommonConfig().isDaVinciPushStatusStoreEnabled()) {
-            throw new VeniceException("Push status store reporting is not enabled on this controller.");
-        }
-        Store daVinciStore = getStore(clusterName, storeName);
-        Store zkSharedStore = getStore(clusterName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getPrefix());
-        if (daVinciStore == null) {
-            throw new VeniceException("Store " + storeName + " not created.");
-        }
-        if (zkSharedStore == null) {
-            throw new VeniceException("Da Vinci ZK-shared push status store not created in cluster " + clusterName + ".");
-        }
-        if (zkSharedStore.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
-            throw new VeniceException("Da Vinci ZK-shared push status store initial version not created.");
-        }
-        String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
-        createSystemStoreResources(clusterName, storeName, zkSharedStore.getCurrentVersion(), zkSharedStore, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
-        writeEndOfPush(clusterName, pushStatusStoreName, zkSharedStore.getCurrentVersion(), true);
-        getRealTimeTopic(clusterName, pushStatusStoreName);
-        storeMetadataUpdate(clusterName, pushStatusStoreName, store -> {
-            store.setLeaderFollowerModelEnabled(true);
-            store.setWriteComputationEnabled(true);
-            return store;
-        });
-        storeMetadataUpdate(clusterName, storeName, store -> {
-            store.setDaVinciPushStatusStoreEnabled(true);
-            return store;
-        });
-        logger.info("Da Vinci push status store for " + storeName + " successfully created.");
-    }
-
     private void createSystemStoreResources(String clusterName, String storeName, int versionNumber,
         Store zkSharedStore, VeniceSystemStoreType storeType) {
         if (isClusterInMaintenanceMode(clusterName)) {
@@ -4822,30 +4781,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setStoreMetadataSystemStoreEnabled(false);
-            return store;
-        });
-    }
-
-    @Override
-    public void deleteDaVinciPushStatusStore(String clusterName, String storeName) {
-        String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
-        checkControllerMastership(clusterName);
-        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-            ReadWriteStoreRepository repository = resources.getMetadataRepository();
-            Store store = repository.getStore(pushStatusStoreName);
-            logger.info("Deleting all versions in store: " + pushStatusStoreName + " in cluster: " + clusterName);
-            List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
-            for (Version version : deletingVersionSnapshot) {
-              deleteOneStoreVersion(clusterName, pushStatusStoreName, version.getNumber());
-            }
-            logger.info("Deleted all versions in store: " + pushStatusStoreName + " in cluster: " + clusterName);
-        }
-        // Clean up venice writer before truncating RT topic
-        pushStatusStoreDeleter.ifPresent(deleter -> deleter.removePushStatusStoreVeniceWriter(storeName));
-        truncateKafkaTopic(Version.composeRealTimeTopic(pushStatusStoreName));
-        storeMetadataUpdate(clusterName, storeName, store -> {
-            store.setDaVinciPushStatusStoreEnabled(false);
             return store;
         });
     }
@@ -5141,6 +5076,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     Long getInMemoryTopicCreationTime(String topic) {
         return topicToCreationTime.get(topic);
+    }
+
+    private void setUpDaVinciPushStatusStore(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        ReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        Store store = repository.getStore(storeName);
+        if (store == null) {
+            throwStoreDoesNotExist(clusterName, storeName);
+        }
+        String daVinciPushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+        getRealTimeTopic(clusterName, daVinciPushStatusStoreName);
+        if (!store.isDaVinciPushStatusStoreEnabled()) {
+            storeMetadataUpdate(clusterName, storeName, (s) -> {
+                s.setDaVinciPushStatusStoreEnabled(true);
+                return s;
+            });
+        }
     }
 
     public void produceSnapshotToMetaStoreRT(String clusterName, String regularStoreName) {

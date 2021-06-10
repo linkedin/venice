@@ -919,6 +919,11 @@ public class VeniceParentHelixAdmin implements Admin {
         // Ensure the wild card acl regex is created for META_STORE
         authorizerService.get().setupResource(new Resource(storeName));
       }
+      if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE
+          && authorizerService.isPresent()) {
+        // Ensure the wild card acl regex is created for DAVINCI_PUSH_STATUS_STORE
+        authorizerService.get().setupResource(new Resource(storeName));
+      }
     }
     cleanupHistoricalVersions(clusterName, storeName);
 
@@ -2381,38 +2386,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void createDaVinciPushStatusStore(String clusterName, String storeName) {
-    veniceHelixAdmin.checkControllerMastership(clusterName);
-    Store daVinciStore = getStore(clusterName, storeName);
-    Store zkSharedStore = getStore(clusterName, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getPrefix());
-    if (daVinciStore == null) {
-      throw new VeniceException("Store " + storeName + " not created.");
-    }
-    if (zkSharedStore == null) {
-      throw new VeniceException("Da Vinci ZK-shared push status store not created in cluster " + clusterName + ".");
-    }
-    if (zkSharedStore.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
-      throw new VeniceException("Da Vinci ZK-shared push status store initial version not created.");
-    }
-    String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
-    Version version = zkSharedStore.getVersion(zkSharedStore.getCurrentVersion()).orElseThrow(() ->
-        new VeniceException("Version " + zkSharedStore.getCurrentVersion() + " not created."));
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.ADD_VERSION.getValue();
-    message.payloadUnion = getAddVersionMessage(clusterName, pushStatusStoreName, version.getPushJobId(), version,
-        version.getPartitionCount(), version.getPushType());
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
-    // Ensure the wild card acl regex is created for DAVINCI_PUSH_STATUS_STORE
-    authorizerService.ifPresent(service -> service.setupResource(
-        new Resource(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName))));
-  }
-
-  @Override
   public void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber, boolean deleteRT) {
     String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
     veniceHelixAdmin.checkPreConditionForSingleVersionDeletion(clusterName, metadataStoreName, versionNumber);
@@ -2423,28 +2396,6 @@ public class VeniceParentHelixAdmin implements Admin {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.DELETE_OLD_VERSION.getValue();
     message.payloadUnion = deleteOldVersion;
-    acquireAdminMessageLock(clusterName, storeName);
-    try {
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-    } finally {
-      releaseAdminMessageLock(clusterName);
-    }
-  }
-
-  @Override
-  public void deleteDaVinciPushStatusStore(String clusterName, String storeName) {
-    String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName);
-    ReadWriteStoreRepository repository = veniceHelixAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
-    Store store = repository.getStore(storeName);
-    if (store == null) {
-      throw new VeniceNoStoreException("Store:" + storeName + " does not exist in cluster:" + clusterName);
-    }
-    DeleteAllVersions deleteAllVersions = (DeleteAllVersions) AdminMessageType.DELETE_ALL_VERSIONS.getNewInstance();
-    deleteAllVersions.clusterName = clusterName;
-    deleteAllVersions.storeName = pushStatusStoreName;
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.DELETE_ALL_VERSIONS.getValue();
-    message.payloadUnion = deleteAllVersions;
     acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);

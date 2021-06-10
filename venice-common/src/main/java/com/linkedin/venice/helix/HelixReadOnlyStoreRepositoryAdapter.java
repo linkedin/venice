@@ -117,10 +117,14 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     List<Store> allStores = new ArrayList<>(regularVeniceStores);
     // So far, only consider meta system store.
     Store zkSharedStoreForMetaSystemStore = systemStoreRepository.getStore(VeniceSystemStoreType.META_STORE.getZkSharedStoreName());
+    Store zkSharedStoreForDaVinciPushStatusSystemStore = systemStoreRepository.getStore(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
     // Populate all the systems stores for the regular Venice stores if they are enabled.
     regularVeniceStores.forEach( store -> {
       if (store.isStoreMetaSystemStoreEnabled()) {
         allStores.add(new SystemStore(zkSharedStoreForMetaSystemStore, VeniceSystemStoreType.META_STORE, store));
+      }
+      if (store.isDaVinciPushStatusStoreEnabled()) {
+        allStores.add(new SystemStore(zkSharedStoreForDaVinciPushStatusSystemStore, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store));
       }
     });
     return allStores;
@@ -221,6 +225,23 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
             });
           }
         }
+      } else if (zkSharedStoreName.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName())) {
+        // Get all the affected system stores
+        List<Store> regularStores = regularStoreRepository.getAllStores();
+        for (Store regularStore : regularStores) {
+          if (regularStore.isDaVinciPushStatusStoreEnabled()) {
+            SystemStore daVinciPushStatusSystemStore = new SystemStore(store, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, regularStore);
+            // Notify the change of da vinci push status system store.
+            listeners.forEach(listener -> {
+              try {
+                listener.handleStoreChanged(daVinciPushStatusSystemStore);
+              } catch (Throwable t) {
+                LOGGER.error("Received exception while invoking `handleStoreChanged` of listener: " + listener.getClass()
+                    + " with system store: " + daVinciPushStatusSystemStore.getName(), t);
+              }
+            });
+          }
+        }
       } else {
         LOGGER.info("Received zk shared store change for store: " + zkSharedStoreName + ", will be ignored");
       }
@@ -261,6 +282,19 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
           }
         });
       }
+      String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName());
+      if (store.isDaVinciPushStatusStoreEnabled()) {
+        listeners.forEach(listener -> {
+          try {
+            SystemStore daVinciPushStatusSystemStore = new SystemStore(systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName()),
+                VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store);
+            listener.handleStoreCreated(daVinciPushStatusSystemStore);
+          } catch (Throwable t) {
+            LOGGER.error("Received exception while invoking `handleStoreCreated` of listener: " + listener.getClass()
+                + " with system store: " + daVinciPushStatusSystemStoreName, t);
+          }
+        });
+      }
     }
 
     /**
@@ -291,6 +325,16 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
         } catch (Throwable t) {
           LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
               + " with system store: " + metaSystemStoreName, t);
+        }
+        if (store.isDaVinciPushStatusStoreEnabled()) {
+          String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+          try {
+            // Notify the da vinci push status system store deletion
+            listener.handleStoreDeleted(daVinciPushStatusSystemStoreName);
+          } catch (Throwable t) {
+            LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
+                + " with system store: " + daVinciPushStatusSystemStoreName, t);
+          }
         }
       });
     }
@@ -329,6 +373,17 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
             listener.handleStoreChanged(metaSystemStore);
           } catch (Throwable t) {
             LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass() + " with system store: " + metaSystemStoreName, t);
+          }
+        }
+        if (store.isDaVinciPushStatusStoreEnabled()) {
+          String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName());
+          try {
+            SystemStore daVinciPushStatusSystemStore =
+                new SystemStore(systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName()),
+                    VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE, store);
+            listener.handleStoreChanged(daVinciPushStatusSystemStore);
+          } catch (Throwable t) {
+            LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass() + " with system store: " + daVinciPushStatusSystemStoreName, t);
           }
         }
       });

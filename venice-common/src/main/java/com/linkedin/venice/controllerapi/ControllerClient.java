@@ -10,8 +10,6 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushstatus.PushStatusValue;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -30,7 +28,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.avro.Schema;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.log4j.Logger;
 
@@ -331,12 +328,6 @@ public class ControllerClient implements Closeable {
         .add(VALUE_SCHEMA, systemStore.getValueSchema())
         .add(IS_SYSTEM_STORE, true);
     NewStoreResponse response = request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
-    if (!response.isError() && VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-      int valueSchemaId = getValueSchemaID(storeName, PushStatusValue.SCHEMA$.toString()).getId();
-      Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(PushStatusValue.SCHEMA$.toString()).getTypes().get(0);
-      addDerivedSchema(storeName, valueSchemaId, writeComputeSchema.toString());
-      updateStore(storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true).setWriteComputationEnabled(true));
-    }
     return response;
   }
 
@@ -376,18 +367,6 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName)
         .add(VERSION, versionNumber);
     return request(ControllerRoute.DEMATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);
-  }
-
-  public ControllerResponse createDaVinciPushStatusStore(String storeName) {
-    QueryParams params = newParams()
-        .add(NAME, storeName);
-    return request(ControllerRoute.CREATE_DAVINCI_PUSH_STATUS_STORE, params, ControllerResponse.class);
-  }
-
-  public ControllerResponse deleteDaVinciPushStatusStore(String storeName) {
-    QueryParams params = newParams()
-        .add(NAME, storeName);
-    return request(ControllerRoute.DELETE_DAVINCI_PUSH_STATUS_STORE, params, ControllerResponse.class);
   }
 
   public StoreMigrationResponse migrateStore(String storeName, String destClusterName) {

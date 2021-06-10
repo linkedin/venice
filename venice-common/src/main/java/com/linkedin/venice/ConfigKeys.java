@@ -1463,6 +1463,8 @@ public class ConfigKeys {
    */
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
 
+  public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED = "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
+
   /**
    * Interval for Da Vinci clients to send heartbeats.
    */

@@ -598,27 +598,6 @@ public class StoresRoutes extends AbstractRoute {
     };
   }
 
-  public Route deleteDaVinciPushStatusStore(Admin admin) {
-    return (request, response) -> {
-      ControllerResponse responseObject = new ControllerResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        AdminSparkServer.validateParams(request, DELETE_DAVINCI_PUSH_STATUS_STORE.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-
-        admin.deleteDaVinciPushStatusStore(clusterName, storeName);
-
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-      } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
-        AdminSparkServer.handleError(e, request, response);
-      }
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
-    };
-  }
-
   public Route setTopicCompaction(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
       @Override

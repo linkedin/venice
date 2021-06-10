@@ -324,11 +324,7 @@ public class AdminExecutionTask implements Callable<Void> {
   private void handleDeleteAllVersions(DeleteAllVersions message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-      admin.deleteDaVinciPushStatusStore(clusterName, VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName));
-    } else {
-      admin.deleteAllVersionsInStore(clusterName, storeName);
-    }
+    admin.deleteAllVersionsInStore(clusterName, storeName);
     logger.info("Deleted all of version in store:" + storeName + " in cluster: " + clusterName);
   }
 
@@ -535,8 +531,6 @@ public class AdminExecutionTask implements Callable<Void> {
         // Materialize a metadata store for a specific Venice store.
         admin.materializeMetadataStoreVersion(clusterName,
             VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName), versionNumber);
-      } else if (VeniceSystemStoreUtils.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-        admin.createDaVinciPushStatusStore(clusterName, VeniceSystemStoreUtils.getStoreNameFromSystemStoreName(storeName));
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,

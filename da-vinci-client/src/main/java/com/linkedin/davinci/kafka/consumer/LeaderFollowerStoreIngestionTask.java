@@ -1418,7 +1418,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             Update update = (Update) kafkaValue.payloadUnion;
             int valueSchemaId = update.schemaId;
             int derivedSchemaId = update.updateSchemaId;
-
             GenericRecord originalValue = null;
             boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
 

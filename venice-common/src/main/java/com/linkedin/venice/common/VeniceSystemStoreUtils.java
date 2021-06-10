@@ -34,8 +34,7 @@ public class VeniceSystemStoreUtils {
   }
 
   public static boolean isStoreHostingSharedMetadata(String clusterName, String storeName) {
-    return VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName).equals(storeName)
-        || VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(clusterName).equals(storeName);
+    return VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(clusterName).equals(storeName);
   }
 
   public static VeniceSystemStoreType getSystemStoreType(String storeName) {
@@ -96,10 +95,6 @@ public class VeniceSystemStoreUtils {
 
   public static String getSharedZkNameForMetadataStore(String clusterName) {
     return METADATA_STORE.getPrefix() + SEPARATOR + clusterName;
-  }
-
-  public static String getSharedZkNameForDaVinciPushStatusStore(String clusterName) {
-    return DAVINCI_PUSH_STATUS_STORE.getPrefix() + SEPARATOR + clusterName;
   }
 
 }

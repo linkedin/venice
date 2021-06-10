@@ -5,17 +5,16 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -44,8 +43,7 @@ public class PushStatusStoreTest {
   private static final int TEST_TIMEOUT = 60_000; // ms
 
   private VeniceClusterWrapper cluster;
-  private VeniceControllerWrapper parentController;
-  private ControllerClient parentControllerClient;
+  private ControllerClient controllerClient;
   private D2Client d2Client;
   private PushStatusStoreReader reader;
   private String storeName;
@@ -54,6 +52,9 @@ public class PushStatusStoreTest {
   public void setup() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    extraProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
+    extraProperties.setProperty(CONTROLLER_ZK_SHARED_METADATA_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
+    extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
     Utils.thisIsLocalhost();
     cluster = ServiceFactory.getVeniceCluster(
         1,
@@ -64,30 +65,16 @@ public class PushStatusStoreTest {
         false,
         false,
         extraProperties);
-    Properties controllerConfig = new Properties();
-    controllerConfig.setProperty(CONTROLLER_AUTO_MATERIALIZE_METADATA_SYSTEM_STORE_ENABLED, String.valueOf(true));
-    parentController =
-        ServiceFactory.getVeniceParentController(cluster.getClusterName(), ServiceFactory.getZkServer().getAddress(), cluster.getKafka(),
-            cluster.getVeniceControllers().toArray(new VeniceControllerWrapper[0]),
-            new VeniceProperties(controllerConfig), false);
-    parentControllerClient = new ControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
+    controllerClient = cluster.getControllerClient();
     d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
     reader = new PushStatusStoreReader(d2Client, TimeUnit.MINUTES.toSeconds(10));
-    String owner = "test";
-    String zkSharedPushStatusStoreName = VeniceSystemStoreUtils.getSharedZkNameForDaVinciPushStatusStore(cluster.getClusterName());
-    String zkSharedMetadataStoreName = VeniceSystemStoreUtils.getSharedZkNameForMetadataStore(cluster.getClusterName());
-    TestUtils.assertCommand(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedPushStatusStoreName, owner));
-    TestUtils.assertCommand(parentControllerClient.newZkSharedStoreVersion(zkSharedPushStatusStoreName));
-    TestUtils.assertCommand(parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedMetadataStoreName, owner));
-    TestUtils.assertCommand(parentControllerClient.newZkSharedStoreVersion(zkSharedMetadataStoreName));
   }
 
   @AfterClass
   public void cleanup() {
     IOUtils.closeQuietly(reader);
     D2ClientUtils.shutdownClient(d2Client);
-    IOUtils.closeQuietly(parentControllerClient);
-    IOUtils.closeQuietly(parentController);
+    IOUtils.closeQuietly(controllerClient);
     IOUtils.closeQuietly(cluster);
   }
 
@@ -96,19 +83,21 @@ public class PushStatusStoreTest {
     storeName = TestUtils.getUniqueString("store");
     String owner = "test";
     // set up push status store
-    TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
-    TestUtils.assertCommand(parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+    TestUtils.assertCommand(controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
+    TestUtils.assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setLeaderFollowerModel(true)
         .setPartitionCount(2)
         .setAmplificationFactor(1)
         .setIncrementalPushEnabled(true)));
-    TestUtils.assertCommand(parentControllerClient.createDaVinciPushStatusStore(storeName));
-    String metadataStoreTopic =
-        Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(storeName), 1);
-    // The corresponding metadata store should be materialized automatically.
-    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, cluster.getControllerClient(), 30, TimeUnit.SECONDS,
-        Optional.empty());
+    String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+    VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore =
+        controllerClient.emptyPush(daVinciPushStatusSystemStoreName, "test_da_vinci_push_status_system_store_push_1", 10000);
+    assertFalse(versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
+        "New version creation for Da Vinci push status system store: " + daVinciPushStatusSystemStoreName + " should success, but got error: "
+            + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
+    TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
+        controllerClient, 30, TimeUnit.SECONDS, Optional.empty());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
@@ -131,20 +120,6 @@ public class PushStatusStoreTest {
         assertEquals(reader.getPartitionStatus(storeName, 2, 0, Optional.empty()).size(), 1);
       });
     }
-
-    String pushStatusStoreTopic =
-        Version.composeKafkaTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), 1);
-    assertTrue(cluster.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(pushStatusStoreTopic));
-    assertFalse(cluster.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(pushStatusStoreTopic));
-    parentControllerClient.deleteDaVinciPushStatusStore(storeName);
-
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      cluster.getVeniceControllers().get(0).getVeniceAdmin().getPushStatusStoreRecordDeleter()
-          .ifPresent(deleter -> assertNull(deleter.getPushStatusStoreVeniceWriter(storeName)));
-      assertFalse(cluster.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(pushStatusStoreTopic));
-      assertTrue(!cluster.getVeniceControllers().get(0).getVeniceAdmin().getTopicManager().containsTopic(pushStatusStoreTopic)
-          || cluster.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(pushStatusStoreTopic));
-    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -184,7 +159,7 @@ public class PushStatusStoreTest {
     PropertyBuilder backendConfigBuilder = new PropertyBuilder()
         .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
         .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true);
