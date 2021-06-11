@@ -1,9 +1,13 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
@@ -13,6 +17,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -33,21 +38,23 @@ public class SharedKafkaConsumerTest {
     doReturn(consumerServiceStats).when(consumerService).getStats();
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
+    String existingTopic1 = "existingTopic1_v1";
+    String existingTopic2 = "existingTopic2_v1";
+    String existingTopicWithoutIngestionTask1 = "existingTopicWithoutIngestionTask1";
+    String nonExistingTopic1 = "nonExistingTopic1_v1";
 
-    TopicExistenceChecker topicExistenceChecker = new TopicExistenceChecker() {
-      @Override
-      public boolean checkTopicExists(String topic) {
-        return !topic.equalsIgnoreCase("nonExistingTopic1");
-      }
-    };
+    ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
+    MetadataRepoBasedTopicExistingCheckerImpl topicExistenceChecker = new MetadataRepoBasedTopicExistingCheckerImpl(repository);
+    Store store = mock(Store.class);
+    doReturn(Optional.of(new VersionImpl("existingTopic", 1))).when(store).getVersion(1);
+    doReturn(store).when(repository).getStoreOrThrow("existingTopic1");
+    doReturn(store).when(repository).getStoreOrThrow("existingTopic2");
+    doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
     SharedKafkaConsumer sharedConsumer =
         new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
 
-    String existingTopic1 = "existingTopic1";
-    String existingTopic2 = "existingTopic2";
-    String existingTopicWithoutIngestionTask1 = "existingTopicWithoutIngestionTask1";
-    String nonExistingTopic1 = "nonExistingTopic1";
+
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(existingTopic1, 1));
     assignmentReturnedConsumer.add(new TopicPartition(existingTopic2, 1));
@@ -108,16 +115,13 @@ public class SharedKafkaConsumerTest {
     doReturn(consumerServiceStats).when(consumerService).getStats();
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
+    String nonExistingTopic1 = "nonExistingTopic1_v3";
 
-    TopicExistenceChecker topicExistenceChecker = new TopicExistenceChecker() {
-      @Override
-      public boolean checkTopicExists(String topic) {
-        return !topic.equalsIgnoreCase("nonExistingTopic1");
-      }
-    };
+    ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
+    MetadataRepoBasedTopicExistingCheckerImpl topicExistenceChecker = new MetadataRepoBasedTopicExistingCheckerImpl(repository);
+    doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
     SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
-    String nonExistingTopic1 = "nonExistingTopic1";
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(nonExistingTopic1, 1));
     doReturn(assignmentReturnedConsumer).when(consumer).getAssignment();
@@ -140,34 +144,25 @@ public class SharedKafkaConsumerTest {
     verify(consumer, times(1)).poll(1000);
   }
 
-
   @Test
-  public void testIngestionTaskBehaviorWhenConsumerListTopicsReturnStaledInfo() throws InterruptedException {
+  public void testIngestionTaskBehaviorWhenConsumerListTopicsReturnStaleInfo() throws InterruptedException {
     KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
     KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
     KafkaConsumerServiceStats consumerServiceStats = mock(KafkaConsumerServiceStats.class);
     doReturn(consumerServiceStats).when(consumerService).getStats();
     Time mockTime = new MockTime();
     final long nonExistingTopicCleanupDelayMS = 1000;
+    String existingTopic1 = "existingTopic1_v1";
+    String nonExistingTopic1 = "nonExistingTopic1_v1";
 
-    TopicExistenceChecker topicExistenceChecker = new TopicExistenceChecker() {
-      int invocationCount = 0;
-      @Override
-      public boolean checkTopicExists(String topic) {
-        invocationCount++;
-        //couldn't find a better way to simulate this.
-        //6 because this api will be called 2 for each poll invocation for 2 topics.
-        if (invocationCount < 6) {
-          return topic.equalsIgnoreCase("existingTopic1");
-        } else {
-          return topic.equalsIgnoreCase("nonExistingTopic1");
-        }
-      }
-    };
+    ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
+    MetadataRepoBasedTopicExistingCheckerImpl topicExistenceChecker = new MetadataRepoBasedTopicExistingCheckerImpl(repository);
+    Store store = mock(Store.class);
+    doReturn(Optional.of(new VersionImpl("existingTopic", 1))).when(store).getVersion(1);
+    doReturn(store).when(repository).getStoreOrThrow("existingTopic1");
+    doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
     SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
-    String existingTopic1 = "existingTopic1";
-    String nonExistingTopic1 = "nonExistingTopic1";
     Map<String, List<PartitionInfo>> staledTopicListReturnedByConsumer = new HashMap<>();
     staledTopicListReturnedByConsumer.put(existingTopic1, Collections.emptyList());
     Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>(staledTopicListReturnedByConsumer);
@@ -200,6 +195,7 @@ public class SharedKafkaConsumerTest {
     verify(consumerServiceStats, times(2)).recordDetectedDeletedTopicNum(1);
     verify(ingestionTaskForNonExistingTopic1, never()).setLastConsumerException(any());
     // No cleanup is expected within delay
+    doReturn(store).when(repository).getStoreOrThrow("nonExistingTopic1");
     mockTime.sleep(nonExistingTopicCleanupDelayMS / 2 - 1);
     sharedConsumer.poll(1000);
     verify(consumer, never()).assign(new ArrayList<>(newAssignment));
