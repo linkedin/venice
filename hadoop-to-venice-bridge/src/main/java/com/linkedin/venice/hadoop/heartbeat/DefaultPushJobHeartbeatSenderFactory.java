@@ -6,7 +6,6 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -18,7 +17,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 
@@ -32,7 +30,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
   public PushJobHeartbeatSender createHeartbeatSender(
       VeniceProperties properties,
       ControllerClient controllerClient,
-      Optional<SSLFactory> sslFactory
+      Optional<Properties> sslProperties
   ) {
     final String heartbeatStoreName = getHeartbeatStoreName(properties);
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
@@ -54,7 +52,10 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
             ));
     LOGGER.info("Got [heartbeat store: " + heartbeatStoreName + "] VersionCreationResponse: " + versionCreationResponse);
     String heartbeatKafkaTopicName = versionCreationResponse.getKafkaTopic();
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(versionCreationResponse);
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(
+        versionCreationResponse,
+        getVeniceWriterProperties(sslProperties, versionCreationResponse.getKafkaBootstrapServers())
+    );
     Schema heartbeatKeySchema = getHeartbeatKeySchema(controllerClient, heartbeatStoreName);
     Map<Integer, Schema> valueSchemasById = getHeartbeatValueSchemas(controllerClient, heartbeatStoreName);
 
@@ -68,6 +69,16 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
             valueSchemasById,
             heartbeatKafkaTopicName
     );
+  }
+
+  private Properties getVeniceWriterProperties(Optional<Properties> sslProperties, String kafkaBootstrapUrl) {
+    Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrl);
+
+    if (sslProperties.isPresent()) {
+      veniceWriterProperties.putAll(sslProperties.get());
+    }
+    return veniceWriterProperties;
   }
 
   private Map<Integer, Schema> getHeartbeatValueSchemas(ControllerClient controllerClient, String heartbeatStoreName) {
@@ -94,24 +105,18 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     return properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName());
   }
 
-  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
-    Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
-    return getVeniceWriter(store, veniceWriterProperties);
-  }
-
   protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(
-          VersionCreationResponse store,
+          VersionCreationResponse versionCreationResponse,
           Properties veniceWriterProperties
   ) {
     Properties partitionerProperties = new Properties();
-    partitionerProperties.putAll(store.getPartitionerParams());
+    partitionerProperties.putAll(versionCreationResponse.getPartitionerParams());
     VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
-            store.getPartitionerClass(),
-            store.getAmplificationFactor(),
-            new VeniceProperties(partitionerProperties)
+        versionCreationResponse.getPartitionerClass(),
+        versionCreationResponse.getAmplificationFactor(),
+        new VeniceProperties(partitionerProperties)
     );
     return new VeniceWriterFactory(veniceWriterProperties).
-            createBasicVeniceWriter(store.getKafkaTopic(), new SystemTime(), venicePartitioner);
+            createBasicVeniceWriter(versionCreationResponse.getKafkaTopic(), new SystemTime(), venicePartitioner);
   }
 }

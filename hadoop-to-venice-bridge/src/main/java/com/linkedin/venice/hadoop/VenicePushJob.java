@@ -38,6 +38,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
+import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
@@ -307,7 +308,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   private boolean inputFileHasRecords;
   private long jobStartTimeMs;
   private Properties veniceWriterProperties;
-  private Properties sslProperties;
+  private final Lazy<Properties> sslProperties;
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter; // Lazily initialized
   private JobClientWrapper jobClientWrapper;
   // A controller client that is used to discover cluster
@@ -445,7 +446,14 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     this.controllerClient = controllerClient;
     this.clusterDiscoveryControllerClient = clusterDiscoveryControllerClient;
     this.jobId = jobId;
-    props = getVenicePropsFromVanillaProps(vanillaProps);
+    this.props = getVenicePropsFromVanillaProps(vanillaProps);
+    this.sslProperties = Lazy.of(() -> {
+      try {
+        return getSslProperties(this.props);
+      } catch (IOException e) {
+        throw new VeniceException("Could not get user credential");
+      }
+    });
     LOGGER.info("Constructing " + VenicePushJob.class.getSimpleName() + ": " + props.toString(true));
     String veniceControllerUrl = getVeniceControllerUrl(props);
     LOGGER.info("Get Venice controller URL: " + veniceControllerUrl);
@@ -713,13 +721,18 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       initPushJobDetails();
       jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
+      final boolean sslEnabled = props.getBoolean(ENABLE_SSL, false);
       Optional<SSLFactory> sslFactory = createSSlFactory(
-              props.getBoolean(ENABLE_SSL, false),
+              sslEnabled,
               props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)
       );
       initControllerClient(sslFactory, pushJobSetting.veniceControllerUrl, clusterName);
       sendPushJobDetailsToController();
-      pushJobHeartbeatSender = pushJobHeartbeatSenderFactory.createHeartbeatSender(props, controllerClient, Optional.empty());
+      pushJobHeartbeatSender = pushJobHeartbeatSenderFactory.createHeartbeatSender(
+          props,
+          controllerClient,
+          sslEnabled ? Optional.of(this.sslProperties.get()) : Optional.empty()
+      );
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota, storeSetting.storageEngineOverheadRatio);
@@ -961,7 +974,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     Optional<SSLFactory> sslFactory = Optional.empty();
     if (enableSsl) {
       LOGGER.info("Controller ACL is enabled.");
-      Properties sslProps = getSslProperties();
+      Properties sslProps = sslProperties.get();
       sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
     }
     return sslFactory;
@@ -1003,7 +1016,8 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       if (pushJobSetting.isSourceKafka) {
         LOGGER.info("Reading Ztsd dictionary from input topic");
         // set up ssl properties and kafka consumer properties
-        Properties kafkaConsumerProperties = getSslProperties();
+        Properties kafkaConsumerProperties = new Properties();
+        kafkaConsumerProperties.putAll(this.sslProperties.get());
         kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, props.getString(KAFKA_INPUT_BROKER_URL));
         compressionDictionary = DictionaryUtils.readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
       } else {
@@ -1578,8 +1592,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
     }
     if (sslToKafka) {
-      Properties sslProps = getSslProperties();
-      veniceWriterProperties.putAll(sslProps);
+      veniceWriterProperties.putAll(this.sslProperties.get());
     }
     if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
       // Not a typo, we actually want to set delivery timeout!
@@ -1594,25 +1607,20 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   /**
    * Build ssl properties based on the hadoop token file.
    */
-  private synchronized Properties getSslProperties() {
-    if (null == sslProperties) {
-      sslProperties = new Properties();
-      // SSL_ENABLED is needed in SSLFactory
-      sslProperties.setProperty(SSL_ENABLED, "true");
-      sslProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
-      props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
-        sslProperties.setProperty(key, props.getString(key));
-      });
-      try {
-        SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
-            props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
-        Properties sslWriterProperties = sslConfigurator.setupSSLConfig(sslProperties, UserCredentialsFactory.getUserCredentialsFromTokenFile());
-        sslProperties.putAll(sslWriterProperties);
-      } catch (IOException e) {
-        throw new VeniceException("Could not get user credential for kafka push job for topic" + kafkaTopicInfo.topic);
-      }
-    }
-    return sslProperties;
+  private Properties getSslProperties(VeniceProperties allProperties) throws IOException {
+    Properties newSslProperties = new Properties();
+    // SSL_ENABLED is needed in SSLFactory
+    newSslProperties.setProperty(SSL_ENABLED, "true");
+    newSslProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+    allProperties.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
+      newSslProperties.setProperty(key, allProperties.getString(key));
+    });
+    SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
+        allProperties.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
+
+    Properties sslWriterProperties = sslConfigurator.setupSSLConfig(newSslProperties, UserCredentialsFactory.getUserCredentialsFromTokenFile());
+    newSslProperties.putAll(sslWriterProperties);
+    return newSslProperties;
   }
 
   private synchronized void closeVeniceWriter() {
