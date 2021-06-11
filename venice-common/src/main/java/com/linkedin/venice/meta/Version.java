@@ -159,7 +159,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   @JsonIgnore
   String kafkaTopicName();
 
-  static String parseStoreFromKafkaTopicName(String kafkaTopic) {
+  static String parseStoreFromVersionTopic(String kafkaTopic) {
     return kafkaTopic.substring(0, getLastIndexOfVersionSeparator(kafkaTopic));
   }
 
@@ -229,6 +229,14 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
     return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
+  }
+
+  static String parseStoreFromKafkaTopicName(String kafkaTopic) {
+    if (isRealTimeTopic(kafkaTopic)) {
+      return parseStoreFromRealTimeTopic(kafkaTopic);
+    } else {
+      return parseStoreFromVersionTopic(kafkaTopic);
+    }
   }
 
   static boolean isRealTimeTopic(String kafkaTopic) {

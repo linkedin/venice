@@ -48,7 +48,6 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.KafkaClientStats;
-import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
@@ -351,7 +350,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           bandwidthThrottler,
           recordsThrottler,
           metricsRepository,
-          new MetadatRepoBasedTopicExistingCheckerImpl());
+          new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()));
       /**
        * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain any consumer pool yet until
        * a new Kafka cluster is registered; here we explicitly register the local Kafka cluster by invoking
@@ -1035,33 +1034,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return offsetRecordArray;
   }
 
-  public class MetadatRepoBasedTopicExistingCheckerImpl implements TopicExistenceChecker {
-    private final Logger logger = Logger.getLogger(MetadatRepoBasedTopicExistingCheckerImpl.class);
-
-    public boolean checkTopicExists(String topic) {
-      boolean isExistingTopic = true;
-
-      String storeName = Version.isRealTimeTopic(topic) ? Version.parseStoreFromRealTimeTopic(topic) : Version.parseStoreFromKafkaTopicName(topic);
-
-      try {
-        Store store = metadataRepo.getStoreOrThrow(storeName);
-        if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
-          int version = Version.parseVersionFromKafkaTopicName(topic);
-          if (!store.getVersion(version).isPresent()) {
-            isExistingTopic = false;
-          }
-        } else if (Version.isRealTimeTopic(topic)) {
-          if (!store.isHybrid()) {
-            isExistingTopic = false;
-          }
-        }
-      } catch (VeniceNoStoreException e) {
-        isExistingTopic = false;
-      } catch (Exception e) {
-        logger.error("Exception thrown in checkTopicExists: ", e);
-      }
-      return isExistingTopic;
-    }
+  public ReadOnlyStoreRepository getMetadataRepo() {
+    return metadataRepo;
   }
-
 }
