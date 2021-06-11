@@ -255,12 +255,13 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
 
       // Test store deletion
       writeRepo.deleteStore(newStoreName);
-      ArgumentCaptor<String> storeArgumentCaptorForDeletion = ArgumentCaptor.forClass(String.class);
+      ArgumentCaptor<Store> storeArgumentCaptorForDeletion = ArgumentCaptor.forClass(Store.class);
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         // Will receive notification for both the regular store and the corresponding system store
         verify(storeDataChangedListener, times(2)).handleStoreDeleted(storeArgumentCaptorForDeletion.capture());
-        List<String> notifiedStoreNames = storeArgumentCaptorForDeletion.getAllValues();
+        List<String> notifiedStoreNames = storeArgumentCaptorForDeletion.getAllValues().stream().map(s -> s.getName()).collect(
+            Collectors.toList());
         assertTrue(notifiedStoreNames.contains(newStoreName), "Venice store: " + regularStoreNameWithMetaSystemStoreEnabled + " should be notified");
         assertTrue(notifiedStoreNames.contains(systemStoreName), "The corresponding system store: " + systemStoreName + " should be notified");
       });

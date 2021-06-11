@@ -40,7 +40,6 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
@@ -233,11 +232,19 @@ public class MetaStoreWriter implements Closeable {
     writer.flush();
   }
 
+  /**
+   * This function should be used only for store deletion scenario.
+   * @param metaStoreName
+   */
   public void removeMetaStoreWriter(String metaStoreName) {
     VeniceWriter writer = metaStoreWriterMap.get(metaStoreName);
     if (writer != null) {
-      writer.close();
+      /**
+       * Free the internal resource without sending any extra messages since the store is going to be deleted.
+       */
+      closeVeniceWriter(metaStoreName, writer, true);
       metaStoreWriterMap.remove(metaStoreName);
+      LOGGER.info("Removed the venice writer for meta store: " + metaStoreName);
     }
   }
 
@@ -295,8 +302,34 @@ public class MetaStoreWriter implements Closeable {
     return schemas.stream().collect(Collectors.toMap(s -> (Integer.toString(s.getId())), s -> s.getSchema().toString()));
   }
 
+  /**
+   * When {@param skipTopicCheck} is enabled, this function will skip the RT topic existence check and
+   * close the internal Kafka producer directly without sending out any EOS messages.
+   * Otherwise, it will perform the regular topic existence check to decide whether EOS should be sent or not.
+   */
+  private void closeVeniceWriter(String metaStoreName, VeniceWriter veniceWriter, boolean skipTopicCheck) {
+    if (skipTopicCheck) {
+      veniceWriter.close(false);
+      return;
+    }
+    /**
+     * Check whether the RT topic exists or not before closing Venice Writer since closing VeniceWriter will try
+     * to write a Control Message to the RT topic, and it could hang if the topic doesn't exist.
+     *
+     * This check is a best-effort since the race condition is still there between topic check and closing VeniceWriter.
+     */
+    String rtTopic = Version.composeRealTimeTopic(metaStoreName);
+    if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
+      LOGGER.info("RT topic: " + rtTopic + " for meta system store: " + metaStoreName + " doesn't exist, so here "
+          + " will only close the internal producer without sending END_OF_SEGMENT control messages");
+      veniceWriter.close(false);
+    } else {
+      veniceWriter.close();
+    }
+  }
+
   @Override
   public void close() throws IOException {
-    metaStoreWriterMap.values().forEach(IOUtils::closeQuietly);
+    metaStoreWriterMap.forEach((metaStoreName, veniceWriter) -> closeVeniceWriter(metaStoreName, veniceWriter, false));
   }
 }

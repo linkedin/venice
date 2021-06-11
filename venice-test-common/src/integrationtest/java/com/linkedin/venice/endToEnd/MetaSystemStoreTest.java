@@ -252,6 +252,17 @@ public class MetaSystemStoreTest {
             "Any request to meta system store should throw exception before non-existing store");
       }
     });
+
+    /**
+     * Wait for the RT topic deletion.
+     */
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      ControllerResponse response = controllerClient.checkResourceCleanupForStoreCreation(metaSystemStoreName);
+      if (response.isError()) {
+        fail("The store cleanup for meta system store: " + metaSystemStoreName + " is not done yet");
+      }
+    });
+    LOGGER.info("Resource cleanup is done for meta system store: " + metaSystemStoreName);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
