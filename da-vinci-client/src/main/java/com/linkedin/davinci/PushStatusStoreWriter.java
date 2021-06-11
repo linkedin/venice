@@ -2,20 +2,18 @@ package com.linkedin.davinci;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatus.NoOp;
 import com.linkedin.venice.pushstatus.PushStatusKey;
+import com.linkedin.venice.pushstatus.PushStatusValueWriteOpRecord;
+import com.linkedin.venice.pushstatus.instancesMapOps;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreVeniceWriterCache;
 import com.linkedin.venice.pushstatus.PushStatusValue;
-import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Collections;
 import java.util.Optional;
-import org.apache.avro.generic.GenericData;
 import org.apache.log4j.Logger;
-
-import static com.linkedin.venice.pushstatushelper.PushStatusStoreVeniceWriterCache.*;
-
 
 /**
  * PushStatusStoreWriter is a helper class for Da Vinci to write PushStatus and heartbeat message into PushStatus store
@@ -57,12 +55,12 @@ public class PushStatusStoreWriter implements AutoCloseable {
   public void writePushStatus(String storeName, int version, int partitionId, ExecutionStatus status, Optional<String> incrementalPushVersion) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion);
-    GenericData.Record writeComputeRecord = new GenericData.Record(WRITE_COMPUTE_SCHEMA);
-    GenericData.Record instancesRecord = new GenericData.Record(WRITE_COMPUTE_SCHEMA.getField("instances").schema().getTypes().get(1));
-    instancesRecord.put(WriteComputeSchemaAdapter.MAP_UNION, Collections.singletonMap(instanceName, status.ordinal()));
-    instancesRecord.put(WriteComputeSchemaAdapter.MAP_DIFF, Collections.emptyList());
-    writeComputeRecord.put("instances", instancesRecord);
-    writeComputeRecord.put("reportTimestamp", new GenericData.Record(WRITE_COMPUTE_SCHEMA.getField("reportTimestamp").schema().getTypes().get(0)));
+    PushStatusValueWriteOpRecord writeComputeRecord = new PushStatusValueWriteOpRecord();
+    instancesMapOps instances = new instancesMapOps();
+    instances.mapUnion = Collections.singletonMap(instanceName, status.getValue());
+    instances.mapDiff = Collections.emptyList();
+    writeComputeRecord.instances = instances;
+    writeComputeRecord.reportTimestamp = new NoOp();
     logger.info("Updating pushStatus of " + instanceName + " to " + status.toString() +
         ". storeName: " + storeName + " , version: " + version + " , partition: " + partitionId);
     writer.update(pushStatusKey, writeComputeRecord, AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion(), derivedSchemaId, null);
