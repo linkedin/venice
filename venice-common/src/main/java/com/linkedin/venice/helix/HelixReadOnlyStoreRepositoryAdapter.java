@@ -267,21 +267,27 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
      * Notify the store deletion and maybe the corresponding system store deletion.
      * TODO: so far, this function only supports {@link VeniceSystemStoreType#META_STORE}, and if you plan to support
      * more system store types, this function needs to be changed accordingly.
-     * @param storeName
+     * @param store
      */
-    public void handleStoreDeleted(String storeName) {
+    public void handleStoreDeleted(Store store) {
+      String storeName = store.getName();
       listeners.forEach(listener -> {
         // Notify the regular store deletion
         try {
-          listener.handleStoreDeleted(storeName);
+          listener.handleStoreDeleted(store);
         } catch (Throwable t) {
           LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
               + " with store: " + storeName, t);
         }
         String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+        SystemStore metaSystemStore =
+            new SystemStore(systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
+                VeniceSystemStoreType.META_STORE, store);
+
         try {
+
           // Notify the meta system store deletion
-          listener.handleStoreDeleted(metaSystemStoreName);
+          listener.handleStoreDeleted(metaSystemStore);
         } catch (Throwable t) {
           LOGGER.error("Received exception while invoking `handleStoreDeleted` of listener: " + listener.getClass()
               + " with system store: " + metaSystemStoreName, t);

@@ -21,6 +21,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -35,6 +36,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -46,6 +48,7 @@ import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.KafkaClientStats;
+import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
@@ -293,6 +296,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new MetaSystemStoreReplicaStatusNotifier(serverConfig.getClusterName(), metaStoreWriter, metadataRepo,
               Instance.fromHostAndPort(Utils.getHostName(), serverConfig.getListenerPort()));
       logger.info("MetaSystemStoreReplicaStatusNotifier was initialized");
+      metadataRepo.registerStoreDataChangedListener(new StoreDataChangedListener() {
+        @Override
+        public void handleStoreDeleted(Store store) {
+          String storeName = store.getName();
+          if (VeniceSystemStoreType.getSystemStoreType(storeName).equals(VeniceSystemStoreType.META_STORE)) {
+            metaStoreWriter.removeMetaStoreWriter(storeName);
+            logger.info("MetaSystemWriter for meta store: " + storeName + " got removed.");
+          }
+        }
+      });
     } else {
       this.metaStoreWriter = null;
       this.metaSystemStoreReplicaStatusNotifier = null;
