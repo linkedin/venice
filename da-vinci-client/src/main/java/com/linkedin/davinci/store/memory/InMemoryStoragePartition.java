@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.memory;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
@@ -72,6 +73,16 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     keyBuffer.get(key);
     keyBuffer.reset();
     return get(key);
+  }
+
+  @Override
+  public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback) {
+    for (Map.Entry<ByteArray, ByteArray> entry : partitionDb.entrySet()){
+      if (entry.getKey().startsWith(keyPrefix)){
+        callback.onRecordReceived(entry.getKey().get(), entry.getValue().get());
+      }
+    }
+    callback.onCompletion();
   }
 
   public void delete(byte[] key) {

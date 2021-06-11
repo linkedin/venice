@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import java.util.Map;
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -58,6 +59,14 @@ public abstract class AbstractStoragePartition {
   public abstract <K, V> V get(K key);
 
   public abstract byte[] get(ByteBuffer key);
+
+  /**
+   * Populate provided callback with all key-value pairs from the partition database where the keys have
+   * the provided prefix
+   * @param keyPrefix
+   * @param callback
+   */
+  public abstract void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback);
 
   /**
    * Delete a key from the partition database

@@ -68,6 +68,26 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @Test
+  public void testGetByKeyPrefixManyKeys(){
+    super.testGetByKeyPrefixManyKeys();
+  }
+
+  @Test
+  public void testGetByKeyPrefixMaxSignedByte(){
+    super.testGetByKeyPrefixMaxSignedByte();
+  }
+
+  @Test
+  public void testGetByKeyPrefixMaxUnsignedByte(){
+    super.testGetByKeyPrefixMaxUnsignedByte();
+  }
+
+  @Test
+  public void testGetByKeyPrefixByteOverflow(){
+    super.testGetByKeyPrefixByteOverflow();
+  }
+
+  @Test
   public void testGetAndPutPartitionOffset() {
     AbstractStorageEngine testStorageEngine = getTestStoreEngine();
     Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);

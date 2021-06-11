@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -347,6 +348,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public <K, V> V get(int partitionId, K key) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     return partition.get(key);
+  }
+
+  public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback){
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    partition.getByKeyPrefix(partialKey, bytesStreamingCallback);
   }
 
   public void delete(int partitionId, byte[] key) throws VeniceException {

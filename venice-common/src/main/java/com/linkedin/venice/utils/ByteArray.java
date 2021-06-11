@@ -56,4 +56,16 @@ public class ByteArray implements Serializable {
     public int length() {
         return underlying.length;
     }
+
+    public boolean startsWith(byte[] prefixBytes){
+        if (null == underlying || null == prefixBytes || underlying.length < prefixBytes.length) {
+            return false;
+        }
+        for (int i = 0; i < prefixBytes.length; i++) {
+            if (underlying[i] != prefixBytes[i]){
+                return false;
+            }
+        }
+        return true;
+    }
 }

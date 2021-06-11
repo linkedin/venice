@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -174,6 +175,19 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
     Assert.assertEquals((found == null), true,
         "PUT and GET on key: " + key.toString() + " in invalid partition: " + partitionId + " succeeded");
+
+    Assert.assertThrows(PersistenceFailureException.class, () ->
+      testStoreEngine.getByKeyPrefix(partitionId, key, new BytesStreamingCallback() {
+        @Override
+        public void onRecordReceived(byte[] key, byte[] value) {
+          Assert.fail("GetByKeyPrefix on key: " + key.toString() + " in invalid partition: " + partitionId + " succeeded when it should have failed.");
+        }
+
+        @Override
+        public void onCompletion() {
+          Assert.fail("GetByKeyPrefix on key: " + key.toString() + " in invalid partition: " + partitionId + " succeeded when it should have failed.");
+        }
+      }));
 
     //test delete
     try {

@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -25,6 +26,7 @@ import org.rocksdb.PlainTableConfig;
 import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import org.rocksdb.Slice;
 import org.rocksdb.SstFileReader;
 import org.rocksdb.SstFileReaderIterator;
 import org.rocksdb.RocksIterator;
@@ -80,6 +82,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private long recordNumInCurrentSSTFile = 0;
   private final String fullPathForTempSSTFileDir;
   private final EnvOptions envOptions;
+  private final byte maxUnsignedByte = (byte)255;
 
   private final String storeName;
   private final int partitionId;
@@ -531,6 +534,40 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
       readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback){
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      try (RocksIterator iterator = rocksDB.newIterator(new ReadOptions()
+          .setIterateUpperBound(getPrefixIterationUpperBound(keyPrefix)))) {
+        for (iterator.seek(keyPrefix); iterator.isValid(); iterator.next()){
+          callback.onRecordReceived(iterator.key(), iterator.value());
+        }
+      }
+    } finally {
+      readCloseRWLock.readLock().unlock();
+      callback.onCompletion();
+    }
+  }
+
+  private Slice getPrefixIterationUpperBound(byte[] prefix){
+    byte[] upperBound = getIncrementedByteArray(Arrays.copyOf(prefix, prefix.length), prefix.length-1);
+    return null == upperBound ? null : new Slice(upperBound);
+  }
+
+  private byte[] getIncrementedByteArray(byte[] array, int indexToIncrement){
+    if (array[indexToIncrement] != maxUnsignedByte){
+      array[indexToIncrement]++;
+      return array;
+    } else if (indexToIncrement > 0){
+      array[indexToIncrement] = 0;
+      return getIncrementedByteArray(array, --indexToIncrement);
+    } else {
+      return null;
     }
   }
 
