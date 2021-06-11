@@ -46,36 +46,48 @@ public class MainIngestionRequestClient implements Closeable {
 
   public synchronized Process startForkedIngestionProcess(VeniceConfigLoader configLoader) {
     int ingestionServicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
-    try {
-      // Add blocking call to release target port binding.
-      IsolatedIngestionUtils.releaseTargetPortBinding(ingestionServicePort);
-      List<String> jvmArgs = new ArrayList<>();
-      for (String jvmArg : configLoader.getCombinedProperties().getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "").split(",")) {
-        if (jvmArg.length() != 0) {
-          jvmArgs.add(jvmArg);
+    int currentAttempt = 0;
+    int totalAttempts = 3;
+    Process forkedIngestionProcess = null;
+    while (currentAttempt < totalAttempts) {
+      try {
+        // Add blocking call to release target port binding.
+        IsolatedIngestionUtils.releaseTargetPortBinding(ingestionServicePort);
+        List<String> jvmArgs = new ArrayList<>();
+        for (String jvmArg : configLoader.getCombinedProperties()
+            .getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "")
+            .split(",")) {
+          if (jvmArg.length() != 0) {
+            jvmArgs.add(jvmArg);
+          }
+        }
+        // Start forking child ingestion process.
+        long heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
+        forkedIngestionProcess = ForkedJavaProcess.exec(IsolatedIngestionServer.class,
+            Arrays.asList(String.valueOf(ingestionServicePort), String.valueOf(heartbeatTimeoutMs)), jvmArgs, Optional.empty());
+        // Wait for server in forked child process to bind the listening port.
+        IsolatedIngestionUtils.waitPortBinding(ingestionServicePort, 100);
+        // Wait for server in forked child process to pass health check.
+        waitHealthCheck(100);
+
+        InitializationConfigs initializationConfigs = buildInitializationConfig(configLoader);
+        logger.info("Sending initialization aggregatedConfigs to child process: " + initializationConfigs.aggregatedConfigs);
+        ingestionRequestTransport.sendRequest(IngestionAction.INIT, initializationConfigs);
+      } catch (Exception e) {
+        currentAttempt++;
+        if (currentAttempt == totalAttempts) {
+          throw new VeniceException("Exception caught during initialization of ingestion service:", e);
+        } else {
+          logger.warn("Caught exception when initializing forked process in attempt " + currentAttempt + "/" + totalAttempts, e);
+          // Kill failed process created in previous attempt.
+          IsolatedIngestionUtils.destroyPreviousIsolatedIngestionProcess(forkedIngestionProcess);
+          continue;
         }
       }
-      // Start forking child ingestion process.
-      long heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
-      Process isolatedIngestionService = ForkedJavaProcess.exec(
-          IsolatedIngestionServer.class,
-          Arrays.asList(String.valueOf(ingestionServicePort), String.valueOf(heartbeatTimeoutMs)),
-          jvmArgs,
-          Optional.empty()
-      );
-      // Wait for server in forked child process to bind the listening port.
-      IsolatedIngestionUtils.waitPortBinding(ingestionServicePort, 100);
-      // Wait for server in forked child process to pass health check.
-      waitHealthCheck(100);
-
-      InitializationConfigs initializationConfigs = buildInitializationConfig(configLoader);
-      logger.info("Sending initialization aggregatedConfigs to child process: " + initializationConfigs.aggregatedConfigs);
-      ingestionRequestTransport.sendRequest(IngestionAction.INIT, initializationConfigs);
       logger.info("Isolated ingestion service initialization finished.");
-      return isolatedIngestionService;
-    } catch (Exception e) {
-      throw new VeniceException("Exception caught during initialization of ingestion service:", e);
+      break;
     }
+    return forkedIngestionProcess;
   }
 
   public void startConsumption(String topicName, int partitionId) {
@@ -221,7 +233,8 @@ public class MainIngestionRequestClient implements Closeable {
       isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
       return true;
     } catch (Exception e) {
-      logger.warn("Unable to collect metrics from ingestion service", e);
+      // Don't spam the server logging.
+      logger.warn("Unable to collect metrics from ingestion service");
       return false;
     }
   }
@@ -231,7 +244,8 @@ public class MainIngestionRequestClient implements Closeable {
       ingestionRequestTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand());
       return true;
     } catch (Exception e) {
-      logger.warn("Unable to get heartbeat from ingestion service", e);
+      // Don't spam the server logging.
+      logger.warn("Unable to get heartbeat from ingestion service");
       return false;
     }
   }
@@ -245,7 +259,6 @@ public class MainIngestionRequestClient implements Closeable {
     InitializationConfigs initializationConfigs = new InitializationConfigs();
     initializationConfigs.aggregatedConfigs = new HashMap<>();
 
-    // initializationConfigs.aggregatedConfigs.put(ConfigKeys.SERVER_RESTORE_DATA_PARTITIONS_ENABLED, Boolean.toString(false));
     // Put all configs into request payload.
     configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
     // Override ingestion isolation's customized configs.

@@ -207,11 +207,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   public void setIsolatedIngestionServiceProcess(Process process) {
-    if (isolatedIngestionServiceProcess != null) {
-      logger.info("Destroying previous isolated ingestion process.");
-      isolatedIngestionServiceProcess.destroy();
-    }
     isolatedIngestionServiceProcess = process;
+  }
+
+  public Process getIsolatedIngestionServiceProcess() {
+    return isolatedIngestionServiceProcess;
   }
 
   public void close() {

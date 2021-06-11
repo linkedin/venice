@@ -237,23 +237,25 @@ public class IsolatedIngestionUtils {
    * the port, which is created from previous deployment and was not killed due to failures.
    */
   public static void releaseTargetPortBinding(int port) {
+    logger.info("Releasing binging on target port: " + port);
     String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + port);
-    if (processIds.length() == 0) {
-      logger.info("No process is running on target port");
-    }
-    logger.info("All processes:\n" + processIds);
-    for (String processId : processIds.split("\n")) {
-      if (!processId.equals("")) {
-        int pid = Integer.parseInt(processId);
-        logger.info("Target port: " + port + " is bind to process id: " + pid);
-        String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
-        if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
-          executeShellCommand("kill " +  pid);
-          logger.info("Killed IsolatedIngestionServer process on pid " + pid);
-        } else {
-          logger.info("Target port is bind to unknown process: " + fullProcessName);
+    if (processIds.length() != 0) {
+      logger.info("All processes:\n" + processIds);
+      for (String processId : processIds.split("\n")) {
+        if (!processId.equals("")) {
+          int pid = Integer.parseInt(processId);
+          logger.info("Target port: " + port + " is bind to process id: " + pid);
+          String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
+          if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
+            executeShellCommand("kill " + pid);
+            logger.info("Killed IsolatedIngestionServer process on pid " + pid);
+          } else {
+            logger.info("Target port is bind to unknown process: " + fullProcessName);
+          }
         }
       }
+    } else {
+      logger.info("No process is running on target port.");
     }
   }
 
@@ -296,6 +298,17 @@ public class IsolatedIngestionUtils {
     report.offset = 0;
     report.offsetRecordArray = Collections.emptyList();
     return report;
+  }
+
+
+  public static void destroyPreviousIsolatedIngestionProcess(Process isolatedIngestionServiceProcess) {
+    if (isolatedIngestionServiceProcess != null) {
+      long startTime = System.currentTimeMillis();
+      logger.info("Destroying lingering isolated ingestion process.");
+      isolatedIngestionServiceProcess.destroy();
+      long endTime = System.currentTimeMillis();
+      logger.info("Isolated ingestion process has been destroyed in " + (endTime - startTime) + "ms.");
+    }
   }
 
   public static IngestionTaskReport createIngestionTaskReport() {

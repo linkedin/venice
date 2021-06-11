@@ -3,6 +3,7 @@ package com.linkedin.davinci.ingestion.main;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -70,7 +71,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private KafkaStoreIngestionService storeIngestionService;
 
   private VeniceConfigLoader configLoader;
-  private long latestHeartbeatTimestamp = -1;
+  private volatile long latestHeartbeatTimestamp = -1;
   private long heartbeatTimeoutMs;
 
   public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, int applicationPort, int servicePort) {
@@ -226,11 +227,31 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 10, TimeUnit.SECONDS);
   }
 
-  private void restartForkedProcess() {
+  private synchronized void tryRestartForkedProcess() {
+    /**
+     * Before we add timeout to client request, there might be multiple requests being blocked at the same time and
+     * get responses at the same time. This might cause multiple heartbeat request think it is timing out and trigger
+     * this call. Here we use synchronized modifier and add timeout checking here to make sure we only restart forked
+     * process once.
+     */
+    if ((System.currentTimeMillis() - latestHeartbeatTimestamp) <= heartbeatTimeoutMs) {
+      return;
+    }
+    logger.warn("Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp + ", restarting forked process.");
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(servicePort)) {
-      ingestionBackend.setIsolatedIngestionServiceProcess(client.startForkedIngestionProcess(configLoader));
+      /**
+       * We need to destroy the previous isolated ingestion process first.
+       * The previous isolated ingestion process might have released the port binding, but it might still taking up all
+       * RocksDB storage locks and JVM memory during slow shutdown process and new forked process might fail to start
+       * without necessary resources.
+       */
+      IsolatedIngestionUtils.destroyPreviousIsolatedIngestionProcess(ingestionBackend.getIsolatedIngestionServiceProcess());
+      Process newIsolatedIngestionProcess = client.startForkedIngestionProcess(configLoader);
+      ingestionBackend.setIsolatedIngestionServiceProcess(newIsolatedIngestionProcess);
       logger.info("Forked process has been recovered.");
     }
+    // Re-initialize latest heartbeat timestamp.
+    latestHeartbeatTimestamp = System.currentTimeMillis();
     // Use async long running task scheduler to avoid blocking periodic heartbeat jobs.
     longRunningTaskExecutor.execute(this::resumeOngoingIngestionTasks);
   }
@@ -260,20 +281,18 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   private void checkHeartbeatTimeout() {
     long currentTimeMillis = System.currentTimeMillis();
-    if (logger.isDebugEnabled()) {
-      logger.debug("Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat received: " + latestHeartbeatTimestamp);
-    }
+    logger.info("Checking heartbeat timeout at " + currentTimeMillis + ", latest heartbeat received: " + latestHeartbeatTimestamp);
     if (heartbeatClient.sendHeartbeatRequest()) {
       // Update heartbeat time.
       latestHeartbeatTimestamp = System.currentTimeMillis();
+      logger.info("Received isolated ingestion server heartbeat at: " + latestHeartbeatTimestamp);
     } else {
       logger.warn("Failed to connect to forked ingestion process at " + currentTimeMillis + ", last successful timestamp: " + latestHeartbeatTimestamp);
     }
 
     if (latestHeartbeatTimestamp != -1) {
       if ((currentTimeMillis - latestHeartbeatTimestamp) > heartbeatTimeoutMs) {
-        logger.warn("Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp + ", restarting forked process.");
-        restartForkedProcess();
+        tryRestartForkedProcess();
       }
     }
   }
