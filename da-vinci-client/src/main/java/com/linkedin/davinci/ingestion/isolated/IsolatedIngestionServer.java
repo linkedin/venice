@@ -106,7 +106,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private boolean isInitiated = false;
   private IsolatedIngestionRequestClient reportClient;
-  private long heartbeatTimeInMs = System.currentTimeMillis();
+  private volatile long heartbeatTimeInMs = System.currentTimeMillis();
   private int stopConsumptionWaitRetriesNum;
   private DefaultIngestionBackend ingestionBackend;
 
@@ -301,6 +301,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public void updateHeartbeatTime() {
     this.heartbeatTimeInMs = System.currentTimeMillis();
+    logger.info("Received heartbeat from main process at: " + this.heartbeatTimeoutMs);
   }
 
   /**

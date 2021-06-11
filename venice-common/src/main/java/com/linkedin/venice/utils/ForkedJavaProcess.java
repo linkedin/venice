@@ -184,12 +184,14 @@ public final class ForkedJavaProcess extends Process {
         process.destroy();
         if (!process.waitFor(60, TimeUnit.SECONDS)) {
           logger.info("Destroying forked process forcibly.");
-          process.destroyForcibly();
+          process.destroyForcibly().waitFor();
+          logger.info("Forked process has been terminated forcibly");
         }
         Runtime.getRuntime().removeShutdownHook(processReaper);
       } else {
         logger.info("Destroying forked process forcibly.");
-        process.destroyForcibly();
+        process.destroyForcibly().waitFor();
+        logger.info("Forked process has been terminated forcibly");
       }
 
     } catch (InterruptedException e) {
