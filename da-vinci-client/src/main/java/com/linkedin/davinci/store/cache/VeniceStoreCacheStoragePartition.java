@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store.cache;
 
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
@@ -70,6 +71,11 @@ public class VeniceStoreCacheStoragePartition extends AbstractStoragePartition {
 
   @Override
   public byte[] get(ByteBuffer key) {
+    throw new UnsupportedOperationException("Reading via a serialized key for a serialized record unsupported by this implementation!!");
+  }
+
+  @Override
+  public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback) {
     throw new UnsupportedOperationException("Reading via a serialized key for a serialized record unsupported by this implementation!!");
   }
 

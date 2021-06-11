@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.blackhole;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import java.nio.ByteBuffer;
@@ -43,6 +44,12 @@ public class BlackHoleStorageEnginePartition extends AbstractStoragePartition {
   public byte[] get(ByteBuffer key) {
     // I think this is what you're looking for...
     return null;
+  }
+
+  @Override
+  public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback) {
+    // This should do it
+    callback.onCompletion();
   }
 
   @Override
