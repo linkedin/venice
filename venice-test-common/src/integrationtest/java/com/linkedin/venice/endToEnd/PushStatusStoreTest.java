@@ -101,7 +101,7 @@ public class PushStatusStoreTest {
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setLeaderFollowerModel(true)
         .setPartitionCount(2)
-        .setAmplificationFactor(3)
+        .setAmplificationFactor(1)
         .setIncrementalPushEnabled(true)));
     TestUtils.assertCommand(parentControllerClient.createDaVinciPushStatusStore(storeName));
     String metadataStoreTopic =

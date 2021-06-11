@@ -1,0 +1,54 @@
+{
+  "type": "record",
+  "name": "PushStatusValueWriteOpRecord",
+  "namespace": "com.linkedin.venice.pushstatus",
+  "fields": [
+    {
+      "name": "instances",
+      "type": [
+        {
+          "type": "record",
+          "name": "NoOp",
+          "fields": []
+        },
+        {
+          "type": "record",
+          "name": "instancesMapOps",
+          "fields": [
+            {
+              "name": "mapUnion",
+              "type": {
+                "type": "map",
+                "values": "int"
+              },
+              "default": {}
+            },
+            {
+              "name": "mapDiff",
+              "type": {
+                "type": "array",
+                "items": "string"
+              },
+              "default": []
+            }
+          ]
+        },
+        {
+          "type": "map",
+          "values": "int"
+        }
+      ],
+      "default": {}
+    },
+    {
+      "name": "reportTimestamp",
+      "type": [
+        "NoOp",
+        "null",
+        "long"
+      ],
+      "doc": "heartbeat.",
+      "default": {}
+    }
+  ]
+}
