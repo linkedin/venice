@@ -61,10 +61,8 @@ public abstract class VenicePartitioner {
      *  partitioner implementation.
      *
      * @param keySchema the schema do be validated.  Can be null
-     * @return
      * @throws PartitionerSchemaMismatchException should the provided schema not match the partitioner (with a message that explains why).
      */
-    protected boolean checkSchema(Schema keySchema) throws PartitionerSchemaMismatchException {
-        return true;
+    protected void checkSchema(Schema keySchema) throws PartitionerSchemaMismatchException {
     }
 }
