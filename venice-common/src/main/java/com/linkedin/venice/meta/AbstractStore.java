@@ -142,6 +142,12 @@ public abstract class AbstractStore implements Store {
     }
 
     if (!isClonedVersion) {
+      /**
+       * Important:
+       * We need to clone the object from the store config here since the version-level config could be
+       * changed after. Without a new copy, the following version-level change will reflect in the store-level
+       * config as well since they are referring to the same object.
+       */
       // For new version, apply store level config on it.
       //update version compression type
       version.setCompressionStrategy(getCompressionStrategy());
@@ -151,7 +157,7 @@ public abstract class AbstractStore implements Store {
 
       version.setChunkingEnabled(isChunkingEnabled());
 
-      version.setPartitionerConfig(getPartitionerConfig());
+      version.setPartitionerConfig(getPartitionerConfig().clone());
 
       version.setNativeReplicationEnabled(isNativeReplicationEnabled());
 
@@ -165,7 +171,7 @@ public abstract class AbstractStore implements Store {
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
-      version.setHybridStoreConfig(getHybridStoreConfig());
+      version.setHybridStoreConfig(getHybridStoreConfig().clone());
 
       version.setUseVersionLevelHybridConfig(true);
 
