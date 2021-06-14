@@ -6,6 +6,7 @@ import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -63,6 +64,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final Map<String, Set<Integer>> completedTopicPartitions = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
+  private IsolatedIngestionProcessHeartbeatStats heartbeatStats;
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository;
@@ -93,6 +95,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
     heartbeatClient = new MainIngestionRequestClient(this.servicePort);
     metricsClient = new MainIngestionRequestClient(this.servicePort);
+
   }
 
   @Override
@@ -221,7 +224,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       logger.warn("No metrics repository is set up in ingestion report listener, skipping metrics collection");
       return;
     }
-
+    heartbeatStats = new IsolatedIngestionProcessHeartbeatStats(metricsRepository);
     isolatedIngestionProcessStats = new IsolatedIngestionProcessStats(metricsRepository);
     metricsRequestScheduler.scheduleAtFixedRate(this::collectIngestionServiceMetrics, 0, 5, TimeUnit.SECONDS);
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 10, TimeUnit.SECONDS);
@@ -238,6 +241,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       return;
     }
     logger.warn("Lost connection to forked ingestion process since timestamp " + latestHeartbeatTimestamp + ", restarting forked process.");
+    heartbeatStats.recordForkedProcessRestart();
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(servicePort)) {
       /**
        * We need to destroy the previous isolated ingestion process first.
@@ -252,6 +256,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     }
     // Re-initialize latest heartbeat timestamp.
     latestHeartbeatTimestamp = System.currentTimeMillis();
+    heartbeatStats.recordHeartbeatAge(0);
     // Use async long running task scheduler to avoid blocking periodic heartbeat jobs.
     longRunningTaskExecutor.execute(this::resumeOngoingIngestionTasks);
   }
@@ -285,8 +290,10 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     if (heartbeatClient.sendHeartbeatRequest()) {
       // Update heartbeat time.
       latestHeartbeatTimestamp = System.currentTimeMillis();
+      heartbeatStats.recordHeartbeatAge(0);
       logger.info("Received isolated ingestion server heartbeat at: " + latestHeartbeatTimestamp);
     } else {
+      heartbeatStats.recordHeartbeatAge(currentTimeMillis - latestHeartbeatTimestamp);
       logger.warn("Failed to connect to forked ingestion process at " + currentTimeMillis + ", last successful timestamp: " + latestHeartbeatTimestamp);
     }
 

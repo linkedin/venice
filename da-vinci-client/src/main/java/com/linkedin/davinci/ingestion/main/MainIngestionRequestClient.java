@@ -37,6 +37,7 @@ import static com.linkedin.venice.ConfigKeys.*;
  */
 public class MainIngestionRequestClient implements Closeable {
   private static final Logger logger = Logger.getLogger(MainIngestionRequestClient.class);
+  private static final int REQUEST_MAX_ATTEMPT = 10;
 
   private final IngestionRequestTransport ingestionRequestTransport;
 
@@ -98,7 +99,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.partitionId = partitionId;
     logger.info("Sending START_CONSUMPTION request to child process: "  + ingestionTaskCommand);
     try {
-      ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      ingestionRequestTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
     } catch (Exception e) {
       throw new VeniceException("Exception caught during startConsumption of topic: " + topicName + ", partition: " + partitionId, e);
     }
@@ -111,7 +112,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.partitionId = partitionId;
     logger.info("Sending STOP_CONSUMPTION request to child process: "  + ingestionTaskCommand);
     try {
-      ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      ingestionRequestTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
     } catch (Exception e) {
       throw new VeniceException("Exception caught during stopConsumption of topic: " + topicName + ", partition: " + partitionId, e);
     }
@@ -123,7 +124,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.topicName = topicName;
     logger.info("Sending KILL_CONSUMPTION request to child process: "  + ingestionTaskCommand);
     try {
-      ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      ingestionRequestTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
     } catch (Exception e) {
       throw new VeniceException("Exception caught during killConsumptionTask of topic: " + topicName, e);
     }
@@ -135,7 +136,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.topicName = topicName;
     logger.info("Sending REMOVE_STORAGE_ENGINE request to child process: "  + ingestionTaskCommand);
     try {
-      ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      ingestionRequestTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
     } catch (Exception e) {
       throw new VeniceException("Encounter exception during removeStorageEngine of topic: " + topicName, e);
     }
@@ -147,7 +148,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.topicName = topicName;
     logger.info("Sending OPEN_STORAGE_ENGINE request to child process: "  + ingestionTaskCommand);
     try {
-      ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      ingestionRequestTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
     } catch (Exception e) {
       throw new VeniceException("Encounter exception during openStorageEngine of topic: " + topicName, e);
     }
@@ -160,7 +161,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.partitionId = partitionId;
     logger.info("Sending REMOVE_PARTITION request to child process: "  + ingestionTaskCommand);
     try {
-      ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      ingestionRequestTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
     } catch (Exception e) {
       throw new VeniceException("Encounter exception during unsubscribeTopicPartition of topic: " + topicName + ", partition: " + partitionId, e);
     }
@@ -192,7 +193,7 @@ public class MainIngestionRequestClient implements Closeable {
     try {
       ingestionRequestTransport.sendRequest(IngestionAction.SHUTDOWN_COMPONENT, processShutdownCommand);
     } catch (Exception e) {
-      throw new VeniceException("Received exception in component shutdown", e);
+      logger.warn("Encounter exception when shutting down component: " + ingestionComponentType.name());
     }
   }
 
@@ -203,7 +204,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.partitionId = partition;
     logger.info("Sending PROMOTE_TO_LEADER request to child process: "  + ingestionTaskCommand);
     try {
-      IngestionTaskReport report = ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      IngestionTaskReport report = ingestionRequestTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
       return report.isPositive;
     } catch (Exception e) {
       throw new VeniceException("Exception caught during promoteToLeader of topic: " + topicName, e);
@@ -217,7 +218,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.partitionId = partition;
     logger.info("Sending DEMOTE_TO_STANDBY request to child process: "  + ingestionTaskCommand);
     try {
-      IngestionTaskReport report = ingestionRequestTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
+      IngestionTaskReport report = ingestionRequestTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
       return report.isPositive;
     } catch (Exception e) {
       throw new VeniceException("Exception caught during demoteToStandby of topic: " + topicName, e);

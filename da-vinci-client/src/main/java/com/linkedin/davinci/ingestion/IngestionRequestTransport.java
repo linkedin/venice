@@ -2,6 +2,7 @@ package com.linkedin.davinci.ingestion;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
+import com.linkedin.venice.utils.Time;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -27,6 +28,7 @@ import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
+import static java.lang.Thread.*;
 
 
 /**
@@ -35,6 +37,7 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
  */
 public class IngestionRequestTransport implements Closeable {
   private static final Logger logger = Logger.getLogger(IngestionRequestTransport.class);
+  private static final int RETRY_WAIT_TIME_IN_MS = 30 * Time.MS_PER_SECOND;
   private final int port;
   private IngestionRequestTransportHandler responseHandler;
   private final EventLoopGroup workerGroup;
@@ -102,6 +105,38 @@ public class IngestionRequestTransport implements Closeable {
       // FullHttpResponse is a reference-counted object that requires explicit de-allocation.
       response.release();
     }
+  }
+
+  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(IngestionAction action, S param, int maxAttempt) {
+    // Sanity check for maxAttempt argument.
+    if (maxAttempt <= 0) {
+      throw new IllegalArgumentException("maxAttempt must be a positive integer");
+    }
+    T result = null;
+    int retryCount = 0;
+    long startTimeIsMs = System.currentTimeMillis();
+    while (true) {
+      try {
+        result = sendRequest(action, param);
+        break;
+      } catch (VeniceException e) {
+        retryCount++;
+        if (retryCount != maxAttempt) {
+          logger.warn("Encounter exception when sending request, will retry for " + retryCount + "/" + maxAttempt + " time.");
+        } else {
+          long totalTimeInMs = System.currentTimeMillis() - startTimeIsMs;
+          throw new VeniceException("Failed to send request to remote forked process after " + maxAttempt + " attempts, total time spent in millis: " + totalTimeInMs , e);
+        }
+      }
+      try {
+        Thread.sleep(RETRY_WAIT_TIME_IN_MS);
+      } catch (InterruptedException e) {
+        logger.info("sendRequestWithRetry was interrupted", e);
+        currentThread().interrupt();
+        break;
+      }
+    }
+    return result;
   }
 
   @Override
