@@ -144,6 +144,12 @@ public class VeniceParentHelixAdminTest {
           Optional<Version> versionFromChild = childControllerClient.getStore(storeName).getStore().getVersion(2);
           assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
         });
+
+        // Check store level config
+        StoreResponse storeResponseFromChild = childControllerClient.getStore(storeName);
+        Assert.assertNotNull(storeResponseFromChild.getStore());
+        Assert.assertNotNull(storeResponseFromChild.getStore().getHybridStoreConfig());
+        Assert.assertEquals(storeResponseFromChild.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 600);
       }
     }
   }
