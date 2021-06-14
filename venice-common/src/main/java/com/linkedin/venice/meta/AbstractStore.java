@@ -157,7 +157,10 @@ public abstract class AbstractStore implements Store {
 
       version.setChunkingEnabled(isChunkingEnabled());
 
-      version.setPartitionerConfig(getPartitionerConfig().clone());
+      PartitionerConfig partitionerConfig = getPartitionerConfig();
+      if (partitionerConfig != null) {
+        version.setPartitionerConfig(partitionerConfig.clone());
+      }
 
       version.setNativeReplicationEnabled(isNativeReplicationEnabled());
 
@@ -171,7 +174,10 @@ public abstract class AbstractStore implements Store {
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
-      version.setHybridStoreConfig(getHybridStoreConfig().clone());
+      HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
+      if (hybridStoreConfig != null) {
+        version.setHybridStoreConfig(hybridStoreConfig.clone());
+      }
 
       version.setUseVersionLevelHybridConfig(true);
 
