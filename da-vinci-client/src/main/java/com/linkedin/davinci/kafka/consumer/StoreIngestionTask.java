@@ -1578,7 +1578,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Basically, now is the cut off time; all buffered messages in drainer queue will be dropped, to speed up
          * the unsubscribe process.
          */
-        consumptionState.unsubscribe();
+        if (consumptionState != null) {
+          consumptionState.unsubscribe();
+        }
 
         // Drain the buffered message by last subscription.
         waitForAllMessageToBeProcessedFromTopicPartition(topic, partition, consumptionState);
