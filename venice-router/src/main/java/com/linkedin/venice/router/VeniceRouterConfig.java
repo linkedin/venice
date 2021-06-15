@@ -139,8 +139,8 @@ public class VeniceRouterConfig {
     longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); //15 ms
     longTailRetryForBatchGetThresholdMs = parseRetryThresholdForBatchGet(
         props.getString(ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"));
-    // disable smart long tail retry by default
-    smartLongTailRetryEnabled = props.getBoolean(ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
+    // Enable smart long tail retry by default
+    smartLongTailRetryEnabled = props.getBoolean(ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, true);
     smartLongTailRetryAbortThresholdMs = props.getInt(ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, 100);
     // Default: -1 means this feature is not enabled.
     longTailRetryMaxRouteForMultiKeyReq = props.getInt(ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ, -1);
