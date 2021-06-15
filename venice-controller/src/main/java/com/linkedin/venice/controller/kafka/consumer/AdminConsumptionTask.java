@@ -386,8 +386,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // Subscribe the admin topic
     consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     isSubscribed = true;
-    logger.info("Subscribe to topic name: " + topic + ", with offset: " + lastOffset + " and execution id: "
-        + lastPersistedExecutionId);
+    logger.info("Subscribed to topic name: " + topic + ", with offset: " + lastOffset + " and execution id: "
+        + lastPersistedExecutionId + ". Remote consumption flag: " + remoteConsumptionEnabled);
   }
 
   private void unSubscribe() {
@@ -407,7 +407,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
       isSubscribed = false;
-      logger.info("Unsubscribe from topic name: " + topic);
+      logger.info("Unsubscribed from topic name: " + topic + ". Remote consumption flag before unsubscription: "
+          + remoteConsumptionEnabled);
     }
   }
 
