@@ -176,7 +176,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     veniceWriter.flush();
 
     try {
-      sendComplete.wait(sendTimeout.toMillis());
+      sendComplete.await(sendTimeout.toMillis(), TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
       LOGGER.warn(e);
     }
