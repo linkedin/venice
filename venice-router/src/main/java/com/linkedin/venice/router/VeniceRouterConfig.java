@@ -112,6 +112,7 @@ public class VeniceRouterConfig {
   private long clientSslHandshakeBackoffMs;
   private long readQuotaThrottlingLeaseTimeoutMs;
   private boolean routerHeartBeatEnabled;
+  private int routerHTTPMaxResponseSize;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -262,6 +263,7 @@ public class VeniceRouterConfig {
     }
     systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
+    routerHTTPMaxResponseSize = props.getInt(ROUTER_HTTP_MAX_RESPONSE_SIZE, 32000000);
   }
 
   public String getClusterName() {
@@ -683,5 +685,9 @@ public class VeniceRouterConfig {
 
   public boolean isRouterHeartBeatEnabled() {
     return routerHeartBeatEnabled;
+  }
+
+  public int getRouterHTTPMaxResponseSize() {
+    return routerHTTPMaxResponseSize;
   }
 }

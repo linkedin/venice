@@ -1410,6 +1410,11 @@ public class ConfigKeys {
   public static final String ROUTER_HEART_BEAT_ENABLED = "router.heart.beat.enabled";
 
   /**
+   * The following config to be used by R2 client for large value support.
+   */
+  public static final String ROUTER_HTTP_MAX_RESPONSE_SIZE = "router.http.max.response.size";
+
+  /**
    * Number of IO threads used for AHAC client.
    */
   public static final String ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT = "router.httpasyncclient.client.pool.io.thread.count";
