@@ -11,6 +11,11 @@ import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
 
 public class FastSerializerDeserializerFactory extends SerializerDeserializerFactory {
+  /**
+   * This is used to indicate whether the sanity check has done or not for fast class generation.
+   */
+  private static boolean fastAvroSanityCheckDone = false;
+
   private static FastSerdeCache cache = FastSerdeCache.getDefaultInstance();
 
   private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>>
@@ -21,9 +26,17 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   private static Map<Schema, AvroSerializer<Object>>
       avroFastGenericSerializerMap = new VeniceConcurrentHashMap<>();
 
-  // Verify whether fast-avro could generate a fast specific deserializer, but there is no guarantee that
-  // the success of all other fast specific deserializer generation in the future.
-  public static void verifyWhetherFastSpecificDeserializerWorks(Class<? extends SpecificRecord> specificClass) {
+  /**
+   * Verify whether fast-avro could generate a fast specific deserializer, but there is no guarantee that
+   * the success of all other fast specific deserializer generation in the future.
+   *
+   * The verification of fast-avro will only happen once, and if we allow it per store client, some of the verification could fail
+   * since they will try to write to the same class file.
+   */
+  public synchronized static void verifyWhetherFastSpecificDeserializerWorks(Class<? extends SpecificRecord> specificClass) {
+    if (fastAvroSanityCheckDone) {
+      return;
+    }
     for (Class<? extends SpecificRecord> c : Arrays.asList(specificClass, MultiGetResponseRecordV1.class)){
       Schema schema = SpecificData.get().getSchema(c);
       try {
@@ -32,6 +45,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
         throw new VeniceException("Failed to generate fast specific de-serializer for class: " + c, e);
       }
     }
+    fastAvroSanityCheckDone = true;
   }
 
   // Verify whether fast-avro could generate a fast generic deserializer, but there is no guarantee that
