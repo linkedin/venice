@@ -101,7 +101,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
       VeniceProperties routerProperties = builder.build();
       VeniceR2ClientFactoryImpl clientFactory = new VeniceR2ClientFactoryImpl();
-      RouterServer router = new RouterServer(routerProperties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()), clientFactory);
+      RouterServer router = new RouterServer(routerProperties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, routerProperties, zkAddress);
     };
   }
@@ -159,7 +159,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     List<D2Server> d2Servers = D2TestUtils.getD2Servers(
         zkAddress, "http://localhost:" + getPort(), "https://localhost:" + getSslPort());
     VeniceR2ClientFactory r2ClientFactory = new VeniceR2ClientFactoryImpl();
-    service = new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()), r2ClientFactory);
+    service = new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

@@ -123,7 +123,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
       RouterServer router = new RouterServer(builder.build(), mockRepo, mockHybridStoreQuotaRepository, mockMetadataRepository,
           mockSchemaRepository, mockStoreConfigRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()),
-          mockLiveInstanceMonitor, r2ClientFactory);
+          mockLiveInstanceMonitor);
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, sslToStorageNodes);
     };
   }
