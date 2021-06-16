@@ -107,6 +107,10 @@ public class  TestPushJobWithNativeReplication {
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
+    controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, "dc-parent-0");
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, "dc-parent-0");
+    int parentKafkaPort = Utils.getFreePort();
+    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + ".dc-parent-0", "localhost:" + parentKafkaPort);
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
@@ -119,7 +123,9 @@ public class  TestPushJobWithNativeReplication {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false,
-        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
+        MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST,
+        false,
+        Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
@@ -290,10 +296,10 @@ public class  TestPushJobWithNativeReplication {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams
             .setPartitionCount(2)
-            .setHybridRewindSeconds(10)
-            .setHybridOffsetLagThreshold(10)
+            .setHybridRewindSeconds(TEST_TIMEOUT)
+            .setHybridOffsetLagThreshold(2)
             .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE),
-        10,
+        50,
         (parentController, clusterName, storeName, props, inputDir) -> {
           // Write batch data
           TestPushUtils.runPushJob("Test push job", props);
@@ -304,8 +310,8 @@ public class  TestPushJobWithNativeReplication {
               childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
           HybridStoreConfig hybridConfig = version.get().getHybridStoreConfig();
           Assert.assertNotNull(hybridConfig);
-          Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), 10);
-          Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 10);
+          Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), TEST_TIMEOUT);
+          Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 2);
           Assert.assertEquals(hybridConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
 
           // Write Samza data (aggregated mode)
@@ -327,6 +333,32 @@ public class  TestPushJobWithNativeReplication {
             //Verify the kafka URL being returned to Samza is the same as parent colo kafka url.
             Assert.assertEquals(((VeniceSystemProducer) veniceProducer).getKafkaBootstrapServers(),
                 parentController.getKafkaBootstrapServers(false));
+
+            for (int i = 1; i <= 10; i++) {
+              sendStreamingRecord(veniceProducer, storeName, i);
+            }
+
+            String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+            try (AvroGenericStoreClient<String, Object> client =
+                ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+              TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+                // Current version should become 1
+                for (int versionNum : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
+                  Assert.assertEquals(versionNum, 1);
+                }
+
+                for (int i = 1; i <= 10; ++i) {
+                  String expected = "stream_" + i;
+                  String actual = client.get(Integer.toString(i)).get().toString();
+                  Assert.assertEquals(actual, expected);
+                }
+                for (int i = 11; i <= 50; ++i) {
+                  String expected = "test_name_" + i;
+                  String actual = client.get(Integer.toString(i)).get().toString();
+                  Assert.assertEquals(actual, expected);
+                }
+              });
+            }
           } finally {
             if (veniceProducer != null) {
               veniceProducer.stop();

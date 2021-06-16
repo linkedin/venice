@@ -115,6 +115,11 @@ public class TopicManagerRepository implements Closeable {
     return topicManagersMap.computeIfAbsent(kafkaServerAndZk.getFirst(), k -> topicManagerCreator.apply(kafkaServerAndZk));
   }
 
+  /**
+   * Only use this method via java-based topic manager repository.
+   * @param kafkaBootstrapServers
+   * @return
+   */
   public TopicManager getTopicManager(String kafkaBootstrapServers) {
     // Creating remote topic manager by remote Kafka server requires Java-based Kafka admin client
     if (kafkaClientFactory.getKafkaAdminClass().contains(SCALA_BASED_KAFKA_ADMIN_CLIENT_CLASS_NAME)) {
