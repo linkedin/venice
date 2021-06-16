@@ -4,6 +4,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Total;
@@ -17,6 +18,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor consumerRecordsProducingToWriterBufferLatencySensor;
   private final Sensor detectedDeletedTopicNumSensor;
   private final Sensor detectedNoRunningIngestionTopicNumSensor;
+  private final Sensor consumerSelectionForTopicError;
 
   public KafkaConsumerServiceStats(MetricsRepository metricsRepository) {
     super(metricsRepository, "kafka_consumer_service");
@@ -30,6 +32,9 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     consumerRecordsProducingToWriterBufferLatencySensor = registerSensor("consumer_records_producing_to_write_buffer_latency", new Avg(), new Max());
     detectedDeletedTopicNumSensor = registerSensor("detected_deleted_topic_num", new Total());
     detectedNoRunningIngestionTopicNumSensor = registerSensor("detected_no_running_ingestion_topic_num", new Total());
+
+    // To monitor cases when a shared consumer cannot be selected
+    consumerSelectionForTopicError = registerSensor("consumer_selection_for_topic_error", new Count());
   }
 
   public void recordPollRequestLatency(double latency) {
@@ -55,5 +60,9 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordDetectedNoRunningIngestionTopicNum(int count) {
     detectedNoRunningIngestionTopicNumSensor.record(count);
+  }
+
+  public void recordConsumerSelectionForTopicError() {
+    consumerSelectionForTopicError.record();
   }
 }
