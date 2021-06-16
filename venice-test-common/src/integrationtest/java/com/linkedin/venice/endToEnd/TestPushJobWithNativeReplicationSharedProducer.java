@@ -54,7 +54,7 @@ import static com.linkedin.venice.writer.SharedKafkaProducerService.*;
  */
 public class TestPushJobWithNativeReplicationSharedProducer {
   private static final Logger logger = Logger.getLogger(TestPushJobWithNativeReplicationSharedProducer.class);
-  private static final int TEST_TIMEOUT = 120_000; // ms
+  private static final int TEST_TIMEOUT = 140_000; // ms
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -157,16 +157,31 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         }
       }
 
+      logger.info("NRSP: Finished setting up stores");
       for (int i = 0; i < storeCount; i++) {
         int id = i;
         Thread pushJobThread = new Thread(() -> {
           TestPushUtils.runPushJob("Test push job " + id, storeProps[id]);
-        });
+        }, "PushJob-" + i);
         threads[i] = pushJobThread;
       }
 
+      logger.info("NRSP: Starting push job threads");
       for (int i = 0; i < storeCount; i++) {
         threads[i].start();
+      }
+
+      logger.info("NRSP: Waiting for push job threads to complete");
+      for (int i = 0; i < storeCount; i++) {
+        threads[i].join(45 * 1000);
+      }
+
+      for (int i = 0; i < storeCount; i++) {
+        if (threads[i].isAlive()) {
+          logger.info("NRSP: push job thread " + threads[i].getName() + " didn't complete");
+        } else {
+          logger.info("NRSP: push job thread " + threads[i].getName() + " completed");
+        }
       }
 
       for (int i = 0; i < storeCount; i++) {
@@ -191,9 +206,6 @@ public class TestPushJobWithNativeReplicationSharedProducer {
             }
           }
         });
-      }
-      for (int i = 0; i < storeCount; i++) {
-        threads[i].join();
       }
     } finally {
       FileUtils.deleteDirectory(inputDir);
