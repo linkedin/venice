@@ -116,6 +116,12 @@ public class PartitionConsumptionState {
    */
   private CompletableFuture<Void> lastQueuedRecordPersistedFuture;
 
+  /**
+   * An in-memory state to track whether leader should skip processing the Kafka message. Leader will skip only if the
+   * flag is set to true. For example, leader in remote fabric will skip SOBR after EOP in remote VT.
+   */
+  private boolean skipKafkaMessage = false;
+
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid,
     boolean isIncrementalPushEnabled, IncrementalPushPolicy incrementalPushPolicy) {
     this.partition = partition;
@@ -423,6 +429,14 @@ public class PartitionConsumptionState {
       this.getOffsetRecord().recordSubPartitionStatus(subPartitionStatus);
     }
     previousStatusSet.add(subPartitionStatus);
+  }
+
+  public boolean skipKafkaMessage() {
+    return this.skipKafkaMessage;
+  }
+
+  public void setSkipKafkaMessage(boolean skipKafkaMessage) {
+    this.skipKafkaMessage = skipKafkaMessage;
   }
 
   /**

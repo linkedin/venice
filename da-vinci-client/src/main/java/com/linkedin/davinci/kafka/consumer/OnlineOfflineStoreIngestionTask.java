@@ -36,7 +36,6 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Logger;
 
@@ -155,8 +154,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected String getBatchWriteSourceAddress() {
-    return this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+  protected String getSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+    return localKafkaServer;
   }
 
   @Override
@@ -203,7 +202,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
      */
     if (bufferReplayEnabledForHybrid) {
       StartOfBufferReplay sobr = storeVersionStateOptional.get().startOfBufferReplay;
-      long sourceTopicMaxOffset = cachedKafkaMetadataGetter.getOffset(sobr.sourceTopicName.toString(), partition);
+      long sourceTopicMaxOffset = cachedKafkaMetadataGetter.getOffset(localKafkaServer, sobr.sourceTopicName.toString(), partition);
       long sobrSourceOffset = sobr.sourceOffsets.get(partition);
 
       if (!partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
@@ -221,7 +220,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
 
       return lag;
     } else {
-      long storeVersionTopicLatestOffset = cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partition);
+      long storeVersionTopicLatestOffset = cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partition);
       long lag = storeVersionTopicLatestOffset - currentOffset;
       if (shouldLogLag) {
         logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Dest Latest [%d] - Dest Current [%d]) = Lag [%d]",

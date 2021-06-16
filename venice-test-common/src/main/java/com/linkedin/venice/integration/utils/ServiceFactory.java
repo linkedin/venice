@@ -142,6 +142,10 @@ public class ServiceFactory {
     return getStatefulService(KafkaBrokerWrapper.SERVICE_NAME, KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
   }
 
+  public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, int port) {
+    return getStatefulService(KafkaBrokerWrapper.SERVICE_NAME, KafkaBrokerWrapper.generateService(zkServerWrapper, Optional.empty(), port));
+  }
+
   public static MirrorMakerWrapper getKafkaMirrorMaker(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper targetKafka) {
     return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceKafka, targetKafka));
   }
@@ -527,18 +531,28 @@ public class ServiceFactory {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, whitelistForKMM, false));
+            childControllerProperties, serverProps, multiD2, whitelistForKMM, false, Optional.empty()));
+  }
+
+  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
+      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
+      int replicationFactor, Optional<VeniceProperties> parentControllerProps, Optional<Properties> childControllerProperties,
+      Optional<VeniceProperties> serverProps, boolean multiD2, String whitelistForKMM, boolean forkServer) {
+    return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
+            numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
+            childControllerProperties, serverProps, multiD2, whitelistForKMM, forkServer, Optional.empty()));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
       int replicationFactor, Optional<VeniceProperties> parentControllerProps,
       Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProps, boolean multiD2, String whitelistForKMM,
-      boolean forkServer) {
+      boolean forkServer, Optional<Integer> parentKafkaPort) {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers,
             numberOfControllers, numberOfServers, numberOfRouters, replicationFactor, parentControllerProps,
-            childControllerProperties, serverProps, multiD2, whitelistForKMM, forkServer));
+            childControllerProperties, serverProps, multiD2, whitelistForKMM, forkServer, parentKafkaPort));
   }
 
   public static HelixAsAServiceWrapper getHelixController(String zkAddress) {

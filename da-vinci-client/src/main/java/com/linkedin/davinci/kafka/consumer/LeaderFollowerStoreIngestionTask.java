@@ -12,7 +12,6 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -77,12 +76,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
 import static java.util.concurrent.TimeUnit.*;
 
@@ -380,7 +379,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           waitForAllMessageToBeProcessedFromTopicPartition(leaderTopic, partition, partitionConsumptionState);
 
           partitionConsumptionState.setConsumeRemotely(false);
-          logger.info(consumerTaskId + " disabled remote consumption for partition " + partition);
+          logger.info(consumerTaskId + " disabled remote consumption from topic " + leaderTopic + " partition " + partition);
+          // Followers always consume local VT and should not skip kafka message
+          partitionConsumptionState.setSkipKafkaMessage(false);
           // subscribe back to local VT/partition
           offsetRecord = partitionConsumptionState.getOffsetRecord();
           consumerSubscribe(topic, partitionConsumptionState, offsetRecord.getOffset());
@@ -483,28 +484,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
             /**
              * When a leader replica is actually promoted to LEADER role and if native replication is enabled, there could
-             * be 3 cases:
+             * be 4 cases:
              * 1. Local fabric hasn't consumed anything from remote yet; in this case, EOP is not received, source topic
              * still exists, leader will rebuild the consumer with the proper remote Kafka bootstrap server url and start
              * consuming remotely;
-             * 2. Local fabric hasn't finish the consumption, but the host is restarted or leadership is handed over; in
+             * 2. Local fabric hasn't finished VT consumption, but the host is restarted or leadership is handed over; in
              * this case, EOP is also not received, leader will resume the consumption from remote at the specific offset
              * which is checkpointed in the leader offset metadata;
              * 3. A re-balance happens, leader is bootstrapping a new replica for a version that is already online; in this
              * case, source topic might be removed already and the {@link isCurrentVersion} flag should be true; so leader
              * doesn't need to switch to remote, all the data messages have been replicated to local fabric, leader just
-             * needs to consume locally.
+             * needs to consume locally. For hybrid stores in aggregate mode, after leader processes TS and existing
+             * real-time data replicated to local VT, it will switch to remote RT with latest upstream offset.
+             * 4. Local fabric hasn't finished RT consumption, but the host is restarted or leadership is handed over; in
+             * this case, the newly selected leader will resume the consumption from RT specified in TS at the offset
+             * checkpointed in leader offset metadata.
              */
-            if (isNativeReplicationEnabled && !partitionConsumptionState.isEndOfPushReceived() && !isCurrentVersion.getAsBoolean()) {
+            if (isNativeReplicationEnabled) {
               if (null == nativeReplicationSourceAddress || nativeReplicationSourceAddress.length() == 0) {
                 throw new VeniceException("Native replication is enabled but remote source address is not found");
               }
-              // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
-              if (!nativeReplicationSourceAddress.equals(this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG))) {
+              if (shouldLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
                 partitionConsumptionState.setConsumeRemotely(true);
-                logger.info(consumerTaskId + " enabled remote consumption for partition " + partition);
-                // Add a new consumer using remote bootstrap address
-                getConsumer(partitionConsumptionState);
+                logger.info(consumerTaskId + " enabled remote consumption from topic " + offsetRecord.getLeaderTopic() + " partition " + partition);
               }
             }
 
@@ -540,21 +542,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           /**
-           * If LEADER is consuming remotely and EOP is already received, switch back to local fabrics.
+           * If LEADER is consuming remote VT or SR, EOP is already received, switch back to local fabrics.
            * TODO: We do not need to switch back to local fabrics at all when native replication is completely ramped up
            *   and push job directly produces prod cluster instead of parent corp cluster.
-           * TODO: The logic needs to be updated in order to support native replication for hybrid.
            */
-          if (shouldLeaderSwitchLocalConsumption(partitionConsumptionState)) {
+          if (shouldLeaderSwitchToLocalConsumption(partitionConsumptionState)) {
             // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
-            consumerUnSubscribe(kafkaVersionTopic, partitionConsumptionState);
+            consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
             // If remote consumption flag is false, existing messages for the partition in the drainer queue should be processed before that
-            waitForAllMessageToBeProcessedFromTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition(), partitionConsumptionState);
+            waitForAllMessageToBeProcessedFromTopicPartition(currentLeaderTopic, partitionConsumptionState.getPartition(), partitionConsumptionState);
 
             partitionConsumptionState.setConsumeRemotely(false);
-            logger.info(consumerTaskId + " disabled remote consumption for partition " + partitionConsumptionState.getPartition());
+            logger.info(consumerTaskId + " disabled remote consumption from topic " + currentLeaderTopic + " partition " + partition);
+            /**
+             * The flag is turned on in {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord} avoid consuming
+             * unwanted messages after EOP in remote VT, such as SOBR. Now that the leader switches to consume locally,
+             * it should not skip any message.
+             */
+            partitionConsumptionState.setSkipKafkaMessage(false);
             // Subscribe to local Kafka topic
-            consumerSubscribe(kafkaVersionTopic, partitionConsumptionState, partitionConsumptionState.getOffsetRecord().getOffset());
+            consumerSubscribe(currentLeaderTopic, partitionConsumptionState, partitionConsumptionState.getOffsetRecord().getOffset());
           }
 
           TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
@@ -568,16 +575,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * 2. leader is consuming SR topic right now and TS wants leader to switch to another topic.
            */
           String newSourceTopicName = topicSwitch.sourceTopicName.toString();
+          String newSourceKafkaServer = topicSwitch.sourceKafkaServers.get(0).toString();
           partition = partitionConsumptionState.getPartition();
           lastTimestamp = getLastConsumedMessageTimestamp(currentLeaderTopic, partition);
           if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime
               || (Version.isStreamReprocessingTopic(currentLeaderTopic) && !Version.isStreamReprocessingTopic(newSourceTopicName))) {
-            // leader switch topic
+            // leader switch local or remote topic, depending on the sourceKafkaServers specified in TS
             long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getUpstreamOffset();
             if (upstreamStartOffset < 0) {
               if (topicSwitch.rewindStartTimestamp > 0) {
                 int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
-                upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
+                upstreamStartOffset = getTopicManager(newSourceKafkaServer).getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
                 /**
                  * {@link com.linkedin.venice.kafka.TopicManager#getOffsetsByTime} will always return the next offset
                  * to consume, but {@link com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer#subscribe} is always
@@ -607,6 +615,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               throw new VeniceException(errorMsg, e);
             }
             // subscribe to the new upstream
+            if (isNativeReplicationEnabled && !newSourceKafkaServer.equals(localKafkaServer)) {
+              partitionConsumptionState.setConsumeRemotely(true);
+              logger.info(consumerTaskId + " enabled remote consumption from topic " + newSourceTopicName + " partition " + partition);
+            }
             partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
             consumerSubscribe(newSourceTopicName, partitionConsumptionState, upstreamStartOffset);
 
@@ -638,8 +650,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected String getBatchWriteSourceAddress() {
-    return isNativeReplicationEnabled ? nativeReplicationSourceAddress : this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+  protected String getSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+    if (partitionConsumptionState.consumeRemotely()) {
+      return Version.isRealTimeTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
+          ? getRealTimeDataSourceKafkaAddress(partitionConsumptionState)
+          : nativeReplicationSourceAddress;
+    }
+
+    return localKafkaServer;
+  }
+
+  @Override
+  protected String getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+    if (partitionConsumptionState.getTopicSwitch() != null) {
+      return partitionConsumptionState.getTopicSwitch().sourceKafkaServers.get(0).toString();
+    }
+    return localKafkaServer;
   }
 
   /**
@@ -658,10 +684,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return lastConsumedMessageTimestamp;
   }
 
-  private boolean shouldLeaderSwitchLocalConsumption(PartitionConsumptionState partitionConsumptionState) {
-    return (partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived() && !(
-        partitionConsumptionState.isIncrementalPushEnabled() && partitionConsumptionState.getIncrementalPushPolicy()
-            .equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) && !isWriteComputationEnabled);
+  private boolean shouldLeaderSwitchToRemoteConsumption(PartitionConsumptionState partitionConsumptionState) {
+    return (!partitionConsumptionState.isEndOfPushReceived()
+            && !isCurrentVersion.getAsBoolean()
+            // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
+            && !nativeReplicationSourceAddress.equals(localKafkaServer))
+        || (Version.isRealTimeTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
+            && !getRealTimeDataSourceKafkaAddress(partitionConsumptionState).equals(localKafkaServer));
+  }
+
+  /**
+   * If leader is consuming remote VT or SR, once EOP is received, switch back to local VT to consume TOPIC_SWITCH,
+   * unless there are more data to be consumed in remote topic in the following case:
+   * Incremental push is enabled, the policy is PUSH_TO_VERSION_TOPIC, write compute is disabled.
+   */
+  private boolean shouldLeaderSwitchToLocalConsumption(PartitionConsumptionState partitionConsumptionState) {
+    return partitionConsumptionState.consumeRemotely()
+        && partitionConsumptionState.isEndOfPushReceived()
+        && Version.isVersionTopicOrStreamReprocessingTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
+        && !(partitionConsumptionState.isIncrementalPushEnabled() && partitionConsumptionState.getIncrementalPushPolicy()
+            .equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC) && !isWriteComputationEnabled);
   }
 
   /**
@@ -695,13 +737,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           + "TopicSwitch.sourceKafkaServers: " + kafkaServerUrls);
     }
     reportStatusAdapter.reportTopicSwitchReceived(partitionConsumptionState);
+    String sourceKafkaServer = kafkaServerUrls.get(0).toString();
 
     // Calculate the start offset based on start timestamp
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
     if (topicSwitch.rewindStartTimestamp > 0) {
       int newSourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopicName);
-      upstreamStartOffset = topicManagerRepository.getTopicManager().getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
+      upstreamStartOffset = getTopicManager(sourceKafkaServer).getOffsetByTime(newSourceTopicName, newSourceTopicPartition, topicSwitch.rewindStartTimestamp);
       if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
         upstreamStartOffset -= 1;
       }
@@ -711,14 +754,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
     if (storeVersionState.isPresent()) {
       String newTopicSwitchLogging = "TopicSwitch message (new source topic:" + topicSwitch.sourceTopicName
-          + "; rewind start time:" + topicSwitch.rewindStartTimestamp + "; upstream start offset: " + upstreamStartOffset + ")";
+          + "; rewind start time:" + topicSwitch.rewindStartTimestamp + "; upstream start offset: " + upstreamStartOffset
+          + "; source kafka servers " + kafkaServerUrls + ")";
       if (null == storeVersionState.get().topicSwitch) {
         logger.info("First time receiving a " + newTopicSwitchLogging);
         storeVersionState.get().topicSwitch = topicSwitch;
       } else {
         logger.info("Previous TopicSwitch message in metadata store (source topic:" + storeVersionState.get().topicSwitch.sourceTopicName
-            + "; rewind start time:" + storeVersionState.get().topicSwitch.rewindStartTimestamp + ") will be replaced"
-            + " by the new " + newTopicSwitchLogging);
+            + "; rewind start time:" + storeVersionState.get().topicSwitch.rewindStartTimestamp + "; source kafka servers "
+            + kafkaServerUrls + ") will be replaced" + " by the new " + newTopicSwitchLogging);
         storeVersionState.get().topicSwitch = topicSwitch;
       }
       // Sync latest store version level metadata to disk
@@ -749,7 +793,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * and only consumes from version topic.
          */
         logger.info(consumerTaskId + " receives TopicSwitch message: new source topic: " + newSourceTopicName
-            + "; start offset: " + upstreamStartOffset + "; however buffer replay is disabled, consumer will stick to " + kafkaVersionTopic);
+            + "; start offset: " + upstreamStartOffset + "; source kafka servers " + kafkaServerUrls
+            + "; however buffer replay is disabled, consumer will stick to " + kafkaVersionTopic);
         partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
         return;
       }
@@ -978,6 +1023,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // leaderTopic is the real-time topic now
       long leaderOffset;
       long lastOffsetInRealTimeTopic;
+      String sourceKafkaServer = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
       if (amplificationFactor != 1) {
         /**
          * When amplificationFactor enabled, the RT topic and VT topics have different number of partition.
@@ -989,7 +1035,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * then use this value to compare against the offset in the RT topic.
          */
         int userPartition = PartitionUtils.getUserPartition(partition, amplificationFactor);
-        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(leaderTopic, userPartition);
+        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, userPartition);
         leaderOffset = -1;
         for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
           if (partitionConsumptionStateMap.get(subPartition) != null
@@ -1000,7 +1046,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
       } else {
         leaderOffset = offsetRecord.getLeaderOffset();
-        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(leaderTopic, partition);
+        lastOffsetInRealTimeTopic = cachedKafkaMetadataGetter.getOffset(sourceKafkaServer, leaderTopic, partition);
       }
       long lag = lastOffsetInRealTimeTopic - leaderOffset;
       if (shouldLogLag) {
@@ -1014,7 +1060,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * If buffer replay is disabled, all replicas are consuming from version topic, so check the lag in version topic.
        */
       long versionTopicConsumedOffset = offsetRecord.getOffset();
-      long storeVersionTopicLatestOffset = cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partition);
+      long storeVersionTopicLatestOffset = cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partition);
       long lag = storeVersionTopicLatestOffset - versionTopicConsumedOffset;
       if (shouldLogLag) {
         logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Last VT offset [%d] - Last VT consumed offset [%d]) = Lag [%d]",
@@ -1029,7 +1075,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int partition = pcs.getPartition();
 
     if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
-      if (cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partition) - 1 <= pcs.getOffsetRecord().getOffset()) {
+      if (cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partition) - 1 <= pcs.getOffsetRecord().getOffset()) {
         reportStatusAdapter.reportCatchUpBaseTopicOffsetLag(pcs);
 
         /**
@@ -1072,22 +1118,45 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaVersionTopic + " Partition Id: " + subPartition);
       return false;
     }
+    switch (partitionConsumptionState.getLeaderState()) {
+      case LEADER:
+        if (partitionConsumptionState.consumeRemotely()
+            && Version.isVersionTopicOrStreamReprocessingTopic(partitionConsumptionState.getOffsetRecord().getLeaderTopic())
+            && !(partitionConsumptionState.isIncrementalPushEnabled() && partitionConsumptionState.getIncrementalPushPolicy()
+                .equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC) && !isWriteComputationEnabled)) {
+          if (partitionConsumptionState.skipKafkaMessage()) {
+            logger.info("Skipping messages after EOP in remote version topic. Topic: " + kafkaVersionTopic + " Partition Id: " + subPartition);
+            return false;
+          }
+          if (record.key().isControlMessage()) {
+            ControlMessageType controlMessageType = ControlMessageType.valueOf((ControlMessage)record.value().payloadUnion);
+            if (controlMessageType == END_OF_PUSH) {
+              /**
+               * The flag is turned on to avoid consuming unwanted messages after EOP in remote VT, such as SOBR. In
+               * {@link LeaderFollowerStoreIngestionTask#checkLongRunningTaskState()}, once leader notices that EOP is
+               * received, it will unsubscribe from the remote VT and turn off this flag.
+               */
+              partitionConsumptionState.setSkipKafkaMessage(true);
+            }
+          }
+        }
+        break;
+      default:
+        String recordTopic = record.topic();
+        if (!kafkaVersionTopic.equals(recordTopic)) {
+          throw new VeniceMessageException(
+              consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderState() + "; partition: " + subPartition
+                  + "; Message retrieved from different topic. Expected " + this.kafkaVersionTopic + " Actual " + recordTopic);
+        }
 
-    if (!partitionConsumptionState.getLeaderState().equals(LEADER)) {
-      String recordTopic = record.topic();
-      if (!kafkaVersionTopic.equals(recordTopic)) {
-        throw new VeniceMessageException(
-            consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderState() + "; partition: " + subPartition
-                + "; Message retrieved from different topic. Expected " + this.kafkaVersionTopic + " Actual " + recordTopic);
-      }
-
-      long lastOffset = partitionConsumptionState.getOffsetRecord().getOffset();
-      if (lastOffset >= record.offset()) {
-        logger.info(
-            consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderState()
-                + "; The record was already processed Partition" + subPartition + " LastKnown " + lastOffset + " Current " + record.offset());
-        return false;
-      }
+        long lastOffset = partitionConsumptionState.getOffsetRecord().getOffset();
+        if (lastOffset >= record.offset()) {
+          logger.info(
+              consumerTaskId + " Current L/F state:" + partitionConsumptionState.getLeaderState()
+                  + "; The record was already processed Partition" + subPartition + " LastKnown " + lastOffset + " Current " + record.offset());
+          return false;
+        }
+        break;
     }
 
     return super.shouldProcessRecord(record);
@@ -1636,9 +1705,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic == null || currentLeaderTopic.isEmpty()) {
             currentLeaderTopic = kafkaVersionTopic;
           }
-          return (cachedKafkaMetadataGetter.getOffsetFromRemoteKafka(nativeReplicationSourceAddress, currentLeaderTopic,
-              pcs.getPartition()) - 1) - (cachedKafkaMetadataGetter.getOffset(currentLeaderTopic, pcs.getPartition())
-              - 1);
+          return (cachedKafkaMetadataGetter.getOffset(nativeReplicationSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
+              - (cachedKafkaMetadataGetter.getOffset(localKafkaServer, currentLeaderTopic, pcs.getPartition()) - 1);
         }).sum();
 
     return minZeroLag(replicationLag);
@@ -1686,11 +1754,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             currentLeaderTopic = kafkaVersionTopic;
           }
           if (!pcs.consumeRemotely()) {
-            return (cachedKafkaMetadataGetter.getOffset(currentLeaderTopic, pcs.getPartition()) - 1)
+            return (cachedKafkaMetadataGetter.getOffset(localKafkaServer, currentLeaderTopic, pcs.getPartition()) - 1)
                 - pcs.getOffsetRecord().getOffset();
           } else {
             return
-                (cachedKafkaMetadataGetter.getOffsetFromRemoteKafka(nativeReplicationSourceAddress, currentLeaderTopic,
+                (cachedKafkaMetadataGetter.getOffset(nativeReplicationSourceAddress, currentLeaderTopic,
                     pcs.getPartition()) - 1) - pcs.getOffsetRecord().getOffset();
           }
         })
@@ -1745,7 +1813,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
         .mapToLong(pcs ->
-            (cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, pcs.getPartition()) - 1)
+            (cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, pcs.getPartition()) - 1)
                 - pcs.getOffsetRecord().getOffset())
         .sum();
 

@@ -40,15 +40,16 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
       int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
       Optional<VeniceProperties> serverProperties) {
-    return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers, numberOfServers,
-        numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(), serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST, false);
+    return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers,
+        numberOfServers, numberOfRouters, replicationFactor, parentControllerProperties, Optional.empty(),
+        serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST, false, Optional.empty());
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
       int numberOfRouters, int replicationFactor, Optional<VeniceProperties> parentControllerProperties,
       Optional<Properties> childControllerProperties, Optional<VeniceProperties> serverProperties, boolean multiD2, String whitelistConfigForKMM,
-      boolean forkServer) {
+      boolean forkServer, Optional<Integer> parentKafkaPort) {
 
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
@@ -58,7 +59,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     KafkaBrokerWrapper parentKafka = null;
     try {
       zkServer = ServiceFactory.getZkServer();
-      parentKafka = ServiceFactory.getKafkaBroker(zkServer);
+      parentKafka = parentKafkaPort.isPresent() ? ServiceFactory.getKafkaBroker(zkServer, parentKafkaPort.get())
+          : ServiceFactory.getKafkaBroker(zkServer);
 
       String clusterToD2 = "";
       String[] clusterNames = new String[numberOfClustersInEachColo];

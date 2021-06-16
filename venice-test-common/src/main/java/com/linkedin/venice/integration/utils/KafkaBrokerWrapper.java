@@ -44,8 +44,12 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
    */
   static StatefulServiceProvider<KafkaBrokerWrapper> generateService(ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime) {
+    int port = Utils.getFreePort();
+    return generateService(zkServerWrapper, mockTime, port);
+  }
+
+  static StatefulServiceProvider<KafkaBrokerWrapper> generateService(ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime, int port) {
     return (String serviceName, File dir) -> {
-      int port = Utils.getFreePort();
       int sslPort = Utils.getFreePort();
       Map<String, Object> configMap = new HashMap<>();
 

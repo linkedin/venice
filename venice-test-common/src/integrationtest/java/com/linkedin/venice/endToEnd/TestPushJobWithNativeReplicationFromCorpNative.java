@@ -14,30 +14,40 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
+import org.apache.samza.config.MapConfig;
+import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 /**
@@ -115,12 +125,27 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + "corp-venice-native", corpVeniceNativeKafka.getAddress());
     controllerProps.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + "corp-venice-native", corpVeniceNativeKafka.getZkAddress());
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
+    controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, "dc-parent-0");
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, "dc-parent-0");
+    int parentKafkaPort = Utils.getFreePort();
+    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + ".dc-parent-0", "localhost:" + parentKafkaPort);
 
     multiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1,
-            1, 2, 1, 2, Optional.of(new VeniceProperties(controllerProps)),
-            Optional.of(controllerProps), Optional.of(new VeniceProperties(serverProperties)), false,
-            MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST, false);
+        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+            NUMBER_OF_CHILD_DATACENTERS,
+            NUMBER_OF_CLUSTERS,
+            1,
+            1,
+            2,
+            1,
+            2,
+            Optional.of(new VeniceProperties(controllerProps)),
+            Optional.of(controllerProps),
+            Optional.of(new VeniceProperties(serverProperties)),
+            false,
+            MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST,
+            false,
+            Optional.of(parentKafkaPort));
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
@@ -543,6 +568,186 @@ public class TestPushJobWithNativeReplicationFromCorpNative {
         TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0Client, incrementPushStoreName, true, newNativeReplicationSource);
         TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1Client, incrementPushStoreName, false);
         TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2Client, incrementPushStoreName, false);
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
+  public void testNativeReplicationForHybridStore(int recordCount, int partitionCount) throws Exception {
+    String clusterName = CLUSTER_NAMES[0];
+    File inputDir = getTempDataDirectory();
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+
+    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
+    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+
+    // First push: native replication is not enabled in any fabric.
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
+        .setPartitionCount(partitionCount)
+        .setHybridRewindSeconds(TEST_TIMEOUT)
+        .setHybridOffsetLagThreshold(2L)
+        .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams);
+
+    try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
+      job.run();
+      Assert.assertEquals(job.getKafkaUrl(), parentController.getKafkaBootstrapServers(false));
+    }
+
+    SystemProducer veniceProducer = null;
+    try {
+      // Start Samza processor (aggregated mode)
+      Map<String, String> samzaConfig = new HashMap<>();
+      String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
+      samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+      samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+      samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
+      samzaConfig.put(D2_ZK_HOSTS_PROPERTY, "invalid_child_zk_address");
+      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentController.getKafkaZkAddress());
+      samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
+      samzaConfig.put(SSL_ENABLED, "false");
+      VeniceSystemFactory factory = new VeniceSystemFactory();
+      veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+      veniceProducer.start();
+      Assert.assertEquals(((VeniceSystemProducer)veniceProducer).getKafkaBootstrapServers(),
+          parentController.getKafkaBootstrapServers(false));
+      for (int i = 1; i <= 10; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
+
+      VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
+      String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+      try (AvroGenericStoreClient<String, Object> client =
+          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // Current version should become 1
+          for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values()) {
+            Assert.assertEquals(version, 1);
+          }
+          // Verify the data in dc-0 which consumes local VT and RT
+          for (int i = 1; i <= 10; ++i) {
+            String expected = "stream_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+          for (int i = 11; i <= 50; ++i) {
+            String expected = "test_name_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+        });
+      }
+
+      // Second push: native replication is enabled in parent and dc-0, but disabled in dc-1 and dc-2.
+      // Batch source region is corp-venice-native. Real-time source region is parent.
+      UpdateStoreQueryParams enableNativeRepl = new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(true)
+          .setNativeReplicationEnabled(true);
+      UpdateStoreQueryParams disableNativeRepl = new UpdateStoreQueryParams()
+          .setLeaderFollowerModel(false)
+          .setNativeReplicationEnabled(false);
+
+      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+          ControllerClient dc0ControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+          ControllerClient dc1ControllerClient = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
+          ControllerClient dc2ControllerClient = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
+
+        TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableNativeRepl);
+        TestPushUtils.updateStore(clusterName, storeName, dc1ControllerClient, disableNativeRepl);
+        TestPushUtils.updateStore(clusterName, storeName, dc2ControllerClient, disableNativeRepl);
+
+        // Verify all the datacenters are configured correctly.
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0ControllerClient, storeName, true);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1ControllerClient, storeName, false);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2ControllerClient, storeName, false);
+      }
+
+      try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), corpVeniceNativeKafka.getAddress());
+      }
+      for (int i = 11; i <= 20; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
+
+      try (AvroGenericStoreClient<String, Object> client =
+          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // Current version should become 2
+          for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
+            Assert.assertEquals(version, 2);
+          }
+          // Verify the data in dc-0 which consumes local VT and remote RT
+          for (int i = 1; i <= 20; ++i) {
+            String expected = "stream_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+          for (int i = 21; i <= 50; ++i) {
+            String expected = "test_name_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+        });
+      }
+
+      // Third push: native replication is enabled in parent, dc-0 and dc-1, but disabled dc-2.
+      // Batch source region is dc-2. Real-time source region is parent.
+      UpdateStoreQueryParams changeSourceFabric = new UpdateStoreQueryParams()
+          .setNativeReplicationSourceFabric("dc-2");
+
+      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+          ControllerClient dc0ControllerClient = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+          ControllerClient dc1ControllerClient = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
+          ControllerClient dc2ControllerClient = new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString())) {
+        TestPushUtils.updateStore(clusterName, storeName, dc1ControllerClient, enableNativeRepl);
+        TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, changeSourceFabric);
+
+        // Verify all the datacenter is configured correctly.
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc0ControllerClient, storeName, true);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc1ControllerClient, storeName, true);
+        TestPushJobWithNativeReplicationAndKMM.verifyDCConfigNativeRepl(dc2ControllerClient, storeName, false);
+      }
+
+      try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
+        job.run();
+        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      }
+      for (int i = 21; i <= 30; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
+
+      childDataCenter = childDatacenters.get(1);
+      routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+      try (AvroGenericStoreClient<String, Object> client =
+          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // Current version should become 3
+          for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(clusterName, storeName).values())  {
+            Assert.assertEquals(version, 3);
+          }
+          // Verify the data in dc-1 which consumes local VT and remote RT
+          for (int i = 1; i <= 30; ++i) {
+            String expected = "stream_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+          for (int i = 31; i <= 50; ++i) {
+            String expected = "test_name_" + i;
+            String actual = client.get(Integer.toString(i)).get().toString();
+            Assert.assertEquals(actual, expected);
+          }
+        });
+      }
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
       }
     }
   }

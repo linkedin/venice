@@ -88,6 +88,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -324,6 +325,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final AmplificationAdapter amplificationAdapter;
 
+  protected final String localKafkaServer;
+
   public StoreIngestionTask(
       KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
@@ -391,7 +394,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = topicManagerRepository;
     this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased;
-    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(topicManagerRepository, topicManagerRepositoryJavaBased, storeConfig.getTopicOffsetCheckIntervalMs());
+    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
 
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
@@ -470,6 +473,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.reportStatusAdapter = new ReportStatusAdapter(new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion));
     this.amplificationAdapter = new AmplificationAdapter(amplificationFactor);
     this.cacheBackend = cacheBackend;
+    this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
   }
 
   public boolean isFutureVersion() {
@@ -681,7 +685,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Currently, we make it a sloppy in case Kafka topic have duplicate messages.
      * TODO: find a better solution
      */
-      lagIsAcceptable = cachedKafkaMetadataGetter.getOffset(kafkaVersionTopic, partitionId) <=
+      lagIsAcceptable = cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, partitionId) <=
         partitionConsumptionState.getOffsetRecord().getOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
@@ -741,13 +745,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (!timestampLagIsAcceptable) {
           String msgIdentifier = this.kafkaVersionTopic + "_" + partitionId + "_ignore_time_lag";
           String realTimeTopic = Version.composeRealTimeTopic(storeName);
-          if (!cachedKafkaMetadataGetter.containsTopic(realTimeTopic)) {
+          String realTimeKafkaServer = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
+          if (!cachedKafkaMetadataGetter.containsTopic(realTimeKafkaServer, realTimeTopic)) {
             timestampLagIsAcceptable = true;
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
               logger.info(String.format("%s [Time lag] Real-time topic %s doesn't exist; ignoring time lag.", consumerTaskId, realTimeTopic));
             }
           } else {
-            long latestProducerTimestampInRT = cachedKafkaMetadataGetter.getProducerTimestampOfLastMessage(realTimeTopic, partitionId);
+            long latestProducerTimestampInRT = cachedKafkaMetadataGetter.getProducerTimestampOfLastMessage(realTimeKafkaServer, realTimeTopic, partitionId);
             if (latestProducerTimestampInRT < 0 || latestProducerTimestampInRT <= latestProducerTimestamp) {
               timestampLagIsAcceptable = true;
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
@@ -1653,7 +1658,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
-  protected abstract String getBatchWriteSourceAddress();
+  protected abstract String getSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState);
+
+  protected String getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
+    return localKafkaServer;
+  }
 
   public Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
     return Optional.of(partitionConsumptionStateMap.get(partitionId));
@@ -2497,8 +2506,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public KafkaConsumerWrapper getConsumer(PartitionConsumptionState partitionConsumptionState) {
-    String kafkaSourceAddress = partitionConsumptionState.consumeRemotely() ? getBatchWriteSourceAddress()
-        : this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    String kafkaSourceAddress = getSourceKafkaAddress(partitionConsumptionState);
     return consumerMap.computeIfAbsent(kafkaSourceAddress, source -> {
       Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaSourceAddress, partitionConsumptionState.consumeRemotely());
       if (serverConfig.isSharedConsumerPoolEnabled()) {
@@ -2990,17 +2998,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected class CachedKafkaMetadataGetter {
     private final long ttl;
-    private final TopicManagerRepository topicManagerRepository;
-    private final TopicManagerRepository topicManagerRepositoryJavaBased;
-    private final Map<String, Pair<Long, Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
-    private final Map<Pair<String, Integer>, Pair<Long, Long>> offsetCache = new VeniceConcurrentHashMap<>();
-    private final Map<Pair<String, Integer>, Pair<Long, Long>> lastProducerTimestampCache = new VeniceConcurrentHashMap<>();
-    private final Map<Pair<String, Integer>, Pair<Long, Long>> remoteOffsetCache = new VeniceConcurrentHashMap<>();
+    private final Map<KafkaMetadataCacheKey, Pair<Long, Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
+    private final Map<KafkaMetadataCacheKey, Pair<Long, Long>> offsetCache = new VeniceConcurrentHashMap<>();
+    private final Map<KafkaMetadataCacheKey, Pair<Long, Long>> lastProducerTimestampCache = new VeniceConcurrentHashMap<>();
 
-    CachedKafkaMetadataGetter(TopicManagerRepository topicManagerRepository, TopicManagerRepository topicManagerRepositoryJavaBased, long timeToLiveMs) {
+    CachedKafkaMetadataGetter(long timeToLiveMs) {
       this.ttl = MILLISECONDS.toNanos(timeToLiveMs);
-      this.topicManagerRepository = topicManagerRepository;
-      this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased;
     }
 
     /**
@@ -3008,38 +3011,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * return the next available offset rather the latest used offset. Therefore,
      * the value will be 1 offset greater than what's expected.
      */
-    long getOffset(String topicName, int partitionId) {
-      return fetchMetadata(new Pair<>(topicName, partitionId), offsetCache, () -> {
-        long latestOffset = topicManagerRepository.getTopicManager().getLatestOffsetAndRetry(topicName, partitionId, 10);
-        // Get a new TTL start time after fetching fresh metadata.
-        return new Pair<>(System.nanoTime() + ttl, latestOffset);
-      });
-    }
-
-    long getOffsetFromRemoteKafka(String remoteKafkaServer, String topicName, int partitionId) {
+    long getOffset(String sourceKafkaServer, String topicName, int partitionId) {
       try {
-        return fetchMetadata(new Pair<>(topicName, partitionId), remoteOffsetCache, () -> {
-          long latestOffset = topicManagerRepositoryJavaBased.getTopicManager(remoteKafkaServer).getLatestOffsetAndRetry(topicName, partitionId, 10);
+        return fetchMetadata(new KafkaMetadataCacheKey(sourceKafkaServer, topicName, Optional.of(partitionId)), offsetCache, () -> {
+          long latestOffset = getTopicManager(sourceKafkaServer).getLatestOffsetAndRetry(topicName, partitionId, 10);
           // Get a new TTL start time after fetching fresh metadata.
           return new Pair<>(System.nanoTime() + ttl, latestOffset);
         });
       } catch (TopicDoesNotExistException e) {
-        //It's observed in production that With java based admin client the topic may not be found temporarily, so return 0 in such cases.
+        //It's observed in production that with java based admin client the topic may not be found temporarily, return error code
         return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
       }
     }
 
-    long getProducerTimestampOfLastMessage(String topicName, int partitionId) {
-      return fetchMetadata(new Pair<>(topicName, partitionId), lastProducerTimestampCache, () -> {
-        long latestProducerTimestamp = topicManagerRepository.getTopicManager().getLatestProducerTimestampAndRetry(topicName, partitionId, 10);
-        // Get a new TTL start time after fetching fresh metadata.
-        return new Pair<>(System.nanoTime() + ttl, latestProducerTimestamp);
-      });
+    long getProducerTimestampOfLastMessage(String sourceKafkaServer, String topicName, int partitionId) {
+      try {
+        return fetchMetadata(new KafkaMetadataCacheKey(sourceKafkaServer, topicName, Optional.of(partitionId)), lastProducerTimestampCache, () -> {
+          long latestProducerTimestamp = getTopicManager(sourceKafkaServer).getLatestProducerTimestampAndRetry(topicName, partitionId, 10);
+          // Get a new TTL start time after fetching fresh metadata.
+          return new Pair<>(System.nanoTime() + ttl, latestProducerTimestamp);
+        });
+      } catch (TopicDoesNotExistException e) {
+        //It's observed in production that with java based admin client the topic may not be found temporarily, return error code
+        return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
+      }
     }
 
-    boolean containsTopic(String topicName) {
-      return fetchMetadata(topicName, topicExistenceCache, () -> {
-        boolean topicExists = topicManagerRepository.getTopicManager().containsTopic(topicName);
+    boolean containsTopic(String sourceKafkaServer, String topicName) {
+      return fetchMetadata(new KafkaMetadataCacheKey(sourceKafkaServer, topicName, Optional.empty()), topicExistenceCache, () -> {
+        boolean topicExists = getTopicManager(sourceKafkaServer).containsTopic(topicName);
         // Get a new TTL start time after fetching fresh metadata.
         return new Pair<>(System.nanoTime() + ttl, topicExists);
       });
@@ -3074,6 +3074,69 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       });
       return cachedValue.getSecond();
     }
+
+    private class KafkaMetadataCacheKey {
+      String kafkaServer;
+      String topicName;
+      Optional<Integer> partitionId;
+
+      public KafkaMetadataCacheKey(String kafkaServer, String topicName, Optional<Integer> partitionId) {
+        this.kafkaServer = kafkaServer;
+        this.topicName = topicName;
+        this.partitionId = partitionId;
+      }
+
+      public String getKafkaServer() {
+        return kafkaServer;
+      }
+
+      public String getTopicName() {
+        return topicName;
+      }
+
+      public Optional<Integer> getPartitionId() {
+        return partitionId;
+      }
+
+      @Override
+      public int hashCode() {
+        int result = 1;
+        result = 31 * result + (kafkaServer == null ? 0 : kafkaServer.hashCode());
+        result = 31 * result + (topicName == null ? 0 : topicName.hashCode());
+        result = 31 * result + partitionId.hashCode();
+        return result;
+      }
+
+      @Override
+      public boolean equals(Object o) {
+        if (this == o) {
+          return true;
+        }
+        if (!(o instanceof KafkaMetadataCacheKey)) {
+          return false;
+        }
+
+        final KafkaMetadataCacheKey other = (KafkaMetadataCacheKey) o;
+        return Objects.equals(kafkaServer, other.kafkaServer)
+            && Objects.equals(topicName, other.topicName)
+            && Objects.equals(partitionId, other.partitionId);
+      }
+    }
+  }
+
+  /**
+   * The function returns local or remote topic manager.
+   * @param sourceKafkaServer The address of source kafka bootstrap server.
+   * @return topic manager
+   */
+  protected TopicManager getTopicManager(String sourceKafkaServer) {
+    if (!sourceKafkaServer.equals(localKafkaServer)) {
+      // Use java-based kafka admin client to get remote topic manager
+      return topicManagerRepositoryJavaBased.getTopicManager(sourceKafkaServer);
+    }
+
+    // Use default kafka admin client (could be scala or java based) to get local topic manager
+    return topicManagerRepository.getTopicManager();
   }
 
   /**
