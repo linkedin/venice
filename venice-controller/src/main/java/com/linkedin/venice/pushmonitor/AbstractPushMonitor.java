@@ -61,11 +61,12 @@ public abstract class AbstractPushMonitor
   private Optional<TopicReplicator> topicReplicator;
   private final MetadataStoreWriter metadataStoreWriter;
   private final ClusterLockManager clusterLockManager;
+  private final String aggregateRealTimeSourceKafkaUrl;
 
   public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner,
       ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
-      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager) {
+      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -76,6 +77,7 @@ public abstract class AbstractPushMonitor
     this.topicReplicator = topicReplicator;
     this.metadataStoreWriter = metadataStoreWriter;
     this.clusterLockManager = clusterLockManager;
+    this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
   }
 
   @Override
@@ -505,8 +507,11 @@ public abstract class AbstractPushMonitor
               newStatusDetails = "skipped buffer replay";
               logger.info("Skip buffer replay for hybrid store version: " + offlinePushStatus.getKafkaTopic());
             } else {
-              topicReplicatorOptional.get()
-                  .prepareAndStartReplication(Version.composeRealTimeTopic(storeName), offlinePushStatus.getKafkaTopic(), store);
+              topicReplicatorOptional.get().prepareAndStartReplication(
+                  Version.composeRealTimeTopic(storeName),
+                  offlinePushStatus.getKafkaTopic(),
+                  store,
+                  aggregateRealTimeSourceKafkaUrl);
               newStatusDetails = "kicked off buffer replay";
             }
             updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));

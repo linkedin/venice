@@ -23,9 +23,9 @@ public class HelixEVBasedPushMonitor extends AbstractPushMonitor implements Rout
   public HelixEVBasedPushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
       OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
-      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager) {
+      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        skipBufferReplayForHybrid, topicReplicator, metadataStoreWriter, clusterLockManager);
+        skipBufferReplayForHybrid, topicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl);
   }
   /**
    * Checking push status based on Helix external view (RoutingData)

@@ -273,6 +273,11 @@ public class ConfigKeys {
    */
   public static final String ADMIN_TOPIC_SOURCE_REGION = "admin.topic.source.region";
 
+  /**
+   * This config defines the source region of aggregate hybrid store real-time data when native replication is enabled
+   */
+  public static final String AGGREGATE_REAL_TIME_SOURCE_REGION = "aggregate.real.time.source.region";
+
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";

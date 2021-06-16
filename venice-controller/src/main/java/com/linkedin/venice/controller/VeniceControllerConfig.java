@@ -122,6 +122,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String adminTopicSourceRegion;
 
   /**
+   * Region name of aggregate hybrid store real-time data when native replication is enabled.
+   */
+  private final String aggregateRealTimeSourceRegion;
+
+  /**
    * Automatically perform new version creation for corresponding meta system store upon new user store creation.
    */
   private final boolean isAutoMaterializeMetaSystemStoreEnabled;
@@ -268,6 +273,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       throw new VeniceException("Admin topic remote consumption is enabled but Kafka url map is empty");
     }
     this.adminTopicSourceRegion = props.getString(ADMIN_TOPIC_SOURCE_REGION, "");
+    this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
   }
 
@@ -513,6 +519,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getAdminTopicSourceRegion() {
     return adminTopicSourceRegion;
+  }
+
+  public String getAggregateRealTimeSourceRegion() {
+    return aggregateRealTimeSourceRegion;
   }
 
   public boolean isAutoMaterializeMetaSystemStoreEnabled() {

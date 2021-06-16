@@ -2,6 +2,7 @@ package com.linkedin.venice.replication;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -26,6 +27,7 @@ public class LeaderStorageNodeReplicatorTest {
   private TopicReplicator leaderStorageNodeReplicator;
   private TopicManager mockTopicManager;
   private VeniceWriterFactory mockVeniceWriterFactory;
+  private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
 
   @BeforeMethod
   public void setup() {
@@ -67,7 +69,7 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(anyString(), any(Time.class));
 
 
-    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore);
+    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl);
 
     verify(mockVeniceWriter).broadcastTopicSwitch(any(), anyString(), anyLong(), any());
   }
@@ -76,7 +78,6 @@ public class LeaderStorageNodeReplicatorTest {
   public void testPrepareAndStartReplicationWithNativeReplication() {
     String srcTopic = "testTopic_rt";
     String destTopic = "testTopic_v1";
-    String nativeReplicationSourceAddress = "native-repl-source-address";
     Store mockStore = mock(Store.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
     List<PartitionInfo> partitionInfos = new ArrayList<>();
@@ -86,21 +87,20 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
     Version version = new VersionImpl(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
     version.setNativeReplicationEnabled(true);
-    version.setPushStreamSourceAddress(nativeReplicationSourceAddress);
     doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
+    doReturn(DataReplicationPolicy.AGGREGATE).when(mockHybridConfig).getDataReplicationPolicy();
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(anyString(), any(Time.class));
 
-
-    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore);
+    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl);
 
     List<CharSequence> expectedSourceClusters = new ArrayList<>();
-    expectedSourceClusters.add(nativeReplicationSourceAddress);
+    expectedSourceClusters.add(aggregateRealTimeSourceKafkaUrl);
     verify(mockVeniceWriter).broadcastTopicSwitch(eq(expectedSourceClusters), eq(srcTopic), anyLong(), any());
   }
 }
