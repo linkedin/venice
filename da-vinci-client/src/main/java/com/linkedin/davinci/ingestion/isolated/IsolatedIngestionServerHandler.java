@@ -304,6 +304,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
   }
 
   private IngestionTaskReport handleIngestionTaskCommand(IngestionTaskCommand ingestionTaskCommand) {
+    long startTimeInMs = System.currentTimeMillis();
     String topicName = ingestionTaskCommand.topicName.toString();
     int partitionId = ingestionTaskCommand.partitionId;
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -326,6 +327,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
             ((SubscriptionBasedReadOnlyStoreRepository)storeRepository).subscribe(storeName);
           }
           logger.info("Start ingesting partition: " + partitionId + " of topic: " + topicName);
+          isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
           isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
           break;
         case STOP_CONSUMPTION:
@@ -357,6 +359,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the action queue, but instead fail the command fast.
           if (isolatedIngestionServer.isPartitionBeingUnsubscribed(topicName, partitionId)) {
             report.isPositive = false;
+            logger.info("Partition " + partitionId + " of topic: " + topicName + " is being unsubscribed, reject leader promotion request");
           } else {
             isolatedIngestionServer.getIngestionBackend().promoteToLeader(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           }
@@ -364,6 +367,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
         case DEMOTE_TO_STANDBY:
           if (isolatedIngestionServer.isPartitionBeingUnsubscribed(topicName, partitionId)) {
             report.isPositive = false;
+            logger.info("Partition " + partitionId + " of topic: " + topicName + " is being unsubscribed, reject leader demotion request");
           } else {
             isolatedIngestionServer.getIngestionBackend().demoteToStandby(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           }
@@ -376,7 +380,8 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       report.isPositive = false;
       report.message = e.getClass().getSimpleName() + "_" + e.getMessage();
     }
-    logger.info("Completed ingestion command " + ingestionCommandType +  " for topic: " + topicName + ", partition: " + partitionId);
+    long executionTimeInMs = System.currentTimeMillis() - startTimeInMs;
+    logger.info("Completed ingestion command " + ingestionCommandType +  " for topic: " + topicName + ", partition: " + partitionId + " in millis: " + executionTimeInMs);
     return report;
   }
 

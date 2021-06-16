@@ -15,6 +15,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import org.apache.log4j.Logger;
@@ -35,6 +36,8 @@ import org.apache.log4j.Logger;
  */
 public class IsolatedIngestionBackend extends DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private static final Logger logger = Logger.getLogger(IsolatedIngestionBackend.class);
+  private static final int RETRY_WAIT_TIME_IN_MS = 10 * Time.MS_PER_SECOND;
+
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
@@ -104,57 +107,62 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
 
   @Override
   public void promoteToLeader(VeniceStoreConfig storeConfig, int partition,
-      LeaderFollowerParticipantModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-
-    try {
-      boolean messageCompleted = false;
-      while (!messageCompleted) {
+    LeaderFollowerParticipantModel.LeaderSessionIdChecker leaderSessionIdChecker) {
+    boolean messageCompleted = false;
+    while (!messageCompleted) {
+      /**
+       * The reason to add this check is to avoid an edge case that - when a promote message is sent to isolated
+       * ingestion process, the partition is completed but not reported to ingestion report listener. However,
+       * unsubscribe() might have been kicking in, and delete the partitionConsumptionState before promote/demote
+       * action is processed. This will result in NPE on PCS during action process stage.
+       * In the isolated ingestion process, we add a data structure to capture if unsubscribe command is being added
+       * to this specific topic partition, if so, we should reject the message and wait for a while. Ideally it will
+       * end up reporting completion the ingestion in isolatedIngestionBackend, and then we will add this command
+       * to local queue.
+       */
+      if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
+        super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
+        messageCompleted = true;
+      } else {
         /**
-         * The reason to add this check is to avoid an edge case that - when a promote message is sent to isolated
-         * ingestion process, the partition is completed but not reported to ingestion report listener. However,
-         * unsubscribe() might have been kicking in, and delete the partitionConsumptionState before promote/demote
-         * action is processed. This will result in NPE on PCS during action process stage.
-         * In the isolated ingestion process, we add a data structure to capture if unsubscribe command is being added
-         * to this specific topic partition, if so, we should reject the message and wait for a while. Ideally it will
-         * end up reporting completion the ingestion in isolatedIngestionBackend, and then we will add this command
-         * to local queue.
+         * LeaderSessionIdChecker logic for ingestion isolation is included in {@link IsolatedIngestionServer}.
          */
-        if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
-          super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
-          messageCompleted = true;
-        } else {
-          /**
-           * LeaderSessionIdChecker logic for ingestion isolation is included in {@link IsolatedIngestionServer}.
-           */
-          messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreName(), partition);
-        }
-        if (!messageCompleted) {
-          Thread.sleep(100);
+        messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreName(), partition);
+      }
+      if (!messageCompleted) {
+        logger.info("Leader promotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS + " ms.");
+        try {
+          Thread.sleep(RETRY_WAIT_TIME_IN_MS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          logger.info("Retry in leader promotion is interrupted.");
+          break;
         }
       }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
     }
   }
 
   @Override
   public void demoteToStandby(VeniceStoreConfig storeConfig, int partition,
-      LeaderFollowerParticipantModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    try {
-      boolean messageCompleted = false;
-      while (!messageCompleted) {
-        if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
-          super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
-          messageCompleted = true;
-        } else {
-          messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreName(), partition);
-        }
-        if (!messageCompleted) {
-          Thread.sleep(100);
+    LeaderFollowerParticipantModel.LeaderSessionIdChecker leaderSessionIdChecker) {
+    boolean messageCompleted = false;
+    while (!messageCompleted) {
+      if (isTopicPartitionInLocal(storeConfig.getStoreName(), partition)) {
+        super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
+        messageCompleted = true;
+      } else {
+        messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreName(), partition);
+      }
+      if (!messageCompleted) {
+        logger.info("Leader demotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS + " ms.");
+        try {
+          Thread.sleep(RETRY_WAIT_TIME_IN_MS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          logger.info("Retry in leader demotion is interrupted.");
+          break;
         }
       }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
     }
   }
 

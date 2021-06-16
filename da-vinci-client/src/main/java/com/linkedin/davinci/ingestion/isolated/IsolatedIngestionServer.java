@@ -35,6 +35,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -301,7 +302,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   public void updateHeartbeatTime() {
     this.heartbeatTimeInMs = System.currentTimeMillis();
-    logger.info("Received heartbeat from main process at: " + this.heartbeatTimeoutMs);
+    logger.info("Received heartbeat from main process at: " + this.heartbeatTimeInMs);
   }
 
   /**
@@ -382,12 +383,23 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     topicPartitionSubscriptionMap.get(topicName).get(partition).set(false);
   }
 
+  // Set the topic partition state to be subscribed(true)
+  public void setPartitionToBeSubscribed(String topicName, int partition) {
+    topicPartitionSubscriptionMap.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
+    topicPartitionSubscriptionMap.get(topicName).putIfAbsent(partition, new AtomicBoolean(true));
+    topicPartitionSubscriptionMap.get(topicName).get(partition).set(true);
+  }
+
   // Check if topic partition is being unsubscribed.
   public boolean isPartitionBeingUnsubscribed(String topicName, int partition) {
     if (!topicPartitionSubscriptionMap.containsKey(topicName)) {
       return false;
     }
-    return topicPartitionSubscriptionMap.get(topicName).getOrDefault(partition, new AtomicBoolean(true)).get();
+    Map<Integer, AtomicBoolean> partitionSubscriptionMap = topicPartitionSubscriptionMap.get(topicName);
+    if (!partitionSubscriptionMap.containsKey(partition)) {
+      return false;
+    }
+    return partitionSubscriptionMap.get(partition).get();
   }
 
   /**
