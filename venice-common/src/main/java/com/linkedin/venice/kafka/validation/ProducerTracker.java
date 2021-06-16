@@ -141,8 +141,8 @@ public class ProducerTracker {
          */
         state.aggregates = segment.getAggregates();
         state.debugInfo = segment.getDebugInfo();
-        state.checksumType = segment.getCheckSumType().getValue();
       }
+      state.checksumType = segment.getCheckSumType().getValue();
       /**
        * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
        * which is expensive. We should only invoke this closure when necessary.
