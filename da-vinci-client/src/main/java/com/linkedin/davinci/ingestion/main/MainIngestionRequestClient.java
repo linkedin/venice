@@ -180,7 +180,7 @@ public class MainIngestionRequestClient implements Closeable {
        * Child process might crashed, but it will be respawned and will be able to receive future updates.
        */
       logger.warn("Encounter exception when sending metadata updates to child process for topic: "
-          + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId, e);
+          + ingestionStorageMetadata.topicName + ", partition: " + ingestionStorageMetadata.partitionId);
       return false;
     }
   }
