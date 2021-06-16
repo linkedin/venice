@@ -138,7 +138,8 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   }
 
   @Override
-  public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store) {
+  public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store,
+      String aggregateRealTimeSourceKafkaUrl) {
     Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(destTopicName));
     if (!version.isPresent()) {
       throw new VeniceException("Corresponding version does not exist for topic: " + destTopicName + " in store: "
@@ -157,7 +158,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
 
   @Override
   void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
-      long rewindStartTimestamp, String nativeReplicationSourceKafkaCluster) {
+      long rewindStartTimestamp, String remoteKafkaUrl) {
 
     Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(sourceTopic, rewindStartTimestamp);
     logger.info("Get rewinding offset for topic: "+ sourceTopic + ", and rewind start timestamp: " + rewindStartTimestamp + ": " + startingOffsetsMap);
@@ -168,7 +169,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
         .collect(Collectors.toList());
     getVeniceWriterFactory().useVeniceWriter(
         () -> getVeniceWriterFactory().createBasicVeniceWriter(destinationTopic, getTimer()),
-        // Online/Offline does not support native replication. Parameter nativeReplicationSourceKafkaCluster is ignored.
+        // Online/Offline always consumes locally. Parameter remoteKafkaUrl is ignored.
         veniceWriter -> veniceWriter.broadcastStartOfBufferReplay(startingOffsets, destKafkaBootstrapServers, sourceTopic, new HashMap<>())
     );
 

@@ -21,13 +21,14 @@ public class TestPushMonitorDelegator {
   private ReadWriteStoreRepository metadataRepo = Mockito.mock(ReadWriteStoreRepository.class);
   private AggPushHealthStats aggPushHealthStats = Mockito.mock(AggPushHealthStats.class);
   private MetadataStoreWriter metadataStoreWriter = Mockito.mock(MetadataStoreWriter.class);
-  private ClusterLockManager lock = Mockito.mock(ClusterLockManager.class);
+  private ClusterLockManager clusterLockManager = Mockito.mock(ClusterLockManager.class);
+  private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
 
   @Test
   public void testDelegatorCanCleanupLegacyStatus() {
     PushMonitorDelegator delegator = new PushMonitorDelegator(pushMonitorType, clusterName, routingDataRepository,
         offlinePushAccessor, storeCleaner, metadataRepo, aggPushHealthStats, false,
-        Optional.empty(), Optional.empty(), metadataStoreWriter, lock);
+        Optional.empty(), Optional.empty(), metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl);
 
     OfflinePushStatus legacyStatus = new OfflinePushStatus("legacy_v1", 1, 1,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);

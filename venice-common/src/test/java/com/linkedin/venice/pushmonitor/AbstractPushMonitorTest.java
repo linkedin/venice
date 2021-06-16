@@ -51,7 +51,8 @@ public abstract class AbstractPushMonitorTest {
   private MetadataStoreWriter metadataStoreWriter;
   private ClusterLockManager clusterLockManager;
 
-  private String clusterName =TestUtils.getUniqueString("test_cluster");
+  private String clusterName = TestUtils.getUniqueString("test_cluster");
+  private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
   private String storeName;
   private String topic;
 
@@ -369,7 +370,7 @@ public abstract class AbstractPushMonitorTest {
     // Check hybrid push status
     testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
-    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
+    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any(), any());
     Assert.assertEquals(testMonitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.STARTED,
         "Hybrid push is not ready to send SOBR.");
 
@@ -378,7 +379,7 @@ public abstract class AbstractPushMonitorTest {
     testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // no buffer replay should be sent
     verify(mockReplicator, never())
-        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl));
     Assert.assertEquals(testMonitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
 
@@ -388,7 +389,7 @@ public abstract class AbstractPushMonitorTest {
     testMonitor.setTopicReplicator(Optional.of(mockReplicator));
     testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // Should not send SOBR again
-    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
+    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any(), any());
   }
 
   @Test
@@ -420,7 +421,7 @@ public abstract class AbstractPushMonitorTest {
     // Check hybrid push status
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
-    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
+    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any(), any());
     Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.STARTED,
         "Hybrid push is not ready to send SOBR.");
 
@@ -428,7 +429,7 @@ public abstract class AbstractPushMonitorTest {
     replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
     monitor.onPartitionStatusChange(topic, partitionStatus);
     verify(mockReplicator,times(1))
-        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl));
     Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
 
@@ -438,7 +439,7 @@ public abstract class AbstractPushMonitorTest {
     monitor.setTopicReplicator(Optional.of(mockReplicator));
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Should not send SOBR again
-    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
+    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any(), any());
   }
 
   @Test
@@ -483,7 +484,7 @@ public abstract class AbstractPushMonitorTest {
     }
     // Only send one SOBR
     verify(mockReplicator, only())
-        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store), eq(aggregateRealTimeSourceKafkaUrl));
     Assert.assertEquals(monitor.getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }
@@ -663,5 +664,9 @@ public abstract class AbstractPushMonitorTest {
 
   protected ClusterLockManager getClusterLockManager() {
     return clusterLockManager;
+  }
+
+  protected String getAggregateRealTimeSourceKafkaUrl() {
+    return aggregateRealTimeSourceKafkaUrl;
   }
 }

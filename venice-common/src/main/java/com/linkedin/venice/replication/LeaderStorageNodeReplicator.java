@@ -2,9 +2,11 @@ package com.linkedin.venice.replication;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
@@ -32,7 +34,8 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
    * TODO Refactor/remove the {@link TopicReplicator} interface to fix this convoluted parameter.
    */
   @Override
-  public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store) {
+  public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store,
+      String aggregateRealTimeSourceKafkaUrl) {
     Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(destTopicName));
     if (!version.isPresent()) {
       throw new VeniceException("Corresponding version does not exist for topic: " + destTopicName + " in store: "
@@ -48,24 +51,23 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
     long bufferReplayStartTime = getRewindStartTime(hybridStoreConfig, version.get().getCreatedTime());
     String finalDestTopicName = version.get().getPushType().isStreamReprocessing() ?
         Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()) : destTopicName;
-    String nativeReplicationSourceKafkaCluster = null;
-    if (version.get().isNativeReplicationEnabled()) {
-      nativeReplicationSourceKafkaCluster = version.get().getPushStreamSourceAddress();
-      if (nativeReplicationSourceKafkaCluster == null || nativeReplicationSourceKafkaCluster.length() == 0) {
-        throw new VeniceException("Native replication is enabled but remote source address is not found");
-      }
+    String remoteKafkaUrl = null;
+    // Broadcast TS with remote Kafka url if NR is enabled and store is in aggregate mode
+    if (version.get().isNativeReplicationEnabled()
+        && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE) {
+      remoteKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     }
     logger.info("Starting buffer replay for topic: " + finalDestTopicName
         + " with buffer replay start timestamp: " + bufferReplayStartTime);
-    beginReplication(srcTopicName, finalDestTopicName, bufferReplayStartTime, nativeReplicationSourceKafkaCluster);
+    beginReplication(srcTopicName, finalDestTopicName, bufferReplayStartTime, remoteKafkaUrl);
   }
 
   @Override
   void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
-      long rewindStartTimestamp, String nativeReplicationSourceKafkaCluster) {
+      long rewindStartTimestamp, String remoteKafkaUrl) {
     List<CharSequence> sourceClusters = new ArrayList<>();
-    if (nativeReplicationSourceKafkaCluster != null) {
-      sourceClusters.add(nativeReplicationSourceKafkaCluster);
+    if (!Utils.isNullOrEmpty(remoteKafkaUrl)) {
+      sourceClusters.add(remoteKafkaUrl);
     } else {
       sourceClusters.add(destKafkaBootstrapServers);
     }

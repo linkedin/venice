@@ -50,8 +50,7 @@ public class PushMonitorDelegator implements PushMonitor {
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid,
       Optional<TopicReplicator> onlineOfflineTopicReplicator, Optional<TopicReplicator> leaderFollowerTopicReplicator,
-      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager) {
-
+      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl) {
     this.clusterName = clusterName;
     this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
@@ -59,10 +58,10 @@ public class PushMonitorDelegator implements PushMonitor {
 
     this.helixEVPushMonitor = new HelixEVBasedPushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
         storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid, onlineOfflineTopicReplicator,
-        metadataStoreWriter, clusterLockManager);
+        metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl);
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
         storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats, skipBufferReplayForHybrid,
-        leaderFollowerTopicReplicator, metadataStoreWriter, clusterLockManager);
+        leaderFollowerTopicReplicator, metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();

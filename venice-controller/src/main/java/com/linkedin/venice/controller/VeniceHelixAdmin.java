@@ -1583,6 +1583,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
                             version.setNativeReplicationSourceFabric(sourceFabric);
                         }
+                        if (isParent() && store.isHybrid()
+                            && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE) {
+                            // Create rt topic in parent colo if the store is aggregate mode hybrid store
+                            String realTimeTopic = Version.composeRealTimeTopic(storeName);
+                            if (!getTopicManager().containsTopic(realTimeTopic)) {
+                                getTopicManager().createTopic(
+                                    realTimeTopic,
+                                    numberOfPartitions,
+                                    clusterConfig.getKafkaReplicationFactor(),
+                                    TopicManager.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
+                                    false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
+                                    clusterConfig.getMinIsr(),
+                                    false);
+                            } else {
+                                // If real-time topic already exists, check whether its retention time is correct.
+                                Properties topicProperties = getTopicManager().getCachedTopicConfig(realTimeTopic);
+                                long topicRetentionTimeInMs = getTopicManager().getTopicRetention(topicProperties);
+                                long expectedRetentionTimeMs = TopicManager.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig());
+                                if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
+                                    getTopicManager().updateTopicRetention(realTimeTopic, expectedRetentionTimeMs, topicProperties);
+                                }
+                            }
+                        }
                     }
                     /**
                      * Version-level rewind time override.

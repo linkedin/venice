@@ -120,10 +120,11 @@ public class VeniceHelixResources implements VeniceResource {
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
     VeniceOfflinePushMonitorAccessor offlinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(clusterName, zkClient,
         adapterSerializer, config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
+    String aggregateRealTimeSourceKafkaUrl = config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         offlinePushMonitorAccessor, admin, metadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
         config.isSkipBufferRelayForHybrid(), onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
-        metadataStoreWriter, clusterLockManager);
+        metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl);
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, metadataRepository,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository), this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.

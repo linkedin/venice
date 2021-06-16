@@ -75,13 +75,13 @@ public abstract class TopicReplicator {
    * and destination topic.
    * @param rewindStartTimestamp to indicate the rewind start time for underlying replicators to start replicating
    *                             records from this timestamp.
-   * @param nativeReplicationSourceKafkaCluster to indicate the source Kafka cluster address for leader replicas to
-   *                                            consume when native replication is enabled. The parameter is null if
-   *                                            native replication is disabled.
+   * @param remoteKafkaUrl to indicate the source Kafka cluster address for leader replicas to
+   *                       consume real-time data when store is in aggregate mode and native
+   *                       replication is enabled
    * @throws TopicException
    */
   public void beginReplication(String sourceTopic, String destinationTopic,
-      long rewindStartTimestamp, String nativeReplicationSourceKafkaCluster) throws TopicException {
+      long rewindStartTimestamp, String remoteKafkaUrl) throws TopicException {
     if (doesReplicationExist(sourceTopic, destinationTopic)) {
       LOGGER.info("Replication already exists from src: " + sourceTopic + " to dest: " + destinationTopic
           + ". Skip starting replication.");
@@ -104,7 +104,7 @@ public abstract class TopicReplicator {
       LOGGER.info("Topic " + sourceTopic + " has " + sourcePartitionCount + " partitions"
           + " and topic " + destinationTopic + " has " + destinationPartitionCount + " partitions."  );
     }
-    beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, rewindStartTimestamp, nativeReplicationSourceKafkaCluster);
+    beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, rewindStartTimestamp, remoteKafkaUrl);
     LOGGER.info("Successfully started topic replication from: " + sourceTopic + " to " + destinationTopic);
   }
 
@@ -174,7 +174,8 @@ public abstract class TopicReplicator {
     }
   }
 
-  abstract public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store);
+  abstract public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store,
+      String aggregateRealTimeSourceRegion);
   abstract void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
       long rewindStartTimestamp, String nativeReplicationSourceKafkaCluster);
   abstract void terminateReplicationInternal(String sourceTopic, String destinationTopic);

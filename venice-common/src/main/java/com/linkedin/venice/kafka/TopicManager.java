@@ -388,6 +388,13 @@ public class TopicManager implements Closeable {
     return UNKNOWN_TOPIC_RETENTION;
   }
 
+  public long getTopicRetention(Properties topicProperties) throws TopicDoesNotExistException {
+    if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
+      return Long.parseLong(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG));
+    }
+    return UNKNOWN_TOPIC_RETENTION;
+  }
+
   public boolean isTopicTruncated(String topicName, long truncatedTopicMaxRetentionMs) {
     return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
   }
