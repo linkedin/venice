@@ -13,6 +13,8 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.TestUtils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -86,12 +88,17 @@ public class TestProducerTracker {
   }
 
   private ControlMessage getStartOfSegment() {
+    return getStartOfSegment(CheckSumType.NONE);
+  }
+
+
+  private ControlMessage getStartOfSegment(CheckSumType checkSumType) {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     StartOfSegment startOfSegment = new StartOfSegment();
     startOfSegment.upcomingAggregates = new ArrayList<>();
     startOfSegment.upcomingAggregates.add("baz");
-    startOfSegment.checksumType = CheckSumType.NONE.getValue();
+    startOfSegment.checksumType = checkSumType.getValue();
     controlMessage.controlMessageUnion = startOfSegment;
     controlMessage.debugInfo = new HashMap<>();
     controlMessage.debugInfo.put("foo", "bar");
@@ -237,5 +244,45 @@ public class TestProducerTracker {
     Assert.assertThrows(DuplicateDataException.class, () -> producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, true));
     // The sequence number should not change
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
+  }
+
+  /**
+   * This test is to ensure when meeting a mid segment, i.e. segment which doesn't start with SOS, the check sum
+   * type and check sum state should be aligned with each other.
+   */
+  @Test
+  public void testMidSegmentCheckSumStates() {
+    int partitionId = 0;
+    Segment firstSegment = new Segment(partitionId, 0, CheckSumType.MD5);
+    Segment secondSegment = new Segment(partitionId, 1, CheckSumType.MD5);
+    long offset = 10;
+    OffsetRecord record = TestUtils.getOffsetRecord(offset);
+
+    // Send SOS with check sum type set to MD5
+    ControlMessage startOfSegment = getStartOfSegment(CheckSumType.MD5);
+    KafkaMessageEnvelope startOfSegmentMessage = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE,
+        guid, firstSegment, Optional.empty(), startOfSegment);
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> controlMessageConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
+        getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
+    OffsetRecordTransformer transformer1 = producerTracker.validateMessageAndGetOffsetRecordTransformer(controlMessageConsumerRecord, true, false);
+    record.addOffsetRecordTransformer(guid, transformer1);
+    record.transform();
+    Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.MD5.getValue());
+
+    // The msg is a put msg without check sum type
+    Put firstPut = getPutMessage("first_message".getBytes());
+    KafkaMessageEnvelope firstMessage = getKafkaMessageEnvelope(MessageType.PUT,
+        guid, secondSegment, Optional.empty(), firstPut);
+    KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
+    OffsetRecordTransformer transformer2 = producerTracker.validateMessageAndGetOffsetRecordTransformer(firstConsumerRecord, true, true);
+    record.addOffsetRecordTransformer(guid, transformer2);
+    record.transform();
+    Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.NONE.getValue());
+    Assert.assertEquals(record.getProducerPartitionState(guid).checksumState, ByteBuffer.wrap(new byte[0]));
   }
 }
