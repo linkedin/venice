@@ -6,7 +6,6 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -180,6 +179,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       }
     }
     if (null == chosenConsumer) {
+      stats.recordConsumerSelectionForTopicError();
       throw new VeniceException("Failed to find consumer for topic: " + versionTopic + ", and it might be caused by that all"
           + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
     }
