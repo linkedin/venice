@@ -71,6 +71,12 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT = "rocksdb.block.cache.strict.capacity.limit";
 
   /**
+   * If set to true, we will put index/filter blocks to the block cache. Otherwise, each "table reader" object will
+   * pre-load index/filter block during table initialization.
+   */
+  public static final String ROCKSDB_SET_CACHE_INDEX_AND_FILTER_BLOCKS = "rocksdb.set.cache.index.and.filter.blocks";
+
+  /**
    * File block size, and this config has impact to the index size and read performance.
    */
   public static final String ROCKSDB_SST_FILE_BLOCK_SIZE_IN_BYTES = "rocksdb.sst.file.block.size.in.bytes";
@@ -199,6 +205,7 @@ public class RocksDBServerConfig {
   private final long rocksDBBlockCacheSizeInBytes;
   private final long rocksDBBlockCacheCompressedSizeInBytes;
   private final boolean rocksDBBlockCacheStrictCapacityLimit;
+  private final boolean rocksDBSetCacheIndexAndFilterBlocks;
   private final int rocksDBBlockCacheShardBits;
   private final RocksDBBlockCacheImplementations rocksDBBlockCacheImplementation;
 
@@ -265,18 +272,19 @@ public class RocksDBServerConfig {
       throw new VeniceException("Invalid compaction style: " + compactionStyle + ", available styles: " + Arrays.toString(CompactionStyle.values()));
     }
 
-    this.rocksDBBlockCacheSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024l); // 16GB
-    this.rocksDBBlockCacheCompressedSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0l); // disable compressed cache
+    this.rocksDBBlockCacheSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024L); // 16GB
+    this.rocksDBBlockCacheCompressedSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0L); // disable compressed cache
 
     this.rocksDBBlockCacheImplementation = RocksDBBlockCacheImplementations.valueOf(props.getString(ROCKSDB_BLOCK_CACHE_IMPLEMENTATION, RocksDBBlockCacheImplementations.LRU.toString()));
     this.rocksDBBlockCacheStrictCapacityLimit = props.getBoolean(ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT, true); // make sure indexes stay within cache size limits.
+    this.rocksDBSetCacheIndexAndFilterBlocks = props.getBoolean(ROCKSDB_SET_CACHE_INDEX_AND_FILTER_BLOCKS, true);
     this.rocksDBBlockCacheShardBits = props.getInt(ROCKSDB_BLOCK_CACHE_SHARD_BITS, 4); // 16 shards
     // TODO : add and tune high_pri_pool_ratio to make sure most indexes stay in memory.
     // This only works properly if "cache_index_and_filter_blocks_with_high_priority" is implemented in table configs
 
-    this.rocksDBSSTFileBlockSizeInBytes = props.getSizeInBytes(ROCKSDB_SST_FILE_BLOCK_SIZE_IN_BYTES, 16 * 1024l); // 16KB
+    this.rocksDBSSTFileBlockSizeInBytes = props.getSizeInBytes(ROCKSDB_SST_FILE_BLOCK_SIZE_IN_BYTES, 16 * 1024L); // 16KB
 
-    this.rocksDBMemtableSizeInBytes = props.getSizeInBytes(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, 32 * 1024 * 1024l); // 32MB
+    this.rocksDBMemtableSizeInBytes = props.getSizeInBytes(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, 32 * 1024 * 1024L); // 32MB
     this.rocksDBMaxMemtableCount = props.getInt(ROCKSDB_MAX_MEMTABLE_COUNT, 2);
     /**
      * Default: 0 means letting RocksDB to decide the proper WAL size.
@@ -288,9 +296,9 @@ public class RocksDBServerConfig {
      * // [sum of all write_buffer_size * max_write_buffer_number] * 4
      * // Default: 0
      */
-    this.rocksDBMaxTotalWalSizeInBytes = props.getSizeInBytes(ROCKSDB_MAX_TOTAL_WAL_SIZE_IN_BYTES, 0l);
+    this.rocksDBMaxTotalWalSizeInBytes = props.getSizeInBytes(ROCKSDB_MAX_TOTAL_WAL_SIZE_IN_BYTES, 0L);
 
-    this.rocksDBMaxBytesForLevelBase = props.getSizeInBytes(ROCKSDB_MAX_BYTES_FOR_LEVEL_BASE, 2 * 1024 * 1024 * 1024l); // 2GB
+    this.rocksDBMaxBytesForLevelBase = props.getSizeInBytes(ROCKSDB_MAX_BYTES_FOR_LEVEL_BASE, 2 * 1024 * 1024 * 1024L); // 2GB
 
     this.rocksDBMemTableHugePageSize = props.getSizeInBytes(ROCKSDB_MEM_TABLE_HUGE_PAGE_SIZE_BYTES, 0);
 
@@ -310,7 +318,7 @@ public class RocksDBServerConfig {
     this.rocksDBHugePageTlbSize = props.getInt(ROCKSDB_HUGE_PAGE_TLB_SIZE, 0);
     this.rocksDBBloomBitsPerKey = props.getInt(ROCKSDB_BLOOM_BITS_PER_KEY, 10);
 
-    this.rocksDBTotalMemtableUsageCapInBytes = props.getSizeInBytes(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, 2 * 1024 * 1024 * 1024l); // 2GB
+    this.rocksDBTotalMemtableUsageCapInBytes = props.getSizeInBytes(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, 2 * 1024 * 1024 * 1024L); // 2GB
     this.maxOpenFiles = props.getInt(ROCKSDB_MAX_OPEN_FILES, -1);
 
     this.targetFileSizeInBytes = props.getInt(ROCKSDB_TARGET_FILE_SIZE_IN_BYTES, 64 * 1024 * 1024); // default: 64MB
@@ -396,6 +404,10 @@ public class RocksDBServerConfig {
 
   public boolean getRocksDBBlockCacheStrictCapacityLimit() {
     return rocksDBBlockCacheStrictCapacityLimit;
+  }
+
+  public boolean isRocksDBSetCacheIndexAndFilterBlocks() {
+    return rocksDBSetCacheIndexAndFilterBlocks;
   }
 
   public int getRocksDBBlockCacheShardBits() {
