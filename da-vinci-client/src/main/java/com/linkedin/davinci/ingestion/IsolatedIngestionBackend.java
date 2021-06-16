@@ -38,7 +38,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   private static final Logger logger = Logger.getLogger(IsolatedIngestionBackend.class);
   private static final int RETRY_WAIT_TIME_IN_MS = 10 * Time.MS_PER_SECOND;
 
-  private final MainIngestionRequestClient mainIngestionRequestClient;
+  private final ThreadLocal<MainIngestionRequestClient> mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
 
@@ -52,9 +52,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
     this.configLoader = configLoader;
 
     // Create the ingestion request client.
-    mainIngestionRequestClient = new MainIngestionRequestClient(servicePort);
+    mainIngestionRequestClient = ThreadLocal.withInitial(() -> new MainIngestionRequestClient(servicePort));
     // Create the forked isolated ingestion process.
-    isolatedIngestionServiceProcess = mainIngestionRequestClient.startForkedIngestionProcess(configLoader);
+    isolatedIngestionServiceProcess = mainIngestionRequestClient.get().startForkedIngestionProcess(configLoader);
     // Create and start the ingestion report listener.
     try {
       mainIngestionMonitorService = new MainIngestionMonitorService(this, listenerPort, servicePort);
@@ -76,32 +76,32 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
       super.startConsumption(storeConfig, partition, leaderState);
     } else {
       mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreName(), partition);
-      mainIngestionRequestClient.startConsumption(storeConfig.getStoreName(), partition);
+      mainIngestionRequestClient.get().startConsumption(storeConfig.getStoreName(), partition);
     }
   }
 
   @Override
   public void stopConsumption(VeniceStoreConfig storeConfig, int partition) {
-    mainIngestionRequestClient.stopConsumption(storeConfig.getStoreName(), partition);
+    mainIngestionRequestClient.get().stopConsumption(storeConfig.getStoreName(), partition);
     super.stopConsumption(storeConfig, partition);
   }
 
   @Override
   public void killConsumptionTask(String topicName) {
-    mainIngestionRequestClient.killConsumptionTask(topicName);
+    mainIngestionRequestClient.get().killConsumptionTask(topicName);
     super.killConsumptionTask(topicName);
   }
 
   @Override
   public void removeStorageEngine(String topicName) {
     mainIngestionMonitorService.removedSubscribedTopicName(topicName);
-    mainIngestionRequestClient.removeStorageEngine(topicName);
+    mainIngestionRequestClient.get().removeStorageEngine(topicName);
     super.removeStorageEngine(topicName);
   }
 
   @Override
   public void dropStoragePartitionGracefully(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds) {
-    mainIngestionRequestClient.unsubscribeTopicPartition(storeConfig.getStoreName(), partition);
+    mainIngestionRequestClient.get().unsubscribeTopicPartition(storeConfig.getStoreName(), partition);
     super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds);
   }
 
@@ -127,7 +127,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
         /**
          * LeaderSessionIdChecker logic for ingestion isolation is included in {@link IsolatedIngestionServer}.
          */
-        messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreName(), partition);
+        messageCompleted = mainIngestionRequestClient.get().promoteToLeader(storeConfig.getStoreName(), partition);
       }
       if (!messageCompleted) {
         logger.info("Leader promotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS + " ms.");
@@ -151,7 +151,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
         super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
         messageCompleted = true;
       } else {
-        messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreName(), partition);
+        messageCompleted = mainIngestionRequestClient.get().demoteToStandby(storeConfig.getStoreName(), partition);
       }
       if (!messageCompleted) {
         logger.info("Leader demotion message rejected by remote ingestion server, will retry in " + RETRY_WAIT_TIME_IN_MS + " ms.");
@@ -225,10 +225,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   public void close() {
     try {
       mainIngestionMonitorService.stopInner();
-      mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.KAFKA_INGESTION_SERVICE);
-      mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.STORAGE_SERVICE);
+      mainIngestionRequestClient.get().shutdownForkedProcessComponent(IngestionComponentType.KAFKA_INGESTION_SERVICE);
+      mainIngestionRequestClient.get().shutdownForkedProcessComponent(IngestionComponentType.STORAGE_SERVICE);
       isolatedIngestionServiceProcess.destroy();
-      mainIngestionRequestClient.close();
+      mainIngestionRequestClient.get().close();
       super.close();
     } catch (Exception e) {
       logger.info("Unable to close " + getClass().getSimpleName(), e);
