@@ -357,19 +357,19 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           break;
         case PROMOTE_TO_LEADER:
           // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the action queue, but instead fail the command fast.
-          if (isolatedIngestionServer.isPartitionBeingUnsubscribed(topicName, partitionId)) {
+          if (isolatedIngestionServer.isPartitionSubscribed(topicName, partitionId)) {
+            isolatedIngestionServer.getIngestionBackend().promoteToLeader(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
+          } else {
             report.isPositive = false;
             logger.info("Partition " + partitionId + " of topic: " + topicName + " is being unsubscribed, reject leader promotion request");
-          } else {
-            isolatedIngestionServer.getIngestionBackend().promoteToLeader(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           }
           break;
         case DEMOTE_TO_STANDBY:
-          if (isolatedIngestionServer.isPartitionBeingUnsubscribed(topicName, partitionId)) {
+          if (isolatedIngestionServer.isPartitionSubscribed(topicName, partitionId)) {
+            isolatedIngestionServer.getIngestionBackend().demoteToStandby(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
+          } else {
             report.isPositive = false;
             logger.info("Partition " + partitionId + " of topic: " + topicName + " is being unsubscribed, reject leader demotion request");
-          } else {
-            isolatedIngestionServer.getIngestionBackend().demoteToStandby(storeConfig, partitionId, isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
           }
           break;
         default:

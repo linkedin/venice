@@ -390,8 +390,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     topicPartitionSubscriptionMap.get(topicName).get(partition).set(true);
   }
 
-  // Check if topic partition is being unsubscribed.
-  public boolean isPartitionBeingUnsubscribed(String topicName, int partition) {
+  // Check if topic partition is being subscribed.
+  public boolean isPartitionSubscribed(String topicName, int partition) {
     if (!topicPartitionSubscriptionMap.containsKey(topicName)) {
       return false;
     }

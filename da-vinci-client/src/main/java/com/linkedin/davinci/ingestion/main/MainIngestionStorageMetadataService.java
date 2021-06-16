@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -191,10 +192,13 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
               metadataUpdateQueue.remove();
               metadataUpdateStats.recordMetadataUpdateQueueLength(metadataUpdateQueue.size());
             } else {
-              Thread.sleep(1000);
+              if (!isRunning.get()) {
+                break;
+              }
+              Thread.sleep(5 * Time.MS_PER_SECOND);
             }
           }
-          Thread.sleep(1000);
+          Thread.sleep(Time.MS_PER_SECOND);
           if (metadataUpdateQueue.size() > 0) {
             logger.info("Number of remaining metadata update requests in queue: " + metadataUpdateQueue.size());
           }
