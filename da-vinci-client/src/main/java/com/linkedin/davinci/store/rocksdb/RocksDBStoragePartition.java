@@ -285,7 +285,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
       tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
       tableConfig.setBlockCache(factory.getSharedCache());
-      tableConfig.setCacheIndexAndFilterBlocks(true);
+      tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
 
       // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in memory.
       // https://github.com/facebook/rocksdb/wiki/Block-Cache#caching-index-and-filter-blocks
