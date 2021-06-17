@@ -878,51 +878,59 @@ public class VeniceParentHelixAdmin implements Admin {
             + currentPushTopic);
       }
       String existingPushJobId = version.get().getPushJobId();
-      if (!existingPushJobId.equals(pushJobId)) {
-        if (lingeringStoreVersionChecker.isStoreVersionLingering(store, version.get(), timer, this, optionalRequesterPrincipalId)) {
-          if (pushType.isIncremental()) {
-            /**
-             * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't
-             * get the right job states from child colos; once child colos recover, next incremental push should succeed.
-             *
-             * If the previous full push is indeed lingering, users should issue to full push to clean up the lingering job
-             * instead of running incremental push.
-             */
-            throw new VeniceException("Version " + version.get().getNumber() + " is not healthy in Venice backend; please "
-                + "consider running a full batch push for your store: " + storeName + " before running incremental push, "
-                + "or reach out to Venice team.");
-          } else {
-            // Kill the lingering version and allow the new push to start.
-            logger.info("Found lingering topic: " + currentPushTopic.get() + " with push id: " + existingPushJobId + ". Killing the lingering version that was created at: " + version.get().getCreatedTime());
-            killOfflinePush(clusterName, currentPushTopic.get(), true);
-          }
+      if (existingPushJobId.equals(pushJobId)) {
+         return version.get();
+      }
+      if (lingeringStoreVersionChecker.isStoreVersionLingering(store, version.get(), timer, this, optionalRequesterPrincipalId)) {
+        if (pushType.isIncremental()) {
+          /**
+           * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't
+           * get the right job states from child colos; once child colos recover, next incremental push should succeed.
+           *
+           * If the previous full push is indeed lingering, users should issue to full push to clean up the lingering job
+           * instead of running incremental push.
+           */
+          throw new VeniceException("Version " + version.get().getNumber() + " is not healthy in Venice backend; please "
+              + "consider running a full batch push for your store: " + storeName + " before running incremental push, "
+              + "or reach out to Venice team.");
         } else {
-          throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
-              + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
-              + " is found and it must be terminated before another push can be started.");
+          // Kill the lingering version and allow the new push to start.
+          logger.info("Found lingering topic: " + currentPushTopic.get() + " with push id: " + existingPushJobId + ". Killing the lingering version that was created at: " + version.get().getCreatedTime());
+          killOfflinePush(clusterName, currentPushTopic.get(), true);
         }
+      } else {
+        throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
+            + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
+            + " is found and it must be terminated before another push can be started.");
       }
     }
-    Version newVersion = pushType.isIncremental() ? veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName)
-        : veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            sendStartOfPush, sorted, pushType, compressionDictionary, null, batchStartingFabric, rewindTimeInSecondsOverride);
-    if (!pushType.isIncremental()) {
-      acquireAdminMessageLock(clusterName, storeName);
-      try {
-        sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, numberOfPartitions,
-            pushType);
-      } finally {
-        releaseAdminMessageLock(clusterName);
-      }
-      if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE
-          && authorizerService.isPresent()) {
-        // Ensure the wild card acl regex is created for META_STORE
-        authorizerService.get().setupResource(new Resource(storeName));
-      }
-      if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE
-          && authorizerService.isPresent()) {
-        // Ensure the wild card acl regex is created for DAVINCI_PUSH_STATUS_STORE
-        authorizerService.get().setupResource(new Resource(storeName));
+
+    Version newVersion;
+    if (pushType.isIncremental()) {
+      newVersion = veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName);
+    } else {
+      Pair<Boolean, Version> result = veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId,
+          numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
+          null, batchStartingFabric, rewindTimeInSecondsOverride);
+      newVersion = result.getSecond();
+      if (result.getFirst()) {
+        // Send admin message if the version is newly created.
+        acquireAdminMessageLock(clusterName, storeName);
+        try {
+          sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, numberOfPartitions, pushType);
+        } finally {
+          releaseAdminMessageLock(clusterName);
+        }
+        if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE
+            && authorizerService.isPresent()) {
+          // Ensure the wild card acl regex is created for META_STORE
+          authorizerService.get().setupResource(new Resource(storeName));
+        }
+        if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE
+            && authorizerService.isPresent()) {
+          // Ensure the wild card acl regex is created for DAVINCI_PUSH_STATUS_STORE
+          authorizerService.get().setupResource(new Resource(storeName));
+        }
       }
     }
     cleanupHistoricalVersions(clusterName, storeName);
