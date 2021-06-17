@@ -1,3 +1,5 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
 buildscript {
   dependencies {
     classpath 'com.gradle:gradle-enterprise-gradle-plugin:3.5.2'
@@ -71,8 +73,9 @@ ext.libraries = [
     netty: 'io.netty:netty-all:4.1.22.Final',
     zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
     d2: 'com.linkedin.container:pegasus-d2-server-factory:30.1.265',
-    d2Client: 'com.linkedin.container:pegasus-d2-client-factory:30.1.265',
-    r2Client: 'com.linkedin.container:pegasus-r2-client-factory:30.1.269',
+    d2Client: 'com.linkedin.container:pegasus-d2-client-factory:38.4.175',
+    r2Client: 'com.linkedin.container:pegasus-r2-client-factory:38.4.175',
+    r2: "com.linkedin.pegasus:r2:29.18.2",
     routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
     routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
     ddsNettyBase: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
@@ -207,6 +210,17 @@ subprojects {
       setListeners(suiteListeners)
     }
 
+    // The ALPN version should match the JVM version
+    String osName = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
+    if (JavaVersion.current().compareTo(JavaVersion.VERSION_11) < 0) {
+      if (Os.isFamily(Os.FAMILY_MAC)) {
+        jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
+      } else if (Os.isFamily(Os.FAMILY_UNIX)) {
+        jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
+      } else {
+        throw new GradleException(osName + " is not supported since alpn only works for either Mac or Linux right now.")
+      }
+    }
     retry {
       maxRetries = 4 // 5 attempts in total
       maxFailures = 100

@@ -81,6 +81,7 @@ dependencies {
   implementation libraries.avroUtilCompatibilityHelper
   implementation libraries.avroUtilFastserde
   implementation libraries.scalaLogging
+  implementation libraries.netty4Lnkd
 
   runtime libraries.commonsConfiguration
   runtime libraries.commonsLang

@@ -48,6 +48,10 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     return resourceName;
   }
 
+  protected X509Certificate extractClientCert(ChannelHandlerContext ctx) throws SSLPeerUnverifiedException {
+    return (X509Certificate) ctx.pipeline().get(SslHandler.class).engine().getSession().getPeerCertificates()[0];
+  }
+
   /**
    * Verify if client has permission to access.
    *
@@ -57,7 +61,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
-    X509Certificate clientCert = (X509Certificate) ctx.pipeline().get(SslHandler.class).engine().getSession().getPeerCertificates()[0];
+    X509Certificate clientCert = extractClientCert(ctx);
 
     String uri = req.uri();
     // Parse resource type and store name

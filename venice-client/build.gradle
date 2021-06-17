@@ -30,6 +30,7 @@ dependencies {
   implementation libraries.routerApi
 
   implementation libraries.r2Client
+  implementation libraries.r2
 
   implementation libraries.ddsStorageCommonBase
 

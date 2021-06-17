@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -12,6 +13,7 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
+import java.util.Optional;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.log4j.Logger;
 
@@ -37,7 +39,6 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this(accessController, true);
   }
 
-
   public ServerAclHandler(StaticAccessController accessController, boolean failOnAccessRejection) {
     this.accessController = accessController;
     this.failOnAccessRejection = failOnAccessRejection;
@@ -52,7 +53,12 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
-    X509Certificate clientCert = (X509Certificate) ctx.pipeline().get(SslHandler.class).engine().getSession().getPeerCertificates()[0];
+    Optional<SslHandler> sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
+    if (!sslHandler.isPresent()) {
+      throw new VeniceException("Failed to extract ssl handler from the incoming request");
+    }
+
+    X509Certificate clientCert = (X509Certificate) sslHandler.get().engine().getSession().getPeerCertificates()[0];
     String method = req.method().name();
 
     boolean accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
