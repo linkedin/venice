@@ -39,6 +39,7 @@ import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.StoreInfo;
@@ -666,6 +667,7 @@ public class AdminTool {
     longParam(cmd, Arg.HYBRID_OFFSET_LAG, p -> params.setHybridOffsetLagThreshold(p), argSet);
     longParam(cmd, Arg.HYBRID_TIME_LAG, p -> params.setHybridTimeLagThreshold(p), argSet);
     genericParam(cmd, Arg.HYBRID_DATA_REPLICATION_POLICY, s -> DataReplicationPolicy.valueOf(s), p-> params.setHybridDataReplicationPolicy(p), argSet);
+    genericParam(cmd, Arg.HYBRID_BUFFER_REPLAY_POLICY, s -> BufferReplayPolicy.valueOf(s), p -> params.setHybridBufferReplayPolicy(p), argSet);
     booleanParam(cmd, Arg.ACCESS_CONTROL, p -> params.setAccessControlled(p), argSet);
     genericParam(cmd, Arg.COMPRESSION_STRATEGY, s -> CompressionStrategy.valueOf(s), p -> params.setCompressionStrategy(p), argSet);
     booleanParam(cmd, Arg.CLIENT_DECOMPRESSION_ENABLED, p -> params.setClientDecompressionEnabled(p), argSet);
