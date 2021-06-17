@@ -23,6 +23,7 @@ import org.apache.log4j.Logger;
 @NotThreadSafe
 class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
   private static final Logger LOGGER = Logger.getLogger(DefaultPushJobHeartbeatSender.class);
+  private static final Duration DEFAULT_SEND_CALLBACK_AWAIT_TIMEOUT = Duration.ofSeconds(10);
 
   private final Duration interval;
   private final Duration initialDelay;
@@ -92,6 +93,8 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.storeName = Utils.notNull(storeName);
     this.storeVersion = storeVersion;
     this.heartbeatStartTime = Instant.now();
+    LOGGER.info(String.format("Start sending liveness heartbeats for [store=%s, version=%s] with initial delay %d ms and " +
+            "interval %d ms...", this.storeName, this.storeVersion, this.initialDelay.toMillis(), this.interval.toMillis()));
     executorService.scheduleAtFixedRate(this, initialDelay.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
   }
 
@@ -106,10 +109,10 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     // Send one last heartbeat that marks the end of this heartbeat session
     // TODO (lcli): consider making this timeout configurable
     LOGGER.info("Sending last heartbeat...");
-    sendHeartbeat(createHeartbeatKey(), createHeartbeatValue(), Duration.ofSeconds(30), true);
+    sendHeartbeat(createHeartbeatKey(), createHeartbeatValue(), DEFAULT_SEND_CALLBACK_AWAIT_TIMEOUT, true);
     LOGGER.info("Closing the heartbeat VeniceWriter");
     veniceWriter.close();
-    LOGGER.info(String.format("Heartbeat stopped for [store=%s, version=%s] " +
+    LOGGER.info(String.format("Liveness heartbeat stopped for [store=%s, version=%s] " +
             "with %d successful heartbeat(s) and %d failed heartbeat(s) and in total took %d second(s)",
             this.storeName, this.storeVersion, successfulHeartbeatCount, failedHeartbeatCount,
             Duration.between(this.heartbeatStartTime, Instant.now()).getSeconds())
@@ -130,7 +133,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
 
   @Override
   public void run() {
-    sendHeartbeat(createHeartbeatKey(), createHeartbeatValue(), Duration.ofMillis(0), false);
+    sendHeartbeat(createHeartbeatKey(), createHeartbeatValue(), DEFAULT_SEND_CALLBACK_AWAIT_TIMEOUT, false);
   }
 
   private BatchJobHeartbeatKey createHeartbeatKey() {
@@ -176,7 +179,9 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     veniceWriter.flush();
 
     try {
-      sendComplete.await(sendTimeout.toMillis(), TimeUnit.MILLISECONDS);
+      if (!sendComplete.await(sendTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
+        LOGGER.warn("Liveness heartbeat sent does not get ack-ed by remote server after " + sendTimeout.toMillis() + " ms");
+      }
     } catch (InterruptedException e) {
       LOGGER.warn(e);
     }
