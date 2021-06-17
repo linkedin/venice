@@ -10,11 +10,13 @@ import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
+import org.apache.log4j.Logger;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -22,6 +24,9 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class NodesAndReplicas extends AbstractRoute {
+  private static final Logger LOGGER = Logger.getLogger(NodesAndReplicas.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
+
   /**
    * TODO: Make sure services "venice-hooks-deployable" is also in whitelist
    */
@@ -160,10 +165,21 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setRemovable(result.isRemovable());
         // Add detail reason why this instance could not be removed.
         if (!result.isRemovable()) {
-          responseObject.setDetails(
-              nodeId + "could not be removed from cluster: " + responseObject.getCluster() + ", because resource: "
-                  + result.getBlockingResource() + " will " + result.getBlockingReason()
-                  + " after removing this node. Details: " + result.getDetails());
+          StringBuilder msgBuilder = new StringBuilder();
+          msgBuilder.append(nodeId)
+                    .append(" could not be removed from cluster: ")
+                    .append(responseObject.getCluster())
+                    .append(", because resource: ")
+                    .append(result.getBlockingResource())
+                    .append(" will ")
+                    .append(result.getBlockingReason())
+                    .append(" after removing this node. Details: ")
+                    .append(result.getDetails());
+          String errorResponseMessage = msgBuilder.toString();
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(nodeId)) {
+            LOGGER.warn(errorResponseMessage);
+          }
+          responseObject.setDetails(errorResponseMessage);
         }
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());

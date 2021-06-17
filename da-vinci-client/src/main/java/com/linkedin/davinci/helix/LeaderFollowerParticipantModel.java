@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.LatencyUtils;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
@@ -63,7 +64,10 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
+      long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
       setupNewStorePartition();
+      logger.info("Completed setting up new store partition for " + message.getResourceName() + " partition " + getPartition()
+          + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs) + " ms");
       String resourceName = message.getResourceName();
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);

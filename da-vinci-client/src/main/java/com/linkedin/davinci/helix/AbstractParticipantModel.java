@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -180,17 +181,27 @@ public abstract class AbstractParticipantModel extends StateModel {
      * Otherwise, it's possible that store ingestion starts without having the
      * accessor ready to get notified.
      */
+    long startTimeInWaitingPushStatusAccessorInNs = System.nanoTime();
     try {
       waitPartitionPushStatusAccessor();
     } catch (Exception e) {
       throw new VeniceException("Error when initializing partition push status accessor, "
           + "will not start ingestion for store partition. ", e);
     }
+    if (storeConfig.isDebugLoggingEnabled()) {
+      logger.info("Completed waiting for partition push status accessor for resource " + storeConfig.getStoreName()
+          + " partition " + partition + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeInWaitingPushStatusAccessorInNs) + " ms");
+    }
     /**
      * If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
      * will not create them again.
      */
+    long startTimeInStartingConsumptionInNs = System.nanoTime();
     ingestionBackend.startConsumption(storeConfig, partition);
+    if (storeConfig.isDebugLoggingEnabled()) {
+      logger.info("Completed starting the consumption for resource " + storeConfig.getStoreName() + " partition "
+          + partition + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeInStartingConsumptionInNs) + " ms");
+    }
   }
 
   protected void removePartitionFromStoreGracefully() {

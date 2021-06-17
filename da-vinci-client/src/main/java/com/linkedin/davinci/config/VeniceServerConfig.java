@@ -250,6 +250,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableKafkaConsumerOffsetCollection;
   private final boolean dedicatedDrainerQueueEnabled;
 
+  private final boolean debugLoggingEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -387,6 +388,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
     enableKafkaConsumerOffsetCollection = serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, false);
     dedicatedDrainerQueueEnabled = serverProperties.getBoolean(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, false);
+    debugLoggingEnabled = serverProperties.getBoolean(SERVER_DEBUG_LOGGING_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -743,5 +745,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getDrainerPoolSizeUnsortedInput() {
     return drainerPoolSizeUnsortedInput;
+  }
+
+  public boolean isDebugLoggingEnabled() {
+    return debugLoggingEnabled;
   }
 }

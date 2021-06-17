@@ -5,6 +5,7 @@ import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.utils.LatencyUtils;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,8 +51,12 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     @Transition(to = HelixState.ONLINE_STATE, from = HelixState.BOOTSTRAP_STATE)
     public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context) {
         partitionNumberFromBootstrapToOnline.incrementAndGet();
-        executeStateTransition(message, context, () ->
-            waitConsumptionCompleted(message.getResourceName(), notifier));
+        executeStateTransition(message, context, () -> {
+            long startTimeForWaitingConsumptionCompletedInNs = System.nanoTime();
+            waitConsumptionCompleted(message.getResourceName(), notifier);
+            logger.info("Consumption completed for " + message.getResourceName() + " partition " + getPartition()
+                + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeForWaitingConsumptionCompletedInNs) + " ms");
+            });
         partitionNumberFromBootstrapToOnline.decrementAndGet();
     }
 
@@ -59,7 +64,10 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
         partitionNumberFromOfflineToBootstrap.incrementAndGet();
         executeStateTransition(message, context, () -> {
+            long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
             setupNewStorePartition();
+            logger.info("Completed setting up new store partition for " + message.getResourceName() + " partition " + getPartition()
+                + ". Total elapsed time: " + LatencyUtils.getLatencyInMS(startTimeForSettingUpNewStorePartitionInNs) + " ms");
             notifier.startConsumption(message.getResourceName(), getPartition());
         });
         partitionNumberFromOfflineToBootstrap.decrementAndGet();

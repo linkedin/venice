@@ -18,6 +18,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -132,6 +133,7 @@ public class StorageService extends AbstractVeniceService {
   }
 
   public synchronized AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partitionId) {
+    logger.info("Opening store for " + storeConfig.getStoreName() + " partition " + partitionId);
     AbstractStorageEngine engine = openStore(storeConfig);
     synchronized (engine) {
       for (int subPartition : getSubPartition(storeConfig.getStoreName(), partitionId)) {
@@ -140,6 +142,7 @@ public class StorageService extends AbstractVeniceService {
         }
       }
     }
+    logger.info("Opened store for " + storeConfig.getStoreName() + " partition " + partitionId);
     return engine;
   }
 
@@ -181,6 +184,7 @@ public class StorageService extends AbstractVeniceService {
       return engine;
     }
 
+    long startTimeInBuildingNewEngine = System.nanoTime();
     /**
      * For new store, it will use the storage engine configured in host level if it is not known.
      */
@@ -195,6 +199,7 @@ public class StorageService extends AbstractVeniceService {
     // Setup storage engine stats
     aggVersionedStorageEngineStats.setStorageEngine(storeName, engine);
 
+    logger.info("[DEBUGDEBUG] time spent on creating new storage Engine for store " + storeName + ": " + LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine) + " ms");
     return engine;
   }
 
