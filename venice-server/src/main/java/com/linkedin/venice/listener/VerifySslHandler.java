@@ -6,8 +6,10 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 
@@ -24,8 +26,12 @@ public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
    * @throws IOException
    */
   @Override
-  public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
-    if (ctx.channel().pipeline().toMap().get("ssl-handler") == null) {
+  public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) {
+    Optional<SslHandler> sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
+    if (sslHandler.isPresent()) {
+      ReferenceCountUtil.retain(req);
+      ctx.fireChannelRead(req);
+    } else {
       // Log that we got an unexpected non-ssl request
       String remote = ctx.channel().remoteAddress().toString(); //ip and port
       String method = req.method().name();
@@ -33,9 +39,6 @@ public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
       logger.error("Got a non-ssl request on what should be an ssl only port: " + errLine);
       ctx.writeAndFlush(new HttpShortcutResponse("SSL Required", HttpResponseStatus.FORBIDDEN));
       ctx.close();
-    } else {
-      ReferenceCountUtil.retain(req);
-      ctx.fireChannelRead(req);
     }
   }
 }

@@ -17,7 +17,10 @@ public class ClientTestUtils {
     return getR2Client(false);
   }
   public static Client getR2Client(boolean useHttp2) {
-    TransportClientFactory transportClientFactory = new HttpClientFactory.Builder().build();
+    /**
+     * 'setUsePipelineV2' is required to force http2 for all types of request.
+     */
+    TransportClientFactory transportClientFactory = new HttpClientFactory.Builder().setUsePipelineV2(true).build();
     SSLEngineComponentFactory sslEngineComponentFactory = SslUtils.getLocalSslFactory();
     final Map<String, Object> properties = new HashMap();
     properties.put(HttpClientFactory.HTTP_SSL_CONTEXT, sslEngineComponentFactory.getSSLContext());

@@ -2,12 +2,16 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.util.Attribute;
 import io.netty.util.ReferenceCountUtil;
+import java.security.cert.X509Certificate;
+import java.util.Optional;
 import javax.net.ssl.SSLPeerUnverifiedException;
 
 
@@ -42,6 +46,16 @@ public class ServerStoreAclHandler extends StoreAclHandler {
       ctx.fireChannelRead(req);
     } else {
       super.channelRead0(ctx, req);
+    }
+  }
+
+  @Override
+  protected X509Certificate extractClientCert(ChannelHandlerContext ctx) throws SSLPeerUnverifiedException {
+    Optional<SslHandler> sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
+    if (sslHandler.isPresent()) {
+      return (X509Certificate) sslHandler.get().engine().getSession().getPeerCertificates()[0];
+    } else {
+      throw new VeniceException("Failed to extract client cert from the incoming request");
     }
   }
 
