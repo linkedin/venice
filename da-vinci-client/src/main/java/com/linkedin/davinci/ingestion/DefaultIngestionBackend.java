@@ -35,11 +35,15 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
 
   @Override
   public void startConsumption(VeniceStoreConfig storeConfig, int partition, Optional<LeaderFollowerStateType> leaderState) {
+    logger.info("Retrieving storage engine for store " + storeConfig.getStoreName() + " partition " + partition);
     AbstractStorageEngine storageEngine = getStorageService().openStoreForNewPartition(storeConfig, partition);
     if (topicStorageEngineReferenceMap.containsKey(storeConfig.getStoreName())) {
         topicStorageEngineReferenceMap.get(storeConfig.getStoreName()).set(storageEngine);
     }
+    logger.info("Retrieved storage engine for store " + storeConfig.getStoreName() + " partition " + partition
+        + ". Starting consumption in ingestion service");
     getStoreIngestionService().startConsumption(storeConfig, partition, leaderState);
+    logger.info("Completed starting consumption in ingestion service for store " + storeConfig.getStoreName() + " partition " + partition);
   }
 
   @Override

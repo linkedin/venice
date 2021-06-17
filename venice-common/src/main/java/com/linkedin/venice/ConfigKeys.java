@@ -617,6 +617,10 @@ public class ConfigKeys {
    */
   public static final String KAFKA_PRODUCER_METRICS = "list.of.producer.metrics.from.kafka";
 
+  /**
+   * Whether to print logs that are used for troubleshooting only.
+   */
+  public static final String SERVER_DEBUG_LOGGING_ENABLED = "server.debug.logging.enabled";
 
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
