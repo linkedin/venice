@@ -711,7 +711,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testIdempotentIncrementVersionWhenNoPreviousTopics() {
     String storeName = TestUtils.getUniqueString("test_store");
     String pushJobId = TestUtils.getUniqueString("push_job_id");
-    doReturn(new VersionImpl(storeName, 1, pushJobId)).when(internalAdmin)
+    doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
@@ -805,15 +805,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new HashSet<>(Arrays.asList(previousKafkaTopic)))
         .when(topicManager)
         .listTopics();
-    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
+    Store store = spy(new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1));
     Version version = new VersionImpl(storeName, 1, pushJobId);
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(Optional.of(version)).when(store).getVersion(1);
     doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
-    doReturn(version).when(internalAdmin)
-        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
-            false, Version.PushType.BATCH, null, null, Optional.empty(), -1);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
@@ -826,7 +825,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Version newVersion =
           partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1,
               Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1);
-      verify(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1,
+      verify(internalAdmin, never()).addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1,
           false, false, Version.PushType.BATCH, null, null, Optional.empty(), -1);
       Assert.assertEquals(newVersion, version);
     }
@@ -851,7 +850,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.addVersion(version);
     doReturn(true).when(internalAdmin).isTopicTruncated(previousKafkaTopic);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    doReturn(new VersionImpl(storeName, 1, pushJobId)).when(internalAdmin)
+    doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
@@ -894,6 +893,28 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       } catch (VeniceException e){
         Assert.assertTrue(e.getMessage().contains(pushJobId), "Exception for topic exists when increment version should contain requested pushId");
       }
+    }
+  }
+
+  @Test
+  public void testIdempotentIncrementVersionWhenPreviousTopicsDoNotExistButVersionExistsForSamePushId() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    Store store = new ZKStore(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    Version version = new VersionImpl(storeName, 1, pushJobId);
+    store.addVersion(version);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(new Pair<>(false, version)).when(internalAdmin)
+        .addVersionAndTopicOnly(clusterName, storeName, pushJobId, 1, 1, false,
+            false, Version.PushType.BATCH, null, null, Optional.empty(), -1);
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin = spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
+      Version newVersion =
+          partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1,
+              Version.PushType.BATCH, false, false, null, Optional.empty(), Optional.empty(), -1);
+      verify(partialMockParentAdmin, never()).sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, 1, Version.PushType.BATCH);
+      Assert.assertEquals(newVersion, version);
     }
   }
 
@@ -1640,7 +1661,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(Optional.of(version)).when(store).getVersion(1);
       doReturn(new Pair<>(store, version)).when(internalAdmin).waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
       doReturn(new HashSet<>(Arrays.asList(topicName, existingTopicName))).when(topicManager).listTopics();
-      doReturn(newVersion).when(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, newPushJobId,
+      doReturn(new Pair<>(true, newVersion)).when(internalAdmin).addVersionAndTopicOnly(clusterName, storeName, newPushJobId,
           3, 3, false, true, Version.PushType.BATCH,
           null, null, Optional.empty(), -1);
 
@@ -1686,11 +1707,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Version storeAVersion = new VersionImpl(storeA, 1, "");
     Version storeBVersion = new VersionImpl(storeB, 1, "");
 
-    doReturn(storeAVersion)
+    doReturn(new Pair<>(true, storeAVersion))
         .when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeA, "", 3, 3, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1);
-    doReturn(storeBVersion)
+    doReturn(new Pair<>(true, storeBVersion))
         .when(internalAdmin)
         .addVersionAndTopicOnly(clusterName, storeB, "", 3, 3, false,
             false, Version.PushType.BATCH, null, null, Optional.empty(), -1);

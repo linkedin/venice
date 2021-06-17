@@ -1321,19 +1321,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
      * without starting ingestion.
      */
-    public Version addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
+    public Pair<Boolean, Version> addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType,
         String compressionDictionary, String remoteKafkaBootstrapServers, Optional<String> batchStartingFabric,
         long rewindTimeInSecondsOverride) {
-        Store store = getStore(clusterName, storeName);
-        if (store == null) {
-            throwStoreDoesNotExist(clusterName, storeName);
-        }
-        Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
-        return existingVersionToUse.orElseGet(
-            () -> addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                false, sendStartOfPush, sorted, false, pushType,
-                compressionDictionary, remoteKafkaBootstrapServers, batchStartingFabric, rewindTimeInSecondsOverride));
+        return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
+            false, sendStartOfPush, sorted, false, pushType,
+            compressionDictionary, remoteKafkaBootstrapServers, batchStartingFabric, rewindTimeInSecondsOverride);
     }
 
     /**
@@ -1414,8 +1408,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Add version is a multi step process that can be broken down to three main steps:
      * 1. topic creation or verification, 2. version creation or addition, 3. start ingestion. The execution for some of
      * these steps are different depending on how it's invoked.
+     *
+     * @return Boolean - whether the version is newly created. Version - existing or new version, or null if the version
+     *         is skipped during store migration.
      */
-    private Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
+    private Pair<Boolean, Version> addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, int replicationFactor, boolean startIngestion, boolean sendStartOfPush,
         boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType, String compressionDictionary,
         String remoteKafkaBootstrapServers, Optional<String> batchStartingFabric, long rewindTimeInSecondsOverride) {
@@ -1435,9 +1432,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         try {
             try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
                 try (AutoCloseableLock ignored = resources.getClusterLockManager().createStoreWriteLockOnly(storeName)) {
-                    Optional<Version> existingVersionWithSamePushId = getExistingVersionWithSamePushId(clusterName, storeName, pushJobId);
-                    if (existingVersionWithSamePushId.isPresent()) {
-                        return existingVersionWithSamePushId.get();
+                    Optional<Version> versionWithPushId = getVersionWithPushId(clusterName, storeName, pushJobId);
+                    if (versionWithPushId.isPresent()) {
+                        return new Pair<>(false, versionWithPushId.get());
                     }
 
                     /**
@@ -1464,7 +1461,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         }
                         logger.warn("Skip adding version: " + versionNumber + " for store: " + storeName
                             + " in cluster: " + clusterName + " because the version topic is truncated");
-                        return null;
+                        return new Pair<>(false, null);
                     }
                     backupStrategy = store.getBackupStrategy();
                     int amplificationFactor = store.getPartitionerConfig().getAmplificationFactor();
@@ -1711,7 +1708,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     }
                 }
             }
-            return version;
+            return new Pair<>(true, version);
 
         } catch (Throwable e) {
             if (useFastKafkaOperationTimeout && e instanceof VeniceOperationAgainstKafkaTimedOut) {
@@ -1789,18 +1786,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return pushType.isIncremental() ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
                 true, sendStartOfPush, sorted, false, pushType,
-                compressionDictionary, null, batchStartingFabric, rewindTimeInSecondsOverride);
-    }
-
-    private Optional<Version> getExistingVersionWithSamePushId(String clusterName, String storeName, String pushJobId) {
-        Store store = getStore(clusterName, storeName);
-        if (store != null) {
-            return getVersionWithPushId(store, pushJobId);
-        } else {
-            throwStoreDoesNotExist(clusterName, storeName);
-        }
-
-        return Optional.empty();
+                compressionDictionary, null, batchStartingFabric, rewindTimeInSecondsOverride).getSecond();
     }
 
     /**
@@ -1843,13 +1829,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return Optional.empty();
     }
 
-    /**
-     *
-     * @param store
-     * @param pushId
-     * @return
-     */
-    protected static Optional<Version> getVersionWithPushId(Store store, String pushId){
+    private Optional<Version> getVersionWithPushId(String clusterName, String storeName, String pushId) {
+        Store store = getStore(clusterName, storeName);
+        if (store == null) {
+            throwStoreDoesNotExist(clusterName, storeName);
+        }
         for (Version version : store.getVersions()) {
             if (version.getPushJobId().equals(pushId)) {
                 logger.info("Version request for pushId " + pushId + " and store " + store.getName()
