@@ -114,7 +114,7 @@ ext.libraries = [
     mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
 
     // Samza dependencies
-    samzaApi: 'org.apache.samza:samza-api:1.5.0',
+    samzaApi: 'com.linkedin.samza-li:samza-api:311.1050.0.66', //equivalent to Samza-1.5
 
     // Added during dds-storage-core v2 => v3
     // Transitive dependency, to replace implicit version 11.0.17 which caused 4 test cases to fail:
