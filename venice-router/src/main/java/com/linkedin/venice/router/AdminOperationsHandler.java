@@ -102,7 +102,9 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
           throw new AclException("Non SSL Admin request received");
         }
         X509Certificate clientCert = (X509Certificate) sslHandler.engine().getSession().getPeerCertificates()[0];
-        accessController.hasAccessToAdminOperation(clientCert, adminTask);
+        if (!accessController.hasAccessToAdminOperation(clientCert, adminTask)) {
+          throw new AclException(accessController.getPrincipalId(clientCert) + " does not have access to admin operation: " + adminTask);
+        }
       } catch (AclException e) {
         String client = ctx.channel().remoteAddress().toString(); //ip and port
         String errLine = String.format("%s requested %s %s", client, method, req.uri());
