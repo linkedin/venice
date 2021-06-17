@@ -77,6 +77,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static com.linkedin.venice.meta.BufferReplayPolicy.*;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.*;
 import static org.mockito.Mockito.*;
 
@@ -1225,7 +1226,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     boolean accessControlled = true;
     Map<String, String> testPartitionerParams = new HashMap<>();
 
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setEnableReads(readability)
         .setIncrementalPushEnabled(false)
         .setPartitionCount(64)
         .setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner")
@@ -1233,10 +1234,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .setReadQuotaInCU(readQuota)
         .setAccessControlled(accessControlled)
         .setCompressionStrategy(CompressionStrategy.GZIP)
-        .setHybridRewindSeconds(135l)
+        .setHybridRewindSeconds(135L)
         .setHybridOffsetLagThreshold(2000)
+        .setHybridBufferReplayPolicy(REWIND_FROM_SOP)
         .setBootstrapToOnlineTimeoutInHours(48)
-        .setReplicationFactor(2));
+        .setReplicationFactor(2);
+
+    parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
 
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
@@ -1254,6 +1258,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         "Hybrid store config should result in something not null in the avro object");
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
+    Assert.assertEquals(updateStore.hybridStoreConfig.bufferReplayPolicy, REWIND_FROM_SOP.getValue());
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
     Assert.assertEquals(updateStore.bootstrapToOnlineTimeoutInHours, 48);
     Assert.assertEquals(updateStore.partitionerConfig.amplificationFactor, 1);
@@ -1273,17 +1278,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
 
     // Update the store twice with the same parameter to make sure get methods in UpdateStoreQueryParams class can work properly.
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
-        .setIncrementalPushEnabled(false)
-        .setPartitionCount(64)
-        .setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner")
-        .setPartitionerParams(testPartitionerParams)
-        .setReadQuotaInCU(readQuota)
-        .setAccessControlled(accessControlled)
-        .setCompressionStrategy(CompressionStrategy.GZIP)
-        .setHybridRewindSeconds(135l)
-        .setHybridOffsetLagThreshold(2000)
-        .setBootstrapToOnlineTimeoutInHours(48));
+    parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
 
     // Trying to set nativeReplication to true without setting leader/follower should throw an error
     Assert.assertThrows(() -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNativeReplicationEnabled(readability)));

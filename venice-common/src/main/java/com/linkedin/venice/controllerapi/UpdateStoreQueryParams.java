@@ -78,6 +78,7 @@ public class UpdateStoreQueryParams extends QueryParams {
       updateStoreQueryParams.setHybridRewindSeconds(hybridStoreConfig.getRewindTimeInSeconds());
       updateStoreQueryParams.setHybridTimeLagThreshold(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
       updateStoreQueryParams.setHybridDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy());
+      updateStoreQueryParams.setHybridBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy());
     }
 
     ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();

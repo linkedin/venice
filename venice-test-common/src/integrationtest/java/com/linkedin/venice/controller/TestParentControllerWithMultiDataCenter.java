@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -50,6 +51,59 @@ public class TestParentControllerWithMultiDataCenter {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiColoMultiClusterWrapper.close();
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateStore() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = TestUtils.getUniqueString("store");
+
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+
+    /**
+     * Create a test store
+     */
+    NewStoreResponse newStoreResponse = parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName,
+        "", "\"string\"", "\"string\""));
+    Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    /**
+     * Send UpdateStore to parent controller to update a store config
+     */
+    final long expectedHybridRewindSeconds = 100;
+    final long expectedHybridOffsetLagThreshold = 100;
+    final BufferReplayPolicy expectedHybridBufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
+    final UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(expectedHybridRewindSeconds)
+        .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
+        .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy);
+
+    TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams);
+
+    ControllerClient[] controllerClients = new ControllerClient[childDatacenters.size() + 1];
+    controllerClients[0] = parentControllerClient;
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      controllerClients[i + 1] = new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    }
+
+    /**
+     * Verify parent controller and all child controllers have updated the config
+     */
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+      for (ControllerClient controllerClient : controllerClients) {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+
+        Assert.assertNotNull(storeInfo.getHybridStoreConfig());
+        Assert.assertEquals(storeInfo.getHybridStoreConfig().getOffsetLagThresholdToGoOnline(),
+            expectedHybridOffsetLagThreshold);
+        Assert.assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
+        Assert.assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
+      }
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
