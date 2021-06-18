@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -32,6 +33,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       ControllerClient controllerClient,
       Optional<Properties> sslProperties
   ) {
+    Utils.notNull(controllerClient);
     final String heartbeatStoreName = getHeartbeatStoreName(properties);
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
             controllerClient,
