@@ -313,6 +313,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   private JobClientWrapper jobClientWrapper;
   // A controller client that is used to discover cluster
   private ControllerClient clusterDiscoveryControllerClient;
+  private ControllerClient livenessHeartbeatStoreControllerClient;
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
   private Class<? extends Partitioner> mapRedPartitionerClass = VeniceMRPartitioner.class;
 
@@ -402,7 +403,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   protected StoreSetting storeSetting;
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
-  private final boolean jobHeartbeatEnabled;
+  private final boolean jobLivenessHeartbeatEnabled;
 
   protected static class ZstdConfig {
     ZstdDictTrainer zstdDictTrainer;
@@ -460,15 +461,31 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     this.clusterName = getClusterName(veniceControllerUrl, props);
     LOGGER.info("Get Venice cluster name: " + clusterName);
     // Optional configs:
-    pushJobSetting = getPushJobSetting(veniceControllerUrl, this.clusterName, props);
-    jobHeartbeatEnabled = props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
-    if (jobHeartbeatEnabled) {
+    this.pushJobSetting = getPushJobSetting(veniceControllerUrl, this.clusterName, props);
+    this.jobLivenessHeartbeatEnabled = props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
+    if (jobLivenessHeartbeatEnabled) {
       LOGGER.info("Push job heartbeat is enabled.");
-      pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
+      this.pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
+      this.livenessHeartbeatStoreControllerClient = createLivenessHeartbeatControllerClient(props);
     } else {
       LOGGER.info("Push job heartbeat is NOT enabled.");
-      pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
+      this.pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
+      this.livenessHeartbeatStoreControllerClient = null;
     }
+  }
+
+  private ControllerClient createLivenessHeartbeatControllerClient(VeniceProperties properties) {
+    String heartbeatStoreName = properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName()); // Required config value
+    Optional<SSLFactory> sslFactory = createSSlFactory(
+            properties.getBoolean(ENABLE_SSL, false),
+            properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)
+    );
+    String veniceControllerUrl = getVeniceControllerUrl(properties);
+    String heartbeatStoreClusterName = discoverCluster(heartbeatStoreName, veniceControllerUrl, sslFactory);
+    ControllerClient heartbeatStoreControllerClient = new ControllerClient(heartbeatStoreClusterName, veniceControllerUrl, sslFactory);
+    LOGGER.info(String.format("Created controller client for the liveness heartbeat store %s in %s cluster",
+            heartbeatStoreName, heartbeatStoreClusterName));
+    return heartbeatStoreControllerClient;
   }
 
   /**
@@ -730,7 +747,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       sendPushJobDetailsToController();
       pushJobHeartbeatSender = pushJobHeartbeatSenderFactory.createHeartbeatSender(
           props,
-          controllerClient,
+          livenessHeartbeatStoreControllerClient,
           sslEnabled ? Optional.of(this.sslProperties.get()) : Optional.empty()
       );
       inputDirectory = getInputURI(props);
@@ -1124,7 +1141,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
           pushJobConfigs.put(key, props.getString(key));
         }
         if (!pushJobConfigs.containsKey(HEARTBEAT_ENABLED_CONFIG.getConfigName())) {
-          pushJobConfigs.put(HEARTBEAT_ENABLED_CONFIG.getConfigName(), String.valueOf(jobHeartbeatEnabled));
+          pushJobConfigs.put(HEARTBEAT_ENABLED_CONFIG.getConfigName(), String.valueOf(jobLivenessHeartbeatEnabled));
         }
         pushJobDetails.pushJobConfigs = pushJobConfigs;
         // TODO find a way to get meaningful producer configs to populate the producerConfigs map here.
@@ -1494,7 +1511,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         setting.controllerRetries,
         c -> c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId,
             askControllerToSendControlMessage, SORTED, finalWriteComputeEnabled, partitioners, dictionary,
-            Optional.ofNullable(setting.batchStartingFabric), jobHeartbeatEnabled, setting.rewindTimeInSecondsOverride)
+            Optional.ofNullable(setting.batchStartingFabric), jobLivenessHeartbeatEnabled, setting.rewindTimeInSecondsOverride)
     );
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl
