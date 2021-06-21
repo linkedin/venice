@@ -34,8 +34,8 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -303,6 +303,16 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   public void updateHeartbeatTime() {
     this.heartbeatTimeInMs = System.currentTimeMillis();
     logger.info("Received heartbeat from main process at: " + this.heartbeatTimeInMs);
+  }
+
+  public void cleanupTopicPartitionState(String topicName, int partitionId) {
+    topicPartitionSubscriptionMap.getOrDefault(topicName, Collections.emptyMap()).remove(partitionId);
+    leaderSessionIdMap.getOrDefault(topicName, Collections.emptyMap()).remove(partitionId);
+  }
+
+  public void cleanupTopicState(String topicName) {
+    topicPartitionSubscriptionMap.remove(topicName);
+    leaderSessionIdMap.remove(topicName);
   }
 
   /**

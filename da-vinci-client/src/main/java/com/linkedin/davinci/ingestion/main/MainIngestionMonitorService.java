@@ -9,6 +9,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -105,8 +106,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     if (configLoader == null) {
       throw new VeniceException("Venice config not found in MainIngestionMonitorService!");
     }
-    heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, TimeUnit.SECONDS
-        .toMillis(60));
+    heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
     setupMetricsCollection();
 
     // There is no async process in this function, so we are completely finished with the start up process.
@@ -217,6 +217,16 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   // Remove the topic entry in the subscription topic partition map.
   public void removedSubscribedTopicName(String topicName) {
     topicNameToPartitionSetMap.remove(topicName);
+  }
+
+  public void cleanupTopicPartitionState(String topicName, int partitionId) {
+    topicNameToPartitionSetMap.getOrDefault(topicName, Collections.emptySet()).remove(partitionId);
+    completedTopicPartitions.getOrDefault(topicName, Collections.emptySet()).remove(partitionId);
+  }
+
+  public void cleanupTopicState(String topicName) {
+    topicNameToPartitionSetMap.remove(topicName);
+    completedTopicPartitions.remove(topicName);
   }
 
   private void setupMetricsCollection() {

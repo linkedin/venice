@@ -94,15 +94,16 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
 
   @Override
   public void removeStorageEngine(String topicName) {
-    mainIngestionMonitorService.removedSubscribedTopicName(topicName);
     mainIngestionRequestClient.get().removeStorageEngine(topicName);
     super.removeStorageEngine(topicName);
+    mainIngestionMonitorService.cleanupTopicState(topicName);
   }
 
   @Override
   public void dropStoragePartitionGracefully(VeniceStoreConfig storeConfig, int partition, int timeoutInSeconds) {
     mainIngestionRequestClient.get().unsubscribeTopicPartition(storeConfig.getStoreName(), partition);
     super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds);
+    mainIngestionMonitorService.cleanupTopicPartitionState(storeConfig.getStoreName(), partition);
   }
 
   @Override
