@@ -14,7 +14,10 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   /**
    * This is used to indicate whether the sanity check has done or not for fast class generation.
    */
-  private static boolean fastAvroSanityCheckDone = false;
+  private static boolean fastAvroSanityCheckDoneForSpecificSerializer = false;
+  private static boolean fastAvroSanityCheckDoneForGenericSerializer = false;
+  private static final Object FAST_AVRO_SANITY_CHECK_SPECIFIC_SERIALIZER_LOCK = new Object();
+  private static final Object FAST_AVRO_SANITY_CHECK_GENERIC_SERIALIZER_LOCK = new Object();
 
   private static FastSerdeCache cache = FastSerdeCache.getDefaultInstance();
 
@@ -32,31 +35,46 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
    *
    * The verification of fast-avro will only happen once, and if we allow it per store client, some of the verification could fail
    * since they will try to write to the same class file.
+   *
+   * @return The returned value indicates whether the fast class generation happens or not for this invocation.
    */
-  public synchronized static void verifyWhetherFastSpecificDeserializerWorks(Class<? extends SpecificRecord> specificClass) {
-    if (fastAvroSanityCheckDone) {
-      return;
-    }
-    for (Class<? extends SpecificRecord> c : Arrays.asList(specificClass, MultiGetResponseRecordV1.class)){
-      Schema schema = SpecificData.get().getSchema(c);
-      try {
-        cache.buildFastSpecificDeserializer(schema, schema);
-      } catch (Exception e) {
-        throw new VeniceException("Failed to generate fast specific de-serializer for class: " + c, e);
+  public static boolean verifyWhetherFastSpecificDeserializerWorks(Class<? extends SpecificRecord> specificClass) {
+    synchronized (FAST_AVRO_SANITY_CHECK_SPECIFIC_SERIALIZER_LOCK) {
+      if (fastAvroSanityCheckDoneForSpecificSerializer) {
+        return false;
       }
+      for (Class<? extends SpecificRecord> c : Arrays.asList(specificClass, MultiGetResponseRecordV1.class)) {
+        Schema schema = SpecificData.get().getSchema(c);
+        try {
+          cache.buildFastSpecificDeserializer(schema, schema);
+        } catch (Exception e) {
+          throw new VeniceException("Failed to generate fast specific de-serializer for class: " + c, e);
+        }
+      }
+      fastAvroSanityCheckDoneForSpecificSerializer = true;
+      return true;
     }
-    fastAvroSanityCheckDone = true;
   }
 
-  // Verify whether fast-avro could generate a fast generic deserializer, but there is no guarantee that
-  // the success of all other fast generic deserializer generation in the future.
-  public static void verifyWhetherFastGenericDeserializerWorks() {
-    // Leverage the following schema as the input for testing
-    Schema schema = MultiGetResponseRecordV1.SCHEMA$;
-    try {
-      cache.buildFastGenericDeserializer(schema, schema);
-    } catch (Exception e) {
-      throw new VeniceException("Failed to generate fast generic de-serializer for Avro schema: " + schema, e);
+  /**
+   * Verify whether fast-avro could generate a fast generic deserializer, but there is no guarantee that
+   * the success of all other fast generic deserializer generation in the future.
+   * @return The returned value indicates whether the fast class generation happens or not for this invocation.
+   */
+  public static boolean verifyWhetherFastGenericDeserializerWorks() {
+    synchronized (FAST_AVRO_SANITY_CHECK_GENERIC_SERIALIZER_LOCK) {
+      if (fastAvroSanityCheckDoneForGenericSerializer) {
+        return false;
+      }
+      // Leverage the following schema as the input for testing
+      Schema schema = MultiGetResponseRecordV1.SCHEMA$;
+      try {
+        cache.buildFastGenericDeserializer(schema, schema);
+      } catch (Exception e) {
+        throw new VeniceException("Failed to generate fast generic de-serializer for Avro schema: " + schema, e);
+      }
+      fastAvroSanityCheckDoneForGenericSerializer = true;
+      return true;
     }
   }
 
