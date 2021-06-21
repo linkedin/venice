@@ -1566,8 +1566,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         checkConsumptionStateWhenStart(record, newPartitionConsumptionState);
         reportIfCatchUpBaseTopicOffset(newPartitionConsumptionState);
-        consumerSubscribe(topic, newPartitionConsumptionState, record.getOffset());
-        logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
+        /**
+         * If it is already elected to LEADER, we should subscribe to leader topic in the offset record, instead of VT.
+         * For now, this will only be triggered by ingestion isolation, as it is passing LEADER state from forked process
+         * to main process when it completed ingestion in the forked process.
+         */
+        String topicToSubscribe = leaderState.equals(LeaderFollowerStateType.LEADER) ? newPartitionConsumptionState.getOffsetRecord().getLeaderTopic() : topic;
+        consumerSubscribe(topicToSubscribe, newPartitionConsumptionState, record.getOffset());
+        logger.info(consumerTaskId + " subscribed to: Topic " + topicToSubscribe + " Partition Id " + partition + " Offset "
             + record.getOffset());
         break;
       case UNSUBSCRIBE:

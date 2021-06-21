@@ -291,7 +291,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Update chunking flag in VeniceWriter
     if (startOfPush.chunked) {
-      veniceWriter.ifPresent(vw -> vw.updateChunckingEnabled(startOfPush.chunked));
+      veniceWriter.ifPresent(vw -> vw.updateChunkingEnabled(startOfPush.chunked));
     }
   }
 
@@ -1851,6 +1851,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       consumer.unSubscribe(kafkaVersionTopic, partitionConsumptionState.getPartition());
     }
+    /**
+     * Leader of the user partition should close all subPartitions it is producing to.
+     */
+    veniceWriter.ifPresent(vw-> vw.closePartition(partitionConsumptionState.getPartition()));
   }
 
   @Override

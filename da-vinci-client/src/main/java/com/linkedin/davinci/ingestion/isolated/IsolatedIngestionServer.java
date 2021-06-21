@@ -323,39 +323,39 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   public void reportIngestionStatus(IngestionTaskReport report) {
     IngestionReportType ingestionReportType = IngestionReportType.valueOf(report.reportType);
     if (ingestionReportType.equals(IngestionReportType.COMPLETED) || ingestionReportType.equals(IngestionReportType.ERROR)) {
-      // Fetch LeaderState from LeaderSubPartition of the user partition.
-      LeaderFollowerStateType leaderState = getStoreIngestionService().getLeaderStateFromPartitionConsumptionState(report.topicName.toString(), report.partitionId);
-      logger.info("Transferring leader state " + leaderState + " for topic: " + report.topicName + ", partition: " + report.partitionId);
+      String topicName = report.topicName.toString();
+      int partitionId = report.partitionId;
+      long offset = report.offset;
+
+      if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
+        logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
+        // Set offset record in ingestion report.
+        report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
+
+        // Set store version state in ingestion report.
+        Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
+        if (storeVersionState.isPresent()) {
+          report.storeVersionState = ByteBuffer.wrap(IsolatedIngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
+        } else {
+          throw new VeniceException("StoreVersionState does not exist for topic: " + topicName);
+        }
+        // Fetch LeaderState from LeaderSubPartition of the user partition.
+        LeaderFollowerStateType leaderState = getStoreIngestionService().getLeaderStateFromPartitionConsumptionState(report.topicName.toString(), report.partitionId);
+        logger.info("Sending back leader state: " + leaderState + " for topic: " + report.topicName + ", partition: " + report.partitionId + " to main process.");
+        // Report leaderState for user partition.
+        report.leaderFollowerState = leaderState.getValue();
+      } else {
+        logger.error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
+      }
 
       setPartitionToBeUnsubscribed(report.topicName.toString(), report.partitionId);
 
       Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
       statusReportingExecutor.execute(() -> {
-        String topicName = report.topicName.toString();
-        int partitionId = report.partitionId;
-        long offset = report.offset;
         try {
           executionFuture.get();
         } catch (ExecutionException | InterruptedException e) {
-          logger.info("Encounter exception when trying to stop consumption and close storage for " + partitionId + " of topic: " + topicName);
-        }
-        if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
-          logger.info("Ingestion completed for topic: " + topicName + ", partition id: " + partitionId + ", offset: " + offset);
-          // Set offset record in ingestion report.
-          report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
-
-          // Set store version state in ingestion report.
-          Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topicName);
-          if (storeVersionState.isPresent()) {
-            report.storeVersionState = ByteBuffer.wrap(
-                IsolatedIngestionUtils.serializeStoreVersionState(topicName, storeVersionState.get()));
-          } else {
-            throw new VeniceException("StoreVersionState does not exist for version " + topicName);
-          }
-          // Report leaderState for user partition.
-          report.leaderFollowerState = leaderState.getValue();
-        } else {
-          logger.error("Ingestion error for topic: " + topicName + ", partition id: " + partitionId + " " + report.message);
+          logger.warn("Encounter exception when trying to stop consumption and close storage for " + partitionId + " of topic: " + topicName);
         }
         reportClient.reportIngestionStatus(report);
       });
