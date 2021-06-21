@@ -259,7 +259,6 @@ public class MainIngestionRequestClient implements Closeable {
   public InitializationConfigs buildInitializationConfig(VeniceConfigLoader configLoader) {
     InitializationConfigs initializationConfigs = new InitializationConfigs();
     initializationConfigs.aggregatedConfigs = new HashMap<>();
-
     // Put all configs into request payload.
     configLoader.getCombinedProperties().toProperties().forEach((key, value) -> initializationConfigs.aggregatedConfigs.put(key.toString(), value.toString()));
     // Override ingestion isolation's customized configs.

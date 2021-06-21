@@ -752,7 +752,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           logger.info("Partition: " + partitionId + " of store: " + veniceStore.getStoreName() + " has stopped consumption.");
           return;
         }
-        sleep(sleepSeconds * Time.MS_PER_SECOND);
+        sleep((long) sleepSeconds * Time.MS_PER_SECOND);
       }
       logger.error("Partition: " + partitionId + " of store: " + veniceStore.getStoreName()
           + " is still consuming after waiting for it to stop for " + numRetries * sleepSeconds + " seconds.");
@@ -1024,12 +1024,22 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  /**
+   * This method should only be called when the forked ingestion process is handing over ingestion task to main process.
+   * It will collect the user partition's latest offsetRecords from partition consumption states.
+   * In theory, PCS should be available in this situation as we haven't unsubscribe from topic. If it is not available,
+   * we will throw exception as this is not as expected.
+   */
   public List<ByteBuffer> getPartitionOffsetRecords(String topicName, int partition) {
     int amplificationFactor = PartitionUtils.getAmplificationFactor(metadataRepo, topicName);
     List<ByteBuffer> offsetRecordArray = new ArrayList<>();
     for (int subPartition : PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-      OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, subPartition);
-      offsetRecordArray.add(ByteBuffer.wrap(offsetRecord.toBytes()));
+      if (getStoreIngestionTask(topicName) != null && getStoreIngestionTask(topicName).getPartitionConsumptionState(subPartition).isPresent()) {
+        OffsetRecord offsetRecord = getStoreIngestionTask(topicName).getPartitionConsumptionState(subPartition).get().getOffsetRecord();
+        offsetRecordArray.add(ByteBuffer.wrap(offsetRecord.toBytes()));
+      } else {
+        throw new VeniceException("StoreIngestionTask or PartitionConsumptionState does not exist for topic: " + topicName + ", partition: " + subPartition);
+      }
     }
     return offsetRecordArray;
   }

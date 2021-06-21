@@ -921,7 +921,7 @@ public class TestHybrid {
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testLeaderCanReleaseLatch(boolean isIngestionIsolationEnabled) throws InterruptedException, ExecutionException {
+  public void testLeaderCanReleaseLatch(boolean isIngestionIsolationEnabled) {
     VeniceClusterWrapper veniceClusterWrapper = isIngestionIsolationEnabled ? ingestionIsolationEnabledSharedVenice : sharedVenice;
     Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
     String clusterName = veniceClusterWrapper.getClusterName();

@@ -7,7 +7,21 @@ import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.kafka.protocol.*;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
+import com.linkedin.venice.kafka.protocol.EndOfSegment;
+import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
+import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
+import com.linkedin.venice.kafka.protocol.StartOfSegment;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
+import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.Segment;
@@ -23,24 +37,21 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
 import java.nio.ByteBuffer;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Optional;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -600,14 +611,26 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * 1. If the isChunkingEnabled flag has never been used in the VeniceWriter (regular put will use this flag;
    *    pass-though mode doesn't use this flag), it's okay to update this chunking flag;
-   * 2. If the isChunkingEnabled flas has been used, it's not allowed to update this flag anymore.
+   * 2. If the isChunkingEnabled flag has been used, it's not allowed to update this flag anymore.
    */
-  public synchronized void updateChunckingEnabled(boolean isChunkingEnabled) {
+  public synchronized void updateChunkingEnabled(boolean isChunkingEnabled) {
     if (isChunkingFlagInvoked) {
       throw new VeniceException("Chunking enabled config shouldn't be updated after VeniceWriter has explitly produced a regular or chunked message");
     }
     logger.info("Chunking enabled config is updated from " + this.isChunkingEnabled + " to " + isChunkingEnabled);
     this.isChunkingEnabled = isChunkingEnabled;
+  }
+
+  /**
+   * Close a single partition from this writer. It will send a final EOS to the partition and remove it from segment map.
+   * @param partition The partition to be closed.
+   */
+  public void closePartition(int partition) {
+    if (segmentsMap.containsKey(partition)) {
+      logger.info("Closing partition: " + partition + " in VeniceWriter.");
+      endSegment(partition, true);
+      segmentsMap.remove(partition);
+    }
   }
 
   /**

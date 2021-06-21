@@ -202,8 +202,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final String kafkaAdminClass;
   private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
-  private boolean helixOfflinePushEnabled;
-  private boolean helixHybridStoreQuotaEnabled;
+  private final boolean helixOfflinePushEnabled;
+  private final boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
   private final boolean sharedConsumerPoolEnabled;
   private final int consumerPoolSizePerKafkaCluster;
