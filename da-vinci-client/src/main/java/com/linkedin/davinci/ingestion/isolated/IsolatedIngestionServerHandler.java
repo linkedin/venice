@@ -344,9 +344,11 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           break;
         case REMOVE_STORAGE_ENGINE:
           isolatedIngestionServer.getIngestionBackend().removeStorageEngine(topicName);
+          isolatedIngestionServer.cleanupTopicState(topicName);
           break;
         case REMOVE_PARTITION:
           isolatedIngestionServer.getIngestionBackend().dropStoragePartitionGracefully(storeConfig, partitionId, isolatedIngestionServer.getStopConsumptionWaitRetriesNum());
+          isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
           break;
         case OPEN_STORAGE_ENGINE:
           // Open metadata partition of the store engine.

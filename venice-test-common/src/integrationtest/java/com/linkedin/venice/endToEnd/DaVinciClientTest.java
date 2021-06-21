@@ -463,7 +463,20 @@ public class DaVinciClientTest {
       }
       client.unsubscribe(Collections.singleton(emptyPartition));
 
-      // subscribe to a partition with data
+      /**
+       * Subscribe to the data partition.
+       * We perform a subscribe->unsubscribe->subscribe here because we want to test that previous subscription state is
+       * cleaned up.
+       */
+      client.subscribe(Collections.singleton(partition)).get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          assertEquals(client.get(i).get(), i);
+        }
+      });
+      client.unsubscribe(Collections.singleton(partition));
+      assertThrows(() -> client.get(0).get());
+
       client.subscribe(Collections.singleton(partition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
@@ -475,7 +488,6 @@ public class DaVinciClientTest {
     metricsRepository = new MetricsRepository();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
-      client.subscribe(Collections.singleton(partition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
