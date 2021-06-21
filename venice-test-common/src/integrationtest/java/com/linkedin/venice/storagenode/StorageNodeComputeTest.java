@@ -94,6 +94,7 @@ public class StorageNodeComputeTest {
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
+    routerProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
     veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
 
