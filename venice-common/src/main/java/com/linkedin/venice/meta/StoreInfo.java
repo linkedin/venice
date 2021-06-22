@@ -672,8 +672,8 @@ public class StoreInfo {
     return daVinciPushStatusStoreEnabled;
   }
 
-  public void setDaVinciPushStatusStoreEnabled(boolean DaVinciPushStatusStoreEnabled) {
-    this.daVinciPushStatusStoreEnabled = storeMetadataSystemStoreEnabled;
+  public void setDaVinciPushStatusStoreEnabled(boolean daVinciPushStatusStoreEnabled) {
+    this.daVinciPushStatusStoreEnabled = daVinciPushStatusStoreEnabled;
   }
 
   public boolean isActiveActiveReplicationEnabled() {

@@ -6,6 +6,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -15,6 +16,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -120,6 +122,18 @@ public class PushStatusStoreTest {
         assertEquals(reader.getPartitionStatus(storeName, 2, 0, Optional.empty()).size(), 1);
       });
     }
+    Admin admin = cluster.getVeniceControllers().get(0).getVeniceAdmin();
+    String pushStatusStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
+    assertTrue(admin.isResourceStillAlive(pushStatusStoreTopic));
+    assertFalse(admin.isTopicTruncated(pushStatusStoreTopic));
+    TestUtils.assertCommand(controllerClient.disableAndDeleteStore(storeName));
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      assertFalse(admin.isResourceStillAlive(pushStatusStoreTopic));
+      assertTrue(!admin.getTopicManager().containsTopic(pushStatusStoreTopic)
+          || admin.isTopicTruncated(pushStatusStoreTopic));
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -299,7 +299,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         @Override
         public void handleStoreDeleted(Store store) {
           String storeName = store.getName();
-          if (VeniceSystemStoreType.getSystemStoreType(storeName).equals(VeniceSystemStoreType.META_STORE)) {
+          if (VeniceSystemStoreType.META_STORE.equals(VeniceSystemStoreType.getSystemStoreType(storeName))) {
             metaStoreWriter.removeMetaStoreWriter(storeName);
             logger.info("MetaSystemWriter for meta store: " + storeName + " got removed.");
           }

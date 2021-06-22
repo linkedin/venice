@@ -66,6 +66,9 @@ public class ZkStoreConfigAccessor {
        */
       store = systemStoreType.extractRegularStoreName(store);
     }
+    if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+      store = systemStoreType.extractRegularStoreName(store);
+    }
     return dataAccessor.exists(getStoreConfigPath(store), AccessOption.PERSISTENT);
   }
 
@@ -76,6 +79,9 @@ public class ZkStoreConfigAccessor {
        * For meta system store, Controller will use the same {@link StoreConfig} as the regular Venice store
        * during migration.
        */
+      store = systemStoreType.extractRegularStoreName(store);
+    }
+    if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
       store = systemStoreType.extractRegularStoreName(store);
     }
     return dataAccessor.get(getStoreConfigPath(store), null, AccessOption.PERSISTENT);
