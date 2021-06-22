@@ -4865,6 +4865,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 shouldUpdateNativeReplication &= (originalStore.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled());
             }
             if (shouldUpdateNativeReplication) {
+                logger.info("Will enable native replication for store " + storeName.get());
                 setNativeReplicationEnabled(clusterName, storeName.get(), enableNativeReplicationForCluster);
                 newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
             } else {
@@ -4911,6 +4912,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     logger.info("Will not enable native replication for store " + store.getName()
                         + " since it doesn't have Leader/Follower state model enabled.");
                 } else {
+                    logger.info("Will enable native replication for store " + store.getName());
                     setNativeReplicationEnabled(clusterName, store.getName(), enableNativeReplicationForCluster);
                     newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
                 }
