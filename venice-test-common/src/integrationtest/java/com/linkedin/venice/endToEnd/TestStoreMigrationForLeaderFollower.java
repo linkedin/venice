@@ -19,10 +19,12 @@ public class TestStoreMigrationForLeaderFollower extends TestStoreMigration {
     parentControllerProperties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     // Required by metadata system store
     parentControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    parentControllerProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
 
     Properties childControllerProperties = new Properties();
     // Required by metadata system store
     childControllerProperties.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    childControllerProperties.setProperty(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, String.valueOf(true));
 
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);

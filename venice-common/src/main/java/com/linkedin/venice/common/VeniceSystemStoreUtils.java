@@ -40,8 +40,6 @@ public class VeniceSystemStoreUtils {
   public static VeniceSystemStoreType getSystemStoreType(String storeName) {
     if (storeName.startsWith(METADATA_STORE.getPrefix())) {
       return METADATA_STORE;
-    } else if (storeName.startsWith(DAVINCI_PUSH_STATUS_STORE.getPrefix())) {
-      return DAVINCI_PUSH_STATUS_STORE;
     } else {
       return null;
     }

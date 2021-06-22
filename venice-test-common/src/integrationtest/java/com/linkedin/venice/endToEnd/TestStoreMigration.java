@@ -1,7 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.AdminTool;
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
@@ -19,20 +23,25 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
 import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -42,12 +51,14 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.system.store.MetaStoreWriter.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
@@ -285,6 +296,62 @@ public abstract class TestStoreMigration {
           }
         });
       }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationWithDaVinciPushStatusSystemStoreOnParentController() throws Exception {
+    String storeName = TestUtils.getUniqueString("store");
+    createAndPushStore(parentControllerUrl, srcClusterName, storeName);
+
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
+      // Enable the da vinci push status system store
+      String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+      VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore =
+          srcParentControllerClient.emptyPush(daVinciPushStatusSystemStoreName,"test_davinci_push_status_system_store_push_1", 10000);
+      assertFalse(versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
+          "New version creation for da vinci push statuus system store: " + daVinciPushStatusSystemStoreName
+              + " should success, but got error: " + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
+      TestUtils.waitForNonDeterministicPushCompletion(versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
+          srcParentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+    }
+
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .put(CLIENT_USE_META_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10)
+        .put(ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .build();
+    D2Client srcD2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+    PushStatusStoreReader srcReader = new PushStatusStoreReader(srcD2Client, TimeUnit.MINUTES.toSeconds(10));
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, multiClusterWrapper.getClusters().get(srcClusterName), new DaVinciConfig(), backendConfig)) {
+      daVinciClient.subscribeAll().get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        assertEquals(srcReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
+      });
+    } finally {
+      IOUtils.closeQuietly(srcReader);
+      D2ClientUtils.shutdownClient(srcD2Client);
+    }
+
+    // migrate store
+    startMigration(parentControllerUrl, storeName);
+    completeMigration(parentControllerUrl, storeName);
+    endMigration(parentControllerUrl, storeName);
+
+    // verify if push status is reporting in destination cluster
+    D2Client destD2Client = D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(destClusterName).getZk().getAddress());
+    PushStatusStoreReader destReader = new PushStatusStoreReader(destD2Client, TimeUnit.MINUTES.toSeconds(10));
+    try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(storeName, multiClusterWrapper.getClusters().get(destClusterName), new DaVinciConfig(), backendConfig)) {
+      daVinciClient.subscribeAll().get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        assertEquals(destReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
+      });
+    } finally {
+      IOUtils.closeQuietly(destReader);
+      D2ClientUtils.shutdownClient(destD2Client);
     }
   }
 

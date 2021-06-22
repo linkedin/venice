@@ -1195,7 +1195,16 @@ public class AdminTool {
       int destLatestOnlineVersionOfMetaSystemStore = getLatestOnlineVersionNum(destMetaSystemStore.getVersions());
       destMetaStoreOnline = destLatestOnlineVersionOfMetaSystemStore >= srcLatestOnlineVersionOfMetaSystemStore;
     }
-    return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetadataStoreOnline && destMetaStoreOnline;
+    boolean destDaVinciPushStatusStoreOnline = true;
+    if (srcStore.isDaVinciPushStatusStoreEnabled()) {
+      String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+      StoreInfo srcDaVinciPushStatusSystemStore = srcControllerClient.getStore(daVinciPushStatusSystemStoreName).getStore();
+      StoreInfo destDaVinciPushStatusSystemStore = destControllerClient.getStore(daVinciPushStatusSystemStoreName).getStore();
+      int srcLatestOnlineVersionOfDaVinciPushStatusSystemStore = getLatestOnlineVersionNum(srcDaVinciPushStatusSystemStore.getVersions());
+      int destLatestOnlineVersionOfDaVinciPushStatusSystemStore = getLatestOnlineVersionNum(destDaVinciPushStatusSystemStore.getVersions());
+      destDaVinciPushStatusStoreOnline = destLatestOnlineVersionOfDaVinciPushStatusSystemStore >= srcLatestOnlineVersionOfDaVinciPushStatusSystemStore;
+    }
+    return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetadataStoreOnline && destMetaStoreOnline && destDaVinciPushStatusStoreOnline;
   }
 
   private static ControllerClient[] createControllerClients(String clusterName, List<String> controllerUrls) {
@@ -1549,7 +1558,7 @@ public class AdminTool {
         throw new UnsupportedOperationException("This method should not be used to verify if a zk shared system store doesn't exist");
       }
       zkStoreName = systemStoreType.getZkSharedStoreNameInCluster(controllerClient.getClusterName());
-      if (systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+      if (systemStoreType.equals(VeniceSystemStoreType.META_STORE) || systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
         /**
          * The ZK shared schema store only exists in system schema store cluster, which might be different
          * from the customer's store.

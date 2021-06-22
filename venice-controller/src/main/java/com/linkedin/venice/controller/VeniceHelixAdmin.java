@@ -760,9 +760,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
                 Store metaSystemStore = storeRepository.getStore(metaSystemStoreName);
                 if (metaSystemStore != null) {
-                    truncateOldTopics(clusterName, store, true);
+                    truncateOldTopics(clusterName, metaSystemStore, true);
                 }
                 logger.info("Finished deleting meta system store: " + metaSystemStoreName);
+            }
+            if (store.isDaVinciPushStatusStoreEnabled()) {
+                String daVinciPushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+                logger.info("Start deleting Da Vinci push status system store: " + daVinciPushStatusSystemStoreName);
+                // Delete All versions and push statues for da vinci push status system store
+                deleteAllVersionsInStore(clusterName, daVinciPushStatusSystemStoreName);
+                resources.getPushMonitor().cleanupStoreStatus(daVinciPushStatusSystemStoreName);
+                if (!store.isMigrating()) {
+                    truncateKafkaTopic(Version.composeRealTimeTopic(daVinciPushStatusSystemStoreName));
+                } else {
+                    logger.info("The rt topic for " + daVinciPushStatusSystemStoreName + " will be kept since the store is migrating");
+                }
+                Store daVinciPushStatusSystemStore = storeRepository.getStore(daVinciPushStatusSystemStoreName);
+                if (daVinciPushStatusSystemStore != null) {
+                    truncateOldTopics(clusterName, daVinciPushStatusSystemStore, true);
+                }
+                logger.info("Finished deleting da vinci push status system store: " + daVinciPushStatusSystemStore);
             }
             // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
             // value schemas.
@@ -997,6 +1014,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (srcStore.isStoreMetaSystemStoreEnabled()) {
             // Migrate all the meta system store versions
             versionMigrationConsumer.accept(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+        }
+        if (srcStore.isDaVinciPushStatusStoreEnabled()) {
+            // enable da vinci push status system store in dest cluster
+            versionMigrationConsumer.accept(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName));
         }
         // Migrate all the versions belonging to the regular Venice store
         versionMigrationConsumer.accept(storeName);

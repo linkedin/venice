@@ -263,7 +263,7 @@ public class ControllerClient implements Closeable {
   }
 
 
-    public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams, String pushJobId, long storeSize, long timeoutInMillis) {
+  public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams, String pushJobId, long storeSize, long timeoutInMillis) {
     NewStoreResponse creationResponse = null;
     ControllerResponse updateResponse = null;
     ControllerResponse pushResponse = null;
