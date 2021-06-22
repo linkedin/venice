@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -154,9 +155,12 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public synchronized void unSubscribe(String topic, int partition) {
     long currentPollTimes = pollTimes;
+    Instant startTime = Instant.now();
     this.delegate.unSubscribe(topic, partition);
-    updateCurrentAssignment(false);
 
+    LOGGER.info(String.format("Shared consumer %s unsubscribed topic %s partition %d: . Took %d ms.",
+        this, topic, partition, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
+    updateCurrentAssignment(false);
     currentPollTimes++;
     waitingForPoll.set(true);
     //Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait returned

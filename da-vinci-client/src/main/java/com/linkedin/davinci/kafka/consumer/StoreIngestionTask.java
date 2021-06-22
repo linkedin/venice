@@ -1111,7 +1111,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Thread.sleep(readCycleDelayMs);
         }
       } else {
-        if (serverConfig.isUnsubscribeAfterBatchpushEnabled() && subscribedCount != 0 && subscribedCount == forceUnSubscribedCount) {
+        if (!hybridStoreConfig.isPresent() &&
+            serverConfig.isUnsubscribeAfterBatchpushEnabled() && subscribedCount != 0 && subscribedCount == forceUnSubscribedCount) {
           String msg = consumerTaskId + " Going back to sleep as consumption has finished and topics are unsubscribed";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
             logger.info(msg);
@@ -1134,7 +1135,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (versionNumber <= store.getCurrentVersion()) {
         for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
           if (state.isCompletionReported() && !state.isIncrementalPushEnabled()) {
-            logger.info("Unsubscribing completed partitions " + state.getPartition() + "of store : " + store.getName() + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
+            logger.info("Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName() + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
             consumerUnSubscribe(kafkaVersionTopic, state);
             forceUnSubscribedCount++;
           }
@@ -2459,8 +2460,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public void consumerUnSubscribe(String topic, PartitionConsumptionState partitionConsumptionState) {
+    Instant startTime = Instant.now();
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
     consumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
+    logger.info(String.format("Consumer unsubscribed topic %d partition %d. Took %d ms",
+        topic, partitionConsumptionState.getPartition(), Instant.now().toEpochMilli() - startTime.toEpochMilli()));
   }
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
