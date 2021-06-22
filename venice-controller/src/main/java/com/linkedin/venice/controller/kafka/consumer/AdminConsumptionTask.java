@@ -23,6 +23,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -425,16 +426,22 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     List<Callable<Void>> tasks = new ArrayList<>();
     List<String> stores = new ArrayList<>();
     // Create a task for each store that has admin messages pending to be processed.
+    boolean skipOffsetCommandHasBeenProcessed = false;
     for (Map.Entry<String, Queue<AdminOperationWrapper>> entry : storeAdminOperationsMapWithOffset.entrySet()) {
       if (!entry.getValue().isEmpty()) {
-        if (checkOffsetToSkip(entry.getValue().peek().getOffset())) {
+        if (checkOffsetToSkip(entry.getValue().peek().getOffset(), false)) {
           entry.getValue().poll();
+          skipOffsetCommandHasBeenProcessed = true;
         }
         tasks.add(new AdminExecutionTask(logger, clusterName, entry.getKey(), lastSucceededExecutionIdMap,
             lastPersistedExecutionId, entry.getValue(), admin, executionIdAccessor, isParentController, stats));
         stores.add(entry.getKey());
       }
     }
+    if (skipOffsetCommandHasBeenProcessed) {
+      resetOffsetToSkip();
+    }
+
     if (isRunning.get()) {
       if (!tasks.isEmpty()) {
         int pendingAdminMessagesCount = 0;
@@ -548,7 +555,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return corresponding executionId if applicable.
    */
   private long delegateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    if (checkOffsetToSkip(record.offset()) || !shouldProcessRecord(record)) {
+    if (checkOffsetToSkip(record.offset(), true) || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
@@ -589,7 +596,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     if (adminMessageType.isBatchUpdate()) {
       long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
       long brokerTimestamp = record.timestamp();
-      for (Queue<AdminOperationWrapper> operationQueue : storeAdminOperationsMapWithOffset.values()) {
+      List<Store> stores = admin.getAllStores(clusterName);
+      for (Store store: stores) {
+        String storeName = store.getName();
+        Queue<AdminOperationWrapper> operationQueue = storeAdminOperationsMapWithOffset.computeIfAbsent(storeName, n -> new LinkedList<>());
         AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(adminOperation, record.offset(),
             producerTimestamp, brokerTimestamp, System.currentTimeMillis());
         operationQueue.add(adminOperationWrapper);
@@ -732,11 +742,17 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private boolean checkOffsetToSkip(long offset) {
+  private void resetOffsetToSkip() {
+    offsetToSkip = UNASSIGNED_VALUE;
+  }
+
+  private boolean checkOffsetToSkip(long offset, boolean reset) {
     boolean skip = false;
     if (offset == offsetToSkip) {
       logger.warn("Skipping admin message with offset " + offset + " as instructed");
-      offsetToSkip = UNASSIGNED_VALUE;
+      if (reset) {
+        resetOffsetToSkip();
+      }
       skip = true;
     }
     return skip;
