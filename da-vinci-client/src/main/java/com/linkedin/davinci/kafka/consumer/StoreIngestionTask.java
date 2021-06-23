@@ -1435,9 +1435,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           logger.warn("Failed to process consumer action " + action + ", will retry later.", e);
           return;
         }
-        logger.error("Failed to execute consumer action " + action + " after " + action.getAttemptsCount() + " attempts.", e);
-        // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
-        throw e;
+        logger.error("Ignoring consumer action " + action + " after " + action.getAttemptsCount() + " attempts.", e);
+        consumerActionsQueue.poll();
       }
     }
     if (emitMetrics.get()) {
