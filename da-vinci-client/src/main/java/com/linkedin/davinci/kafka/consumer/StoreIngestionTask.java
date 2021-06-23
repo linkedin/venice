@@ -1440,8 +1440,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           logger.warn("Failed to process consumer action " + action + ", will retry later.", e);
           return;
         }
-        logger.error("Ignoring consumer action " + action + " after " + action.getAttemptsCount() + " attempts.", e);
+        logger.error("Failed to execute consumer action " + action + " after " + action.getAttemptsCount() + " attempts.", e);
+        // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
+        PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
         consumerActionsQueue.poll();
+        if (state != null && !state.isCompletionReported()) {
+          reportError("Error when processing consumer action: " + action.toString(), action.getPartition(),
+              (e instanceof Exception) ? (Exception) e : new VeniceException(e));
+        }
       }
     }
     if (emitMetrics.get()) {
