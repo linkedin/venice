@@ -67,6 +67,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
@@ -331,6 +332,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AmplificationAdapter amplificationAdapter;
 
   protected final String localKafkaServer;
+  protected int valueSchemaId = -1;
 
   public StoreIngestionTask(
       KafkaClientFactory consumerFactory,
@@ -2580,6 +2582,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             // so we need to re-calculate partition.
             // Followers are not affected since they are always consuming from VTs.
             producedPartition, keyBytes, putValue, put.schemaId);
+        // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
+        // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
+        if (put.schemaId > 0) {
+          valueSchemaId = put.schemaId;
+        }
         break;
 
       case DELETE:
@@ -2960,6 +2967,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               reportStatusAdapter.reportCompleted(partitionConsumptionState);
               logger.info(consumerTaskId + " Partition " + partition + " is ready to serve");
             }
+            warmupSchemaCache(store);
           }
           if (suppressLiveUpdates) {
             /**
@@ -2976,6 +2984,41 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     };
+  }
+
+  /**
+   * Try to warm-up the schema repo cache before reporting completion as new value schema could cause latency degradation
+   * while trying to compile it in the read-path.
+   */
+  private void warmupSchemaCache(Store store) {
+    if (!store.isReadComputationEnabled()) {
+      return;
+    }
+    // sanity check
+    if (valueSchemaId < 1) {
+      return;
+    }
+    try {
+      waitValueSchemaAvailable(valueSchemaId);
+    } catch (InterruptedException e) {
+      logger.error("Got interrupted while trying to fetch value schema");
+      return;
+    }
+    int numSchemaToGenerate = serverConfig.getNumSchemaFastClassWarmup();
+    long warmUpTimeLimit = serverConfig.getFastClassSchemaWarmupTimeout();
+    int endSchemaId = numSchemaToGenerate >= valueSchemaId ? 1 : valueSchemaId - numSchemaToGenerate;
+    Schema writerSchema = schemaRepository.getValueSchema(storeName, valueSchemaId).getSchema();
+    Set<Schema> schemaSet = new HashSet<>();
+
+    for (int i = valueSchemaId; i >= endSchemaId; i--) {
+      schemaSet.add(schemaRepository.getValueSchema(storeName, i).getSchema());
+    }
+    if (store.getLatestSuperSetValueSchemaId() > 0) {
+      schemaSet.add(schemaRepository.getValueSchema(storeName, store.getLatestSuperSetValueSchemaId()).getSchema());
+    }
+    for (Schema schema: schemaSet) {
+      FastSerializerDeserializerFactory.cacheFastAvroGenericDeserializer(writerSchema, schema, warmUpTimeLimit);
+    }
   }
 
   public void reportError(String message, int userPartition, Exception e) {

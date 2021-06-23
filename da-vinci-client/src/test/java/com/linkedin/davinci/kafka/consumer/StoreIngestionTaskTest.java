@@ -56,6 +56,7 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -117,6 +118,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -200,6 +202,7 @@ public class StoreIngestionTaskTest {
   private static final int SCHEMA_ID = -1;
   private static final int EXISTING_SCHEMA_ID = 1;
   private static final int NON_EXISTING_SCHEMA_ID = 2;
+  private static final Schema STRING_SCHEMA = Schema.parse("\"string\"");
 
   private static final byte[] putKeyFoo = getRandomKey(PARTITION_FOO);
   private static final byte[] putKeyFoo2 = getRandomKey(PARTITION_FOO);
@@ -1725,6 +1728,37 @@ public class StoreIngestionTaskTest {
                 longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
             );
             verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
+          });
+        }, Optional.empty(), false, Optional.empty(), true, isLeaderFollowerModelEnabled, 1
+    );
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSchemaCacheWarming(boolean isLeaderFollowerModelEnabled) throws Exception {
+    veniceWriter.broadcastStartOfPush(true, new HashMap<>());
+    long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    SchemaEntry schemaEntry = new SchemaEntry(1, STRING_SCHEMA);
+    //Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
+    runTest(new RandomPollStrategy(), getSet(PARTITION_FOO),
+        () -> {
+          doReturn(1).when(veniceServerConfig).getNumSchemaFastClassWarmup();
+          Store mockStore = mock(Store.class);
+          doReturn(true).when(mockStore).isReadComputationEnabled();
+          doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+          doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
+          doReturn(schemaEntry).when(mockSchemaRepo).getValueSchema(anyString(), anyInt());
+          doReturn(Optional.of(new VersionImpl("storeName", 1))).when(mockStore).getVersion(1);
+        },
+        () -> {
+          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+            //since notifier reporting happens before offset update, it actually reports previous offsets
+            verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+            // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for batch push job.
+            verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
+                longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
+            );
           });
         }, Optional.empty(), false, Optional.empty(), true, isLeaderFollowerModelEnabled, 1
     );
