@@ -1,14 +1,19 @@
 package com.linkedin.venice.serializer;
 
+import com.linkedin.avro.fastserde.FastDeserializer;
 import com.linkedin.avro.fastserde.FastSerdeCache;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
+
 
 public class FastSerializerDeserializerFactory extends SerializerDeserializerFactory {
   /**
@@ -16,8 +21,8 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
    */
   private static boolean fastAvroSanityCheckDoneForSpecificSerializer = false;
   private static boolean fastAvroSanityCheckDoneForGenericSerializer = false;
-  private static final Object FAST_AVRO_SANITY_CHECK_SPECIFIC_SERIALIZER_LOCK = new Object();
-  private static final Object FAST_AVRO_SANITY_CHECK_GENERIC_SERIALIZER_LOCK = new Object();
+  private static final Object FAST_AVRO_SANITY_CHECK_SPECIFIC_DESERIALIZER_LOCK = new Object();
+  private static final Object FAST_AVRO_SANITY_CHECK_GENERIC_DESERIALIZER_LOCK = new Object();
 
   private static FastSerdeCache cache = FastSerdeCache.getDefaultInstance();
 
@@ -39,7 +44,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
    * @return The returned value indicates whether the fast class generation happens or not for this invocation.
    */
   public static boolean verifyWhetherFastSpecificDeserializerWorks(Class<? extends SpecificRecord> specificClass) {
-    synchronized (FAST_AVRO_SANITY_CHECK_SPECIFIC_SERIALIZER_LOCK) {
+    synchronized (FAST_AVRO_SANITY_CHECK_SPECIFIC_DESERIALIZER_LOCK) {
       if (fastAvroSanityCheckDoneForSpecificSerializer) {
         return false;
       }
@@ -62,7 +67,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
    * @return The returned value indicates whether the fast class generation happens or not for this invocation.
    */
   public static boolean verifyWhetherFastGenericDeserializerWorks() {
-    synchronized (FAST_AVRO_SANITY_CHECK_GENERIC_SERIALIZER_LOCK) {
+    synchronized (FAST_AVRO_SANITY_CHECK_GENERIC_DESERIALIZER_LOCK) {
       if (fastAvroSanityCheckDoneForGenericSerializer) {
         return false;
       }
@@ -75,6 +80,21 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
       }
       fastAvroSanityCheckDoneForGenericSerializer = true;
       return true;
+    }
+  }
+
+  public static void cacheFastAvroGenericDeserializer(Schema writerSchema, Schema readerSchema, long warmUpTimeout) {
+    int durationRetryMS = 100;
+    RetryUtils.executeWithMaxAttemptNoIntermediateLogging(
+        () -> tryCacheFastGenericDeserializer(writerSchema, readerSchema), (int)(warmUpTimeout/durationRetryMS),
+        Duration.ofMillis(durationRetryMS),
+        Collections.singletonList(VeniceException.class));
+  }
+
+  private static void tryCacheFastGenericDeserializer(Schema writerSchema, Schema readerSchema) {
+    FastDeserializer<?> fastDeserializer = cache.getFastGenericDeserializer(writerSchema, readerSchema);
+    if (fastDeserializer instanceof FastSerdeCache.FastDeserializerWithAvroGenericImpl) {
+      throw new VeniceException("Failed to generate fast generic de-serializer for Avro schema  " + writerSchema);
     }
   }
 
@@ -102,5 +122,4 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   public static <K> RecordSerializer<K> getFastAvroGenericSerializer(Schema schema, boolean buffered) {
     return (RecordSerializer<K>) avroFastGenericSerializerMap.computeIfAbsent(schema, (s) -> new FastAvroSerializer<>(s, cache, buffered));
   }
-
 }

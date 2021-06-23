@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.queues.FairBlockingQueue;
 import java.nio.file.Paths;
@@ -252,6 +253,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean debugLoggingEnabled;
 
+  private final int numSchemaFastClassWarmup;
+  private final long fastClassSchemaWarmupTimeout;
+
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
@@ -389,6 +394,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     enableKafkaConsumerOffsetCollection = serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, false);
     dedicatedDrainerQueueEnabled = serverProperties.getBoolean(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, false);
     debugLoggingEnabled = serverProperties.getBoolean(SERVER_DEBUG_LOGGING_ENABLED, false);
+    numSchemaFastClassWarmup = serverProperties.getInt(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP,10);
+    fastClassSchemaWarmupTimeout = serverProperties.getLong(SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT, 2*Time.MS_PER_MINUTE);
   }
 
   public int getListenerPort() {
@@ -749,5 +756,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDebugLoggingEnabled() {
     return debugLoggingEnabled;
+  }
+
+  public int getNumSchemaFastClassWarmup() {
+    return numSchemaFastClassWarmup;
+  }
+
+  public long getFastClassSchemaWarmupTimeout() {
+    return fastClassSchemaWarmupTimeout;
   }
 }

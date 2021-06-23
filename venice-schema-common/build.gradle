@@ -55,6 +55,7 @@ dependencies {
     implementation libraries.zstd
 
     implementation libraries.classgraph
+    implementation libraries.failsafe
 
     testImplementation project(':venice-test-common')
     testImplementation project(':venice-thin-client')

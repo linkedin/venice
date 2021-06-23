@@ -622,6 +622,17 @@ public class ConfigKeys {
    */
   public static final String SERVER_DEBUG_LOGGING_ENABLED = "server.debug.logging.enabled";
 
+  /**
+   * Number of value schemas for which fast avro classes are generated for read-compute stores before push completion
+   * is reported.
+   */
+  public static final String SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP = "server.num.schema.fast.class.warmup";
+
+  /**
+   * Timeout duration of schema generation for fast class warmup period
+   */
+  public static final String SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT = "server.schema.fast.class.warmup.timeout";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

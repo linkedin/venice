@@ -39,6 +39,25 @@ public class RetryUtils {
 
     /**
      * Execute a {@link Runnable} with fixed delay with a maximum attempt. If all attempts are made and still no success,
+     * the last thrown exception will be thrown. This function does not log the throwable that failed intermediate execution attempts.
+     *
+     * @param runnable Execution unit which returns nothing ({@link Void})
+     * @param maxAttempt Total maximum attempts made before giving up. Value should be at least one.
+     * @param delay Fixed delay between retry attempts.
+     * @param retryFailureTypes Types of failures upon which retry attempt is made. If a failure with type not specified
+     *                          in this list is thrown, it gets thrown to the caller.
+     */
+    public static void executeWithMaxAttemptNoIntermediateLogging(
+        CheckedRunnable runnable,
+        final int maxAttempt,
+        Duration delay,
+        List<Class<? extends Throwable>> retryFailureTypes
+    ) {
+        executeWithMaxAttempt(runnable, maxAttempt, delay, retryFailureTypes, RetryUtils::doNotLog);
+    }
+
+    /**
+     * Execute a {@link Runnable} with fixed delay with a maximum attempt. If all attempts are made and still no success,
      * the last thrown exception will be thrown.
      *
      * @param runnable Execution unit which returns nothing ({@link Void})
@@ -229,6 +248,9 @@ public class RetryUtils {
                 String.format("Execution failed with message %s on attempt count %d",
                         executionAttemptedEvent.getLastFailure().getMessage(), executionAttemptedEvent.getAttemptCount())
         );
+    }
+
+    private static<T> void doNotLog(ExecutionAttemptedEvent<T> executionAttemptedEvent) {
     }
 
     @FunctionalInterface
