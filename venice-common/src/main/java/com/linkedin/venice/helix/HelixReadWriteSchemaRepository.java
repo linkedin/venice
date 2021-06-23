@@ -9,7 +9,9 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.MetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -30,7 +32,7 @@ import org.apache.log4j.Logger;
 
 /**
  * This class is used to add schema entries for stores.
- * There are 3 types of schema entries
+ * There are 4 types of schema entries
  *
  * 1. Key schema
  *    ZK Path: ${cluster_name}/Stores/${store_name}/key-schema/1
@@ -43,9 +45,12 @@ import org.apache.log4j.Logger;
  * 3. Derived schema
  *    ZK Path: ${cluster_name}/Stores/${store_name}/derived-schema/${value_schema_id}_${derived_schema_id}
  *    Each value schema can have multiple derived schemas. check out
- *    {@link com.linkedin.venice.schema.DerivedSchemaEntry} for more
+ *    {@link DerivedSchemaEntry} for more
  *    details.
  *
+ * 3. Metadata schema
+ *  *    ZK Path: ${cluster_name}/Stores/${store_name}/metadata-schema/${value_schema_id}_${metadata_version_id}
+ *  *
  * Check out {@link SchemaEntrySerializer} and {@link DerivedSchemaEntrySerializer}
  * to see how schemas are ser-ded.
  *
@@ -244,7 +249,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   public DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId) {
     preCheckStoreCondition(storeName);
 
-    String idPairStr = valueSchemaId + HelixSchemaAccessor.DERIVED_SCHEMA_DELIMITER + derivedSchemaId;
+    String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + derivedSchemaId;
 
     return accessor.getDerivedSchema(storeName, idPairStr);
   }
@@ -382,7 +387,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   @Override
   public DerivedSchemaEntry removeDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId) {
     DerivedSchemaEntry derivedSchemaEntry = getDerivedSchema(storeName, valueSchemaId, derivedSchemaId);
-    String idPairStr = valueSchemaId + HelixSchemaAccessor.DERIVED_SCHEMA_DELIMITER + derivedSchemaId;
+    String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + derivedSchemaId;
 
     if (derivedSchemaEntry == null) {
       logger.info("ignore removing derived schema for store: " + storeName + " id pair: " + idPairStr
@@ -453,6 +458,60 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
           .add(derivedSchemaEntry));
 
     return derivedSchemaEntryMap;
+  }
+
+  @Override
+  public Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName) {
+    preCheckStoreCondition(storeName);
+
+    return accessor.getAllMetadataSchemas(storeName);
+  }
+
+  @Override
+  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId) {
+    preCheckStoreCondition(storeName);
+
+    String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + metadataVersionId;
+
+    return accessor.getMetadataSchema(storeName, idPairStr);
+  }
+
+  @Override
+  public MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr) {
+    Schema metadataSchema = Schema.parse(metadataSchemaStr);
+    for (MetadataSchemaEntry metadataSchemaEntry : getMetadataSchemaMap(storeName).values().stream()
+        .flatMap(List::stream).collect(Collectors.toList())) {
+      if (metadataSchemaEntry.getSchema().equals(metadataSchema)) {
+        return new MetadataVersionId(metadataSchemaEntry.getValueSchemaId(), metadataSchemaEntry.getId());
+      }
+    }
+
+    return new MetadataVersionId(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
+  }
+
+  private Map<Integer, List<MetadataSchemaEntry>> getMetadataSchemaMap(String storeName) {
+    preCheckStoreCondition(storeName);
+
+    Map<Integer, List<MetadataSchemaEntry>> metadataSchemaEntryMap = new HashMap<>();
+    accessor.getAllMetadataSchemas(storeName).forEach(metadataSchemaEntry ->
+        metadataSchemaEntryMap.computeIfAbsent(metadataSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
+            .add(metadataSchemaEntry));
+
+    return metadataSchemaEntryMap;
+  }
+
+  @Override
+  public MetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String metadataSchemaStr,  int metadataVersionId) {
+    MetadataSchemaEntry metadataSchemaEntry =
+        new MetadataSchemaEntry(valueSchemaId, metadataVersionId, metadataSchemaStr);
+
+    if (metadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      logger.info("metadata schema is already existing. Skip adding it to repository. Schema: " + metadataSchemaStr);
+    } else {
+      accessor.addMetadataSchema(storeName, metadataSchemaEntry);
+    }
+
+    return metadataSchemaEntry;
   }
 
   @Override

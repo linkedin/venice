@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -11,11 +12,16 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.schema.MetadataSchemaAdapter;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -255,5 +261,64 @@ public class TestParentControllerWithMultiDataCenter {
       Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
       Assert.assertTrue(storeInfo.isActiveActiveReplicationEnabled());
     });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testEnableActiveActiveReplicationSchema() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = TestUtils.getUniqueString("store");
+    String recordSchemaStr1 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
+    String recordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+
+    Schema metadataSchema1 = MetadataSchemaAdapter.parse(recordSchemaStr1, 1);
+    Schema metadataSchema2 = MetadataSchemaAdapter.parse(recordSchemaStr2, 1);
+
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
+      /**
+       * Create a test store
+       */
+      NewStoreResponse newStoreResponse = parentControllerClient.retryableRequest(5,
+          c -> c.createNewStore(storeName, "", "\"string\"", recordSchemaStr1));
+      Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      /**
+       * Test Active/Active replication config enablement generates the active active metadata schema.
+       */
+      try (ControllerClient dc0Client = new ControllerClient(clusterName,
+          childDatacenters.get(0).getControllerConnectString())) {
+        UpdateStoreQueryParams updateStoreToEnableAARepl =
+            new UpdateStoreQueryParams().setLeaderFollowerModel(true).setActiveActiveReplicationEnabled(true);
+        TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
+        TestUtils.waitForNonDeterministicAssertion(900, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = dc0Client.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+
+          Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
+          Assert.assertTrue(storeInfo.isActiveActiveReplicationEnabled());
+        });
+      }
+
+      Admin veniceHelixAdmin = childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
+      Collection<MetadataSchemaEntry> metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
+      Assert.assertEquals(metadataSchemas.size(), 1);
+      Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema1);
+
+      //Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
+      SchemaResponse schemaResponse = parentControllerClient.retryableRequest(5,
+          c -> c.addValueSchema(storeName, recordSchemaStr2));
+      Assert.assertFalse(schemaResponse.isError(), "addValeSchema returned error: " + schemaResponse.getError());
+
+      metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
+      Assert.assertEquals(metadataSchemas.size(), 2);
+
+      Iterator<MetadataSchemaEntry> iterator = metadataSchemas.iterator();
+      Assert.assertEquals(iterator.next().getSchema(), metadataSchema1);
+      Assert.assertEquals(iterator.next().getSchema(), metadataSchema2);
+
+    }
   }
 }

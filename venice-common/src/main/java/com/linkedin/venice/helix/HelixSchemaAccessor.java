@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.VeniceSerializer;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
@@ -27,14 +28,19 @@ public class HelixSchemaAccessor {
   private static final String VALUE_SCHEMA_PATH = "value-schema";
   // Derived schema path name
   private static final String DERIVED_SCHEMA_PATH = "derived-schema";
-  static final String DERIVED_SCHEMA_DELIMITER = "-";
+  static final String MULTIPART_SCHEMA_VERSION_DELIMITER = "-";
   // Key schema id, can only be '1' since Venice only maintains one single key schema per store.
   static final String KEY_SCHEMA_ID = "1";
 
   public static final int VALUE_SCHEMA_STARTING_ID = 1;
 
+  // Metadata schema path name
+  private static final String METADATA_SCHEMA_PATH = "metadata-schema";
+
   private final ZkBaseDataAccessor<SchemaEntry> schemaAccessor;
   private final ZkBaseDataAccessor<DerivedSchemaEntry> derivedSchemaAccessor;
+  private final ZkBaseDataAccessor<MetadataSchemaEntry> metadataSchemaAccessor;
+
 
   // Venice cluster name
   private final String clusterName;
@@ -56,6 +62,7 @@ public class HelixSchemaAccessor {
     registerSerializerForSchema(zkClient, helixAdapterSerializer);
     schemaAccessor = new ZkBaseDataAccessor<>(zkClient);
     derivedSchemaAccessor = new ZkBaseDataAccessor<>(zkClient);
+    metadataSchemaAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
 
   private void registerSerializerForSchema(ZkClient zkClient, HelixAdapterSerializer adapter) {
@@ -65,10 +72,13 @@ public class HelixSchemaAccessor {
         PathResourceRegistry.WILDCARD_MATCH_ANY);
     String derivedSchemaPath = getDerivedSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/" +
         PathResourceRegistry.WILDCARD_MATCH_ANY;
+    String metadataSchemaPath = getMetadataSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/" +
+        PathResourceRegistry.WILDCARD_MATCH_ANY;
     VeniceSerializer<SchemaEntry> serializer = new SchemaEntrySerializer();
     adapter.registerSerializer(keySchemaPath, serializer);
     adapter.registerSerializer(valueSchemaPath, serializer);
     adapter.registerSerializer(derivedSchemaPath, new DerivedSchemaEntrySerializer());
+    adapter.registerSerializer(metadataSchemaPath, new MetadataSchemaEntrySerializer());
     zkClient.setZkSerializer(adapter);
   }
 
@@ -188,10 +198,51 @@ public class HelixSchemaAccessor {
   }
 
   String getDerivedSchemaPath(String storeName, String valueSchemaId, String derivedSchemaId) {
-    return getDerivedSchemaParentPath(storeName) + "/" + valueSchemaId + DERIVED_SCHEMA_DELIMITER + derivedSchemaId;
+    return getDerivedSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER + derivedSchemaId;
   }
 
   String getDerivedSchemaPath(String storeName, String derivedSchemaIdPair) {
     return getDerivedSchemaParentPath(storeName) + "/" + derivedSchemaIdPair;
+  }
+
+
+
+  public MetadataSchemaEntry getMetadataSchema(String storeName, String metadataVersionIdPair) {
+    return metadataSchemaAccessor.get(getMetadataSchemaPath(storeName, metadataVersionIdPair), null,
+        AccessOption.PERSISTENT);
+  }
+
+  public List<MetadataSchemaEntry> getAllMetadataSchemas(String storeName) {
+    return HelixUtils.getChildren(metadataSchemaAccessor, getMetadataSchemaParentPath(storeName),
+        refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+  }
+
+  public void addMetadataSchema(String storeName, MetadataSchemaEntry metadataSchemaEntry) {
+    HelixUtils.create(metadataSchemaAccessor, getMetadataSchemaPath(storeName,
+        String.valueOf(metadataSchemaEntry.getValueSchemaId()), String.valueOf(metadataSchemaEntry.getId())),
+        metadataSchemaEntry);
+    logger.info("Added Metadata schema: " + metadataSchemaEntry.toString() + "for store: " + storeName);
+  }
+
+  public void subscribeMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {
+    metadataSchemaAccessor.subscribeChildChanges(getMetadataSchemaParentPath(storeName), childListener);
+    logger.info("Subscribe Metadata schema child changes for store: " + storeName);
+  }
+
+  public void unsubscribeMetadataSchemaCreationChanges(String storeName, IZkChildListener childListener) {
+    metadataSchemaAccessor.unsubscribeChildChanges(getMetadataSchemaParentPath(storeName), childListener);
+    logger.info("Unsubscribe Metadata schema child changes for store: " + storeName);
+  }
+
+  String getMetadataSchemaParentPath(String storeName) {
+    return getStorePath(storeName) + METADATA_SCHEMA_PATH;
+  }
+
+  String getMetadataSchemaPath(String storeName, String valueSchemaId, String metadataVersionId) {
+    return getMetadataSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER + metadataVersionId;
+  }
+
+  String getMetadataSchemaPath(String storeName, String metadataVersionIdPair) {
+    return getMetadataSchemaParentPath(storeName) + "/" + metadataVersionIdPair;
   }
 }

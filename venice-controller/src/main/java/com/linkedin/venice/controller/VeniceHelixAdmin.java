@@ -99,7 +99,9 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.MetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -3559,6 +3561,55 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerMastership(clusterName);
         return getVeniceHelixResource(clusterName).getSchemaRepository()
             .preCheckDerivedSchemaAndGetNextAvailableId(storeName, valueSchemaId, derivedSchemaStr);
+    }
+
+
+    @Override
+    public Collection<MetadataSchemaEntry> getMetadataSchemas(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.getMetadataSchemas(storeName);
+    }
+
+    public MetadataVersionId getMetadataVersionId(String clusterName, String storeName, String metadataSchemaStr) {
+        checkControllerMastership(clusterName);
+        ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.getMetadataVersionId(storeName, metadataSchemaStr);
+    }
+
+    protected boolean checkIfMetadataSchemaAlreadyPresent(String clusterName, String storeName, int valueSchemaId,
+        MetadataSchemaEntry metadataSchemaEntry) {
+        checkControllerMastership(clusterName);
+        try {
+            Collection<MetadataSchemaEntry> schemaEntries =
+                getVeniceHelixResource(clusterName).getSchemaRepository().getMetadataSchemas(storeName);
+            for (SchemaEntry schemaEntry : schemaEntries) {
+                if (schemaEntry.equals(metadataSchemaEntry)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Exception in checkIfMetadataSchemaAlreadyPresent ", e);
+        }
+        return false;
+    }
+
+
+    @Override
+    public MetadataSchemaEntry addMetadataSchema(String clusterName, String storeName, int valueSchemaId,
+        int metadataVersionId, String metadataSchemaStr) {
+        checkControllerMastership(clusterName);
+
+        MetadataSchemaEntry metadataSchemaEntry =
+            new MetadataSchemaEntry(valueSchemaId, metadataVersionId, metadataSchemaStr);
+        if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, metadataSchemaEntry)) {
+            logger.info("Metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + metadataSchemaStr
+                + " metadataVersionId:" + metadataVersionId + " valueSchemaId:" + valueSchemaId);
+            return metadataSchemaEntry;
+        }
+
+        return getVeniceHelixResource(clusterName).getSchemaRepository()
+            .addMetadataSchema(storeName, valueSchemaId, metadataSchemaStr, metadataVersionId);
     }
 
     @Override

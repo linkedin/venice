@@ -323,7 +323,8 @@ public class SchemaRoutes extends AbstractRoute {
         int schemaId = Utils.parseIntFromString(request.queryParams(SCHEMA_ID), "schema id");
         int derivedSchemaId = Utils.parseIntFromString(request.queryParams(DERIVED_SCHEMA_ID), "derived schema id");
 
-        DerivedSchemaEntry removedDerivedSchemaEntry = admin.removeDerivedSchema(cluster, store, schemaId, derivedSchemaId);
+        DerivedSchemaEntry
+            removedDerivedSchemaEntry = admin.removeDerivedSchema(cluster, store, schemaId, derivedSchemaId);
         if (null == removedDerivedSchemaEntry) {
           throw new VeniceException(
               "Derived schema for schema id: " + schemaId + " of store: " + responseObject.getName() + " doesn't exist");

@@ -10,8 +10,10 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.MetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -225,6 +227,11 @@ public interface Admin extends AutoCloseable, Closeable {
      * This method skips most of precondition checks and is intended for only internal use.
      */
     DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId, String derivedSchemaStr);
+
+
+    Collection<MetadataSchemaEntry> getMetadataSchemas(String clusterName, String storeName);
+    MetadataVersionId getMetadataVersionId(String clusterName, String storeName, String metadataSchemaStr);
+    MetadataSchemaEntry addMetadataSchema(String clusterName, String storeName, int valueSchemaId, int metadataVersionId, String metadataSchemaStr);
 
     /**
      * Remove an existing derived schema

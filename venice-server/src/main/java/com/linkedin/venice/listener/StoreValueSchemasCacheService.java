@@ -6,7 +6,9 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.MetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -199,6 +201,22 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
   @Override
   public DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId) {
     throw new VeniceException("Function: getLatestDerivedSchema is not supported!");
+  }
+
+
+  @Override
+  public MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr) {
+    throw new VeniceException("Function: getMetadataVersionId is not supported!");
+  }
+
+  @Override
+  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId) {
+    throw new VeniceException("Function: getMetadataSchema is not supported!");
+  }
+
+  @Override
+  public Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName) {
+    throw new VeniceException("Function: getMetadataSchemas is not supported!");
   }
 
   private void refreshAllStores() {

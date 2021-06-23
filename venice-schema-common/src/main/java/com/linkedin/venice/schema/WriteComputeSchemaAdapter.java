@@ -492,7 +492,7 @@ public class WriteComputeSchemaAdapter {
 
 
 
-  private Schema createFlattenedUnion(List<Schema> schemaList) {
+  public static Schema createFlattenedUnion(List<Schema> schemaList) {
     List<Schema> flattenedSchemaList = new ArrayList<>();
     for (Schema schema : schemaList) {
       //if the origin schema is union, we'd like to flatten it
