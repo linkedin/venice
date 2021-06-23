@@ -2463,7 +2463,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Instant startTime = Instant.now();
     KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
     consumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
-    logger.info(String.format("Consumer unsubscribed topic %d partition %d. Took %d ms",
+    logger.info(String.format("Consumer unsubscribed topic %s partition %d. Took %d ms",
         topic, partitionConsumptionState.getPartition(), Instant.now().toEpochMilli() - startTime.toEpochMilli()));
   }
 
