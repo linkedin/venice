@@ -64,6 +64,7 @@ class AbstractTestVeniceHelixAdmin {
   VeniceProperties controllerProps;
   Map<String,MockTestStateModelFactory> stateModelFactories = new HashMap<>();
   HelixMessageChannelStats helixMessageChannelStats;
+  VeniceControllerMultiClusterConfig multiClusterConfig;
 
   public void setupCluster() throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
@@ -74,7 +75,8 @@ class AbstractTestVeniceHelixAdmin {
     controllerProps = new VeniceProperties(getControllerProperties(clusterName));
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     config = new VeniceControllerConfig(controllerProps);
-    veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), new MetricsRepository());
+    multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(config);
+    veniceAdmin = new VeniceHelixAdmin(multiClusterConfig, new MetricsRepository());
     veniceAdmin.start(clusterName);
     startParticipant();
     waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT);

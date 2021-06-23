@@ -5,6 +5,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -212,6 +213,9 @@ public class AdminExecutionTask implements Callable<Void> {
           break;
         case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER:
           handleEnableNativeReplicationForCluster((ConfigureNativeReplicationForCluster) adminOperation.payloadUnion);
+          break;
+        case METADATA_SCHEMA_CREATION:
+          handleMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -575,4 +579,17 @@ public class AdminExecutionTask implements Callable<Void> {
     }
     return false;
   }
+
+  private void handleMetadataSchemaCreation(MetadataSchemaCreation message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    int valueSchemaId = message.valueSchemaId;
+    String metadataSchemaStr = message.metadataSchema.definition.toString();
+    int metadataVersionId = message.metadataVersionId;
+
+    admin.addMetadataSchema(clusterName, storeName, valueSchemaId, metadataVersionId, metadataSchemaStr);
+    logger.info(String.format("Added metedata schema:\n %s\n to store: %s, value schema id: %d, metedata schema id: %d",
+        metadataSchemaStr, storeName, valueSchemaId, metadataVersionId));
+  }
+
 }

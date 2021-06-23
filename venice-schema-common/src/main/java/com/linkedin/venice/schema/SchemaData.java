@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import org.apache.avro.Schema;
 
 
 /**
@@ -21,6 +22,8 @@ public final class SchemaData {
   private Map<SchemaEntry, Integer> valueSchemaRMap;
   private Map<Pair<Integer, Integer>, DerivedSchemaEntry> derivedSchemaMap;
   private Map<DerivedSchemaEntry, Pair<Integer, Integer>> derivedSchemaRMap;
+  private Map<MetadataVersionId, MetadataSchemaEntry> metadataSchemaMap;
+  private Map<Schema, MetadataVersionId> metadataSchemaRMap;
 
   public static int UNKNOWN_SCHEMA_ID = 0;
   public static int INVALID_VALUE_SCHEMA_ID = -1;
@@ -33,6 +36,9 @@ public final class SchemaData {
 
     derivedSchemaMap = new HashMap<>();
     derivedSchemaRMap = new HashMap<>();
+
+    metadataSchemaMap = new HashMap<>();
+    metadataSchemaRMap = new HashMap<>();
   }
 
   public String getStoreName() {
@@ -105,5 +111,28 @@ public final class SchemaData {
     }
 
     return valueSchemas;
+  }
+
+  public MetadataSchemaEntry getMetadataSchema(int valueSchemaId, int metadataVersionId) {
+    return metadataSchemaMap.get(new MetadataVersionId(valueSchemaId, metadataVersionId));
+  }
+
+  public Collection<MetadataSchemaEntry> getMetadataSchemas() {
+    return metadataSchemaMap.values();
+  }
+
+  public MetadataVersionId getMetadataVersionId(MetadataSchemaEntry entry) {
+    if (metadataSchemaRMap.containsKey(entry.getSchema())) {
+      return metadataSchemaRMap.get(entry.getSchema());
+    }
+
+    return new MetadataVersionId(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
+  }
+
+  public void addMetadataSchema(MetadataSchemaEntry metadataSchemaEntry) {
+    MetadataVersionId
+        metadataVersionId = new MetadataVersionId(metadataSchemaEntry.getValueSchemaId(), metadataSchemaEntry.getId());
+    metadataSchemaMap.put(metadataVersionId, metadataSchemaEntry);
+    metadataSchemaRMap.put(metadataSchemaEntry.getSchema(), metadataVersionId);
   }
 }

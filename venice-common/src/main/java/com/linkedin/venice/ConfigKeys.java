@@ -1558,6 +1558,11 @@ public class ConfigKeys {
   public static final String CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE = "controller.auto.materialize.meta.system.store";
 
   /**
+   * This will indicate which MetadataSchemaAdapter version to use to generate metadata schema.
+   */
+  public static final String METADATA_VERSION_ID = "metadata.version.id";
+
+  /*
    * This config will specify the offset lag threshold to be used for offset lag comparison in making partition online faster.
    */
   public static final String OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART =

@@ -11,41 +11,18 @@ import org.apache.avro.Schema;
  * {@link WriteComputeSchemaAdapter} for all
  * available operations and how it gets generated.
  */
-public class DerivedSchemaEntry extends SchemaEntry {
-  private final int valueSchemaId;
+public class DerivedSchemaEntry extends GeneratedSchemaEntry {
 
-  public DerivedSchemaEntry(int valueSchemaId, int id, String schemaStr) {
-    super(id, schemaStr);
-    this.valueSchemaId = valueSchemaId;
+  public DerivedSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
+    super(valueSchemaId, protocolVersion, schemaStr);
   }
 
-  public DerivedSchemaEntry(int valueSchemaId, int id, Schema schema) {
-    super(id, schema);
-    this.valueSchemaId = valueSchemaId;
+  public DerivedSchemaEntry(int valueSchemaId, int protocolVersion, Schema schema) {
+    super(valueSchemaId, protocolVersion, schema);
   }
 
-  public DerivedSchemaEntry(int valueSchemaId, int id, byte[] bytes) {
-    super(id, bytes);
-    this.valueSchemaId = valueSchemaId;
+  public DerivedSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
+    super(valueSchemaId, protocolVersion, bytes);
   }
 
-  public int getValueSchemaId() {
-    return valueSchemaId;
-  }
-
-  @Override
-  public boolean equals(Object obj) {
-    return super.equals(obj);
-  }
-
-  @Override
-  public int hashCode() {
-    return super.hashCode();
-  }
-
-  @Override
-  public String toString() {
-    return String.format("value schema id: %d\t schema id: %d\t schema: %s",
-        valueSchemaId, getId(), getSchema().toString());
-  }
 }

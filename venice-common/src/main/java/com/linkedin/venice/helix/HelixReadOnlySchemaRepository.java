@@ -6,7 +6,9 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.MetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
@@ -19,6 +21,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -60,6 +63,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private IZkChildListener keySchemaChildListener = new KeySchemaChildListener();
   private IZkChildListener valueSchemaChildListener = new ValueSchemaChildListener();
   private IZkChildListener derivedSchemaChildListener = new DerivedSchemaChildListener();
+  private IZkChildListener metadataSchemaChildListener = new MetadataSchemaChildListener();
 
   // Mutex for local cache
   private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();
@@ -92,6 +96,34 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
     if (!schemaMap.containsKey(getZkStoreName(storeName))) {
       populateSchemaMap(storeName);
+    }
+  }
+
+  private Object doSchemaOperation(String storeName, Function<SchemaData, Object> operation) {
+    schemaLock.readLock().lock();
+    try {
+      /**
+       * {@link #fetchStoreSchemaIfNotInCache(String)} must be wrapped inside the read lock scope since it is possible
+       * that some other thread could update the schema map asynchronously in between,
+       * such as clearing the map during {@link #refresh()},
+       * which could cause this function throw {@link VeniceNoStoreException}.
+       */
+      fetchStoreSchemaIfNotInCache(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
+      if (null == schemaData) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      return operation.apply(schemaData);
+    } finally {
+      schemaLock.readLock().unlock();
+    }
+  }
+
+  private void mayRegisterAndPopulateMetadataSchema(Store store, SchemaData schemaData) {
+    if (store.isActiveActiveReplicationEnabled()) {
+      String storeName = store.getName();
+      accessor.subscribeMetadataSchemaCreationChange(storeName, metadataSchemaChildListener);
+      accessor.getAllMetadataSchemas(storeName).forEach(schemaData::addMetadataSchema);
     }
   }
 
@@ -337,19 +369,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
   @Override
   public DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId) {
-    schemaLock.readLock().lock();
-    try {
-      /**
-       * {@link #fetchStoreSchemaIfNotInCache(String)} must be wrapped inside the read lock scope since it is possible
-       * that some other thread could update the schema map asynchronously in between,
-       * such as clearing the map during {@link #refresh()},
-       * which could cause this function throw {@link VeniceNoStoreException}.
-       */
-      fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      if (null == schemaData) {
-        throw new VeniceNoStoreException(storeName);
-      }
+    return (DerivedSchemaEntry)doSchemaOperation(storeName, (schemaData -> {
       Optional<DerivedSchemaEntry> latestDerivedSchemaEntry = schemaData.getDerivedSchemas().stream()
           .filter(entry -> entry.getValueSchemaId() == valueSchemaId)
           .max(Comparator.comparing(DerivedSchemaEntry::getId));
@@ -360,9 +380,26 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       }
 
       return latestDerivedSchemaEntry.get();
-    } finally {
-      schemaLock.readLock().unlock();
-    }
+    }));
+  }
+
+  @Override
+  public MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr) {
+    return (MetadataVersionId)doSchemaOperation(storeName, ((schemaData) -> {
+      MetadataSchemaEntry metadataSchemaEntry =
+          new MetadataSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID, metadataSchemaStr);
+      return schemaData.getMetadataVersionId(metadataSchemaEntry);
+    }));
+  }
+
+  @Override
+  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId) {
+    return (MetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getMetadataSchema(valueSchemaId, metadataVersionId)));
+  }
+
+  @Override
+  public Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName) {
+    return (Collection<MetadataSchemaEntry>)doSchemaOperation(storeName, ((schemaData) -> schemaData.getMetadataSchemas()));
   }
 
   /**
@@ -420,6 +457,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
         accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
         accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
       }
+      mayRegisterAndPopulateMetadataSchema(store, schemaData);
+
       return schemaData;
     });
   }
@@ -457,6 +496,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       accessor.unsubscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
       accessor.unsubscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
       accessor.unsubscribeDerivedSchemaCreationChanges(storeName, derivedSchemaChildListener);
+      accessor.unsubscribeMetadataSchemaCreationChanges(storeName, metadataSchemaChildListener);
     } finally {
       schemaLock.writeLock().unlock();
     }
@@ -511,6 +551,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
       accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
     }
+    mayRegisterAndPopulateMetadataSchema(store, schemaData);
   }
 
   private class KeySchemaChildListener extends SchemaChildListener {
@@ -538,7 +579,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       for (String derivedSchemaIdPairStr : currentChildren) {
-        String [] ids = derivedSchemaIdPairStr.split(HelixSchemaAccessor.DERIVED_SCHEMA_DELIMITER);
+        String [] ids = derivedSchemaIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
         if (ids.length != 2) {
           throw new VeniceException("unrecognized derivedSchema path format. Store: " + storeName
            + " path: " + derivedSchemaIdPairStr);
@@ -546,6 +587,24 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
         if (null == schemaData.getDerivedSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
           schemaData.addDerivedSchema(accessor.getDerivedSchema(storeName, derivedSchemaIdPairStr));
+        }
+      }
+    }
+  }
+
+  private class MetadataSchemaChildListener extends SchemaChildListener {
+    @Override
+    void handleSchemaChanges(String storeName, List<String> currentChildren) {
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
+      for (String metadataVersionIdPairStr : currentChildren) {
+        String [] ids = metadataVersionIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
+        if (ids.length != 2) {
+          throw new VeniceException("unrecognized Schema path format. Store: " + storeName
+              + " path: " + metadataVersionIdPairStr);
+        }
+
+        if (null == schemaData.getMetadataSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
+          schemaData.addMetadataSchema(accessor.getMetadataSchema(storeName, metadataVersionIdPairStr));
         }
       }
     }

@@ -1,7 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.MetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.utils.Pair;
@@ -56,4 +58,9 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
    * Get the most recent derived schema added to the given store and value schema id
    */
   DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId);
+
+
+  MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr);
+  MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId);
+  Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName);
 }

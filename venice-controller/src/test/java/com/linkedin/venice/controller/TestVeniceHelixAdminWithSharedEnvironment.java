@@ -17,7 +17,6 @@ import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -36,6 +35,8 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.schema.MetadataSchemaAdapter;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
@@ -48,6 +49,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1537,5 +1539,19 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     //set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
+  }
+
+  @Test
+  public void testAddMetadataSchema() {
+    String storeName = TestUtils.getUniqueString("aa_store");
+    String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    int metadataVersionId = multiClusterConfig.getCommonConfig().getMetadataVersionId();
+    Schema metadataSchema = MetadataSchemaAdapter.parse(recordSchemaStr, metadataVersionId);
+
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
+    veniceAdmin.addMetadataSchema(clusterName, storeName, 1,  metadataVersionId, metadataSchema.toString());
+    Collection<MetadataSchemaEntry> metadataSchemas = veniceAdmin.getMetadataSchemas(clusterName, storeName);
+    Assert.assertEquals(metadataSchemas.size(), 1);
+    Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
   }
 }

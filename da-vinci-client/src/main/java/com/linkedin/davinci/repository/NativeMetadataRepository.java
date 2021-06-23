@@ -40,7 +40,9 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.meta.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.meta.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
+import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.schema.MetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.service.ICProvider;
@@ -348,6 +350,21 @@ public abstract class NativeMetadataRepository
   @Override
   public DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId) {
     throw new VeniceException("Derived schema is not included in system store.");
+  }
+
+  @Override
+  public MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr) {
+    throw new VeniceException("Function: getMetadataVersionId is not supported!");
+  }
+
+  @Override
+  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId) {
+    throw new VeniceException("Function: getMetadataSchema is not supported!");
+  }
+
+  @Override
+  public Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName) {
+    throw new VeniceException("Function: getMetadataSchemas is not supported!");
   }
 
   /**
