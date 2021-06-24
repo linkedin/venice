@@ -7,6 +7,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -16,15 +17,22 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
  * Since there are very different characteristics, it will be helpful to decouple these two types of ingestions to avoid one blocking the other.
  */
 public class SeparatedStoreBufferService extends AbstractStoreBufferService {
-  private final StoreBufferService sortedServiceDelegate;
-  private final StoreBufferService unsortedServiceDelegate;
+  private static final Logger LOGGER =  Logger.getLogger(SeparatedStoreBufferService.class);
+  protected final StoreBufferService sortedServiceDelegate;
+  protected final StoreBufferService unsortedServiceDelegate;
+  private final int sortedPoolSize;
+  private final int unsortedPoolSize;
   private final Map<String, Boolean> topicToSortedIngestionMode = new VeniceConcurrentHashMap<>();
 
   SeparatedStoreBufferService(VeniceServerConfig serverConfig) {
-    this.sortedServiceDelegate = new StoreBufferService(serverConfig.getDrainerPoolSizeSortedInput(),
-        serverConfig.getStoreWriterBufferMemoryCapacity(), serverConfig.getStoreWriterBufferNotifyDelta());
-    this.unsortedServiceDelegate = new StoreBufferService(serverConfig.getDrainerPoolSizeUnsortedInput(),
-        serverConfig.getStoreWriterBufferMemoryCapacity(), serverConfig.getStoreWriterBufferNotifyDelta());
+    this.sortedPoolSize = serverConfig.getDrainerPoolSizeSortedInput();
+    this.unsortedPoolSize = serverConfig.getDrainerPoolSizeUnsortedInput();
+    this.sortedServiceDelegate = new StoreBufferService(sortedPoolSize, serverConfig.getStoreWriterBufferMemoryCapacity(),
+        serverConfig.getStoreWriterBufferNotifyDelta());
+    this.unsortedServiceDelegate = new StoreBufferService(unsortedPoolSize, serverConfig.getStoreWriterBufferMemoryCapacity(),
+        serverConfig.getStoreWriterBufferNotifyDelta());
+    LOGGER.info("Created separated store buffer service with " + sortedPoolSize + " sorted drainers and "
+        + unsortedPoolSize + " unsorted drainers queues with capacity of " + serverConfig.getStoreWriterBufferMemoryCapacity());
   }
 
   @Override
@@ -43,6 +51,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
         currentState = topicToSortedIngestionMode.get(consumerRecord.topic());
         // If there is a change in deferredWrite mode, drain the buffers
         if (currentState != sortedInput) {
+          LOGGER.info("Switching drainer buffer for topic " + consumerRecord.topic() + " to use " + (sortedInput ? "sorted queue." : "unsorted queue."));
           drainBufferedRecordsFromTopicPartition(consumerRecord.topic(), partitionConsumptionState.get().getPartition());
           topicToSortedIngestionMode.put(consumerRecord.topic(), sortedInput);
         }
@@ -80,8 +89,18 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
     return unsortedServiceDelegate.getDrainerCount() + sortedServiceDelegate.getDrainerCount();
   }
 
+  /**
+   * This get called from StoreBufferServiceStats to track the mem usage in a drainer,
+   * in separated drainer case, we can assume first sortedPoolSize indices belong to sortedPoolSize
+   * and indices more than sortedPoolSize belong to unsorted ingestions.
+   * @param index
+   * @return
+   */
   public long getDrainerQueueMemoryUsage(int index) {
-    return unsortedServiceDelegate.getDrainerQueueMemoryUsage(index) + sortedServiceDelegate.getDrainerQueueMemoryUsage(index);
+    if (index < sortedPoolSize) {
+      return sortedServiceDelegate.getDrainerQueueMemoryUsage(index);
+    }
+    return unsortedServiceDelegate.getDrainerQueueMemoryUsage(index - sortedPoolSize);
   }
 
   public long getTotalMemoryUsage() {
