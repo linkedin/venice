@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
@@ -265,6 +266,19 @@ public class CreateVersion extends AbstractRoute {
             }
             break;
           case STREAM:
+
+            if (admin.isParent()) {
+              // Conditionally check if this store has aggregate mode enabled.  If not, throw an exception (as aggregate mode is required to produce to parent colo)
+              // We check the store config instead of the version config because we want this policy to go into affect without needing to perform empty pushes everywhere
+              if(!store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
+                throw new VeniceException("Store is not in aggregate mode!  Cannot push data to parent topic!!");
+              }
+            } else {
+              if(!store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NON_AGGREGATE)) {
+                throw new VeniceException("Store is in aggregate mode!  Cannot push data to child topic!!");
+              }
+            }
+
             String realTimeTopic = admin.getRealTimeTopic(clusterName, storeName);
             responseObject.setKafkaTopic(realTimeTopic);
             // disable amplificationFactor logic on real-time topic
