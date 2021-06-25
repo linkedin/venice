@@ -40,7 +40,7 @@ public enum VeniceSystemStoreType {
   // This system store's prefix is used as its full name since it is not a per-user-store system store
   BATCH_JOB_HEARTBEAT_STORE(String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.BATCH_JOB_HEARTBEAT), false, BatchJobHeartbeatKey.SCHEMA$.toString(),
           BatchJobHeartbeatValue.SCHEMA$.toString(), "",
-          true, Method.WRITE_SYSTEM_STORE);
+          false, Method.WRITE_SYSTEM_STORE);
 
   private final String prefix;
   private final boolean isStoreZkShared;
