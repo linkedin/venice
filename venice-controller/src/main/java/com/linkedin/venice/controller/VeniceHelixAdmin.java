@@ -4089,7 +4089,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public int getReplicationFactor(String clusterName, String storeName) {
-        return getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName).getReplicationFactor();
+        int replicationFactor = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName).getReplicationFactor();
+        if (replicationFactor <= 0) {
+            throw new VeniceException("Unexpected replication factor: " + replicationFactor + " for store: "
+                + storeName + " in cluster: " + clusterName);
+        }
+        return replicationFactor;
     }
 
     @Override
@@ -4773,7 +4778,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             Version.composeKafkaTopic(VeniceSystemStoreUtils.getSystemStoreName(storeName, storeType), versionNumber);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
-        int replicationFactor = resources.getMetadataRepository().getStore(storeName).getReplicationFactor();
+        int replicationFactor = getReplicationFactor(clusterName, storeName);
         try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
             getTopicManager().createTopic(
                 topicName,

@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepositoryAdapter;
@@ -28,6 +29,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.List;
 import java.util.Optional;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import java.util.concurrent.ExecutorService;
@@ -142,12 +144,40 @@ public class VeniceHelixResources implements VeniceResource {
     }
   }
 
+  /**
+   * This function is used to repair all the stores with replication factor: 0.
+   * And these stores will be updated to use the replication factor configured in cluster level.
+   * @param metadataRepository
+   */
+  private void repairStoreReplicationFactor(ReadWriteStoreRepository metadataRepository) {
+    List<Store> stores = metadataRepository.getAllStores();
+    for (Store store : stores) {
+      String storeName = store.getName();
+      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+      if (null == systemStoreType || !systemStoreType.isStoreZkShared()) {
+        /**
+         * We only need to update the Vanilla Venice stores here since the updated zk shared store
+         * will be reflected in all the derived system stores.
+         */
+        if (store.getReplicationFactor() <= 0) {
+          int previousReplicationFactor = store.getReplicationFactor();
+          store.setReplicationFactor(config.getReplicationFactor());
+          metadataRepository.updateStore(store);
+          LOGGER.info("Updated replication factor from " + previousReplicationFactor + " to " +
+              config.getReplicationFactor() + " for store: " + store.getName() + " in cluster: " + clusterName);
+
+        }
+      }
+    }
+  }
+
   @Override
   public void refresh() {
     clear();
     //make sure that metadataRepo is initialized first since schemaRepo and
     //pushMonitor depends on it
     metadataRepository.refresh();
+    repairStoreReplicationFactor(metadataRepository);
     /**
      * Initialize the dynamic access client and also register the acl creation/deletion listener.
      */

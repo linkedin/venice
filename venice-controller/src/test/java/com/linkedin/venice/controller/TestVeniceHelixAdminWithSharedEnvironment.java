@@ -1554,4 +1554,18 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(metadataSchemas.size(), 1);
     Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
   }
+
+  @Test
+  public void testRepairStoreReplicationFactor() {
+    String storeName = TestUtils.getUniqueString("test");
+    veniceAdmin.addStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getReplicationFactor() > 0, "The replication factor for a new store should be positive.");
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(0));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertEquals(store.getReplicationFactor(), 0, "The replication factor should be 0 after the update.");
+    veniceAdmin.getVeniceHelixResource(clusterName).refresh();
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getReplicationFactor() > 0, "The replication factor should be positive after the one-time repair.");
+  }
 }
