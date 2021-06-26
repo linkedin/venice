@@ -67,7 +67,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
   public KafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
       final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
       final EventThrottler recordsThrottler, final KafkaConsumerServiceStats stats, final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final boolean enableOffsetCollection, TopicExistenceChecker topicExistenceChecker) {
+      final TopicExistenceChecker topicExistenceChecker) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.sharedConsumerNonExistingTopicCleanupDelayMS = sharedConsumerNonExistingTopicCleanupDelayMS;
     this.bandwidthThrottler = bandwidthThrottler;
@@ -82,7 +82,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
        * We need to assign an unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
-      SharedKafkaConsumer newConsumer = new SharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties), this, sharedConsumerNonExistingTopicCleanupDelayMS, enableOffsetCollection, topicExistenceChecker);
+      SharedKafkaConsumer newConsumer = new SharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties), this, sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker);
       consumerExecutor.submit(new ConsumptionTask(newConsumer));
       consumers.add(newConsumer);
     }

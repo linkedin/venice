@@ -52,8 +52,7 @@ public class SharedKafkaConsumerTest {
     doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
     SharedKafkaConsumer sharedConsumer =
-        new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
-
+        new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, topicExistenceChecker);
 
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(existingTopic1, 1));
@@ -121,7 +120,7 @@ public class SharedKafkaConsumerTest {
     MetadataRepoBasedTopicExistingCheckerImpl topicExistenceChecker = new MetadataRepoBasedTopicExistingCheckerImpl(repository);
     doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, topicExistenceChecker);
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     assignmentReturnedConsumer.add(new TopicPartition(nonExistingTopic1, 1));
     doReturn(assignmentReturnedConsumer).when(consumer).getAssignment();
@@ -162,7 +161,7 @@ public class SharedKafkaConsumerTest {
     doReturn(store).when(repository).getStoreOrThrow("existingTopic1");
     doThrow(new VeniceNoStoreException(nonExistingTopic1)).when(repository).getStoreOrThrow("nonExistingTopic1");
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, false, topicExistenceChecker);
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, consumerService, 1, nonExistingTopicCleanupDelayMS, mockTime, topicExistenceChecker);
     Map<String, List<PartitionInfo>> staledTopicListReturnedByConsumer = new HashMap<>();
     staledTopicListReturnedByConsumer.put(existingTopic1, Collections.emptyList());
     Map<String, List<PartitionInfo>> topicListReturnedByConsumer = new HashMap<>(staledTopicListReturnedByConsumer);

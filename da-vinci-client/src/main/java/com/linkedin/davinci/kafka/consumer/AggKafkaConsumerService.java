@@ -28,7 +28,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final EventThrottler bandwidthThrottler;
   private final EventThrottler recordsThrottler;
   private final KafkaConsumerServiceStats stats;
-  private final boolean enableOffsetCollection;
   private final TopicExistenceChecker topicExistenceChecker;
 
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerService = new VeniceConcurrentHashMap<>();
@@ -43,7 +42,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.stats = new KafkaConsumerServiceStats(metricsRepository);
-    this.enableOffsetCollection = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
     this.topicExistenceChecker = topicExistenceChecker;
     logger.info("Successfully initialized AggKafkaConsumerService");
   }
@@ -68,7 +66,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     return kafkaServerToConsumerService.computeIfAbsent(kafkaUrl, url ->
         new KafkaConsumerService(consumerFactory, consumerProperties, readCycleDelayMs, numOfConsumersPerKafkaCluster,
-            bandwidthThrottler, recordsThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS, enableOffsetCollection, topicExistenceChecker));
+            bandwidthThrottler, recordsThrottler, stats, sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker));
   }
 
   /**
@@ -90,6 +88,4 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   public void detach(StoreIngestionTask ingestionTask) {
     kafkaServerToConsumerService.values().forEach(consumerService -> consumerService.detach(ingestionTask));
   }
-
-
 }
