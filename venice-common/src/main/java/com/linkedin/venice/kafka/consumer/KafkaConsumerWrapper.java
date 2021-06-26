@@ -54,7 +54,5 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
 
   Set<TopicPartition> getAssignment();
 
-  default public Map<MetricName, Double> getMeasurableConsumerMetrics() {return Collections.EMPTY_MAP;} ;
-
   default Optional<Long> getLatestOffset(String topic, int partition) { return Optional.empty(); }
 }

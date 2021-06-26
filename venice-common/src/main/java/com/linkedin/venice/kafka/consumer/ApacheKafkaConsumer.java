@@ -10,15 +10,13 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.Metric;
-import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.log4j.Logger;
@@ -34,25 +32,33 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
   public static final String CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG = "consumer.poll.retry.backoff.ms";
+  private static final boolean DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE = false;
   private static final int CONSUMER_POLL_RETRY_TIMES_DEFAULT = 3;
   private static final int CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT = 0;
 
   private final KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
+  private final Optional<TopicPartitionsOffsetsTracker> topicPartitionsOffsetsTracker;
 
   public ApacheKafkaConsumer(Properties props) {
-    this.kafkaConsumer = new KafkaConsumer<>(props);
-
-    VeniceProperties veniceProperties = new VeniceProperties(props);
-    consumerPollRetryTimes = veniceProperties.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
-    consumerPollRetryBackoffMs = veniceProperties.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
-    logger.info("Consumer poll retry times: " + consumerPollRetryTimes);
-    logger.info("Consumer poll retry back off in ms: " + consumerPollRetryBackoffMs);
+    this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE);
   }
 
   public ApacheKafkaConsumer(VeniceProperties props) {
-    this(props.toProperties());
+    this(props.toProperties(), DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE);
+  }
+
+  public ApacheKafkaConsumer(Properties props, boolean isKafkaConsumerOffsetCollectionEnabled) {
+    this.kafkaConsumer = new KafkaConsumer<>(props);
+    VeniceProperties veniceProperties = new VeniceProperties(props);
+    this.consumerPollRetryTimes = veniceProperties.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
+    this.consumerPollRetryBackoffMs = veniceProperties.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
+    this.topicPartitionsOffsetsTracker = isKafkaConsumerOffsetCollectionEnabled ?
+            Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
+    logger.info("Consumer poll retry times: " + this.consumerPollRetryTimes);
+    logger.info("Consumer poll retry back off in ms: " + this.consumerPollRetryBackoffMs);
+    logger.info("Consumer offset collection enabled: " + isKafkaConsumerOffsetCollectionEnabled);
   }
 
   private void seekNextOffset(TopicPartition topicPartition, long lastReadOffset) {
@@ -101,6 +107,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
         kafkaConsumer.assign(topicPartitionList);
       }
     }
+    topicPartitionsOffsetsTracker.ifPresent(partitionsOffsetsTracker -> partitionsOffsetsTracker.removeTrackedOffsets(topicPartition));
   }
 
   @Override
@@ -113,12 +120,12 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public ConsumerRecords poll(long timeoutMs) {
+  public ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeoutMs) {
     // The timeout is not respected when hitting UNKNOWN_TOPIC_OR_PARTITION and when the
     // fetcher.retrieveOffsetsByTimes call inside kafkaConsumer times out,
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     int attemptCount = 1;
-    ConsumerRecords records = ConsumerRecords.empty();
+    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = ConsumerRecords.empty();
     while (attemptCount <= consumerPollRetryTimes) {
       try {
         records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
@@ -141,6 +148,10 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       } finally {
         attemptCount++;
       }
+    }
+
+    if (topicPartitionsOffsetsTracker.isPresent()) {
+      topicPartitionsOffsetsTracker.get().updateEndOffsets(records, kafkaConsumer.metrics());
     }
     return records;
   }
@@ -206,27 +217,15 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public void close() {
+    topicPartitionsOffsetsTracker.ifPresent(offsetsTracker -> offsetsTracker.clearAllOffsetState());
     if (kafkaConsumer != null) {
       kafkaConsumer.close();
     }
   }
 
   @Override
-  public Map<MetricName, Double> getMeasurableConsumerMetrics() {
-    Map<MetricName, Double> extractedMetrics = new HashMap<>();
-    Map<MetricName, ? extends Metric> metrics = kafkaConsumer.metrics();
-    for (Map.Entry<MetricName, ? extends Metric> entry : metrics.entrySet()) {
-      try {
-        Object value = entry.getValue().metricValue();
-        if (value instanceof Double) {
-          extractedMetrics.put(entry.getKey(), (Double) value);
-        }
-      } catch (Exception e) {
-        logger.info("Caught exception: " + e.getMessage() + " when attempting to get consumer metrics. "
-            + "Incomplete metrics might be returned.");
-      }
-    }
-
-    return extractedMetrics;
+  public Optional<Long> getLatestOffset(String topic, int partition) {
+    return topicPartitionsOffsetsTracker.isPresent() ?
+    topicPartitionsOffsetsTracker.get().getEndOffset(topic, partition) : Optional.empty();
   }
 }

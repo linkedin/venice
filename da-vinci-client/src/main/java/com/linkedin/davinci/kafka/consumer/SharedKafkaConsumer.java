@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -20,7 +19,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
@@ -98,32 +96,25 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   private final Time time;
 
-  private boolean enableOffsetCollection = false;
-  long lastMetricsCollectedTime = 0;
-  private static final int METRICS_UPDATE_INTERVAL_MS = 30 * Time.MS_PER_MINUTE; //30 seconds
-  private Map<TopicPartition, Double> topicPartitionCurrentOffset = new VeniceConcurrentHashMap<>();
-  private Map<TopicPartition, Double> topicPartitionEndOffset = new VeniceConcurrentHashMap<>();
-
   private final TopicExistenceChecker topicExistenceChecker;
 
   public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service, final long nonExistingTopicCleanupDelayMS,
-      boolean enableOffsetCollection, TopicExistenceChecker topicExistenceChecker) {
-    this(delegate, service, 1000, nonExistingTopicCleanupDelayMS, enableOffsetCollection, topicExistenceChecker);
+      TopicExistenceChecker topicExistenceChecker) {
+    this(delegate, service, 1000, nonExistingTopicCleanupDelayMS, topicExistenceChecker);
   }
 
   public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
-      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, boolean enableOffsetCollection, TopicExistenceChecker topicExistenceChecker) {
-    this(delegate, service, sanitizeTopicSubscriptionAfterPollTimes, nonExistingTopicCleanupDelayMS, new SystemTime(), enableOffsetCollection, topicExistenceChecker);
+      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, TopicExistenceChecker topicExistenceChecker) {
+    this(delegate, service, sanitizeTopicSubscriptionAfterPollTimes, nonExistingTopicCleanupDelayMS, new SystemTime(), topicExistenceChecker);
   }
 
   SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service,
-      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, Time time, boolean enableOffsetCollection, TopicExistenceChecker topicExistenceChecker) {
+      int sanitizeTopicSubscriptionAfterPollTimes, long nonExistingTopicCleanupDelayMS, Time time, TopicExistenceChecker topicExistenceChecker) {
     this.delegate = delegate;
     this.kafkaConsumerService = service;
     this.sanitizeTopicSubscriptionAfterPollTimes = sanitizeTopicSubscriptionAfterPollTimes;
     this.nonExistingTopicCleanupDelayMS = nonExistingTopicCleanupDelayMS;
     this.time = time;
-    this.enableOffsetCollection = enableOffsetCollection;
     this.topicExistenceChecker = topicExistenceChecker;
   }
 
@@ -177,13 +168,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
     } catch (InterruptedException e) {
       LOGGER.info("Wait for poll request in `unSubscribe` function got interrupted.");
       Thread.currentThread().interrupt();
-    }
-
-    //remove this topic partition from offset cache.
-    if (enableOffsetCollection) {
-      TopicPartition tp = new TopicPartition(topic, partition);
-      topicPartitionCurrentOffset.remove(tp);
-      topicPartitionEndOffset.remove(tp);
     }
   }
 
@@ -350,33 +334,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
      *
      * The consumer subscription cleanup will take effect in the next {@link #poll} request.
      */
-
-    if (enableOffsetCollection) {
-      //Update current offset cache for all topics partition.
-      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
-        TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-        topicPartitionCurrentOffset.put(tp, (double) record.offset());
-      }
-
-      if (LatencyUtils.getElapsedTimeInMs(lastMetricsCollectedTime) > METRICS_UPDATE_INTERVAL_MS) {
-        lastMetricsCollectedTime = System.currentTimeMillis();
-        Map<MetricName, Double> metrics = delegate.getMeasurableConsumerMetrics();
-        //clear since it will process a complete snapshot of lags of all topic partition currently.
-        for (Map.Entry<MetricName, Double> metric : metrics.entrySet()) {
-          try {
-            if (metric.getKey().name().equals("records-lag")) {
-              TopicPartition tp = new TopicPartition(metric.getKey().tags().get("topic"), Integer.valueOf(metric.getKey().tags().get("partition")));
-              if (topicPartitionCurrentOffset.containsKey(tp)) {
-                topicPartitionEndOffset.put(tp, metric.getValue() + topicPartitionCurrentOffset.getOrDefault(tp, 0.0));
-              }
-            }
-          } catch (Exception e) {
-            LOGGER.error("Exception in collecting offset lag ", e);
-          }
-        }
-      }
-    }
-
     return records;
   }
 
@@ -487,12 +444,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public Map<MetricName, Double> getMeasurableConsumerMetrics() {
-    return delegate.getMeasurableConsumerMetrics();
-  }
-
-  @Override
   public Optional<Long> getLatestOffset(String topic, int partition) {
-    return Optional.of(topicPartitionEndOffset.get(new TopicPartition(topic, partition)).longValue());
+    return delegate.getLatestOffset(topic, partition);
   }
 }

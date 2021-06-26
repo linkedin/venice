@@ -2,9 +2,7 @@ package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
-import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -14,7 +12,6 @@ import com.linkedin.venice.utils.ReflectUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -27,7 +24,7 @@ public abstract class KafkaClientFactory {
   private static final Logger LOGGER = Logger.getLogger(KafkaClientFactory.class);
 
   public KafkaConsumerWrapper getConsumer(Properties props) {
-    return new ApacheKafkaConsumer(setupSSL(props));
+    return new ApacheKafkaConsumer(setupSSL(props), false);
   }
 
   public <K, V> KafkaConsumer<K, V> getKafkaConsumer(Properties properties){
