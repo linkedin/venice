@@ -6,9 +6,11 @@ import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 
 import java.util.concurrent.locks.ReadWriteLock;
@@ -479,6 +481,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   public synchronized boolean containsPartition(int partitionId) {
     return null != this.partitionList.get(partitionId);
+  }
+
+  public synchronized boolean containsPartition(int userPartition, PartitionerConfig partitionerConfig) {
+    int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
+    for (int subPartition : PartitionUtils.getSubPartitions(userPartition, amplificationFactor)) {
+      if (!containsPartition(subPartition)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
