@@ -15,6 +15,7 @@ import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
+import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -30,6 +31,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
@@ -91,6 +93,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.client.store.predicate.PredicateBuilder.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
@@ -159,11 +162,27 @@ public class DaVinciClientTest {
       "  ]       " +
       " }       ";
 
- private static final String KEY_SCHEMA_STEAMING_COMPUTE = "\"string\"";
+  private static final String KEY_SCHEMA_STEAMING_COMPUTE = "\"string\"";
 
-  private static final String VALUE_SCHEMA_STREAMING_COMPUTE = "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n"
-      + "\"fields\": [\n" + "  {\"name\": \"int_field\", \"type\": \"int\"},\n"
-      + "  {\"name\": \"float_field\", \"type\": \"float\"}\n" + "]\n" + "}";
+  private static final String VALUE_SCHEMA_STREAMING_COMPUTE = "{\n" +
+      "\"type\": \"record\",\n" +
+      "\"name\": \"test_value_schema\",\n" +
+      "\"fields\": [\n" +
+      "  {\"name\": \"int_field\", \"type\": \"int\"},\n" +
+      "  {\"name\": \"float_field\", \"type\": \"float\"}\n" +
+      "]\n" +
+      "}";
+
+  private static final String KEY_SCHEMA_PARTIAL_KEY_LOOKUP = "{" +
+      "\"type\":\"record\"," +
+      "\"name\":\"KeyRecord\"," +
+      "\"namespace\":\"example.partialKeyLookup\"," +
+      "\"fields\":[ " +
+      "   {\"name\":\"id\",\"type\":\"string\"}," +
+      "   {\"name\":\"companyId\",\"type\":\"int\"}, " +
+      "   {\"name\":\"name\",\"type\":\"string\"} " +
+      " ]" +
+      "}";
 
   @BeforeClass
   public void setup() {
@@ -1300,6 +1319,145 @@ public class DaVinciClientTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testPartialKeyLookupWithRocksDBBlockBasedTable() throws ExecutionException, InterruptedException {
+    final String storeName = TestUtils.getUniqueString( "store");
+    cluster.useControllerClient(client -> TestUtils.assertCommand(
+        client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE)));
+
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    String topic = newVersion.getKafkaTopic();
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .build();
+
+    int numRecords = 100;
+
+    try (
+        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+        DaVinciClient<GenericRecord, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig().setStorageClass(StorageClass.DISK))) {
+
+      pushSyntheticDataToStoreForPartialKeyLookup(writer, KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE, false, 1, numRecords);
+      client.subscribeAll().get();
+
+      Map<GenericRecord, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
+      CountDownLatch computeLatch = new CountDownLatch(1);
+
+      Predicate partialKey = and(
+          equalTo("id", "key_abcdefgh_1"),
+          equalTo("companyId", 0)
+      );
+
+      Schema keySchema = new Schema.Parser().parse(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
+
+      GenericData.Record key = new GenericData.Record(keySchema);
+      key.put("id", "key_abcdefgh_1");
+      key.put("companyId", 0);
+      key.put("name", "name_4");
+
+      GenericRecord result = client.get(key).get();
+      Assert.assertNotNull(result);
+
+      client.compute()
+          .project("id", "name", "companiesEmbedding", "member_feature")
+          .cosineSimilarity("companiesEmbedding", pymkCosineSimilarityEmbedding, "companiesEmbedding_score")
+          .cosineSimilarity("member_feature", pymkCosineSimilarityEmbedding, "member_feature_score")
+          .executeWithFilter(partialKey, new StreamingCallback<GenericRecord, GenericRecord>() {
+            @Override
+            public void onRecordReceived(GenericRecord key, GenericRecord value) {
+              if (null != value) {
+                finalComputeResultMap.put(key, value);
+              }
+            }
+
+            @Override
+            public void onCompletion(Optional<Exception> exception) {
+              computeLatch.countDown();
+              if (exception.isPresent()) {
+                Assert.fail("Exception: " + exception.get() + " is not expected");
+              }
+            }
+          });
+
+      computeLatch.await();
+      Assert.assertEquals(finalComputeResultMap.size(), 16);
+      for (Map.Entry<GenericRecord, GenericRecord> kvp : finalComputeResultMap.entrySet()){
+        Assert.assertEquals(kvp.getKey().getSchema(), keySchema);
+        Assert.assertEquals(kvp.getKey().get("id").toString(), "key_abcdefgh_1");
+        Assert.assertEquals(kvp.getKey().get("companyId"), 0);
+        Assert.assertEquals(kvp.getValue().getSchema().getFields().size(), 7);
+        Assert.assertEquals(((HashMap<String, String>)kvp.getValue().get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(), 0);
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testPartialKeyLookupWithRocksDBPlainTable() throws ExecutionException, InterruptedException {
+    final String storeName = TestUtils.getUniqueString( "store");
+    cluster.useControllerClient(client -> TestUtils.assertCommand(
+        client.createNewStore(storeName, getClass().getName(), KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE)));
+
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    String topic = newVersion.getKafkaTopic();
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
+
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .build();
+
+    int numRecords = 100;
+
+    try (
+        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+        DaVinciClient<GenericRecord, GenericRecord> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
+
+      pushSyntheticDataToStoreForPartialKeyLookup(writer, KEY_SCHEMA_PARTIAL_KEY_LOOKUP, VALUE_SCHEMA_FOR_COMPUTE, false, 1, numRecords);
+      client.subscribeAll().get();
+
+      Predicate partialKey = and(
+          equalTo("id", "key_abcdefgh_1"),
+          equalTo("companyId", 0)
+      );
+
+      final boolean[] completed = {false};
+
+      client.compute()
+          .project("id", "name", "companiesEmbedding", "member_feature")
+          .executeWithFilter(partialKey, new StreamingCallback<GenericRecord, GenericRecord>() {
+            @Override
+            public void onRecordReceived(GenericRecord key, GenericRecord value) {
+              Assert.fail("No records should have been found from the store engine.");
+            }
+
+            @Override
+            public void onCompletion(Optional<Exception> exception) {
+              completed[0] = true;
+              Assert.assertTrue(exception.isPresent());
+              Assert.assertEquals(exception.get().getMessage(), "Get by key prefix is not supported with RocksDB PlainTable Format.");
+            }
+          });
+      Assert.assertTrue(completed[0]);
+    }
+  }
+
   private void pushSyntheticDataToStore(VeniceWriter<Object, Object, byte[]> writer, String schema, boolean skip, int valueSchemaId, int numRecords)
       throws ExecutionException, InterruptedException {
     writer.broadcastStartOfPush(Collections.emptyMap());
@@ -1341,6 +1499,31 @@ public class DaVinciClientTest {
       Assert.assertEquals(record.get("int_field"), i);
       Assert.assertNull(record.get("float_field"));
     }
+  }
+
+  private void pushSyntheticDataToStoreForPartialKeyLookup(VeniceWriter<GenericRecord, GenericRecord, byte[]> writer,
+      String keySchemaString, String valueSchemaString, boolean skip, int valueSchemaId, int numRecords)
+      throws ExecutionException, InterruptedException {
+    writer.broadcastStartOfPush(Collections.emptyMap());
+    Schema keySchema = new Schema.Parser().parse(keySchemaString);
+    Schema valueSchema = new Schema.Parser().parse(valueSchemaString);
+    String keyIdFiller = "abcdefgh_";
+    for (int i = 0; i < numRecords; ++i) {
+      GenericRecord key = new GenericData.Record(keySchema);
+      key.put("id", KEY_PREFIX + keyIdFiller + (i % 3));
+      key.put("companyId", i % 2);
+      key.put("name", "name_" + i);
+
+      GenericRecord value = new GenericData.Record(valueSchema);
+      value.put("id", VALUE_PREFIX + i);
+      value.put("name", "companiesEmbedding");
+      if (!skip) {
+        value.put("companiesEmbedding", companiesEmbedding);
+      }
+      value.put("member_feature", mfEmbedding);
+      writer.put(key, value, valueSchemaId).get();
+    }
+    writer.broadcastEndOfPush(Collections.emptyMap());
   }
 
   private List<Float> generateRandomFloatList(int listSize) {

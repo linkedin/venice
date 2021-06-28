@@ -36,6 +36,11 @@ public class VeniceConstants {
   public static int COMPUTE_REQUEST_VERSION_V3 = 3;
 
   /**
+   * V4 contains all V3 operators + executeWithFilter
+   */
+  public static int COMPUTE_REQUEST_VERSION_V4 = 4;
+
+  /**
    * The default SSL factory class name; this class is mostly used in test cases; products that uses Venice lib
    * should override the SSL factory class.
    */

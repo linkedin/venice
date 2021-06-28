@@ -1,9 +1,12 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.predicate.Predicate;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.Count;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Pair;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
@@ -15,6 +18,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.codehaus.jackson.node.JsonNodeFactory;
 
@@ -95,6 +99,13 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
     // Generate ComputeRequestWrapper object
     ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
     computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
+    computeRequestWrapper.setOperations(getComputeRequestOperations());
+    computeRequestWrapper.setValueSchema(latestValueSchema);
+
+    return computeRequestWrapper;
+  }
+
+  protected List<ComputeOperation> getComputeRequestOperations(){
     List<ComputeOperation> operations = getCommonComputeOperations();
 
     countLists.forEach( count -> {
@@ -103,10 +114,7 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
       computeOperation.operation = count;
       operations.add(computeOperation);
     });
-    computeRequestWrapper.setOperations(operations);
-    computeRequestWrapper.setValueSchema(latestValueSchema);
-
-    return computeRequestWrapper;
+    return operations;
   }
 
   @Override
@@ -117,5 +125,10 @@ public class AvroComputeRequestBuilderV3<K> extends AbstractAvroComputeRequestBu
     countLists.add(count);
 
     return this;
+  }
+
+  @Override
+  public void executeWithFilter(Predicate predicate, StreamingCallback<K, GenericRecord> callback) {
+    throw new VeniceException("ExecuteWithFilter is not supported in V3 compute request.");
   }
 }

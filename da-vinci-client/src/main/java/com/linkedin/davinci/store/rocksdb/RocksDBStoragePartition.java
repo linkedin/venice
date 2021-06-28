@@ -571,9 +571,14 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public void getByKeyPrefix(byte[] keyPrefix, BytesStreamingCallback callback){
+    if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()){
+      throw new VeniceException("Get by key prefix is not supported with RocksDB PlainTable Format.");
+    }
+
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
+
       try (RocksIterator iterator = rocksDB.newIterator(new ReadOptions()
           .setIterateUpperBound(getPrefixIterationUpperBound(keyPrefix)))) {
         for (iterator.seek(keyPrefix); iterator.isValid(); iterator.next()){

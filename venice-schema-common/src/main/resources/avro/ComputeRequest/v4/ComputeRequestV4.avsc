@@ -1,0 +1,125 @@
+{
+  "type": "record",
+  "name": "ComputeRequestV4",
+  "namespace": "com.linkedin.venice.compute.protocol.request",
+  "doc": "This record only contains the operations and result schema, and keys will be appended after during serialization",
+  "fields": [
+    {
+      "name": "operations",
+      "type": {
+        "type": "array",
+        "items": [
+          {
+            "name": "ComputeOperation",
+            "type": "record",
+            "fields": [
+              {
+                "name": "operationType",
+                "type": "int",
+                "doc": "Supported operation type: 0 -> DotProduct"
+              },
+              {
+                "name": "operation",
+                "type": [
+                  {
+                    "name": "DotProduct",
+                    "type": "record",
+                    "fields": [
+                      {
+                        "name": "field",
+                        "type": "string",
+                        "doc": "The field in the original value record, which will used to execute dot-product calculation"
+                      },
+                      {
+                        "name": "dotProductParam",
+                        "type": {
+                          "type": "array",
+                          "items": "float"
+                        },
+                        "doc": "The passed feature vector, which will be used to execute dot-product calculation against the field in the original value record"
+                      },
+                      {
+                        "name": "resultFieldName",
+                        "type": "string",
+                        "doc": "The field name used to store the calculated result"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "CosineSimilarity",
+                    "type": "record",
+                    "fields": [
+                      {
+                        "name": "field",
+                        "type": "string",
+                        "doc": "The field in the original value record, which will used to execute cosine-similarity calculation"
+                      },
+                      {
+                        "name": "cosSimilarityParam",
+                        "type": {
+                          "type": "array",
+                          "items": "float"
+                        },
+                        "doc": "The passed feature vector, which will be used to execute cosine-similarity calculation against the field in the original value record"
+                      },
+                      {
+                        "name": "resultFieldName",
+                        "type": "string",
+                        "doc": "The field name used to store the calculated result"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "HadamardProduct",
+                    "type": "record",
+                    "fields": [
+                      {
+                        "name": "field",
+                        "type": "string",
+                        "doc": "The field in the original value record, which will used to execute hadamard-product calculation"
+                      },
+                      {
+                        "name": "hadamardProductParam",
+                        "type": {
+                          "type": "array",
+                          "items": "float"
+                        },
+                        "doc": "The passed feature vector, which will be used to execute hadamard-product calculation against the field in the original value record"
+                      },
+                      {
+                        "name": "resultFieldName",
+                        "type": "string",
+                        "doc": "The field name used to store the calculated result"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Count",
+                    "type": "record",
+                    "fields": [
+                      {
+                        "name": "field",
+                        "type": "string",
+                        "doc": "The field name in the original value record of type array or map, which will used to execute count operation on"
+                      },
+                      {
+                        "name": "resultFieldName",
+                        "type": "string",
+                        "doc": "The field name used to store the count operation result"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "resultSchemaStr",
+      "type": "string",
+      "doc": "The field contains the serialized result schema, which will be used to de-serialize the response returned by Venice"
+    }
+  ]
+}
