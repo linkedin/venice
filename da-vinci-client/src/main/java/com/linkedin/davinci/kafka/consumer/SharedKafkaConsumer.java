@@ -21,7 +21,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
@@ -292,7 +291,7 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout) {
+  public synchronized ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeoutMs) {
     /**
      * Always invoke this method no matter whether the consumer have subscription or not. Therefore we could notify any
      * waiter who might be waiting for a invocation of poll to happen even if the consumer does not have subscription
@@ -321,14 +320,14 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
      */
     try {
       if (!hasSubscription()) {
-        Thread.sleep(timeout);
+        Thread.sleep(timeoutMs);
         return ConsumerRecords.empty();
       }
     } catch (InterruptedException e) {
       throw new VeniceException("Shared Consumer poll sleep got interrupted", e);
     }
 
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = this.delegate.poll(timeout);
+    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = this.delegate.poll(timeoutMs);
     // Check whether the returned records, which don't have the corresponding ingestion tasks
     topicsWithoutCorrespondingIngestionTask.clear();
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
@@ -403,11 +402,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public synchronized boolean hasSubscription(String topic, int partition) {
     return this.currentAssignment.contains(new TopicPartition(topic, partition));
-  }
-
-  @Override
-  public synchronized Map<String, List<PartitionInfo>> listTopics() {
-    return this.delegate.listTopics();
   }
 
   @Override
@@ -499,6 +493,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public Optional<Long> getLatestOffset(String topic, int partition) {
-    return Optional.ofNullable(topicPartitionEndOffset.get(new TopicPartition(topic, partition)).longValue());
+    return Optional.of(topicPartitionEndOffset.get(new TopicPartition(topic, partition)).longValue());
   }
 }

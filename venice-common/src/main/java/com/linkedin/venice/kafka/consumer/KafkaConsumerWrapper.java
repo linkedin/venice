@@ -28,7 +28,7 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
     close();
   }
 
-  ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout);
+  ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeoutMs);
 
   boolean hasSubscription();
 
@@ -37,8 +37,6 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
   }
 
   boolean hasSubscription(String topic, int partition);
-
-  Map<String, List<PartitionInfo>> listTopics();
 
   Map<TopicPartition,Long> beginningOffsets(List<TopicPartition> topicPartitions);
 

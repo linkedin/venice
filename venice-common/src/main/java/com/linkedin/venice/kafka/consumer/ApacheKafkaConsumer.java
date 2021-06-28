@@ -3,26 +3,22 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.stream.Collectors;
-import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.log4j.Logger;
@@ -38,17 +34,15 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
   public static final String CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG = "consumer.poll.retry.backoff.ms";
-
   private static final int CONSUMER_POLL_RETRY_TIMES_DEFAULT = 3;
   private static final int CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT = 0;
 
-  private final Consumer kafkaConsumer;
-
+  private final KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
 
   public ApacheKafkaConsumer(Properties props) {
-    this.kafkaConsumer = new KafkaConsumer(props);
+    this.kafkaConsumer = new KafkaConsumer<>(props);
 
     VeniceProperties veniceProperties = new VeniceProperties(props);
     consumerPollRetryTimes = veniceProperties.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
@@ -75,7 +69,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       kafkaConsumer.seek(topicPartition, nextReadOffset);
     } else {
       // Considering the offset of the same consumer group could be persisted by some other consumer in Kafka.
-      kafkaConsumer.seekToBeginning(Arrays.asList(topicPartition));
+      kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
     }
   }
 
@@ -115,11 +109,11 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       throw new UnsubscribedTopicPartitionException(topic, partition);
     }
     TopicPartition topicPartition = new TopicPartition(topic, partition);
-    kafkaConsumer.seekToBeginning(Arrays.asList(topicPartition));
+    kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
   }
 
   @Override
-  public ConsumerRecords poll(long timeout) {
+  public ConsumerRecords poll(long timeoutMs) {
     // The timeout is not respected when hitting UNKNOWN_TOPIC_OR_PARTITION and when the
     // fetcher.retrieveOffsetsByTimes call inside kafkaConsumer times out,
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
@@ -127,7 +121,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     ConsumerRecords records = ConsumerRecords.empty();
     while (attemptCount <= consumerPollRetryTimes) {
       try {
-        records = kafkaConsumer.poll(timeout);
+        records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
         break;
       } catch (RetriableException e) {
         logger.warn(
@@ -166,7 +160,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   public void pause(String topic, int partition) {
     TopicPartition tp = new TopicPartition(topic, partition);
     if (kafkaConsumer.assignment().contains(tp)) {
-      kafkaConsumer.pause(Arrays.asList(tp));
+      kafkaConsumer.pause(Collections.singletonList(tp));
     }
   }
 
@@ -176,7 +170,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public void resume(String topic, int partition) {
     TopicPartition tp = new TopicPartition(topic, partition);
-    kafkaConsumer.resume(Arrays.asList(tp));
+    kafkaConsumer.resume(Collections.singletonList(tp));
   }
 
   @Override
@@ -188,11 +182,6 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public Set<TopicPartition> paused() {
     return kafkaConsumer.paused();
-  }
-
-  @Override
-  public Map<String, List<PartitionInfo>> listTopics() {
-    return kafkaConsumer.listTopics();
   }
 
   @Override
