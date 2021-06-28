@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
+import com.linkedin.venice.exceptions.validation.IncomingDataAfterSegmentEndedException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -385,9 +386,21 @@ public class ProducerTracker {
      * memory allocation.
      * TODO: we could disable checksum validation if we think it is not necessary any more later on.
      */
-    if (segment.addToCheckSum(consumerRecord.key(), consumerRecord.value())) {
-      // The running checksum was updated successfully. Moving on.
-    } else {
+    boolean update = true;
+    try {
+      /**
+       * We update the checksum successfully if this returns true
+       */
+      update = segment.addToCheckSum(consumerRecord.key(), consumerRecord.value());
+    } catch (IncomingDataAfterSegmentEndedException e) {
+      /**
+       * We received user messages after EOS in the same segment.
+       */
+      if (!tolerateMissingMsgs) {
+        throw e;
+      }
+    }
+    if (!update) {
       /** We have consumed an {@link ControlMessageType#END_OF_SEGMENT}. Time to verify the checksum. */
       ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
       EndOfSegment incomingEndOfSegment = (EndOfSegment) controlMessage.controlMessageUnion;

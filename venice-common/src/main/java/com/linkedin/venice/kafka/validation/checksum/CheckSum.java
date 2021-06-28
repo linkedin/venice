@@ -17,6 +17,7 @@
 package com.linkedin.venice.kafka.validation.checksum;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.validation.IncomingDataAfterSegmentEndedException;
 import com.linkedin.venice.utils.ByteUtils;
 import org.apache.log4j.Logger;
 
@@ -49,7 +50,7 @@ public abstract class CheckSum {
    */
   public void update(byte[] input, int startIndex, int length) {
     if (!writeEnabled) {
-      throw new VeniceException("check sum is finalized. reset() needs to be called before reusing it.");
+      throw new IncomingDataAfterSegmentEndedException("check sum is finalized. reset() needs to be called before reusing it.");
     }
 
     updateChecksum(input, startIndex, length);
