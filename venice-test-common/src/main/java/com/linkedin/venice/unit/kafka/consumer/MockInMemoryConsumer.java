@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 
 /**
@@ -81,11 +80,6 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   @Override
   public boolean hasSubscription(String topic, int partition) {
     return offsets.containsKey(new TopicPartition(topic, partition));
-  }
-
-  @Override
-  public Map<String, List<PartitionInfo>> listTopics() {
-    return delegate.listTopics();
   }
 
   @Override
