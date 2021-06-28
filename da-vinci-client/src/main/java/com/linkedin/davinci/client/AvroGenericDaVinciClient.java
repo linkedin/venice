@@ -201,11 +201,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VersionBackend versionBackend = versionRef.get();
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-      int subPartition = versionBackend.getSubPartition(keyBytes);
+      int partition = versionBackend.getPartition(keyBytes);
 
-      if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
+      if (isPartitionReadyToServe(versionBackend, partition)) {
         V value = versionBackend.read(
-            subPartition,
+            partition,
             keyBytes,
             getAvroChunkingAdapter(),
             reusableObjects.binaryDecoder,
@@ -218,9 +218,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         return veniceClient.get(key);
       }
 
-      if (!isSubPartitionSubscribed(versionBackend, subPartition)) {
+      if (!isPartitionSubscribed(versionBackend, partition)) {
         storeBackend.getStats().recordBadRequest();
-        throw new NonLocalAccessException(versionBackend.toString(), subPartition);
+        throw new NonLocalAccessException(versionBackend.toString(), partition);
       }
       return CompletableFuture.completedFuture(null);
     }
@@ -263,11 +263,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       for (K key : keys) {
         byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-        int subPartition = versionBackend.getSubPartition(keyBytes);
+        int partition = versionBackend.getPartition(keyBytes);
 
-        if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
+        if (isPartitionReadyToServe(versionBackend, partition)) {
           V value = versionBackend.read(
-              subPartition,
+              partition,
               keyBytes,
               getAvroChunkingAdapter(),
               reusableObjects.binaryDecoder,
@@ -281,9 +281,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         } else if (isVeniceQueryAllowed()) {
           missingKeys.add(key);
 
-        } else if (!isSubPartitionSubscribed(versionBackend, subPartition)) {
+        } else if (!isPartitionSubscribed(versionBackend, partition)) {
           storeBackend.getStats().recordBadRequest();
-          throw new NonLocalAccessException(versionBackend.toString(), subPartition);
+          throw new NonLocalAccessException(versionBackend.toString(), partition);
         }
       }
 
@@ -353,11 +353,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
       for (K key : keys) {
         byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-        int subPartition = versionBackend.getSubPartition(keyBytes);
+        int partition = versionBackend.getPartition(keyBytes);
 
-        if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
+        if (isPartitionReadyToServe(versionBackend, partition)) {
           GenericRecord computeResultValue =
-              versionBackend.compute(subPartition, keyBytes, getGenericRecordChunkingAdapter(), reusableObjects.binaryDecoder,
+              versionBackend.compute(partition, keyBytes, getGenericRecordChunkingAdapter(), reusableObjects.binaryDecoder,
                   reusableObjects.rawValue, reuseValueRecord, globalContext, computeRequestWrapper, computeResultSchema);
 
           if (null != computeResultValue) {
@@ -365,9 +365,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
           }
         } else if (isVeniceQueryAllowed()){
           missingKeys.add(key);
-        } else if (!isSubPartitionSubscribed(versionBackend, subPartition)){
+        } else if (!isPartitionSubscribed(versionBackend, partition)){
           storeBackend.getStats().recordBadRequest();
-          throw new NonLocalAccessException(versionBackend.toString(), subPartition);
+          throw new NonLocalAccessException(versionBackend.toString(), partition);
         }
       }
 
@@ -436,19 +436,19 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
       for (K key : keys) {
         byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-        int subPartition = versionBackend.getSubPartition(keyBytes);
+        int partition = versionBackend.getPartition(keyBytes);
 
-        if (isSubPartitionReadyToServe(versionBackend, subPartition)) {
+        if (isPartitionReadyToServe(versionBackend, partition)) {
           GenericRecord computeResultValue =
-              versionBackend.compute(subPartition, keyBytes, getGenericRecordChunkingAdapter(), reusableObjects.binaryDecoder,
+              versionBackend.compute(partition, keyBytes, getGenericRecordChunkingAdapter(), reusableObjects.binaryDecoder,
                   reusableObjects.rawValue, reuseValueRecord, globalContext, computeRequestWrapper, computeResultSchema);
 
             callback.onRecordReceived(key, computeResultValue);
         } else if (isVeniceQueryAllowed()){
           missingKeys.add(key);
-        } else if (!isSubPartitionSubscribed(versionBackend, subPartition)){
+        } else if (!isPartitionSubscribed(versionBackend, partition)){
           storeBackend.getStats().recordBadRequest();
-          callback.onCompletion(Optional.of(new NonLocalAccessException(versionBackend.toString(), subPartition)));
+          callback.onCompletion(Optional.of(new NonLocalAccessException(versionBackend.toString(), partition)));
           return;
         }
       }
@@ -480,20 +480,21 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return daVinciConfig.getNonLocalAccessPolicy().equals(NonLocalAccessPolicy.QUERY_VENICE);
   }
 
-  protected boolean isSubPartitionReadyToServe(VersionBackend versionBackend, int subPartition) {
-    int userPartition = versionBackend.getUserPartition(subPartition);
-    if (daVinciConfig.isIsolated() && !subscription.contains(userPartition)) {
+  /**
+   * Check if user partition is ready to serve traffic.
+   */
+  protected boolean isPartitionReadyToServe(VersionBackend versionBackend, int partition) {
+    if (daVinciConfig.isIsolated() && !subscription.contains(partition)) {
       return false;
     }
-    return versionBackend.isPartitionReadyToServe(userPartition);
+    return versionBackend.isPartitionReadyToServe(partition);
   }
 
-  protected boolean isSubPartitionSubscribed(VersionBackend versionBackend, int subPartition) {
-    int userPartition = versionBackend.getUserPartition(subPartition);
+  protected boolean isPartitionSubscribed(VersionBackend versionBackend, int partition) {
     if (daVinciConfig.isIsolated()) {
-      return subscription.contains(userPartition);
+      return subscription.contains(partition);
     }
-    return versionBackend.isPartitionSubscribed(userPartition);
+    return versionBackend.isPartitionSubscribed(partition);
   }
 
   protected boolean isOnHeapCacheEnabled() {

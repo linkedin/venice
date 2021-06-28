@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -29,7 +30,7 @@ public class PartitionUtils {
    * version.
    */
   // TODO. As there are a lot of parameters, we could transfer a configuration and keep some state instead of a utility static method.
-  public static int calculatePartitionCount(String clusterName, String storeName, long storeSizeBytes,
+  public static int calculatePartitionCount(String storeName, long storeSizeBytes,
                                             ReadOnlyStoreRepository storeRepository, RoutingDataRepository routingDataRepository, long partitionSize,
                                             int minPartitionCount, int maxPartitionCount) {
     if (storeSizeBytes <= 0) {
@@ -117,6 +118,22 @@ public class PartitionUtils {
         config.getPartitionerClass(),
         config.getAmplificationFactor(),
         new VeniceProperties(params));
+  }
+
+  /**
+   * This util method returns a new venice partitioner that works for user-level partition, regardless of the amplification
+   * factor in the partitioner config.
+   */
+  public static VenicePartitioner getUserPartitionLevelVenicePartitioner(PartitionerConfig config) {
+    // Explicitly handle null config case.
+    if (config == null) {
+      config = new PartitionerConfigImpl();
+    }
+    Properties params = new Properties();
+    if (config.getPartitionerParams() != null) {
+      params.putAll(config.getPartitionerParams());
+    }
+    return getVenicePartitioner(config.getPartitionerClass(), 1, new VeniceProperties(params));
   }
 
   public static VenicePartitioner getVenicePartitioner(

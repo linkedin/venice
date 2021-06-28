@@ -4121,7 +4121,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
         checkControllerMastership(clusterName);
         VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-        return PartitionUtils.calculatePartitionCount(clusterName, storeName, storeSize,
+        return PartitionUtils.calculatePartitionCount(storeName, storeSize,
             getVeniceHelixResource(clusterName).getMetadataRepository(),
             getVeniceHelixResource(clusterName).getRoutingDataRepository(), config.getPartitionSize(),
             config.getNumberOfPartition(), config.getMaxNumberOfPartition());

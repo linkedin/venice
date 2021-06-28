@@ -10,7 +10,6 @@ import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
-import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -48,7 +47,6 @@ public class VersionBackend {
   private final Version version;
   private final VeniceStoreConfig config;
   private final VenicePartitioner partitioner;
-  private final int subPartitionCount;
   private final boolean reportPushStatus;
   private final boolean suppressLiveUpdates;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
@@ -75,8 +73,7 @@ public class VersionBackend {
       this.config.setRestoreDataPartitions(false);
       this.config.setRestoreMetadataPartition(false);
     }
-    this.partitioner = PartitionUtils.getVenicePartitioner(version.getPartitionerConfig());
-    this.subPartitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
+    this.partitioner = PartitionUtils.getUserPartitionLevelVenicePartitioner(version.getPartitionerConfig());
     this.suppressLiveUpdates = this.config.freezeIngestionIfReadyToServeOrLocalDataExists();
     this.storageEngine.set(backend.getStorageService().getStorageEngine(version.kafkaTopicName()));
     this.backend.getIngestionBackend().setStorageEngineReference(version.kafkaTopicName(), storageEngine);
@@ -166,7 +163,7 @@ public class VersionBackend {
   }
 
   public <V> V read(
-      int subPartition,
+      int userPartition,
       byte[] keyBytes,
       AbstractAvroChunkingAdapter<V> chunkingAdaptor,
       BinaryDecoder binaryDecoder,
@@ -175,7 +172,9 @@ public class VersionBackend {
     return chunkingAdaptor.get(
         version.getStoreName(),
         getStorageEngineOrThrow(),
-        subPartition,
+        userPartition,
+        partitioner,
+        version.getPartitionerConfig(),
         keyBytes,
         reusableRawValue,
         reusableValue,
@@ -189,7 +188,7 @@ public class VersionBackend {
   }
 
   public GenericRecord compute(
-      int subPartition,
+      int userPartition,
       byte[] keyBytes,
       AbstractAvroChunkingAdapter<GenericRecord> chunkingAdaptor,
       BinaryDecoder binaryDecoder,
@@ -202,7 +201,9 @@ public class VersionBackend {
     reusableValueRecord = chunkingAdaptor.get(
         version.getStoreName(),
         getStorageEngineOrThrow(),
-        subPartition,
+        userPartition,
+        partitioner,
+        version.getPartitionerConfig(),
         keyBytes,
         reusableRawValue,
         reusableValueRecord,
@@ -261,18 +262,8 @@ public class VersionBackend {
     return String.join(", ", fieldNames);
   }
 
-  public int getUserPartition(int subPartition) {
-    int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
-    return PartitionUtils.getUserPartition(subPartition, amplificationFactor);
-  }
-
-  public int getSubPartition(byte[] keyBytes) {
-    return partitioner.getPartitionId(keyBytes, subPartitionCount);
-  }
-
-  public int getAmplificationFactor() {
-    PartitionerConfig partitionerConfig = version.getPartitionerConfig();
-    return partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
+  public int getPartition(byte[] keyBytes) {
+    return partitioner.getPartitionId(keyBytes, version.getPartitionCount());
   }
 
   public boolean isPartitionSubscribed(int partition) {
@@ -297,16 +288,11 @@ public class VersionBackend {
       AbstractStorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
         logger.info("Partition " + partition + " of " + this + " is subscribed, ignoring subscribe request.");
-      } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition * getAmplificationFactor())) {
-        /**
-         * If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
-         * Note: For now we could not completely hide the amplification concept here, since storage engine is not aware
-         * of amplification factor. We only need to check one sub-partition as all sub-partitions of a user partition
-         * are always subscribed/unsubscribed together.
-         */
+      } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition, version.getPartitionerConfig())) {
+        // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
       } else {
-        partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture());
+        partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         // AtomicReference of storage engine will be updated internally.
         backend.getIngestionBackend().startConsumption(config, partition);
         tryStartHeartbeat();

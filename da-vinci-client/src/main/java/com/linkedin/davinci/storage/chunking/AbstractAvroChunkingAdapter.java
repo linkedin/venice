@@ -7,7 +7,9 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -164,6 +166,31 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
     }
     return ChunkingUtils.getFromStorage(this, store, partition, key, reusedRawValue, reusedValue,
         reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName, compressorFactory);
+  }
+
+  public T get(
+      String storeName,
+      AbstractStorageEngine store,
+      int userPartition,
+      VenicePartitioner partitioner,
+      PartitionerConfig partitionerConfig,
+      byte[] key,
+      ByteBuffer reusedRawValue,
+      T reusedValue,
+      BinaryDecoder reusedDecoder,
+      boolean isChunked,
+      CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      ReadResponse response,
+      StorageEngineBackedCompressorFactory compressorFactory) {
+    int subPartition = userPartition;
+    int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
+    if (amplificationFactor > 1) {
+      int subPartitionOffset = partitioner.getPartitionId(key, amplificationFactor);
+      subPartition = userPartition * amplificationFactor + subPartitionOffset;
+    }
+    return get(storeName, store, subPartition, key, reusedRawValue, reusedValue, reusedDecoder, isChunked, compressionStrategy, fastAvroEnabled, schemaRepo, response, compressorFactory);
   }
 
   /**
