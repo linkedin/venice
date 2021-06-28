@@ -1,4 +1,4 @@
-package com.linkedin.davinci.predicate;
+package com.linkedin.venice.client.store.predicate;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import org.apache.avro.Schema;
@@ -7,7 +7,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
 import org.testng.Assert;
 
-import static com.linkedin.davinci.predicate.PredicateBuilder.*;
+import static com.linkedin.venice.client.store.predicate.PredicateBuilder.*;
 
 
 public class PredicateTest {

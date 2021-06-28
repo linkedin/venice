@@ -1,4 +1,4 @@
-package com.linkedin.davinci.predicate;
+package com.linkedin.venice.client.store.predicate;
 
 import com.linkedin.venice.annotation.Experimental;
 import org.apache.avro.generic.GenericRecord;
