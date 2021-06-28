@@ -1,6 +1,8 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import java.util.Collection;
@@ -91,4 +93,19 @@ public interface ComputeRequestBuilder<K> {
    */
   void streamingExecute(Set<K> keys, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException;
 
+  /**
+   * Streaming interface that sends compute request to Venice, which will be executed on keys satisfying the
+   * given predicate. This can be used to execute partial key lookups.
+   * You can find more info in {@link StreamingCallback}.
+   *
+   * This experimental feature is subject to backwards-incompatible changes in the future.
+   *
+   * @param predicate : predicate which specifies some required leading top-level key fields
+   * @param callback : streaming callback which stores the result from the compute request
+   * @throws VeniceClientException
+   */
+  @Experimental
+  default void executeWithFilter(Predicate predicate, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException {
+    throw new VeniceClientException("Please use AvroGenericStoreClient#compute() to generate a Compute Request Builder");
+  }
 }

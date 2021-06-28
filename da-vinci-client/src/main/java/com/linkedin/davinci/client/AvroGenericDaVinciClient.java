@@ -12,7 +12,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
-import com.linkedin.venice.client.store.AvroComputeRequestBuilderV3;
+import com.linkedin.venice.client.store.AvroComputeRequestBuilderV4;
 import com.linkedin.venice.client.store.AvroGenericReadComputeStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
@@ -23,10 +23,12 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ComplementSet;
@@ -91,6 +93,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
 
   private RecordSerializer<K> keySerializer;
+  private RecordDeserializer<K> keyDeserializer;
   private AvroGenericReadComputeStoreClient<K, V> veniceClient;
   private StoreBackend storeBackend;
   private static ReferenceCounted<DaVinciBackend> daVinciBackend;
@@ -324,7 +327,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   @Override
   public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, Optional<ClientStats> streamingStats, final long preRequestTimeInNS){
-    return new AvroComputeRequestBuilderV3<>(getLatestValueSchema(), this, stats, streamingStats);
+    return new AvroComputeRequestBuilderV4<>(getLatestValueSchema(), this, stats, streamingStats);
   }
 
   @Override
@@ -460,6 +463,41 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
       veniceClient.compute(computeRequestWrapper, missingKeys, resultSchema, callback, preRequestTimeInNS,
           reusedEncoder, reusedOutputStream);
+    }
+  }
+
+  @Override
+  public void computeWithKeyPrefixFilter(byte[] prefixBytes, ComputeRequestWrapper computeRequestWrapper, StreamingCallback<K, GenericRecord> callback) {
+    throwIfNotReady();
+    try(ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()){
+      VersionBackend versionBackend = versionRef.get();
+      if (null == versionBackend) {
+        storeBackend.getStats().recordBadRequest();
+        callback.onCompletion(Optional.of(new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName())));
+        return;
+      }
+
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      Schema valueSchema = computeRequestWrapper.getValueSchema();
+      GenericRecord reuseValueRecord = reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
+
+      Map<String, Object> globalContext = new HashMap<>();
+      Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
+
+      int partitionCount = versionBackend.getPartitionCount();
+      for (int currPartition = 0; currPartition < partitionCount; currPartition++){
+        if (isPartitionReadyToServe(versionBackend, currPartition)) {
+          try {
+            versionBackend.computeWithKeyPrefixFilter(prefixBytes, currPartition, callback, computeRequestWrapper,
+                getGenericRecordChunkingAdapter(), keyDeserializer, reuseValueRecord, reusableObjects.binaryDecoder,
+                globalContext, computeResultSchema);
+          } catch (VeniceException e) {
+            callback.onCompletion(Optional.of(e));
+            return;
+          }
+        }
+      }
+      callback.onCompletion(Optional.empty());
     }
   }
 
@@ -630,6 +668,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
       Schema keySchema = getBackend().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
       keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);
+      keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
 
       if (isVeniceQueryAllowed()) {
         veniceClient = (AvroGenericReadComputeStoreClient<K, V>) getAndStartAvroClient(clientConfig);

@@ -26,6 +26,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/ComputeRequest/v1/*"
   "venice-schema-common/src/main/resources/avro/ComputeRequest/v2/*"
   "venice-schema-common/src/main/resources/avro/ComputeRequest/v3/*"
+  "venice-schema-common/src/main/resources/avro/ComputeRequest/v4/*"
   "venice-schema-common/src/main/resources/avro/ComputeResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/ComputeRouterRequestKey/*"
   "venice-schema-common/src/main/resources/avro/StreamingFooterRecord/*"

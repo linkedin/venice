@@ -1,9 +1,12 @@
 package com.linkedin.davinci;
 
+import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.VeniceConstants;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ReadComputeOperator;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
@@ -13,6 +16,7 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -215,11 +219,64 @@ public class VersionBackend {
         null,
         backend.getCompressorFactory());
 
-    if (null == reusableValueRecord) {
+    return getResultOfComputeOperations(computeRequestWrapper.getOperations(), reusableValueRecord, globalContext,
+        computeRequestWrapper.getComputeRequestVersion(), computeResultSchema);
+  }
+
+  public <K> void computeWithKeyPrefixFilter(
+      byte[] prefixBytes,
+      int partition,
+      StreamingCallback<K, GenericRecord> callback,
+      ComputeRequestWrapper computeRequestWrapper,
+      AbstractAvroChunkingAdapter<GenericRecord> chunkingAdaptor,
+      RecordDeserializer<K> keyRecordDeserializer,
+      GenericRecord reusableValueRecord,
+      BinaryDecoder reusableBinaryDecoder,
+      Map<String, Object> globalContext,
+      Schema computeResultSchema){
+
+    if (version.isChunkingEnabled()){
+      throw new VeniceException("Filtering by key prefix is not supported when chunking is enabled.");
+    }
+
+    AbstractStorageEngine store = getStorageEngineOrThrow();
+
+    BytesStreamingCallback computingCallback = new BytesStreamingCallback() {
+      GenericRecord deserializedValueRecord;
+      @Override
+      public void onRecordReceived(byte[] key, byte[] value) {
+        K deserializedKey = keyRecordDeserializer.deserialize(key);
+
+        deserializedValueRecord = chunkingAdaptor.constructValue(ValueRecord.parseSchemaId(value), value, value.length,
+            reusableValueRecord, reusableBinaryDecoder, null, version.getCompressionStrategy(), true,
+            backend.getSchemaRepository(), version.getStoreName(), backend.getCompressorFactory(), store.getName());
+
+        GenericRecord computeResult = getResultOfComputeOperations(computeRequestWrapper.getOperations(), deserializedValueRecord, globalContext,
+            computeRequestWrapper.getComputeRequestVersion(), computeResultSchema);
+
+        callback.onRecordReceived(deserializedKey, computeResult);
+      }
+
+      @Override
+      public void onCompletion() {
+        /**
+         * Nothing to do here. We only invoke {@link StreamingCallback#onCompletion} in
+         * {@link com.linkedin.davinci.client.AvroGenericDaVinciClient#computeWithKeyPrefixFilter} after querying all
+         * partitions.
+         */
+      }
+    };
+
+    store.getByKeyPrefix(partition, prefixBytes, computingCallback);
+  }
+
+  private GenericRecord getResultOfComputeOperations(List<ComputeOperation> operations, GenericRecord valueRecord,
+      Map<String, Object> globalContext, int computeRequestVersion, Schema computeResultSchema){
+
+    if (null == valueRecord) {
       return null;
     }
 
-    List<ComputeOperation> operations = computeRequestWrapper.getOperations();
     Map<String, String> computationErrorMap = new HashMap<>();
     GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
 
@@ -227,14 +284,14 @@ public class VersionBackend {
     for (ComputeOperation computeOperation : operations) {
       ReadComputeOperator operator = ComputeOperationType.valueOf(computeOperation).getOperator();
       String operatorFieldName = operator.getOperatorFieldName(computeOperation);
-      if (null == reusableValueRecord.get(operatorFieldName)) {
+      if (null == valueRecord.get(operatorFieldName)) {
         String errorMessage = "Failed to execute compute request as the field " + operatorFieldName + " does not exist in the value record. " +
-            "Fields present in the value record are: " + getStringOfSchemaFieldNames(reusableValueRecord);
+            "Fields present in the value record are: " + getStringOfSchemaFieldNames(valueRecord);
         operator.putDefaultResult(resultRecord, operator.getResultFieldName(computeOperation));
         computationErrorMap.put(operator.getResultFieldName(computeOperation), errorMessage);
         continue;
       }
-      operator.compute(computeRequestWrapper.getComputeRequestVersion(), computeOperation, reusableValueRecord, resultRecord,
+      operator.compute(computeRequestVersion, computeOperation, valueRecord, resultRecord,
           computationErrorMap, globalContext);
     }
 
@@ -246,10 +303,9 @@ public class VersionBackend {
     //fill empty fields in result schema
     for (Schema.Field field : computeResultSchema.getFields()){
       if (null == resultRecord.get(field.pos())){
-          resultRecord.put(field.pos(), reusableValueRecord.get(field.name()));
+        resultRecord.put(field.pos(), valueRecord.get(field.name()));
       }
     }
-
     return resultRecord;
   }
 
@@ -260,6 +316,10 @@ public class VersionBackend {
         .map(Schema.Field::name)
         .collect(Collectors.toList());
     return String.join(", ", fieldNames);
+  }
+
+  public int getPartitionCount() {
+    return version.getPartitionCount();
   }
 
   public int getPartition(byte[] keyBytes) {

@@ -1,14 +1,16 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.predicate.Predicate;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
 import java.io.ByteArrayOutputStream;
-import java.util.List;
 import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 
 import static com.linkedin.venice.VeniceConstants.*;
@@ -57,5 +59,10 @@ public class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBu
   @Override
   public ComputeRequestBuilder<K> count(String inputFieldName, String resultFieldName) {
     throw new VeniceException("Count is not supported in V2 compute request.");
+  }
+
+  @Override
+  public void executeWithFilter(Predicate predicate, StreamingCallback<K, GenericRecord> callback) {
+    throw new VeniceException("ExecuteWithFilter is not supported in V2 compute request.");
   }
 }

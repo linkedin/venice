@@ -2,11 +2,14 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -54,5 +57,11 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
 
   public Executor getDeserializationExecutor() {
     throw new VeniceClientException("getDeserializationExecutor is not supported!");
+  }
+
+  @Override
+  public void computeWithKeyPrefixFilter(byte[] prefixBytes, ComputeRequestWrapper computeRequestWrapper, StreamingCallback<K,
+      GenericRecord>callback) {
+    throw new VeniceClientException("ComputeWithKeyPrefixFilter is not supported by Venice Avro Store Client");
   }
 }

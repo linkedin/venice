@@ -68,7 +68,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   private final Time time;
   protected final Schema latestValueSchema;
-  private final AvroGenericReadComputeStoreClient storeClient;
+  protected final AvroGenericReadComputeStoreClient storeClient;
   protected final String resultSchemaName;
   private final Optional<ClientStats> stats;
   private final Optional<ClientStats> streamingStats;

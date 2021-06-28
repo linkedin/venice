@@ -3,6 +3,7 @@ package com.linkedin.venice.schema.avro;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV4;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -66,6 +67,11 @@ public enum ReadAvroProtocolDefinition {
    * Compute request v3. Its includes support for count operator.
    */
   COMPUTE_REQUEST_V3(3, Optional.of(ComputeRequestV3.class), Optional.of(ComputeRequestV3.SCHEMA$)),
+
+  /**
+   * Compute request v4. It includes support for Execute with Filter
+   */
+  COMPUTE_REQUEST_V4(4, Optional.of(ComputeRequestV4.class), Optional.of(ComputeRequestV4.SCHEMA$)),
 
   /**
    * Response record for compute v1
