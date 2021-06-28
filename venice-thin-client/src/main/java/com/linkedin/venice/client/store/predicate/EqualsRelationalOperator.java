@@ -1,4 +1,4 @@
-package com.linkedin.davinci.predicate;
+package com.linkedin.venice.client.store.predicate;
 
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -6,11 +6,11 @@ import java.util.Objects;
 import org.apache.avro.generic.GenericRecord;
 
 
-class EqualsRelationalOperator implements Predicate{
+public class EqualsRelationalOperator implements Predicate{
   private final String fieldName;
   private final Object expectedValue;
 
-  public EqualsRelationalOperator(String fieldName, Object expectedValue){
+  EqualsRelationalOperator(String fieldName, Object expectedValue){
     if (null == fieldName){
       throw new VeniceClientException("fieldName cannot be null.");
     }
