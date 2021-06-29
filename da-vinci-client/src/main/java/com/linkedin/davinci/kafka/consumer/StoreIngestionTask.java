@@ -1152,12 +1152,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!hybridStoreConfig.isPresent() && serverConfig.isUnsubscribeAfterBatchpushEnabled()) {
       // unsubscribe completed backup version and batch-store versions.
       if (versionNumber <= store.getCurrentVersion()) {
+        List<Integer> partitionList = new ArrayList<>();
         for (PartitionConsumptionState state : partitionConsumptionStateMap.values()) {
           if (state.isCompletionReported() && !state.isIncrementalPushEnabled()) {
             logger.info("Unsubscribing completed partitions " + state.getPartition() + " of store : " + store.getName() + " version : "  + versionNumber + " current version: " + store.getCurrentVersion());
-            consumerUnSubscribe(kafkaVersionTopic, state);
+            partitionList.add(state.getPartition());
             forceUnSubscribedCount++;
           }
+        }
+        if (partitionList.size() != 0) {
+          consumerBatchUnsubscribe(kafkaVersionTopic, partitionList);
         }
       }
     }
@@ -2506,6 +2510,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     consumer.unSubscribe(topic, partitionConsumptionState.getSourceTopicPartition(topic));
     logger.info(String.format("Consumer unsubscribed topic %s partition %d. Took %d ms",
         topic, partitionConsumptionState.getPartition(), Instant.now().toEpochMilli() - startTime.toEpochMilli()));
+  }
+
+  public void consumerBatchUnsubscribe(String topic, List<Integer> partitionList) {
+    Instant startTime = Instant.now();
+    consumerMap.values().forEach(consumer -> consumer.batchUnsubscribe(topic, partitionList));
+    logger.info(String.format("Consumer unsubscribed topic %s partitions %s. Took %d ms",
+        topic, partitionList, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
   }
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);

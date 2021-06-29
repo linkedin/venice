@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 
 /**
@@ -47,6 +46,14 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   public void unSubscribe(String topic, int partition) {
     delegate.unSubscribe(topic, partition);
     offsets.remove(new TopicPartition(topic, partition));
+  }
+
+  @Override
+  public void batchUnsubscribe(String topic, List<Integer> partitionList) {
+    delegate.batchUnsubscribe(topic, partitionList);
+    for (int partition : partitionList) {
+      offsets.remove(new TopicPartition(topic, partition));
+    }
   }
 
   @Override

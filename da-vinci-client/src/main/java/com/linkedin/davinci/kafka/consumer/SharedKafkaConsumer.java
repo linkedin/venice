@@ -19,7 +19,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
@@ -152,7 +151,22 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
     LOGGER.info(String.format("Shared consumer %s unsubscribed topic %s partition %d: . Took %d ms.",
         this, topic, partition, Instant.now().toEpochMilli() - startTime.toEpochMilli()));
+    waitAfterUnsubscribe(currentPollTimes);
+  }
+
+  @Override
+  public synchronized void batchUnsubscribe(String topic, List<Integer> partitionList) {
+    long currentPollTimes = pollTimes;
+    long startTime = System.currentTimeMillis();
+    this.delegate.batchUnsubscribe(topic, partitionList);
+
+    LOGGER.info(String.format("Shared consumer %s unsubscribed topic %s partitions %s: . Took %d ms.",
+        this, topic, partitionList, System.currentTimeMillis() - startTime));
     updateCurrentAssignment(false);
+    waitAfterUnsubscribe(currentPollTimes);
+  }
+
+  private void waitAfterUnsubscribe(long currentPollTimes) {
     currentPollTimes++;
     waitingForPoll.set(true);
     //Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait returned
