@@ -10,6 +10,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -109,6 +111,19 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       }
     }
     topicPartitionsOffsetsTracker.ifPresent(partitionsOffsetsTracker -> partitionsOffsetsTracker.removeTrackedOffsets(topicPartition));
+  }
+
+  @Override
+  public void batchUnsubscribe(String topic, List<Integer> partitionList) {
+    Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
+    Set<TopicPartition> toUnsub = new HashSet<>();
+
+    for (int partition : partitionList) {
+      toUnsub.add(new TopicPartition(topic, partition));
+    }
+    topicPartitionSet.removeAll(toUnsub);
+    List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
+    kafkaConsumer.assign(topicPartitionList);
   }
 
   @Override

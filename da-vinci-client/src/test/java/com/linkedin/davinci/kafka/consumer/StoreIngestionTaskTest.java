@@ -1224,7 +1224,7 @@ public class StoreIngestionTaskTest {
       },
         () -> {
           verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
-          verify(mockKafkaConsumer).unSubscribe(topic, PARTITION_FOO);
+          verify(mockKafkaConsumer).batchUnsubscribe(topic, Arrays.asList(PARTITION_FOO));
           verify(mockKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
         },
         isLeaderFollowerModelEnabled

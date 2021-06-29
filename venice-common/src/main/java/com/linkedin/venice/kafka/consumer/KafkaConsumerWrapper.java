@@ -3,15 +3,11 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 
 
@@ -19,6 +15,8 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
   void subscribe(String topic, int partition, long lastReadOffset);
 
   void unSubscribe(String topic, int partition);
+
+  void batchUnsubscribe(String topic, List<Integer> partitionList);
 
   void resetOffset(String topic, int partition) throws UnsubscribedTopicPartitionException;
 
