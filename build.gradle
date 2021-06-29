@@ -138,7 +138,8 @@ ext.libraries = [
     classgraph: 'io.github.classgraph:classgraph:4.8.60',
 
     jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
-    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28'
+    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
+    failsafe: 'net.jodah:failsafe:2.4.0'
 ]
 
 subprojects {
