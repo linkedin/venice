@@ -1414,6 +1414,8 @@ public class ConfigKeys {
    */
   public static final String ROUTER_HTTP_MAX_RESPONSE_SIZE = "router.http.max.response.size";
 
+  public static final String ROUTER_HTTP2_R2_CLIENT_ENABLED = "router.http2.r2.client.enabled";
+
   /**
    * Number of IO threads used for AHAC client.
    */
