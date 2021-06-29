@@ -9,6 +9,7 @@ import com.linkedin.r2.transport.common.Client;
 import com.linkedin.r2.transport.common.TransportClientFactory;
 import com.linkedin.r2.transport.common.bridge.client.TransportClientAdapter;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
+import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
@@ -32,12 +33,14 @@ public class R2StorageNodeClient implements StorageNodeClient {
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Map<String, Client> nodeIdToR2ClientMap = new VeniceConcurrentHashMap<>();
   private final List<TransportClientFactory> transportClientFactoryList = Collections.synchronizedList(new ArrayList());
+  private final boolean http2Enabled;
 
   private final int httpMaxResponseSize;
 
   public R2StorageNodeClient(Optional<SSLEngineComponentFactory> sslFactory, VeniceRouterConfig config) {
     this.sslFactory = sslFactory;
     this.httpMaxResponseSize = config.getRouterHTTPMaxResponseSize();
+    this.http2Enabled = config.isRouterHTTP2R2ClientEnabled();
   }
 
   @Override
@@ -56,12 +59,17 @@ public class R2StorageNodeClient implements StorageNodeClient {
   }
 
   public Client buildR2Client(Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
-    TransportClientFactory transportClientFactory = new HttpClientFactory.Builder().build();
+    TransportClientFactory transportClientFactory = new HttpClientFactory.Builder()
+        .setUsePipelineV2(http2Enabled)
+        .build();
     transportClientFactoryList.add(transportClientFactory);
     final Map<String, Object> properties = new HashMap();
     if (sslEngineComponentFactory.isPresent()) {
       properties.put(HttpClientFactory.HTTP_SSL_CONTEXT, sslEngineComponentFactory.get().getSSLContext());
       properties.put(HttpClientFactory.HTTP_SSL_PARAMS, sslEngineComponentFactory.get().getSSLParameters());
+      if (http2Enabled) {
+        properties.put(HttpClientFactory.HTTP_PROTOCOL_VERSION, HttpProtocolVersion.HTTP_2.toString());
+      }
     }
     properties.put(HttpClientFactory.HTTP_MAX_RESPONSE_SIZE, String.valueOf(httpMaxResponseSize));
 
@@ -79,7 +87,6 @@ public class R2StorageNodeClient implements StorageNodeClient {
     } catch (URISyntaxException e) {
       throw new VeniceException("Failed to create URI for path " + uri, e);
     }
-
     RestRequest restRequest = new RestRequestBuilder(requestUri).setMethod(request.getMethod()).build();
 
     Client selectedClient = nodeIdToR2ClientMap.computeIfAbsent(request.getNodeId(), h -> buildR2Client(sslFactory));

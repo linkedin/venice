@@ -113,6 +113,7 @@ public class VeniceRouterConfig {
   private long readQuotaThrottlingLeaseTimeoutMs;
   private boolean routerHeartBeatEnabled;
   private int routerHTTPMaxResponseSize;
+  private boolean routerHTTP2R2ClientEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -264,6 +265,7 @@ public class VeniceRouterConfig {
     systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
     routerHTTPMaxResponseSize = props.getInt(ROUTER_HTTP_MAX_RESPONSE_SIZE, 32000000);
+    routerHTTP2R2ClientEnabled = props.getBoolean(ROUTER_HTTP2_R2_CLIENT_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -689,5 +691,9 @@ public class VeniceRouterConfig {
 
   public int getRouterHTTPMaxResponseSize() {
     return routerHTTPMaxResponseSize;
+  }
+
+  public boolean isRouterHTTP2R2ClientEnabled() {
+    return routerHTTP2R2ClientEnabled;
   }
 }

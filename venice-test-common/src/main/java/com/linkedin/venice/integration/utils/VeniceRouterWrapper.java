@@ -1,18 +1,12 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
-import com.linkedin.r2.transport.common.Client;
-import com.linkedin.r2.transport.common.TransportClientFactory;
-import com.linkedin.r2.transport.common.bridge.client.TransportClientAdapter;
-import com.linkedin.r2.transport.http.client.HttpClientFactory;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.RouterServer;
-import com.linkedin.venice.helix.ZkRoutersClusterManager;
-import com.linkedin.venice.router.httpclient.VeniceR2ClientFactory;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -21,9 +15,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -100,25 +92,9 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       }
 
       VeniceProperties routerProperties = builder.build();
-      VeniceR2ClientFactoryImpl clientFactory = new VeniceR2ClientFactoryImpl();
       RouterServer router = new RouterServer(routerProperties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, routerProperties, zkAddress);
     };
-  }
-
-  private static class VeniceR2ClientFactoryImpl implements VeniceR2ClientFactory {
-    @Override
-    public Client buildR2Client(Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
-      TransportClientFactory transportClientFactory = new HttpClientFactory.Builder().build();
-      final Map<String, Object> properties = new HashMap();
-      if (sslEngineComponentFactory.isPresent()) {
-        properties.put(HttpClientFactory.HTTP_SSL_CONTEXT, sslEngineComponentFactory.get().getSSLContext());
-        properties.put(HttpClientFactory.HTTP_SSL_PARAMS, sslEngineComponentFactory.get().getSSLParameters());
-      }
-      properties.put(HttpClientFactory.HTTP_MAX_RESPONSE_SIZE, MAX_RESPONSE_SIZE);
-
-      return new TransportClientAdapter(transportClientFactory.getClient(properties));
-    }
   }
 
   @Override
@@ -158,7 +134,6 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   protected void newProcess() {
     List<D2Server> d2Servers = D2TestUtils.getD2Servers(
         zkAddress, "http://localhost:" + getPort(), "https://localhost:" + getSslPort());
-    VeniceR2ClientFactory r2ClientFactory = new VeniceR2ClientFactoryImpl();
     service = new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
   }
 
