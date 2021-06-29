@@ -16,6 +16,7 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.impl.nio.reactor.IOReactorConfig;
 import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
 
@@ -27,6 +28,7 @@ public class HttpClientTransport implements AutoCloseable {
   private static final int CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_RETRY_WAIT_TIME_MS = 30 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_IO_THREAD_COUNT = 16;
 
   private static final RequestConfig requestConfig;
 
@@ -42,7 +44,9 @@ public class HttpClientTransport implements AutoCloseable {
 
   public HttpClientTransport(int port) {
     this.forkedProcessRequestUrl = "http://localhost:" + port;
+    IOReactorConfig ioReactorConfig = IOReactorConfig.custom().setIoThreadCount(DEFAULT_IO_THREAD_COUNT).build();
     this.httpClient = HttpAsyncClients.custom()
+        .setDefaultIOReactorConfig(ioReactorConfig)
         .setDefaultRequestConfig(requestConfig)
         .build();
     this.httpClient.start();
