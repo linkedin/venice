@@ -72,6 +72,7 @@ dependencies {
   implementation project(':venice-thin-client')
 
   implementation libraries.classgraph
+  implementation libraries.failsafe
 
   // Test dependencies are allowed to be bulkier.
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)

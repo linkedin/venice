@@ -6,17 +6,20 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.concurrent.ThreadFactory;
+import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.RetryPolicy;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -48,7 +51,7 @@ import static com.linkedin.venice.HttpConstants.*;
  * Helper functions
  */
 public class Utils {
-  private static Logger LOGGER = Logger.getLogger(Utils.class);
+  private static final Logger LOGGER = Logger.getLogger(Utils.class);
 
   public static final String WILDCARD_MATCH_ANY = "*";
   public static final String NEW_LINE_CHAR = System.lineSeparator();
