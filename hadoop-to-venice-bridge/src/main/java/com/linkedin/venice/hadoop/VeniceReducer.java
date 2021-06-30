@@ -27,6 +27,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
@@ -112,7 +115,12 @@ public class VeniceReducer
   private DuplicateKeyPrinter duplicateKeyPrinter;
   private Exception sendException = null;
 
-  // Visible for testing purpose
+  /**
+   * Visible for testing purpose
+   *
+   * IMPORTANT: Noticed that this callback is reused in different messages, do not put information that is coupled with
+   *            each message inside this callback.
+   */
   protected KafkaMessageCallback callback = null;
   private Reporter previousReporter = null;
   /**
@@ -131,6 +139,13 @@ public class VeniceReducer
   private boolean hasRecordTooLargeFailure = false;
   private HadoopJobClientProvider hadoopJobClientProvider = new DefaultHadoopJobClientProvider();
   private boolean isDuplicateKeyAllowed = DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
+
+  /**
+   * Yarn will kill reducer if it's inactive for more than 10 minutes, which is too short for reducers to retry sending
+   * messages and too short for Venice and Kafka team to mitigate write-path incidents. A background progress heartbeat
+   * task will be scheduled to keep reporting progress every 5 minutes until there is error from producer.
+   */
+  private final ScheduledExecutorService reducerProgressHeartbeatScheduler = Executors.newScheduledThreadPool(1);
 
   @Override
   public void reduce(
@@ -351,6 +366,7 @@ public class VeniceReducer
     if (messageSent != messageCompleted.get()) {
       throw new VeniceException("Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
     }
+    reducerProgressHeartbeatScheduler.shutdownNow();
     if (previousReporter == null) {
       LOGGER.warn("No MapReduce reporter set");
     } else {
@@ -375,6 +391,14 @@ public class VeniceReducer
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
     initStorageQuotaFields(props, job);
+    /**
+     * A dummy background task that reports progress every 5 minutes.
+     */
+    reducerProgressHeartbeatScheduler.scheduleAtFixedRate(() -> {
+      if (this.previousReporter != null) {
+        this.previousReporter.progress();
+      }
+    }, 0, 5, TimeUnit.MINUTES);
   }
 
   private void initStorageQuotaFields(VeniceProperties props, JobConf job) {
