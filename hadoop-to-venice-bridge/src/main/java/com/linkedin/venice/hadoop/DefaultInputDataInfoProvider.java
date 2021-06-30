@@ -7,6 +7,7 @@ import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -274,19 +275,25 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       }
 
       if (fileSampleSize + data.length > this.zstdConfig.maxBytesPerFile) {
-        LOGGER.info("Read " + fileSampleSize + " bytes to build dictionary. Reached limit per file.");
+        String perFileLimitErrorMsg = String.format("Read %s to build dictionary. Reached limit per file of %s.",
+            ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
+            ByteUtils.generateHumanReadableByteCountString(this.zstdConfig.maxBytesPerFile));
+        LOGGER.debug(perFileLimitErrorMsg);
         return;
       }
 
       // addSample returns false when the data read no longer fits in the 'sample' buffer limit
       if (!this.zstdConfig.zstdDictTrainer.addSample(data)) {
-        LOGGER.info("Read " + fileSampleSize + " bytes to build dictionary. Reached maximum sample limit.");
+        String maxSamplesReadErrorMsg = String.format("Read %s to build dictionary. Reached sample limit of %s.",
+            ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
+            ByteUtils.generateHumanReadableByteCountString(this.zstdConfig.sampleSize));
+        LOGGER.debug(maxSamplesReadErrorMsg);
         return;
       }
       fileSampleSize += data.length;
     }
 
-    LOGGER.info("Read " + fileSampleSize + " bytes to build dictionary. Reached EOF.");
+    LOGGER.debug(String.format("Read %s to build dictionary. Reached EOF.", ByteUtils.generateHumanReadableByteCountString(fileSampleSize)));
   }
 
   @Override

@@ -1,12 +1,14 @@
 package com.linkedin.venice.hadoop;
 
+import com.github.luben.zstd.Zstd;
+import com.github.luben.zstd.ZstdDictTrainer;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
@@ -47,12 +49,21 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.github.luben.zstd.Zstd;
-import com.github.luben.zstd.ZstdDictTrainer;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.mapred.AvroInputFormat;
@@ -73,23 +84,12 @@ import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.log4j.Logger;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
+import static com.linkedin.venice.utils.ByteUtils.*;
 import static org.apache.hadoop.mapreduce.MRJobConfig.*;
 import static org.apache.hadoop.security.UserGroupInformation.*;
 
@@ -391,7 +391,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
   protected static class StoreSetting {
     boolean isChunkingEnabled;
     long storeStorageQuota;
-    double storageEngineOverheadRatio;
     boolean isSchemaAutoRegisterFromPushJobEnabled;
     CompressionStrategy compressionStrategy;
     boolean isLeaderFollowerModelEnabled;
@@ -752,7 +751,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       );
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
-      inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota, storeSetting.storageEngineOverheadRatio);
+      inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
 
       if (pushJobSetting.isSourceETL) {
         MultiSchemaResponse allValueSchemaResponses = controllerClient.getAllValueSchema(pushJobSetting.storeName);
@@ -1165,17 +1164,18 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
         MRJobCounterHelper.getTotalKeySize(runningJob.getCounters()) + MRJobCounterHelper.getTotalValueSize(runningJob.getCounters());
     if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
-      String errorMessage = String.format("Detect input file size quota exceeded. Job ID %s, store quota %d, "
-              + "storage engine overhead ratio %.3f, total input data size in bytes %d",
-          jobId, inputStorageQuotaTracker.getStoreStorageQuota(),
-          inputStorageQuotaTracker.getStorageEngineOverheadRatio(), totalInputDataSizeInBytes);
+      Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
+      String errorMessage = String.format("Storage quota exceeded. Store quota %s, Input data size %s."
+              + " Please request at least %s additional quota.",
+          generateHumanReadableByteCountString(storeQuota), generateHumanReadableByteCountString(totalInputDataSizeInBytes),
+          generateHumanReadableByteCountString(totalInputDataSizeInBytes - storeQuota));
       return Optional.of(new ErrorMessage(errorMessage));
     }
     // Write ACL failed
     final long writeAclFailureCount = MRJobCounterHelper.getWriteAclAuthorizationFailureCount(runningJob.getCounters());
     if (writeAclFailureCount > 0) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
-      String errorMessage = String.format("Detect write ACL failure. Job ID %s, counter value %d", jobId, writeAclFailureCount);
+      String errorMessage = String.format("Insufficient ACLs to write to the store");
       return Optional.of(new ErrorMessage(errorMessage));
     }
     // Duplicate keys
@@ -1183,8 +1183,7 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
       final long duplicateKeyWithDistinctValueCount = MRJobCounterHelper.getDuplicateKeyWithDistinctCount(runningJob.getCounters());
       if (duplicateKeyWithDistinctValueCount > 0) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE);
-        String errorMessage = String.format("Detect duplicate key with distinct value. Job ID %s, counter value %d",
-            jobId, duplicateKeyWithDistinctValueCount);
+        String errorMessage = String.format("Input data has at least %d keys that appear more than once but have different values", duplicateKeyWithDistinctValueCount);
         return Optional.of(new ErrorMessage(errorMessage));
       }
     }
@@ -1192,8 +1191,9 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     final long recordTooLargeFailureCount = MRJobCounterHelper.getRecordTooLargeFailureCount(runningJob.getCounters());
     if (recordTooLargeFailureCount > 0) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.RECORD_TOO_LARGE_FAILED);
-      String errorMessage = String.format("Detect record too large failure. Job ID %s, counter value %d",
-          jobId, recordTooLargeFailureCount);
+      String errorMessage = String.format("Input data has at least %d records that exceed the maximum record limit of %s",
+          recordTooLargeFailureCount,
+          generateHumanReadableByteCountString(veniceWriter.getMaxSizeForUserPayloadPerMessageInBytes()));
       return Optional.of(new ErrorMessage(errorMessage));
     }
     return Optional.empty();
@@ -1384,17 +1384,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     }
     storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
     storeSetting.isSchemaAutoRegisterFromPushJobEnabled = storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
-    StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse = ControllerClient.retryableRequest(
-        controllerClient,
-        setting.controllerRetries,
-        c -> c.getStorageEngineOverheadRatio(setting.storeName)
-    );
-    if (storageEngineOverheadRatioResponse.isError()) {
-      throw new VeniceException("Can't get storage engine overhead ratio. " +
-          storageEngineOverheadRatioResponse.getError());
-    }
-
-    storeSetting.storageEngineOverheadRatio = storageEngineOverheadRatioResponse.getStorageEngineOverheadRatio();
     storeSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
     storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
@@ -1835,7 +1824,6 @@ public class VenicePushJob implements AutoCloseable, Cloneable {
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, storeSetting.isChunkingEnabled);
 
     conf.set(STORAGE_QUOTA_PROP, Long.toString(storeSetting.storeStorageQuota));
-    conf.set(STORAGE_ENGINE_OVERHEAD_RATIO, Double.toString(storeSetting.storageEngineOverheadRatio));
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
      *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}
