@@ -7,12 +7,14 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.StringJoiner;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.TopicPartition;
@@ -22,23 +24,36 @@ import org.apache.log4j.Logger;
  * This class tracks consumed topic partitions' offsets
  */
 class TopicPartitionsOffsetsTracker {
+    enum RESULT_TYPE {
+        VALID_OFFSET_LAG,
+        NO_OFFSET_LAG,
+        INVALID_OFFSET_LAG
+    }
+
     private static final Logger logger = Logger.getLogger(TopicPartitionsOffsetsTracker.class);
     private static final Duration DEFAULT_OFFSETS_UPDATE_INTERVAL = Duration.ofSeconds(30);
+    private static final Duration DEFAULT_MIN_LOG_INTERVAL = Duration.ofMinutes(3);
 
     private final Map<TopicPartition, Double> topicPartitionCurrentOffset;
     private final Map<TopicPartition, Double> topicPartitionEndOffset;
     private Instant lastMetricsCollectedTime;
-    private Duration offsetsUpdateInterval;
+    private final Duration offsetsUpdateInterval;
+    private StatsAccumulator statsAccumulator;
 
     TopicPartitionsOffsetsTracker() {
         this(DEFAULT_OFFSETS_UPDATE_INTERVAL);
     }
 
     TopicPartitionsOffsetsTracker(Duration offsetsUpdateInterval) {
+        this(offsetsUpdateInterval, DEFAULT_MIN_LOG_INTERVAL);
+    }
+
+    TopicPartitionsOffsetsTracker(Duration offsetsUpdateInterval, Duration minLogInterval) {
         this.offsetsUpdateInterval = Utils.notNull(offsetsUpdateInterval);
         this.lastMetricsCollectedTime = null;
         this.topicPartitionCurrentOffset = new VeniceConcurrentHashMap<>();
         this.topicPartitionEndOffset = new VeniceConcurrentHashMap<>();
+        this.statsAccumulator = new StatsAccumulator(minLogInterval);
     }
 
     /**
@@ -112,5 +127,99 @@ class TopicPartitionsOffsetsTracker {
     Optional<Long> getEndOffset(String topic, int partition) {
         Double endOffset = topicPartitionEndOffset.get(new TopicPartition(topic, partition));
         return endOffset == null ? Optional.empty() : Optional.of(endOffset.longValue());
+    }
+
+    /**
+     * Get consuming offset lag on a topic partition
+     * @param topic
+     * @param partition
+     * @return end offset of a topic partition if there is any.
+     */
+    Optional<Long> getOffsetLag(String topic, int partition) {
+        TopicPartition topicPartition = new TopicPartition(topic, partition);
+        final Double endOffset = topicPartitionEndOffset.get(topicPartition);
+        if (endOffset == null) {
+            statsAccumulator.recordResult(RESULT_TYPE.NO_OFFSET_LAG);
+            return Optional.empty();
+        }
+        final Double currOffset = topicPartitionCurrentOffset.get(topicPartition);
+        if (currOffset == null) {
+            statsAccumulator.recordResult(RESULT_TYPE.NO_OFFSET_LAG);
+            return Optional.empty();
+        }
+        final long offsetLag = endOffset.longValue() - currOffset.longValue();
+        if (offsetLag < 0) { // Invalid offset lag
+            statsAccumulator.recordResult(RESULT_TYPE.INVALID_OFFSET_LAG);
+            return Optional.empty();
+        }
+        statsAccumulator.recordResult(RESULT_TYPE.VALID_OFFSET_LAG);
+        if (statsAccumulator.maybeLogAccumulatedStats(logger)) {
+            statsAccumulator.clearAccumulatedStats();
+        }
+        return Optional.of(offsetLag);
+    }
+
+    /**
+     * Package private for testing purpose
+     */
+    Map<RESULT_TYPE, Integer> getResultsStats() {
+        return statsAccumulator.getResultsStats();
+    }
+
+    /**
+     * This class keeps track of results stats and can be used to log the accumulated results stats once in a while
+     */
+    private static class StatsAccumulator {
+        private final Map<RESULT_TYPE, Integer> resultsStats;
+        private final Duration minLogInterval;
+        private Instant lastLoggedTime;
+
+        private StatsAccumulator(Duration minLogInterval) {
+            this.resultsStats = new HashMap<>(RESULT_TYPE.values().length);
+            this.minLogInterval = minLogInterval;
+            this.lastLoggedTime = Instant.now();
+        }
+
+        private void recordResult(RESULT_TYPE resultType) {
+            resultsStats.put(resultType, resultsStats.getOrDefault(resultType, 0) + 1);
+        }
+
+        /**
+         * @param logger the logger instance which is used to log the accumulated stats
+         * @return True if accumulated stats are logged and vice versa
+         */
+        private boolean maybeLogAccumulatedStats(Logger logger) {
+            if (resultsStats.isEmpty()) {
+                return false;
+            }
+            final Instant now = Instant.now();
+            final Duration timeSinceLastTimeLogged = Duration.between(lastLoggedTime, now);
+            if (timeSinceLastTimeLogged.toMillis() >= minLogInterval.toMillis()) {
+                logger.info(String.format(
+                        "In the last %d second(s), results states are: %s",
+                        timeSinceLastTimeLogged.getSeconds(),
+                        resultsStatsToString()
+                ));
+                lastLoggedTime = now;
+                return true;
+            }
+            return false;
+        }
+
+        private void clearAccumulatedStats() {
+            resultsStats.clear();
+        }
+
+        private String resultsStatsToString() {
+            StringJoiner sj = new StringJoiner(", ");
+            for (RESULT_TYPE resultType : RESULT_TYPE.values()) {
+                sj.add(resultType + " count: " + resultsStats.getOrDefault(resultType, 0));
+            }
+            return sj.toString();
+        }
+
+        Map<RESULT_TYPE, Integer> getResultsStats() {
+            return Collections.unmodifiableMap(resultsStats);
+        }
     }
 }

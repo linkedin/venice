@@ -226,6 +226,12 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public Optional<Long> getLatestOffset(String topic, int partition) {
     return topicPartitionsOffsetsTracker.isPresent() ?
-    topicPartitionsOffsetsTracker.get().getEndOffset(topic, partition) : Optional.empty();
+            topicPartitionsOffsetsTracker.get().getEndOffset(topic, partition) : Optional.empty();
+  }
+
+  @Override
+  public Optional<Long> getOffsetLag(String topic, int partition) {
+    return topicPartitionsOffsetsTracker.isPresent() ?
+            topicPartitionsOffsetsTracker.get().getOffsetLag(topic, partition) : Optional.empty();
   }
 }

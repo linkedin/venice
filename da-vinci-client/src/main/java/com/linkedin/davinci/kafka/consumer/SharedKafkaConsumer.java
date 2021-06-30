@@ -447,4 +447,9 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
   public Optional<Long> getLatestOffset(String topic, int partition) {
     return delegate.getLatestOffset(topic, partition);
   }
+
+  @Override
+  public Optional<Long> getOffsetLag(String topic, int partition) {
+    return delegate.getOffsetLag(topic, partition);
+  }
 }
