@@ -2993,6 +2993,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
             }
 
+            VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
             if (hybridStoreConfig.isPresent()) {
                 // To fix the final variable problem in the lambda expression
                 final HybridStoreConfig finalHybridConfig = hybridStoreConfig.get();
@@ -3009,27 +3010,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             store.getVersions().stream().forEach(version ->
                                 onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName()));
                         }
-                        if (store.isLeaderFollowerModelEnabled()) {
+                        if (store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled()) {
                             // Disabling hybrid configs for a L/F store
-                            VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
                             if (!store.isIncrementalPushEnabled()) {
                                 // Enable/disable native replication for batch-only stores if the cluster level config for new batch stores is on
-                                store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
+                                store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForBatchOnly());
                             } else {
-                                store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForIncremental());
+                                store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForIncremental());
                             }
                         }
                     } else {
-                        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-                        if (!store.isHybrid() && config.isLeaderFollowerEnabledForHybridStores()) {
+                        if (!store.isHybrid() && (clusterConfig.isLeaderFollowerEnabledForHybridStores() || clusterConfig.isLfModelDependencyCheckDisabled())) {
                             // This is a new hybrid store. Enable L/F if the config is set to true.
                             store.setLeaderFollowerModelEnabled(true);
                             if (!store.isIncrementalPushEnabled()) {
                                 // Enable/disable native replication for hybrid stores if the cluster level config for new hybrid stores is on
-                                store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForHybrid());
+                                store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForHybrid());
                             } else {
                                 // The native replication cluster level config for incremental push will cover all incremental push policy
-                                store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForIncremental());
+                                store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForIncremental());
                             }
                         }
                         store.setHybridStoreConfig(finalHybridConfig);
@@ -3117,7 +3116,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                  * Leader/follower mode can be enabled/disabled within the same command.
                  */
                 boolean isLeaderFollowerModelEnabled = getStore(clusterName, storeName).isLeaderFollowerModelEnabled();
-                if(!isLeaderFollowerModelEnabled && nativeReplicationEnabled.get()) {
+                if(!isLeaderFollowerModelEnabled && !clusterConfig.isLfModelDependencyCheckDisabled() && nativeReplicationEnabled.get()  ) {
                     throw new VeniceException("Native Replication cannot be enabled on store " + storeName + " which does not have leader/follower mode enabled!");
                 }
                 setNativeReplicationEnabled(clusterName, storeName, nativeReplicationEnabled.get());
