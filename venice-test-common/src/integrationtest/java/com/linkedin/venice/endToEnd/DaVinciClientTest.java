@@ -17,12 +17,14 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -47,7 +49,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -85,6 +86,7 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -92,9 +94,15 @@ import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
 public class DaVinciClientTest {
+  @DataProvider(name = "LF-And-CompressionStrategy")
+  public static Object[][] lfAndCompressionStrategy() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.COMPRESSION_STRATEGIES);
+  }
+
   private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 60_000; // ms
 
@@ -1277,6 +1285,21 @@ public class DaVinciClientTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT, dataProvider="LF-And-CompressionStrategy")
+  public void testReadCompressedData(boolean leaderFollowerEnabled, CompressionStrategy compressionStrategy) throws Exception {
+    String storeName = TestUtils.getUniqueString("batch-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setLeaderFollowerModel(leaderFollowerEnabled).setCompressionStrategy(compressionStrategy);
+    setUpStore(storeName, paramsConsumer, properties -> {});
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      client.subscribeAll().get();
+      for (int i = 1; i <= 100; ++i) {
+        Object value = client.get(i).get();
+        Assert.assertEquals(value.toString(), "name " + i);
+      }
+    }
+  }
+
   private void pushSyntheticDataToStore(VeniceWriter<Object, Object, byte[]> writer, String schema, boolean skip, int valueSchemaId, int numRecords)
       throws ExecutionException, InterruptedException {
     writer.broadcastStartOfPush(Collections.emptyMap());
@@ -1364,5 +1387,39 @@ public class DaVinciClientTest {
     } finally {
       producer.stop();
     }
+  }
+
+  private void setUpStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer,
+      Consumer<Properties> propertiesConsumer) throws Exception {
+    // Produce input data.
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    writeSimpleAvroFileWithIntToStringSchema(inputDir, true);
+
+    // Setup H2V job properties.
+    Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
+    propertiesConsumer.accept(h2vProperties);
+    // Create & update store for test.
+    final int numPartitions = 3;
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        .setPartitionCount(numPartitions); // Update the partition count.
+    paramsConsumer.accept(params);
+    try (ControllerClient controllerClient =
+        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", h2vProperties)) {
+      ControllerResponse response = controllerClient.updateStore(storeName, params);
+      Assert.assertFalse(response.isError(), response.getError());
+
+      // Push data through H2V bridge.
+      runH2V(h2vProperties, 1, cluster);
+    }
+  }
+
+  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
+    long h2vStart = System.currentTimeMillis();
+    String jobName = TestUtils.getUniqueString("batch-job-" + expectedVersionNumber);
+    TestPushUtils.runPushJob(jobName, h2vProperties);
+    String storeName = (String) h2vProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP);
+    cluster.waitVersion(storeName, expectedVersionNumber);
+    logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
   }
 }
