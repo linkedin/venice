@@ -1237,4 +1237,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public Time getTime() {
     return time;
   }
+
+  public int getMaxSizeForUserPayloadPerMessageInBytes() {
+    return maxSizeForUserPayloadPerMessageInBytes;
+  }
 }

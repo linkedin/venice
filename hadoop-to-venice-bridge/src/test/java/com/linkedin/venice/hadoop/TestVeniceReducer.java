@@ -214,12 +214,9 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     JobClient jobClient = mock(JobClient.class);
     Counters counters = mock(Counters.class);
     Counters.Group group = mock(Counters.Group.class);
-    when(group.getCounter(TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName())).thenReturn(totalKeySizeInBytes);
     when(counters.getGroup(TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName())).thenReturn(group);
-
-    group = mock(Counters.Group.class);
+    when(group.getCounter(TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName())).thenReturn(totalKeySizeInBytes);
     when(group.getCounter(TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName())).thenReturn(totalValueSizeInBytes);
-    when(counters.getGroup(TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName())).thenReturn(group);
     RunningJob runningJob = mock(RunningJob.class);
     when(runningJob.getCounters()).thenReturn(counters);
     when(jobClient.getJob(any(JobID.class))).thenReturn(runningJob);

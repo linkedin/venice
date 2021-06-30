@@ -2,6 +2,8 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.nio.ByteBuffer;
+import java.text.CharacterIterator;
+import java.text.StringCharacterIterator;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 
@@ -224,5 +226,28 @@ public class ByteUtils {
       byteBuffer.reset();
       return value;
     }
+  }
+
+  /**
+   * Convert bytes to "Human-readable" output. Uses unit suffixes: B, KiB, MiB, GiB, TiB and PiB. Negative values are
+   * handled for completeness and it is the responsibility of the caller to validate the inputs.
+   * @param bytes the value to be converted to "Human-readable" output
+   * @return "Human-readable" output of the input byte count
+   */
+  public static String generateHumanReadableByteCountString(long bytes) {
+    // Math.abs(Long.MIN_VALUE) returns Long.MIN_VALUE, which is negative. To avoid this, we force the absolute value of
+    // Long.MIN_VALUE to be Long.MAX_VALUE.
+    long absB = bytes == Long.MIN_VALUE ? Long.MAX_VALUE : Math.abs(bytes);
+    if (absB < 1024) {
+      return bytes + " B";
+    }
+    long value = absB;
+    CharacterIterator ci = new StringCharacterIterator("KMGTPE");
+    for (int i = 40; i >= 0 && absB > 0xfffccccccccccccL >> i; i -= 10) {
+      value >>= 10;
+      ci.next();
+    }
+    value *= Long.signum(bytes);
+    return String.format("%.1f %ciB", value / 1024.0, ci.current());
   }
 }

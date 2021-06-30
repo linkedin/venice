@@ -11,34 +11,22 @@ import javax.annotation.Nullable;
 class InputStorageQuotaTracker {
 
   private final Long storeStorageQuota;
-  private final Double storageEngineOverheadRatio;
 
-  InputStorageQuotaTracker(Long storeStorageQuota, Double storageEngineOverheadRatio) {
-    if (storageEngineOverheadRatio != null && storageEngineOverheadRatio == 0) {
-      throw new IllegalArgumentException("storageEngineOverheadRatio cannot be zero");
-    }
+  InputStorageQuotaTracker(Long storeStorageQuota) {
     this.storeStorageQuota = storeStorageQuota;
-    this.storageEngineOverheadRatio = storageEngineOverheadRatio;
   }
 
   boolean exceedQuota(long totalInputStorageSizeInBytes) {
-    if (storageEngineOverheadRatio == null
-        || storeStorageQuota == null
+    if (storeStorageQuota == null
         || storeStorageQuota == Store.UNLIMITED_STORAGE_QUOTA
     ) {
       return false;
     }
-    final long veniceDiskUsageEstimate = (long) (totalInputStorageSizeInBytes / storageEngineOverheadRatio);
-    return veniceDiskUsageEstimate > storeStorageQuota;
+    return totalInputStorageSizeInBytes > storeStorageQuota;
   }
 
   @Nullable
   Long getStoreStorageQuota() {
     return storeStorageQuota;
-  }
-
-  @Nullable
-  Double getStorageEngineOverheadRatio() {
-    return storageEngineOverheadRatio;
   }
 }

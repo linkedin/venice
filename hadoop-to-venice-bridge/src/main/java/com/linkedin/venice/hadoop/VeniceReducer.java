@@ -378,10 +378,8 @@ public class VeniceReducer
   }
 
   private void initStorageQuotaFields(VeniceProperties props, JobConf job) {
-    Double storageEngineOverheadRatio = props.containsKey(STORAGE_ENGINE_OVERHEAD_RATIO) ?
-        props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO) : null;
     Long storeStorageQuota = props.containsKey(STORAGE_QUOTA_PROP) ? props.getLong(STORAGE_QUOTA_PROP) : null;
-    inputStorageQuotaTracker = new InputStorageQuotaTracker(storeStorageQuota, storageEngineOverheadRatio);
+    inputStorageQuotaTracker = new InputStorageQuotaTracker(storeStorageQuota);
     if (storeStorageQuota == null) {
       return;
     }
