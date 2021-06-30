@@ -1705,6 +1705,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic == null || currentLeaderTopic.isEmpty()) {
             currentLeaderTopic = kafkaVersionTopic;
           }
+
+          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(getSourceKafkaAddress(pcs));
+          // Consumer might not existed in the map after the consumption state is created, but before attaching the
+          // corresponding consumer in consumerMap.
+          if (kafkaConsumer != null) {
+            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getPartition());
+            if (offsetLagOptional.isPresent()) {
+              return offsetLagOptional.get();
+            }
+          }
+          // Fall back to use the old way
           return (cachedKafkaMetadataGetter.getOffset(nativeReplicationSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
               - (cachedKafkaMetadataGetter.getOffset(localKafkaServer, currentLeaderTopic, pcs.getPartition()) - 1);
         }).sum();
@@ -1716,8 +1727,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   public long getBatchReplicationLag() {
     return getReplicationLag(BATCH_REPLICATION_LAG_FILTER);
   }
-
-
 
   private static final Predicate<? super PartitionConsumptionState> LEADER_OFFSET_LAG_FILTER = pcs -> pcs.getLeaderState().equals(LEADER);
   private static final Predicate<? super PartitionConsumptionState> BATCH_LEADER_OFFSET_LAG_FILTER = pcs ->
@@ -1753,16 +1762,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic == null || currentLeaderTopic.isEmpty()) {
             currentLeaderTopic = kafkaVersionTopic;
           }
-          if (!pcs.consumeRemotely()) {
-            return (cachedKafkaMetadataGetter.getOffset(localKafkaServer, currentLeaderTopic, pcs.getPartition()) - 1)
-                - pcs.getOffsetRecord().getOffset();
-          } else {
-            return
-                (cachedKafkaMetadataGetter.getOffset(nativeReplicationSourceAddress, currentLeaderTopic,
-                    pcs.getPartition()) - 1) - pcs.getOffsetRecord().getOffset();
+          final String kafkaSourceAddress = getSourceKafkaAddress(pcs);
+          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
+          // Consumer might not existed in the map after the consumption state is created, but before attaching the
+          // corresponding consumer in consumerMap.
+          if (kafkaConsumer != null) {
+            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(currentLeaderTopic, pcs.getPartition());
+            if (offsetLagOptional.isPresent()) {
+              return offsetLagOptional.get();
+            }
           }
-        })
-        .sum();
+
+          // Fall back to calculate offset lag in the original approach
+          return (cachedKafkaMetadataGetter.getOffset(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition()) - 1)
+                  - pcs.getOffsetRecord().getOffset();
+        }).sum();
 
     return minZeroLag(offsetLag);
   }
@@ -1812,10 +1826,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         //consume from VT
         .filter(partitionConsumptionStateFilter)
         //the lag is (latest VT offset - consumed VT offset)
-        .mapToLong(pcs ->
-            (cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, pcs.getPartition()) - 1)
-                - pcs.getOffsetRecord().getOffset())
-        .sum();
+        .mapToLong((pcs) -> {
+          String kafkaSourceAddress = getSourceKafkaAddress(pcs);
+          KafkaConsumerWrapper kafkaConsumer = consumerMap.get(kafkaSourceAddress);
+          // Consumer might not existed in the map after the consumption state is created, but before attaching the
+          // corresponding consumer in consumerMap.
+          if (kafkaConsumer != null) {
+            Optional<Long> offsetLagOptional = kafkaConsumer.getOffsetLag(kafkaVersionTopic, pcs.getPartition());
+            if (offsetLagOptional.isPresent()) {
+              return offsetLagOptional.get();
+            }
+          }
+          // Fall back to calculate offset lag in the old way
+          return (cachedKafkaMetadataGetter.getOffset(localKafkaServer, kafkaVersionTopic, pcs.getPartition()) - 1)
+                  - pcs.getOffsetRecord().getOffset();
+        }).sum();
 
     return minZeroLag(offsetLag);
   }
@@ -2017,5 +2042,4 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       this.chunks = chunks;
     }
   }
-
 }

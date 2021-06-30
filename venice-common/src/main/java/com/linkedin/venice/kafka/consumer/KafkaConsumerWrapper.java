@@ -54,5 +54,18 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
 
   Set<TopicPartition> getAssignment();
 
-  default Optional<Long> getLatestOffset(String topic, int partition) { return Optional.empty(); }
+  default Optional<Long> getLatestOffset(String topic, int partition) {
+    return Optional.empty();
+  }
+
+  /**
+   * Get consuming offset lag for a topic partition
+   * @param topic
+   * @param partition
+   * @return Nothing if there is no offset lag or no valid lag for the topic partition tracked by the consumer instance.
+   *         Something if there is a valid (positive or zero) offset lag for the topic partition
+   */
+  default Optional<Long> getOffsetLag(String topic, int partition) {
+    return Optional.empty();
+  }
 }

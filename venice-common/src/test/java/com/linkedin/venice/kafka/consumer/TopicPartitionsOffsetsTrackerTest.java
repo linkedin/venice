@@ -36,6 +36,15 @@ public class TopicPartitionsOffsetsTrackerTest {
     public void testNoUpdateWithRecords() {
         Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), Optional.empty());
         Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), Optional.empty());
+        Assert.assertTrue(topicPartitionsOffsetsTracker.getResultsStats().isEmpty());
+
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), Optional.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_2, PARTITION_ID), Optional.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
+        Assert.assertEquals(
+                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.RESULT_TYPE.NO_OFFSET_LAG).intValue(),
+                2
+        );
     }
 
     @Test
@@ -90,6 +99,20 @@ public class TopicPartitionsOffsetsTrackerTest {
 
         topicPartitionsOffsetsTracker.updateEndOffsets(mockRecords, mockMetrics);
 
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), Optional.of(firstPartitionLag));
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
+        Assert.assertEquals(
+                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.RESULT_TYPE.VALID_OFFSET_LAG).intValue(),
+                1
+        );
+
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_2, PARTITION_ID), Optional.of(secondPartitionLag));
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
+        Assert.assertEquals(
+                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.RESULT_TYPE.VALID_OFFSET_LAG).intValue(),
+                2
+        );
+
         // End offset == current offset + lag
         Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), Optional.of(firstOffset + firstPartitionLag));
         Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), Optional.of(secondOffset + secondPartitionLag));
@@ -101,5 +124,10 @@ public class TopicPartitionsOffsetsTrackerTest {
         topicPartitionsOffsetsTracker.clearAllOffsetState();
         Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_1, PARTITION_ID), Optional.empty());
         Assert.assertEquals(topicPartitionsOffsetsTracker.getEndOffset(TOPIC_2, PARTITION_ID), Optional.empty());
+        Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);
+        Assert.assertEquals(
+                topicPartitionsOffsetsTracker.getResultsStats().get(TopicPartitionsOffsetsTracker.RESULT_TYPE.VALID_OFFSET_LAG).intValue(),
+                2
+        );
     }
 }
