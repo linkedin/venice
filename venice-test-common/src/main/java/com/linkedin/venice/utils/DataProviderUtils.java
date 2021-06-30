@@ -9,6 +9,8 @@ import org.apache.commons.lang.ArrayUtils;
 import org.testng.annotations.DataProvider;
 import org.testng.collections.Lists;
 
+import static com.linkedin.venice.compression.CompressionStrategy.*;
+
 
 /**
  * This class gathers all common data provider patterns in test cases. In order to leverage this util class,
@@ -17,6 +19,7 @@ import org.testng.collections.Lists;
 public class DataProviderUtils {
 
   public static final Object[] BOOLEAN = {false, true};
+  public static final Object[] COMPRESSION_STRATEGIES = {NO_OP, GZIP, ZSTD_WITH_DICT};
 
   /**
    * To use these data providers, add (dataProvider = "<provider_name>", dataProviderClass = DataProviderUtils.class)
