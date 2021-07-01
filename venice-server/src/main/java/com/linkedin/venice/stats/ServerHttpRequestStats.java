@@ -295,6 +295,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   }
 
   private Sensor getPercentileStatSensor(String name) {
-    return registerSensor(name, TehutiUtils.getPercentileStat(getName(), getFullMetricName(name)));
+    return registerSensor(name, TehutiUtils.getPercentileStat(getName(), getFullMetricName(name)), new Avg(), new Max());
   }
 }
