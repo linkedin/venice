@@ -11,6 +11,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.SparseConcurrentList;
 
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import org.apache.log4j.Logger;
 
@@ -59,6 +61,19 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   private final AtomicReference<StoreVersionState> versionStateCache = new AtomicReference<>();
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+
+  /**
+   * This lock is used to guard the re-opening logic in {@link #adjustStoragePartition} since
+   * {@link #getPartitionOrThrow} is not synchronized and it could be invoked during the execution
+   * of {@link #adjustStoragePartition}.
+   *
+   * The reason to introduce this rw lock is that for write-compute enabled stores, the lookup could happen
+   * during the ingestion even before reporting ready-to-serve yet. And right now, the lookup is happening
+   * in consumer thread, and the {@link #adjustStoragePartition} will be invoked in drainer thread.
+   *
+   * TODO: evaluate whether we could remove `synchronized` keyword from the functions in this class.
+   */
+  private final ReadWriteLock rwLockForStoragePartitionAdjustment = new ReentrantReadWriteLock();
 
   public AbstractStorageEngine(String storeName,
                                InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
@@ -155,8 +170,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     // Need to re-open storage partition according to the provided partition config
     logger.info("Reopen database with storage partition config: " + partitionConfig);
-    closePartition(partitionId);
-    addStoragePartition(partitionConfig);
+    rwLockForStoragePartitionAdjustment.writeLock().lock();
+    try {
+      closePartition(partitionId);
+      addStoragePartition(partitionConfig);
+    } finally {
+      rwLockForStoragePartitionAdjustment.writeLock().unlock();
+    }
   }
 
   public void addStoragePartition(int partitionId) {
@@ -426,18 +446,21 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * Retrieve the store version state from the metadata partition.
    */
-  public synchronized Optional<StoreVersionState> getStoreVersionState() {
-    StoreVersionState versionState = versionStateCache.get();
-    if (versionState != null) {
-      return Optional.of(versionState);
+  public Optional<StoreVersionState> getStoreVersionState() {
+    while (true) {
+      StoreVersionState versionState = versionStateCache.get();
+      if (versionState != null) {
+        return Optional.of(versionState);
+      }
+      byte[] value = metadataPartition.get(VERSION_METADATA_KEY);
+      if (null == value) {
+        return Optional.empty();
+      }
+      versionState = storeVersionStateSerializer.deserialize(storeName, value);
+      if (versionStateCache.compareAndSet(null, versionState)) {
+        return Optional.of(versionState);
+      } // else retry the loop...
     }
-    byte[] value = metadataPartition.get(VERSION_METADATA_KEY);
-    if (null == value) {
-      return Optional.empty();
-    }
-    versionState = storeVersionStateSerializer.deserialize(storeName, value);
-    versionStateCache.set(versionState);
-    return Optional.of(versionState);
   }
 
   /**
@@ -480,8 +503,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
                .collect(Collectors.toSet());
   }
 
-  public synchronized AbstractStoragePartition getPartitionOrThrow(int partitionId) {
-    AbstractStoragePartition partition = partitionList.get(partitionId);
+  public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
+    AbstractStoragePartition partition;
+    rwLockForStoragePartitionAdjustment.readLock().lock();
+    try {
+      partition = partitionList.get(partitionId);
+    } finally {
+      rwLockForStoragePartitionAdjustment.readLock().unlock();
+    }
     if (partition == null) {
       VeniceException e = new PersistenceFailureException("Partition: " + partitionId + " of store: " + getName() + " does not exist");
       logger.error(e.getMessage(), e.getCause());
