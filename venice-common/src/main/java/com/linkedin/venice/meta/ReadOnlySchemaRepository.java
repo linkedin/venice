@@ -61,6 +61,6 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
 
 
   MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr);
-  MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId);
+  MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId);
   Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName);
 }

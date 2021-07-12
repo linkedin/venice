@@ -207,8 +207,8 @@ public class HelixSchemaAccessor {
 
 
 
-  public MetadataSchemaEntry getMetadataSchema(String storeName, String metadataVersionIdPair) {
-    return metadataSchemaAccessor.get(getMetadataSchemaPath(storeName, metadataVersionIdPair), null,
+  public MetadataSchemaEntry getMetadataSchema(String storeName, String timestampMetadataVersionIdPair) {
+    return metadataSchemaAccessor.get(getMetadataSchemaPath(storeName, timestampMetadataVersionIdPair), null,
         AccessOption.PERSISTENT);
   }
 
@@ -238,11 +238,11 @@ public class HelixSchemaAccessor {
     return getStorePath(storeName) + METADATA_SCHEMA_PATH;
   }
 
-  String getMetadataSchemaPath(String storeName, String valueSchemaId, String metadataVersionId) {
-    return getMetadataSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER + metadataVersionId;
+  String getMetadataSchemaPath(String storeName, String valueSchemaId, String timestampMetadataVersionId) {
+    return getMetadataSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER + timestampMetadataVersionId;
   }
 
-  String getMetadataSchemaPath(String storeName, String metadataVersionIdPair) {
-    return getMetadataSchemaParentPath(storeName) + "/" + metadataVersionIdPair;
+  String getMetadataSchemaPath(String storeName, String timestampMetadataVersionIdPair) {
+    return getMetadataSchemaParentPath(storeName) + "/" + timestampMetadataVersionIdPair;
   }
 }

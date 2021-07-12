@@ -27,6 +27,11 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
 
   /**
+   * Special number indicating no metadata version is set.
+   */
+  int TIMESTAMP_METADATA_VERSION_ID_UNSET = -1;
+
+  /**
    * Producer type for writing data to Venice
    */
   enum PushType {
@@ -145,6 +150,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   boolean isActiveActiveReplicationEnabled();
 
   void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled);
+
+  int getTimestampMetadataVersionId();
+
+  void setTimestampMetadataVersionId(int timestampMetadataVersionId);
 
   Version cloneVersion();
 

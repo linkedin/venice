@@ -1,8 +1,6 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 
@@ -10,9 +8,8 @@ import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.Objects;
-import java.util.Optional;
+
 
 /**
  * Class defines the version of Venice store.
@@ -295,6 +292,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public int getTimestampMetadataVersionId() {
+    return this.storeVersion.timestampMetadataVersionId;
+  }
+
+  @Override
+  public void setTimestampMetadataVersionId(int timestampMetadataVersionId) {
+    this.storeVersion.timestampMetadataVersionId = timestampMetadataVersionId;
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }
@@ -323,6 +330,7 @@ public class VersionImpl implements Version {
         ", hybridConfig=" + getHybridStoreConfig() +
         ", useVersionLevelHybridConfig=" + isUseVersionLevelHybridConfig() +
         ", activeActiveReplicationEnabled=" + isActiveActiveReplicationEnabled() +
+        ", timestampMetadataVersionId=" + getTimestampMetadataVersionId() +
         '}';
   }
 
@@ -377,6 +385,7 @@ public class VersionImpl implements Version {
     clonedVersion.setHybridStoreConfig(getHybridStoreConfig());
     clonedVersion.setUseVersionLevelHybridConfig(isUseVersionLevelHybridConfig());
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
+    clonedVersion.setTimestampMetadataVersionId(getTimestampMetadataVersionId());
     return clonedVersion;
   }
 

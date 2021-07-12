@@ -393,8 +393,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   @Override
-  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId) {
-    return (MetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getMetadataSchema(valueSchemaId, metadataVersionId)));
+  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+    return (MetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getMetadataSchema(valueSchemaId, timestampMetadataVersionId)));
   }
 
   @Override
@@ -596,15 +596,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
-      for (String metadataVersionIdPairStr : currentChildren) {
-        String [] ids = metadataVersionIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
+      for (String timestampMetadataVersionIdPairStr : currentChildren) {
+        String [] ids = timestampMetadataVersionIdPairStr.split(HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER);
         if (ids.length != 2) {
           throw new VeniceException("unrecognized Schema path format. Store: " + storeName
-              + " path: " + metadataVersionIdPairStr);
+              + " path: " + timestampMetadataVersionIdPairStr);
         }
 
         if (null == schemaData.getMetadataSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
-          schemaData.addMetadataSchema(accessor.getMetadataSchema(storeName, metadataVersionIdPairStr));
+          schemaData.addMetadataSchema(accessor.getMetadataSchema(storeName, timestampMetadataVersionIdPairStr));
         }
       }
     }

@@ -5,7 +5,6 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -17,6 +16,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
@@ -37,8 +37,8 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -523,11 +523,12 @@ public class AdminExecutionTask implements Callable<Void> {
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
     String remoteKafkaBootstrapServers = message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
+    int timestampMetadataVersionId = message.timestampMetadataVersionId;
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating
         admin.replicateAddVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-            pushType, remoteKafkaBootstrapServers, rewindTimeInSecondsOverride);
+            pushType, remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
       }
     } else {
       if (VeniceSystemStoreUtils.isStoreHostingSharedMetadata(clusterName, storeName)) {
@@ -540,7 +541,7 @@ public class AdminExecutionTask implements Callable<Void> {
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride);
+            remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
       }
     }
   }
@@ -585,11 +586,11 @@ public class AdminExecutionTask implements Callable<Void> {
     String storeName = message.storeName.toString();
     int valueSchemaId = message.valueSchemaId;
     String metadataSchemaStr = message.metadataSchema.definition.toString();
-    int metadataVersionId = message.metadataVersionId;
+    int timestampMetadataVersionId = message.timestampMetadataVersionId;
 
-    admin.addMetadataSchema(clusterName, storeName, valueSchemaId, metadataVersionId, metadataSchemaStr);
+    admin.addMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
     logger.info(String.format("Added metedata schema:\n %s\n to store: %s, value schema id: %d, metedata schema id: %d",
-        metadataSchemaStr, storeName, valueSchemaId, metadataVersionId));
+        metadataSchemaStr, storeName, valueSchemaId, timestampMetadataVersionId));
   }
 
 }

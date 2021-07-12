@@ -468,10 +468,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId) {
+  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
     preCheckStoreCondition(storeName);
 
-    String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + metadataVersionId;
+    String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + timestampMetadataVersionId;
 
     return accessor.getMetadataSchema(storeName, idPairStr);
   }
@@ -501,11 +501,11 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public MetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String metadataSchemaStr,  int metadataVersionId) {
+  public MetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String metadataSchemaStr,  int timestampMetadataVersionId) {
     MetadataSchemaEntry metadataSchemaEntry =
-        new MetadataSchemaEntry(valueSchemaId, metadataVersionId, metadataSchemaStr);
+        new MetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
 
-    if (metadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+    if (timestampMetadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       logger.info("metadata schema is already existing. Skip adding it to repository. Schema: " + metadataSchemaStr);
     } else {
       accessor.addMetadataSchema(storeName, metadataSchemaEntry);

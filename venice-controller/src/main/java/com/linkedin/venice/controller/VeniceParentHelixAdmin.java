@@ -16,7 +16,6 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
-import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -30,6 +29,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
@@ -82,9 +82,9 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.MetadataSchemaAdapter;
 import com.linkedin.venice.schema.MetadataSchemaEntry;
-import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.MetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -629,9 +629,15 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
-      int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride) {
+      int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
+      long rewindTimeInSecondsOverride, int timestampMetadataVersionId) {
+    // Parent controller will always pick the timestampMetadataVersionId from configs.
+    timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getMetadataVersionId();
     Version version = veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-        remoteKafkaBootstrapServers, rewindTimeInSecondsOverride);
+        remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
+    if (version.isActiveActiveReplicationEnabled()) {
+      updateActiveActiveSchemaForAllValueSchema(clusterName, storeName);
+    }
     acquireAdminMessageLock(clusterName, storeName);
     try {
       sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType);
@@ -913,11 +919,15 @@ public class VeniceParentHelixAdmin implements Admin {
     if (pushType.isIncremental()) {
       newVersion = veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName);
     } else {
+      int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getMetadataVersionId();
       Pair<Boolean, Version> result = veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId,
           numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
-          null, batchStartingFabric, rewindTimeInSecondsOverride);
+          null, batchStartingFabric, rewindTimeInSecondsOverride, timestampMetadataVersionId);
       newVersion = result.getSecond();
       if (result.getFirst()) {
+        if (newVersion.isActiveActiveReplicationEnabled()) {
+          updateActiveActiveSchemaForAllValueSchema(clusterName, storeName);
+        }
         // Send admin message if the version is newly created.
         acquireAdminMessageLock(clusterName, storeName);
         try {
@@ -970,6 +980,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Default value, unused for non hybrid store
       addVersion.rewindTimeInSecondsOverride = -1;
     }
+    addVersion.timestampMetadataVersionId = version.getTimestampMetadataVersionId();
     return addVersion;
   }
 
@@ -1827,19 +1838,19 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public MetadataSchemaEntry addMetadataSchema(String clusterName, String storeName, int valueSchemaId, int metadataVersionId, String metadataSchemaStr) {
+  public MetadataSchemaEntry addMetadataSchema(String clusterName, String storeName, int valueSchemaId, int timestampMetadataVersionId, String metadataSchemaStr) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       MetadataSchemaEntry metadataSchemaEntry =
-          new MetadataSchemaEntry(valueSchemaId, metadataVersionId, metadataSchemaStr);
+          new MetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
       if (veniceHelixAdmin.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, metadataSchemaEntry)) {
         logger.info("Metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + metadataSchemaStr
-            + " metadataVersionId:" + metadataVersionId + " valueSchemaId:" + valueSchemaId);
+            + " timestampMetadataVersionId:" + timestampMetadataVersionId + " valueSchemaId:" + valueSchemaId);
         return metadataSchemaEntry;
       }
 
-      logger.info("Adding Metadata schema: for store:" + storeName + " in cluster:" + clusterName + " metadatSchema:" + metadataSchemaStr
-          + " metadataVersionId:" + metadataVersionId + " valueSchemaId:" + valueSchemaId);
+      logger.info("Adding Metadata schema: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + metadataSchemaStr
+          + " timestampMetadataVersionId:" + timestampMetadataVersionId + " valueSchemaId:" + valueSchemaId);
 
       MetadataSchemaCreation metadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.METADATA_SCHEMA_CREATION.getNewInstance();
       metadataSchemaCreation.clusterName = clusterName;
@@ -1849,7 +1860,7 @@ public class VeniceParentHelixAdmin implements Admin {
       schemaMeta.definition = metadataSchemaStr;
       schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
       metadataSchemaCreation.metadataSchema = schemaMeta;
-      metadataSchemaCreation.metadataVersionId = metadataVersionId;
+      metadataSchemaCreation.timestampMetadataVersionId = timestampMetadataVersionId;
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.METADATA_SCHEMA_CREATION.getValue();
@@ -1859,24 +1870,35 @@ public class VeniceParentHelixAdmin implements Admin {
 
       //defensive code checking
       MetadataVersionId actualValueSchemaId = getMetadataVersionId(clusterName, storeName, metadataSchemaStr);
-      if (actualValueSchemaId.getValueSchemaVersion() != valueSchemaId || actualValueSchemaId.getMetadataProtocolVersion() != metadataVersionId) {
+      if (actualValueSchemaId.getValueSchemaVersion() != valueSchemaId || actualValueSchemaId.getMetadataProtocolVersion() != timestampMetadataVersionId) {
         throw new VeniceException(String.format("Something bad happens, the expected new value schema id pair is:"
-                + "%d_%d, but got: %d_%d", valueSchemaId, metadataVersionId, actualValueSchemaId.getValueSchemaVersion(),
+                + "%d_%d, but got: %d_%d", valueSchemaId, timestampMetadataVersionId, actualValueSchemaId.getValueSchemaVersion(),
             actualValueSchemaId.getMetadataProtocolVersion()));
       }
 
-      return new MetadataSchemaEntry(valueSchemaId, metadataVersionId, metadataSchemaStr);
+      return new MetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
     } finally {
       releaseAdminMessageLock(clusterName);
+    }
+  }
+
+  private void updateActiveActiveSchemaForAllValueSchema(String clusterName, String storeName) {
+    final Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, storeName);
+    for (SchemaEntry valueSchema : valueSchemas) {
+      updateActiveActiveSchema(clusterName, storeName, valueSchema.getSchema(), valueSchema.getId());
     }
   }
 
   private void updateActiveActiveSchema(String clusterName, String storeName, Store store) {
     Schema latestValueSchema = veniceHelixAdmin.getLatestValueSchema(clusterName, store);
     int valueSchemaId = getValueSchemaId(clusterName, storeName, latestValueSchema.toString());
-    int metadataVersionId = multiClusterConfigs.getCommonConfig().getMetadataVersionId();
-    String metadataSchema = MetadataSchemaAdapter.parse(latestValueSchema, metadataVersionId).toString();
-    addMetadataSchema(clusterName, storeName, valueSchemaId, metadataVersionId, metadataSchema);
+    updateActiveActiveSchema(clusterName, storeName, latestValueSchema, valueSchemaId);
+  }
+
+  private void updateActiveActiveSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
+    int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getMetadataVersionId();
+    String metadataSchema = MetadataSchemaAdapter.parse(valueSchema, timestampMetadataVersionId).toString();
+    addMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, metadataSchema);
   }
 
   @Override

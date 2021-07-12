@@ -69,7 +69,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(53, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"), // , AdminOperation.class),
+  ADMIN_OPERATION(54, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"), // , AdminOperation.class),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -134,7 +134,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(3, StoreMetaValue.class, "StoreMeta"),
+  METADATA_SYSTEM_SCHEMA_STORE(4, StoreMetaValue.class, "StoreMeta"),
 
   /**
    * Key schema for push status system store.

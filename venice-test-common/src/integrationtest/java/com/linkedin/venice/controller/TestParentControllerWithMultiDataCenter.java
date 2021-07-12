@@ -6,12 +6,14 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.MetadataSchemaAdapter;
 import com.linkedin.venice.schema.MetadataSchemaEntry;
 import com.linkedin.venice.utils.TestPushUtils;
@@ -27,6 +29,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static org.testng.Assert.*;
+
 
 public class TestParentControllerWithMultiDataCenter {
   private static final int TEST_TIMEOUT = 90_000; // ms
@@ -39,6 +43,15 @@ public class TestParentControllerWithMultiDataCenter {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+
+  private static final String BASIC_USER_SCHEMA_STRING_WITH_DEFAULT = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"User\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " +
+      "  ] " +
+      " } ";
 
   @BeforeClass
   public void setUp() {
@@ -230,48 +243,16 @@ public class TestParentControllerWithMultiDataCenter {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testEnableActiveActiveReplicationConfig() {
-    String clusterName = CLUSTER_NAMES[0];
-    String storeName = TestUtils.getUniqueString("store");
-
-    VeniceControllerWrapper parentController =
-        parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
-
-    /**
-     * Create a test store
-     */
-    NewStoreResponse newStoreResponse = parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName,
-        "", "\"string\"", "\"string\""));
-    Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
-
-    /**
-     * Test Active/Active replication config
-     */
-    ControllerClient dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    UpdateStoreQueryParams updateStoreToEnableAARepl = new UpdateStoreQueryParams()
-        .setLeaderFollowerModel(true)
-        .setActiveActiveReplicationEnabled(true);
-    TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
-    TestUtils.waitForNonDeterministicAssertion(900, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = dc0Client.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
-      StoreInfo storeInfo = storeResponse.getStore();
-
-      Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
-      Assert.assertTrue(storeInfo.isActiveActiveReplicationEnabled());
-    });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationSchema() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = TestUtils.getUniqueString("store");
-    String recordSchemaStr1 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
-    String recordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    String recordSchemaStr1 = BASIC_USER_SCHEMA_STRING_WITH_DEFAULT;
+    String recordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
+    String recordSchemaStr3 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
 
     Schema metadataSchema1 = MetadataSchemaAdapter.parse(recordSchemaStr1, 1);
     Schema metadataSchema2 = MetadataSchemaAdapter.parse(recordSchemaStr2, 1);
+    Schema metadataSchema3 = MetadataSchemaAdapter.parse(recordSchemaStr3, 1);
 
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
@@ -284,15 +265,19 @@ public class TestParentControllerWithMultiDataCenter {
           c -> c.createNewStore(storeName, "", "\"string\"", recordSchemaStr1));
       Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
+      SchemaResponse schemaResponse2 = parentControllerClient.retryableRequest(5,
+          c -> c.addValueSchema(storeName, recordSchemaStr2));
+      Assert.assertFalse(schemaResponse2.isError(), "addValeSchema returned error: " + schemaResponse2.getError());
+
+      UpdateStoreQueryParams updateStoreToEnableAARepl =
+          new UpdateStoreQueryParams().setLeaderFollowerModel(true).setActiveActiveReplicationEnabled(true);
+      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
       /**
        * Test Active/Active replication config enablement generates the active active metadata schema.
        */
       try (ControllerClient dc0Client = new ControllerClient(clusterName,
           childDatacenters.get(0).getControllerConnectString())) {
-        UpdateStoreQueryParams updateStoreToEnableAARepl =
-            new UpdateStoreQueryParams().setLeaderFollowerModel(true).setActiveActiveReplicationEnabled(true);
-        TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
-        TestUtils.waitForNonDeterministicAssertion(900, TimeUnit.SECONDS, false, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {
           StoreResponse storeResponse = dc0Client.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
@@ -300,25 +285,50 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
           Assert.assertTrue(storeInfo.isActiveActiveReplicationEnabled());
         });
+
+        Admin veniceHelixAdmin = childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
+        Collection<MetadataSchemaEntry> metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
+        Assert.assertEquals(metadataSchemas.size(), 1);
+        Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema2);
+
+        //Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
+        SchemaResponse schemaResponse3 =
+            parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, recordSchemaStr3));
+        Assert.assertFalse(schemaResponse3.isError(), "addValeSchema returned error: " + schemaResponse3.getError());
+
+        metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
+        Assert.assertEquals(metadataSchemas.size(), 2);
+
+        Iterator<MetadataSchemaEntry> iterator = metadataSchemas.iterator();
+        Assert.assertEquals(iterator.next().getSchema(), metadataSchema2);
+        Assert.assertEquals(iterator.next().getSchema(), metadataSchema3);
+
+        //Add a new version for the store and make sure all new metadata schema are generated.
+        VersionCreationResponse vcr =
+            parentControllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-push"), 1L);
+        assertEquals(vcr.getVersion(), 1, "requesting a topic for a push should provide version number 1");
+
+        TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = dc0Client.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+
+          List<Version> versions = storeInfo.getVersions();
+          Assert.assertNotNull(versions);
+          Assert.assertEquals(versions.size(), 1);
+          Assert.assertTrue(versions.get(0).isLeaderFollowerModelEnabled());
+          Assert.assertTrue(versions.get(0).isActiveActiveReplicationEnabled());
+          Assert.assertEquals(versions.get(0).getTimestampMetadataVersionId(), 1);
+        });
+
+        metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
+        Assert.assertEquals(metadataSchemas.size(), 3);
+
+        Iterator<MetadataSchemaEntry> iterator2 = metadataSchemas.iterator();
+        Assert.assertEquals(iterator2.next().getSchema(), metadataSchema1);
+        Assert.assertEquals(iterator2.next().getSchema(), metadataSchema2);
+        Assert.assertEquals(iterator2.next().getSchema(), metadataSchema3);
       }
-
-      Admin veniceHelixAdmin = childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
-      Collection<MetadataSchemaEntry> metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
-      Assert.assertEquals(metadataSchemas.size(), 1);
-      Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema1);
-
-      //Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
-      SchemaResponse schemaResponse = parentControllerClient.retryableRequest(5,
-          c -> c.addValueSchema(storeName, recordSchemaStr2));
-      Assert.assertFalse(schemaResponse.isError(), "addValeSchema returned error: " + schemaResponse.getError());
-
-      metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
-      Assert.assertEquals(metadataSchemas.size(), 2);
-
-      Iterator<MetadataSchemaEntry> iterator = metadataSchemas.iterator();
-      Assert.assertEquals(iterator.next().getSchema(), metadataSchema1);
-      Assert.assertEquals(iterator.next().getSchema(), metadataSchema2);
-
     }
   }
 }

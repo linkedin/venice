@@ -114,7 +114,8 @@ public interface Admin extends AutoCloseable, Closeable {
      * This method behaves differently in {@link VeniceHelixAdmin} and {@link VeniceParentHelixAdmin}.
      */
     void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
-        int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers, long rewindTimeInSecondsOverride);
+        int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
+        long rewindTimeInSecondsOverride, int timestampMetadataVersionId);
 
     default boolean hasWritePermissionToBatchJobHeartbeatStore(String principalId) {
         return false;
@@ -231,7 +232,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Collection<MetadataSchemaEntry> getMetadataSchemas(String clusterName, String storeName);
     MetadataVersionId getMetadataVersionId(String clusterName, String storeName, String metadataSchemaStr);
-    MetadataSchemaEntry addMetadataSchema(String clusterName, String storeName, int valueSchemaId, int metadataVersionId, String metadataSchemaStr);
+    MetadataSchemaEntry addMetadataSchema(String clusterName, String storeName, int valueSchemaId, int timestampMetadataVersionId, String metadataSchemaStr);
 
     /**
      * Remove an existing derived schema
