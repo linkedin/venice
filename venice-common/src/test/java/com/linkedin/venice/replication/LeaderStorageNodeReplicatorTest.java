@@ -12,6 +12,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -69,7 +70,7 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(anyString(), any(Time.class));
 
 
-    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl);
+    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
 
     verify(mockVeniceWriter).broadcastTopicSwitch(any(), anyString(), anyLong(), any());
   }
@@ -97,7 +98,7 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(anyString(), any(Time.class));
 
-    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl);
+    leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
 
     List<CharSequence> expectedSourceClusters = new ArrayList<>();
     expectedSourceClusters.add(aggregateRealTimeSourceKafkaUrl);

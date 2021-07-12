@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.mockito.Mockito;
@@ -22,7 +23,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
         storeCleaner, getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
         false, Optional.of(mock(TopicReplicator.class)), getMockMetadataStoreWriter(),
-        getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl());
+        getClusterLockManager(), getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
   }
 
   @Override
@@ -30,7 +31,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
         getMockStoreCleaner(), getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
         skipBufferReplayForHybrid, Optional.of(mockReplicator), getMockMetadataStoreWriter(), getClusterLockManager(),
-        getAggregateRealTimeSourceKafkaUrl());
+        getAggregateRealTimeSourceKafkaUrl(), Collections.emptyList());
   }
 
   @Test

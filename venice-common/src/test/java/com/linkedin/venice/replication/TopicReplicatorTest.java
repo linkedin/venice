@@ -56,7 +56,7 @@ public class TopicReplicatorTest {
     // Methods under test
     doCallRealMethod().when(topicReplicator).checkPreconditions(anyString(), anyString(), any(), any());
     doCallRealMethod().when(topicReplicator).getRewindStartTime(any(), anyLong());
-    doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong(), anyString());
+    doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong(), anyList());
   }
 
   @Test

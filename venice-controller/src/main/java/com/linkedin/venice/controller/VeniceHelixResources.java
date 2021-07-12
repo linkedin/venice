@@ -29,6 +29,8 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
@@ -123,10 +125,12 @@ public class VeniceHelixResources implements VeniceResource {
     VeniceOfflinePushMonitorAccessor offlinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(clusterName, zkClient,
         adapterSerializer, config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     String aggregateRealTimeSourceKafkaUrl = config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
+
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         offlinePushMonitorAccessor, admin, metadataRepository, new AggPushHealthStats(clusterName, metricsRepository),
         config.isSkipBufferRelayForHybrid(), onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
-        metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl);
+        metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl, getActiveActiveRealTimeSourceKafkaURLs(config));
+
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(clusterName, offlinePushMonitorAccessor, metadataRepository,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository), this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
@@ -142,6 +146,19 @@ public class VeniceHelixResources implements VeniceResource {
           routingDataRepository, pushMonitor, metricsRepository, config.getErrorPartitionAutoResetLimit(),
           config.getErrorPartitionProcessingCycleDelay());
     }
+  }
+
+  private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
+    List<String> kafkaURLs = new ArrayList<>(config.getActiveActiveRealTimeSourceFabrics().size());
+    for (String fabric : config.getActiveActiveRealTimeSourceFabrics()) {
+      String kafkaURL = config.getChildDataCenterKafkaUrlMap().get(fabric);
+      if (kafkaURL == null) {
+        throw new VeniceException(
+                String.format("No A/A source Kafka URL found for fabric %s in %s", fabric, config.getChildDataCenterKafkaUrlMap()));
+      }
+      kafkaURLs.add(kafkaURL);
+    }
+    return Collections.unmodifiableList(kafkaURLs);
   }
 
   /**
