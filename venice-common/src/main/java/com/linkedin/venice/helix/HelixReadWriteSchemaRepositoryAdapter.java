@@ -217,10 +217,10 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public MetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String metadataSchemaStr, int metadataVersionId) {
+  public MetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String metadataSchemaStr, int timestampMetadataVersionId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return readWriteRegularStoreSchemaRepository.addMetadataSchema(storeName, valueSchemaId, metadataSchemaStr, metadataVersionId);
+      return readWriteRegularStoreSchemaRepository.addMetadataSchema(storeName, valueSchemaId, metadataSchemaStr, timestampMetadataVersionId);
     }
     throw new VeniceException(errorMsgForUnsupportedOperationsAgainstSystemStore(storeName, systemStoreType, "addMetadataSchema"));
   }
@@ -235,12 +235,12 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId) {
+  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
-      return readWriteRegularStoreSchemaRepository.getMetadataSchema(storeName, valueSchemaId, metadataVersionId);
+      return readWriteRegularStoreSchemaRepository.getMetadataSchema(storeName, valueSchemaId, timestampMetadataVersionId);
     }
-    return readOnlyZKSharedSchemaRepository.getMetadataSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId, metadataVersionId);
+    return readOnlyZKSharedSchemaRepository.getMetadataSchema(systemStoreType.getZkSharedStoreName(), valueSchemaId, timestampMetadataVersionId);
   }
 
   @Override

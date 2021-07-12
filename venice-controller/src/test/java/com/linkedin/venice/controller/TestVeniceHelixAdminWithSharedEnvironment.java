@@ -443,12 +443,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     for (int i = 0; i < 5; i ++) {
       // Mimic the retry behavior by the admin consumption task.
       Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class,
-          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null, -1));
+          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null, -1, multiClusterConfig.getCommonConfig().getMetadataVersionId()));
     }
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(DEFAULT_REPLICA_COUNT));
     reset(mockedTopicManager);
-    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null, -1);
+    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null, -1, multiClusterConfig.getCommonConfig().getMetadataVersionId());
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
         "There should only be exactly one version added to the test-store");
@@ -1323,7 +1323,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
      * Add version 1 without remote Kafka bootstrap servers.
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
-        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1);
+        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
 
@@ -1333,7 +1333,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String remoteKafkaBootstrapServers = "localhost:9092";
     String pushJobId2 = "test-push-job-id-2";
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId2, 2, 1,
-        false, true, Version.PushType.BATCH, null, remoteKafkaBootstrapServers, Optional.empty(), -1);
+        false, true, Version.PushType.BATCH, null, remoteKafkaBootstrapServers, Optional.empty(), -1, 1);
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(2).get().getPushStreamSourceAddress(), remoteKafkaBootstrapServers);
@@ -1531,7 +1531,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
      * Add version 1
      */
     veniceAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId1, 1, 1,
-        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1);
+        false, true, Version.PushType.BATCH, null, null, Optional.empty(), -1, 1);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // A/A version level config should be true
@@ -1545,11 +1545,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testAddMetadataSchema() {
     String storeName = TestUtils.getUniqueString("aa_store");
     String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
-    int metadataVersionId = multiClusterConfig.getCommonConfig().getMetadataVersionId();
-    Schema metadataSchema = MetadataSchemaAdapter.parse(recordSchemaStr, metadataVersionId);
+    int timestampMetadataVersionId = multiClusterConfig.getCommonConfig().getMetadataVersionId();
+    Schema metadataSchema = MetadataSchemaAdapter.parse(recordSchemaStr, timestampMetadataVersionId);
 
     veniceAdmin.addStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
-    veniceAdmin.addMetadataSchema(clusterName, storeName, 1,  metadataVersionId, metadataSchema.toString());
+    veniceAdmin.addMetadataSchema(clusterName, storeName, 1,  timestampMetadataVersionId, metadataSchema.toString());
     Collection<MetadataSchemaEntry> metadataSchemas = veniceAdmin.getMetadataSchemas(clusterName, storeName);
     Assert.assertEquals(metadataSchemas.size(), 1);
     Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);

@@ -83,15 +83,16 @@ public class VeniceParentHelixAdminTest {
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT)
   public void testAddVersion() {
+    Properties properties = new Properties();
+    properties.setProperty(TIMESTAMP_METADATA_VERSION_ID, String.valueOf(1));
     try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceParentController(venice.getClusterName(), zkServerWrapper.getAddress(), venice.getKafka(),
-        new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false)) {
+        new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, new VeniceProperties(properties), false)) {
       String parentControllerUrl = parentControllerWrapper.getControllerUrl();
       String childControllerUrl = venice.getMasterVeniceController().getControllerUrl();
       // Adding store
       String storeName = "test_store";
       String owner = "test_owner";
       String keySchemaStr = "\"long\"";
-      String proxyUser = "test_user";
       Schema valueSchema = generateSchema(false);
       try (ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(), parentControllerUrl);
           ControllerClient childControllerClient = new ControllerClient(venice.getClusterName(), childControllerUrl)) {
@@ -99,7 +100,8 @@ public class VeniceParentHelixAdminTest {
 
         // Configure the store to hybrid
         UpdateStoreQueryParams params =
-            new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000);
+            new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000)
+                .setLeaderFollowerModel(true).setActiveActiveReplicationEnabled(true);
         ControllerResponse parentControllerResponse = parentControllerClient.updateStore(storeName, params);
         Assert.assertFalse(parentControllerResponse.isError());
         HybridStoreConfig hybridStoreConfig =
@@ -136,13 +138,17 @@ public class VeniceParentHelixAdminTest {
             Version.numberBasedDummyPushId(2), false, true, false, Optional.empty(), Optional.empty(), Optional.empty(),
             false, 1000);
         Assert.assertFalse(parentControllerResponse.isError(), parentControllerResponse.getError());
-        // Check version-level rewind time config
+
+        // Check version-level config
         versionFromParent = parentControllerClient.getStore(storeName).getStore().getVersion(2);
         assertTrue(versionFromParent.isPresent() && versionFromParent.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
-        // Validate version-level rewind time config in child
+        assertEquals(versionFromParent.get().getTimestampMetadataVersionId(), 1);
+
+        // Validate version-level config in child
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
           Optional<Version> versionFromChild = childControllerClient.getStore(storeName).getStore().getVersion(2);
           assertTrue(versionFromChild.isPresent() && versionFromChild.get().getHybridStoreConfig().getRewindTimeInSeconds() == 1000);
+          assertEquals(versionFromChild.get().getTimestampMetadataVersionId(), 1);
         });
 
         // Check store level config
@@ -200,7 +206,6 @@ public class VeniceParentHelixAdminTest {
     parentControllerClient.close();
     parentController.close();
   }
-
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT)
   public void testHybridAndETLStoreConfig() {
@@ -343,7 +348,6 @@ public class VeniceParentHelixAdminTest {
       Assert.assertEquals(storeResponseFromChildController.getStore().getBackupVersionRetentionMs(), backupVersionRetentionMs);
     });
   }
-
 
   private void testSuperSetSchemaGen(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
     // Adding store

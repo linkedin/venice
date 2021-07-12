@@ -128,5 +128,6 @@ public class ControllerApiConstants {
   public static final String REGIONS_FILTER = "regions_filter";
 
   public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind_time_in_seconds_override";
-  
+
+  public static final String TIMESTAMP_METADATA_VERSION_ID = "timestamp_metadata_version_id";
 }

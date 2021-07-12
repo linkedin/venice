@@ -19,7 +19,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/ChunkedKeySuffix/*"
   "venice-common/src/main/resources/avro/ParticipantMessage/ParticipantMessageKey/*"
   "venice-common/src/main/resources/avro/ParticipantMessage/ParticipantMessageValue/v1/*"
-  "venice-controller/src/main/resources/avro/AdminOperation/v53/*"
+  "venice-controller/src/main/resources/avro/AdminOperation/v54/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
   "venice-schema-common/src/main/resources/avro/MultiGetRouterRequestKey/*"
@@ -35,7 +35,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataKey/*"
   "venice-common/src/main/resources/avro/StoreMetadata/StoreMetadataValue/v2/*"
   "venice-common/src/main/resources/avro/StoreMeta/StoreMetaKey/*"
-  "venice-common/src/main/resources/avro/StoreMeta/StoreMetaValue/v3/*"
+  "venice-common/src/main/resources/avro/StoreMeta/StoreMetaValue/v4/*"
   "venice-common/src/main/resources/avro/PushStatus/PushStatusKey/v1/*"
   "venice-common/src/main/resources/avro/PushStatus/PushStatusValue/v1/*"
   "venice-common/src/main/resources/avro/AdminResponseRecord/v1/*"
@@ -107,10 +107,10 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[29]}/com/linkedin/venice/pushstatus/*.java"
 )
 
-if [[ $# < 1 ]]; then
-  echo "Usage: $0 avro_tools_path"
+if [[ $1 = "-h" ]]; then
+  echo "Usage: $0 [avro_tools_path]"
   echo ""
-  echo "    avro_tools_path: full path to the avro-tools-1.4.x.jar file (required). If you use 'default', it will take:"
+  echo "    avro_tools_path: full path to the avro-tools-1.4.x.jar file. If you don't specify a value or use 'default', it will take:"
   echo ""
   echo "$DEFAULT_AVRO_TOOLS_JAR"
   echo ""
@@ -131,7 +131,7 @@ fi
 
 AVRO_TOOLS_PATH_PARAM=$1
 
-if [[ $AVRO_TOOLS_PATH_PARAM -eq 'default' ]]; then
+if [[ -z "$AVRO_TOOLS_PATH_PARAM" || "$AVRO_TOOLS_PATH_PARAM" = 'default' ]]; then
   AVRO_TOOLS_JAR=$DEFAULT_AVRO_TOOLS_JAR
 else
   AVRO_TOOLS_JAR=$AVRO_TOOLS_PATH_PARAM
@@ -146,7 +146,7 @@ done
 echo "Finished deleting old files. About to generate new ones..."
 
 for (( i=0; i<${#FULL_CODE_GEN_PATH[@]}; i++ )); do
-  java -jar $AVRO_TOOLS_JAR compile schema ${AVRO_SCHEMAS_PATH[i]} ${CODE_GEN_PATH[i]}
+  java -jar "$AVRO_TOOLS_JAR" compile schema ${AVRO_SCHEMAS_PATH[i]} ${CODE_GEN_PATH[i]}
 done
 
 # Don't generate class: com.linkedin.venice.kafka.protocol.GUID.java since it contains changes required to support Avro-1.8

@@ -386,6 +386,17 @@ public class ReadOnlyStore implements Store {
     public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
       throw new UnsupportedOperationException();
     }
+
+    @Override
+    public int getTimestampMetadataVersionId() {
+      return this.delegate.getTimestampMetadataVersionId();
+    }
+
+    @Override
+    public void setTimestampMetadataVersionId(int timestampMetadataVersionId) {
+      throw new UnsupportedOperationException();
+    }
+
     @Override
     public Version cloneVersion() {
       return this.delegate.cloneVersion();

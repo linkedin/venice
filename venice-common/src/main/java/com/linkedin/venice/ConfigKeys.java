@@ -1578,7 +1578,7 @@ public class ConfigKeys {
   /**
    * This will indicate which MetadataSchemaAdapter version to use to generate metadata schema.
    */
-  public static final String METADATA_VERSION_ID = "metadata.version.id";
+  public static final String TIMESTAMP_METADATA_VERSION_ID = "timestamp.metadata.version.id";
 
   /*
    * This config will specify the offset lag threshold to be used for offset lag comparison in making partition online faster.

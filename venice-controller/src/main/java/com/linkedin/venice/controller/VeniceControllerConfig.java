@@ -137,7 +137,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   /**
    * Metadata Version id to be used.
    */
-  private final int metadataVersionId;
+  private final int timestampMetadataVersionId;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -285,7 +285,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.aggregateRealTimeSourceRegion = props.getString(AGGREGATE_REAL_TIME_SOURCE_REGION, "");
     this.isAutoMaterializeMetaSystemStoreEnabled = props.getBoolean(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
 
-    this.metadataVersionId = props.getInt(METADATA_VERSION_ID, 1);
+    this.timestampMetadataVersionId = props.getInt(TIMESTAMP_METADATA_VERSION_ID, 1);
   }
 
   public int getAdminPort() {
@@ -544,7 +544,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return isAutoMaterializeMetaSystemStoreEnabled;
   }
 
-  public int getMetadataVersionId() { return metadataVersionId; }
+  public int getMetadataVersionId() { return timestampMetadataVersionId; }
 
   /**
    * The config should follow the format below:

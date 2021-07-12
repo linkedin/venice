@@ -210,7 +210,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
   }
 
   @Override
-  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int metadataVersionId) {
+  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
     throw new VeniceException("Function: getMetadataSchema is not supported!");
   }
 

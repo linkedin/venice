@@ -113,8 +113,8 @@ public final class SchemaData {
     return valueSchemas;
   }
 
-  public MetadataSchemaEntry getMetadataSchema(int valueSchemaId, int metadataVersionId) {
-    return metadataSchemaMap.get(new MetadataVersionId(valueSchemaId, metadataVersionId));
+  public MetadataSchemaEntry getMetadataSchema(int valueSchemaId, int timestampMetadataVersionId) {
+    return metadataSchemaMap.get(new MetadataVersionId(valueSchemaId, timestampMetadataVersionId));
   }
 
   public Collection<MetadataSchemaEntry> getMetadataSchemas() {
@@ -131,8 +131,8 @@ public final class SchemaData {
 
   public void addMetadataSchema(MetadataSchemaEntry metadataSchemaEntry) {
     MetadataVersionId
-        metadataVersionId = new MetadataVersionId(metadataSchemaEntry.getValueSchemaId(), metadataSchemaEntry.getId());
-    metadataSchemaMap.put(metadataVersionId, metadataSchemaEntry);
-    metadataSchemaRMap.put(metadataSchemaEntry.getSchema(), metadataVersionId);
+        timestampMetadataVersionId = new MetadataVersionId(metadataSchemaEntry.getValueSchemaId(), metadataSchemaEntry.getId());
+    metadataSchemaMap.put(timestampMetadataVersionId, metadataSchemaEntry);
+    metadataSchemaRMap.put(metadataSchemaEntry.getSchema(), timestampMetadataVersionId);
   }
 }
