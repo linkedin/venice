@@ -404,8 +404,22 @@ public class VeniceSystemProducer implements SystemProducer {
     final Callback callback = new VeniceWriter.CompletableFutureCallback(
         completableFuture);
 
+    long logicalTimestamp = -1;
+    if (valueObject instanceof VeniceObjectWithTimestamp) {
+      VeniceObjectWithTimestamp objectWithTimestamp = (VeniceObjectWithTimestamp)valueObject;
+      logicalTimestamp = objectWithTimestamp.getTimestamp();
+      if (logicalTimestamp <= 0) {
+        throw new SamzaException("Timestamp specified in passed `VeniceObjectWithTimestamp` object should be positive, but received: " + logicalTimestamp);
+      }
+      valueObject = objectWithTimestamp.getObject();
+    }
+
     if (null == valueObject) {
-      veniceWriter.delete(key, callback);
+      if (logicalTimestamp > 0) {
+        veniceWriter.delete(key, logicalTimestamp, callback);
+      } else {
+        veniceWriter.delete(key, callback);
+      }
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
@@ -420,14 +434,21 @@ public class VeniceSystemProducer implements SystemProducer {
        byte[] value = serializeObject(topicName, valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
-        veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
+        if (logicalTimestamp > 0) {
+          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), logicalTimestamp, callback);
+        } else {
+          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
+        }
       } else {
         if(!isWriteComputeEnabled) {
           throw new SamzaException("Cannot write partial update record to Venice store " + storeName + " "
               + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
-
-        veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
+        if (logicalTimestamp > 0) {
+          veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback, logicalTimestamp);
+        } else {
+          veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
+        }
       }
     }
     return completableFuture;
