@@ -10,6 +10,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
@@ -35,7 +36,7 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
    */
   @Override
   public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store,
-      String aggregateRealTimeSourceKafkaUrl) {
+      String aggregateRealTimeSourceKafkaUrl, List<String> activeActiveRealTimeSourceKafkaURLs) {
     Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(destTopicName));
     if (!version.isPresent()) {
       throw new VeniceException("Corresponding version does not exist for topic: " + destTopicName + " in store: "
@@ -51,29 +52,31 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
     long bufferReplayStartTime = getRewindStartTime(hybridStoreConfig, version.get().getCreatedTime());
     String finalDestTopicName = version.get().getPushType().isStreamReprocessing() ?
         Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()) : destTopicName;
-    String remoteKafkaUrl = null;
-    // Broadcast TS with remote Kafka url if NR is enabled and store is in aggregate mode
-    if (version.get().isNativeReplicationEnabled()
-        && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE) {
-      remoteKafkaUrl = aggregateRealTimeSourceKafkaUrl;
+    List<String> remoteKafkaUrls = new ArrayList<>();
+
+    if (version.get().isActiveActiveReplicationEnabled()) {
+      remoteKafkaUrls.addAll(activeActiveRealTimeSourceKafkaURLs);
+    } else if (version.get().isNativeReplicationEnabled()
+            && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE) {
+      remoteKafkaUrls.add(aggregateRealTimeSourceKafkaUrl);
     }
     logger.info("Starting buffer replay for topic: " + finalDestTopicName
         + " with buffer replay start timestamp: " + bufferReplayStartTime);
-    beginReplication(srcTopicName, finalDestTopicName, bufferReplayStartTime, remoteKafkaUrl);
+    beginReplication(srcTopicName, finalDestTopicName, bufferReplayStartTime, remoteKafkaUrls);
   }
 
   @Override
   void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
-      long rewindStartTimestamp, String remoteKafkaUrl) {
+      long rewindStartTimestamp, List<String> remoteKafkaUrls) {
     List<CharSequence> sourceClusters = new ArrayList<>();
-    if (!Utils.isNullOrEmpty(remoteKafkaUrl)) {
-      sourceClusters.add(remoteKafkaUrl);
+    if (!remoteKafkaUrls.isEmpty()) {
+      sourceClusters.addAll(remoteKafkaUrls);
     } else {
       sourceClusters.add(destKafkaBootstrapServers);
     }
     VeniceWriterFactory.useVeniceWriter(
         () -> getVeniceWriterFactory().createBasicVeniceWriter(destinationTopic, getTimer()),
-        veniceWriter -> veniceWriter.broadcastTopicSwitch(sourceClusters, sourceTopic, rewindStartTimestamp, new HashMap<>())
+        veniceWriter -> veniceWriter.broadcastTopicSwitch(sourceClusters, sourceTopic, rewindStartTimestamp, Collections.emptyMap())
     );
   }
 

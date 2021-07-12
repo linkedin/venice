@@ -496,8 +496,7 @@ public class Utils {
     if (rawString == null || rawString.length() == 0) {
       return Collections.emptySet();
     }
-    String[] strArray = rawString.split(",\\s*");
-    return Arrays.stream(strArray).collect(Collectors.toSet());
+    return Utils.setOf(rawString.split(",\\s*"));
   }
 
   /**

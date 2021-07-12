@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Optional;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
@@ -28,7 +29,7 @@ public class TestPushMonitorDelegator {
   public void testDelegatorCanCleanupLegacyStatus() {
     PushMonitorDelegator delegator = new PushMonitorDelegator(pushMonitorType, clusterName, routingDataRepository,
         offlinePushAccessor, storeCleaner, metadataRepo, aggPushHealthStats, false,
-        Optional.empty(), Optional.empty(), metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl);
+        Optional.empty(), Optional.empty(), metadataStoreWriter, clusterLockManager, aggregateRealTimeSourceKafkaUrl, Collections.emptyList());
 
     OfflinePushStatus legacyStatus = new OfflinePushStatus("legacy_v1", 1, 1,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);

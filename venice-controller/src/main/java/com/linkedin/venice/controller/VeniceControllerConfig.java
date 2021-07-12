@@ -78,6 +78,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String kafkaAdminClass;
   private final Map<String, String> childDataCenterKafkaUrlMap;
   private final Map<String, String> childDataCenterKafkaZkMap;
+  private final boolean activeActiveEnabledOnController;
+  private final Set<String> activeActiveRealTimeSourceFabrics;
   private final String nativeReplicationSourceFabric;
   private final int errorPartitionAutoResetLimit;
   private final long errorPartitionProcessingCycleDelay;
@@ -152,6 +154,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
     this.topicCreationThrottlingTimeWindowMs = props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
+    this.activeActiveEnabledOnController = props.getBoolean(ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER, false);
+    this.activeActiveRealTimeSourceFabrics = Utils.parseCommaSeparatedStringToSet(
+            props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ""));
+    validateActiveActiveConfigs();
     if (this.parent) {
       String dataCenterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
       this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterWhitelist);
@@ -288,6 +294,22 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.timestampMetadataVersionId = props.getInt(TIMESTAMP_METADATA_VERSION_ID, 1);
   }
 
+  private void validateActiveActiveConfigs() {
+    if (this.activeActiveEnabledOnController && !this.activeActiveRealTimeSourceFabrics.isEmpty()) {
+      throw new VeniceException(String.format("The config %s cannot be empty when the child controller has A/A enabled " +
+              "(%s == true).",
+              ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
+
+    } else if (this.activeActiveEnabledOnController) {
+      LOGGER.info(String.format("A/A is enabled on a child controller and %s == %s",
+              ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, this.activeActiveRealTimeSourceFabrics));
+    } else {
+      LOGGER.info("A/A is not enabled on child controller." +
+              (!this.activeActiveRealTimeSourceFabrics.isEmpty() ?
+                      String.format(" But %s is still set to %s.", ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, this.activeActiveRealTimeSourceFabrics) : ""));
+    }
+  }
+
   public int getAdminPort() {
     return adminPort;
   }
@@ -358,6 +380,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public Map<String, String> getChildDataCenterKafkaUrlMap() {
     return childDataCenterKafkaUrlMap;
+  }
+
+  public Set<String> getActiveActiveRealTimeSourceFabrics() {
+    return activeActiveRealTimeSourceFabrics;
   }
 
   public Map<String, String> getChildDataCenterKafkaZkMap() {

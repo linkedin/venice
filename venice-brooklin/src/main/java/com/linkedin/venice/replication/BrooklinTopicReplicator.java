@@ -139,7 +139,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
 
   @Override
   public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store,
-      String aggregateRealTimeSourceKafkaUrl) {
+      String aggregateRealTimeSourceKafkaUrl, List<String> activeActiveRealTimeSourceKafkaURLs) {
     Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(destTopicName));
     if (!version.isPresent()) {
       throw new VeniceException("Corresponding version does not exist for topic: " + destTopicName + " in store: "
@@ -158,7 +158,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
 
   @Override
   void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
-      long rewindStartTimestamp, String remoteKafkaUrl) {
+      long rewindStartTimestamp, List<String> remoteKafkaUrls) {
 
     Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(sourceTopic, rewindStartTimestamp);
     logger.info("Get rewinding offset for topic: "+ sourceTopic + ", and rewind start timestamp: " + rewindStartTimestamp + ": " + startingOffsetsMap);

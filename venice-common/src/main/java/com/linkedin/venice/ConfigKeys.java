@@ -1094,6 +1094,21 @@ public class ConfigKeys {
    */
   public static final String PARENT_KAFKA_CLUSTER_FABRIC_LIST = "parent.kafka.cluster.fabric.list";
 
+
+  /**
+   * Whether A/A is enabled on the controller. When it is true, all A/A required config (e.g. {@link ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST})
+   * must be set.
+   */
+  public static final String ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER = "active.active.enabled.on.controller";
+
+  /**
+   * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
+   * is enabled on the controller {@link ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
+   * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
+   * Example value of this config: "prod-lva1,prod-lor1,prod-ltx1".
+   */
+  public static final String ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST = "active.active.real.time.source.fabric.list";
+
   /**
    * When the parent controller receives an admin write operation, it replicates that message to the admin kafka stream.
    * After replication the parent controller consumes the message from the stream and processes it there.  This is the

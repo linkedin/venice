@@ -162,7 +162,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             clusterWhiteList = extraProps.getString(CHILD_CLUSTER_WHITELIST);
           }
           for (int dataCenterIndex = 0; dataCenterIndex < childControllers.length; dataCenterIndex++) {
-            String childDataCenterName = "dc-" + dataCenterIndex;
+            String childDataCenterName = createDataCenterNameWithIndex(dataCenterIndex);
             if (!clusterWhiteList.equals("")) {
               clusterWhiteList += ",";
             }
@@ -224,6 +224,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       VeniceController veniceController = new VeniceController(propertiesList, metricsRepository, d2ServerList, Optional.empty(), authorizerService, Optional.of(d2Client));
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress, metricsRepository);
     };
+  }
+
+  private static String createDataCenterNameWithIndex(int index) {
+    return "dc-" + index;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,

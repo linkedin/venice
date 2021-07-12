@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.List;
 import java.util.Optional;
 import org.apache.log4j.Logger;
 
@@ -75,13 +76,12 @@ public abstract class TopicReplicator {
    * and destination topic.
    * @param rewindStartTimestamp to indicate the rewind start time for underlying replicators to start replicating
    *                             records from this timestamp.
-   * @param remoteKafkaUrl to indicate the source Kafka cluster address for leader replicas to
-   *                       consume real-time data when store is in aggregate mode and native
-   *                       replication is enabled
+   * @param remoteKafkaUrls URLs of Kafka clusters which are sources of remote replication (either native replication
+   *                        is enabled or A/A is enabled)
    * @throws TopicException
    */
   public void beginReplication(String sourceTopic, String destinationTopic,
-      long rewindStartTimestamp, String remoteKafkaUrl) throws TopicException {
+      long rewindStartTimestamp, List<String> remoteKafkaUrls) throws TopicException {
     if (doesReplicationExist(sourceTopic, destinationTopic)) {
       LOGGER.info("Replication already exists from src: " + sourceTopic + " to dest: " + destinationTopic
           + ". Skip starting replication.");
@@ -104,7 +104,7 @@ public abstract class TopicReplicator {
       LOGGER.info("Topic " + sourceTopic + " has " + sourcePartitionCount + " partitions"
           + " and topic " + destinationTopic + " has " + destinationPartitionCount + " partitions."  );
     }
-    beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, rewindStartTimestamp, remoteKafkaUrl);
+    beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, rewindStartTimestamp, remoteKafkaUrls);
     LOGGER.info("Successfully started topic replication from: " + sourceTopic + " to " + destinationTopic);
   }
 
@@ -175,9 +175,9 @@ public abstract class TopicReplicator {
   }
 
   abstract public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store,
-      String aggregateRealTimeSourceRegion);
+      String aggregateRealTimeSourceRegion, List<String> activeActiveRealTimeSourceKafkaURLs);
   abstract void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
-      long rewindStartTimestamp, String nativeReplicationSourceKafkaCluster);
+      long rewindStartTimestamp, List<String> remoteKafkaUrls);
   abstract void terminateReplicationInternal(String sourceTopic, String destinationTopic);
 
   /**

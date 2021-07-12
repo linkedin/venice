@@ -57,16 +57,18 @@ public abstract class AbstractPushMonitor
   private final StoreCleaner storeCleaner;
   private final AggPushHealthStats aggPushHealthStats;
   private final boolean skipBufferReplayForHybrid;
-  private Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
   private Optional<TopicReplicator> topicReplicator;
   private final MetadataStoreWriter metadataStoreWriter;
   private final ClusterLockManager clusterLockManager;
   private final String aggregateRealTimeSourceKafkaUrl;
+  private final List<String> activeActiveRealTimeSourceKafkaURLs;
 
   public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner,
       ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
-      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl) {
+      MetadataStoreWriter metadataStoreWriter, ClusterLockManager clusterLockManager, String aggregateRealTimeSourceKafkaUrl,
+      List<String> activeActiveRealTimeSourceKafkaURLs) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -78,6 +80,7 @@ public abstract class AbstractPushMonitor
     this.metadataStoreWriter = metadataStoreWriter;
     this.clusterLockManager = clusterLockManager;
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
+    this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
   }
 
   @Override
@@ -496,6 +499,7 @@ public abstract class AbstractPushMonitor
         logger.info("metadataRepository.refresh() allowed us to retrieve store: '" + storeName + "'!");
       }
     }
+
     if (store.isHybrid()) {
       if (offlinePushStatus.isReadyToStartBufferReplay()) {
         logger.info(offlinePushStatus.getKafkaTopic()+" is ready to start buffer replay.");
@@ -511,7 +515,8 @@ public abstract class AbstractPushMonitor
                   Version.composeRealTimeTopic(storeName),
                   offlinePushStatus.getKafkaTopic(),
                   store,
-                  aggregateRealTimeSourceKafkaUrl);
+                  aggregateRealTimeSourceKafkaUrl,
+                  activeActiveRealTimeSourceKafkaURLs);
               newStatusDetails = "kicked off buffer replay";
             }
             updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
