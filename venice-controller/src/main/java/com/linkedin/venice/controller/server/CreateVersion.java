@@ -274,7 +274,7 @@ public class CreateVersion extends AbstractRoute {
                 throw new VeniceException("Store is not in aggregate mode!  Cannot push data to parent topic!!");
               }
             } else {
-              if(!store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.NON_AGGREGATE)) {
+              if(store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
                 throw new VeniceException("Store is in aggregate mode!  Cannot push data to child topic!!");
               }
             }

@@ -1041,6 +1041,10 @@ public class TestPushUtils {
     sendStreamingRecord(producer, storeName, Integer.toString(recordId), "stream_" + recordId);
   }
 
+  public static void sendStreamingRecordWithKeyPrefix(SystemProducer producer, String storeName, String keyPrefix, int recordId) {
+    sendStreamingRecord(producer, storeName, keyPrefix + recordId, "stream_" + recordId);
+  }
+
   public static void sendStreamingRecord(SystemProducer producer, String storeName, Object key, Object message) {
     OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
         new SystemStream("venice", storeName), key, message);

@@ -44,6 +44,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   public static final String SERVICE_NAME = "VeniceController";
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
+  public static final String DEFAULT_PARENT_DATA_CENTER_REGION_NAME = "dc-parent-0";
 
   private VeniceController service;
   private final List<VeniceProperties> configs;
@@ -182,19 +183,28 @@ public class VeniceControllerWrapper extends ProcessWrapper {
            * and in parent fabric, there can be more than one Kafka clusters, so we might need more
            * than one parent fabric name even though logically there is only one parent fabric.
            */
-          String parentDataCenterName1 = "dc-parent-0";
+          String parentDataCenterName1 = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
           String nativeReplicationSourceFabricWhitelist = clusterWhiteList + "," + parentDataCenterName1;
           builder.put(NATIVE_REPLICATION_FABRIC_WHITELIST, nativeReplicationSourceFabricWhitelist);
           builder.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentDataCenterName1, sslToKafka ? kafkaBroker.getSSLAddress() : kafkaBroker.getAddress());
           builder.put(CHILD_DATA_CENTER_KAFKA_ZK_PREFIX + "." + parentDataCenterName1, kafkaBroker.getZkAddress());
           builder.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentDataCenterName1);
 
+          /**
+           * The controller wrapper doesn't know about the new Kafka cluster created inside the test case; so if the test case
+           * is trying to pass in information about the extra Kafka clusters, controller wrapper will try to include the urls
+           * of the extra Kafka cluster with the parent Kafka cluster created in the wrapper.
+           */
           if (extraProps.containsKey(PARENT_KAFKA_CLUSTER_FABRIC_LIST)) {
             nativeReplicationSourceFabricWhitelist = nativeReplicationSourceFabricWhitelist + "," + extraProps.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST);
             builder.put(NATIVE_REPLICATION_FABRIC_WHITELIST, nativeReplicationSourceFabricWhitelist);
             builder.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentDataCenterName1 + "," + extraProps.getString(PARENT_KAFKA_CLUSTER_FABRIC_LIST));
           }
 
+          /**
+           * If the test case doesn't nominate any region as the NR source region, dc-0 (the first child data center) will
+           * be the NR source, not the parent Kafka cluster.
+           */
           if (!extraProps.containsKey(NATIVE_REPLICATION_SOURCE_FABRIC)) {
             builder.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
           }
