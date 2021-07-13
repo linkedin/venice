@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -18,9 +19,9 @@ import java.util.Properties;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 import org.apache.commons.lang.RandomStringUtils;
+import org.apache.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
-import org.rocksdb.Slice;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -31,9 +32,11 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class RocksDBStoragePartitionTest {
+  private static final Logger logger = Logger.getLogger(RocksDBStoragePartitionTest.class);
   private static final String DATA_BASE_DIR = TestUtils.getUniqueTempPath();
   private static final String keyPrefix = "key_";
   private static final String valuePrefix = "value_";
+  private static final String metadataPrefix = "metadata_";
   private static final RocksDBThrottler rocksDbThrottler = new RocksDBThrottler(3);
 
   private Map<String, String> generateInput(int recordCnt, boolean sorted, int padLength) {
@@ -57,6 +60,18 @@ public class RocksDBStoragePartitionTest {
     }
     return records;
   }
+
+  private Map<String, Pair<String, String>> generateInputWithMetadata(int recordCnt) {
+    Map<String, Pair<String, String>> records = new HashMap<>();
+    for (int i = 0; i < recordCnt; ++i) {
+      String value = valuePrefix + i;
+      String metadata = metadataPrefix + i;
+      records.put(keyPrefix + i, Pair.create(value, metadata));
+    }
+    return records;
+  }
+
+
 
   private String getTempDatabaseDir(String storeName) {
     File storeDir = new File(DATA_BASE_DIR, storeName).getAbsoluteFile();
@@ -429,4 +444,50 @@ public class RocksDBStoragePartitionTest {
     removeDir(storeDir);
   }
 
+  @Test
+  public void testMetadataColumnFamily() {
+    String storeName = "test_store_column1";
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    Properties props = new Properties();
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, props);
+    RocksDBServerConfig rocksDBServerConfig  = new RocksDBServerConfig(veniceServerProperties);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    TimestampMetadataRocksDBStoragePartition storagePartition = new TimestampMetadataRocksDBStoragePartition(partitionConfig, factory, DATA_BASE_DIR, null, rocksDbThrottler, rocksDBServerConfig);
+
+    Map<String, Pair<String, String>> inputRecords = generateInputWithMetadata(100);
+    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+      // Use ByteBuffer value/metadata API here since it performs conversion from ByteBuffer to byte array
+      ByteBuffer valueByteBuffer = ByteBuffer.wrap(entry.getValue().getFirst().getBytes());
+      int valuePosition = valueByteBuffer.position();
+      ByteBuffer metadataByteBuffer = ByteBuffer.wrap(entry.getValue().getSecond().getBytes());
+      int metadataPosition = metadataByteBuffer.position();
+      storagePartition.putWithTimestampMetadata(entry.getKey().getBytes(), valueByteBuffer, metadataByteBuffer);
+      Assert.assertEquals(valueByteBuffer.position(), valuePosition);
+      Assert.assertEquals(metadataByteBuffer.position(), metadataPosition);
+    }
+
+    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+      byte[] key = entry.getKey().getBytes();
+      byte[] value = storagePartition.get(key);
+      Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
+      byte[] metadata = storagePartition.getTimestampMetadata(key);
+      Assert.assertEquals(metadata, entry.getValue().getSecond().getBytes());
+    }
+
+    for (Map.Entry<String, Pair<String, String>> entry : inputRecords.entrySet()) {
+      storagePartition.delete(entry.getKey().getBytes());
+      byte[] value = storagePartition.get(entry.getKey().getBytes());
+      Assert.assertNull(value);
+      byte[] metadata = storagePartition.getTimestampMetadata(entry.getKey().getBytes());
+      Assert.assertNotNull(metadata);
+      storagePartition.delete(entry.getKey().getBytes());
+      Assert.assertEquals(metadata, storagePartition.getTimestampMetadata(entry.getKey().getBytes()));
+    }
+
+    storagePartition.drop();
+    removeDir(storeDir);
+  }
 }

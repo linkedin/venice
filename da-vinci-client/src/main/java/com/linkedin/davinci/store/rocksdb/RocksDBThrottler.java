@@ -1,9 +1,13 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import java.util.List;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.log4j.Logger;
+import org.rocksdb.ColumnFamilyDescriptor;
+import org.rocksdb.ColumnFamilyHandle;
+import org.rocksdb.DBOptions;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -65,16 +69,20 @@ public class RocksDBThrottler {
   }
 
   /**
-   * Open RocksDB in read-only mode.
+   * Open RocksDB in read-only mode with provided column family descriptors and handlers.
    */
-  public RocksDB openReadOnly(Options options, String dbPath) throws InterruptedException, RocksDBException {
-    return throttledOpen(dbPath, () -> RocksDB.openReadOnly(options, dbPath));
+  public RocksDB openReadOnly(Options options, String dbPath, List<ColumnFamilyDescriptor> columnFamilyDescriptors,
+      List<ColumnFamilyHandle> columnFamilyHandles) throws RocksDBException, InterruptedException {
+    columnFamilyHandles.clear(); // Make sure we pass in a clean column family handle list. RocksDB JNI only calls add to insert each handle.
+    return throttledOpen(dbPath, () -> RocksDB.openReadOnly(new DBOptions(options), dbPath, columnFamilyDescriptors, columnFamilyHandles));
   }
 
   /**
-   * Open RocksDB in read-write mode.
+   * Open RocksDB in read-write mode with provided column family descriptors and handlers.
    */
-  public RocksDB open(Options options, String dbPath) throws RocksDBException, InterruptedException {
-    return throttledOpen(dbPath, () -> RocksDB.open(options, dbPath));
+  public RocksDB open(Options options, String dbPath, List<ColumnFamilyDescriptor> columnFamilyDescriptors,
+      List<ColumnFamilyHandle> columnFamilyHandles) throws RocksDBException, InterruptedException {
+    columnFamilyHandles.clear(); // Make sure we pass in a clean column family handle list. RocksDB JNI only calls add to insert each handle.
+    return throttledOpen(dbPath, () -> RocksDB.open(new DBOptions(options), dbPath, columnFamilyDescriptors, columnFamilyHandles));
   }
 }

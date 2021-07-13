@@ -126,4 +126,31 @@ public abstract class AbstractStoragePartition {
   public CompletableFuture<Void> compactDB() {
     return CompletableFuture.completedFuture(null);
   }
+
+  /**
+   * This API takes in value and metadata as ByteBuffer format and put it into RocksDB.
+   * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
+   * other storage partition implementation will UnsupportedOperationException.
+   */
+  public void putWithTimestampMetadata(byte[] key, ByteBuffer value, ByteBuffer metadata) {
+    throw new UnsupportedOperationException("putWithTimestampMetadata is only supported in RocksDB");
+  }
+
+  /**
+   * This API takes in value and metadata as byte array format and put it into RocksDB.
+   * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
+   * other storage partition implementation will UnsupportedOperationException.
+   */
+  public void putWithTimestampMetadata(byte[] key, byte[] value, byte[] metadata) {
+    throw new UnsupportedOperationException("putWithTimestampMetadata is only supported in RocksDB");
+  }
+
+  /**
+   * This API retrieves timestamp metadata from timestampMetadataColumnFamily.
+   * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
+   * other storage partition implementation will UnsupportedOperationException.
+   */
+  public byte[] getTimestampMetadata(byte[] key) {
+    throw new UnsupportedOperationException("getTimestampMetadata is only supported in RocksDB");
+  }
 }
