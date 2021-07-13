@@ -63,6 +63,7 @@ import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 import static com.linkedin.venice.meta.IngestionMode.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
@@ -107,10 +108,10 @@ public class  TestPushJobWithNativeReplication {
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
-    controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, "dc-parent-0");
-    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, "dc-parent-0");
+    controllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
+    controllerProps.put(NATIVE_REPLICATION_FABRIC_WHITELIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     int parentKafkaPort = Utils.getFreePort();
-    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + ".dc-parent-0", "localhost:" + parentKafkaPort);
+    controllerProps.put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME, "localhost:" + parentKafkaPort);
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
