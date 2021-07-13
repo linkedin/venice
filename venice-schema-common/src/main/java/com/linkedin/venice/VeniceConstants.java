@@ -70,4 +70,6 @@ public class VeniceConstants {
   public static final String ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME = "FABRIC";
 
   public static final String SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION = "com.linkedin.app.env";
+
+  public static final String TIMESTAMP_FIELD = "timestamp";
 }

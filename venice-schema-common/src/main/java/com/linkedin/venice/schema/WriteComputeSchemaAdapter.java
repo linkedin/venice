@@ -92,7 +92,7 @@ public class WriteComputeSchemaAdapter {
       this.params = Optional.of(params);
     }
 
-    String getName() {
+    public String getName() {
       return name;
     }
 

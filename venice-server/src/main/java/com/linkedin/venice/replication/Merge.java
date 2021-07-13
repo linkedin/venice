@@ -13,7 +13,7 @@ import org.apache.avro.generic.GenericRecord;
  * Conceptually, the various functions merge together 4 elements relating to a given key in the store:
  *
  * 1. The old value associated with the key
- * 2. The old timestamp metadata associated wit
+ * 2. The old timestamp metadata associated with the old value
  * 3. The incoming write operation for that key (absent in case of deletes)
  * 4. The timestamp of the write operation
  *
@@ -22,7 +22,7 @@ import org.apache.avro.generic.GenericRecord;
  * the same end result (i.e. to the same final value and TSMD). This determinism is achieved by the following
  * rules:
  *
- * 1. The fields which are set in the write operation will clobber those of the old value iif the write
+ * 1. The fields which are set in the write operation will clobber those of the old value if and only if the write
  *    operation timestamp is greater than the timestamp associated with that field in the TSMD.
  * 2. Each element included in a collection merging operation is applied to the corresponding collection in
  *    the old value iif the write operation timestamp is greater than the timestamp of the corresponding

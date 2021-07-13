@@ -7,6 +7,7 @@ import java.util.LinkedList;
 import java.util.List;
 import org.apache.avro.Schema;
 
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
 import static org.apache.avro.Schema.Type.*;
 
@@ -95,7 +96,7 @@ public class TimestampMetadataSchemaAdapterV1 {
     Schema tsUnionSchema = createFlattenedUnion(list);
 
     Schema metadataRecord = Schema.createRecord(origSchemaName + "_" + METADATA_RECORD_SUFFIX, null, nameSpace, false);
-    Schema.Field field = AvroCompatibilityHelper.createSchemaField("timestamp", tsUnionSchema, "timestamp when the full record was last updated", 0);
+    Schema.Field field = AvroCompatibilityHelper.createSchemaField(TIMESTAMP_FIELD, tsUnionSchema, "timestamp when the full record was last updated", 0);
 
     metadataRecord.setFields(Arrays.asList(field));
 
