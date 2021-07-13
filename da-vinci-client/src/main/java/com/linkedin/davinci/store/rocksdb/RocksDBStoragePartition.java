@@ -1,39 +1,16 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.store.AbstractStoragePartition;
-import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
-
 import com.linkedin.venice.utils.LatencyUtils;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Supplier;
-import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
-import org.rocksdb.BlockBasedTableConfig;
-import org.rocksdb.EnvOptions;
-import org.rocksdb.FlushOptions;
-import org.rocksdb.IngestExternalFileOptions;
-import org.rocksdb.Options;
-import org.rocksdb.PlainTableConfig;
-import org.rocksdb.ReadOptions;
-import org.rocksdb.RocksDB;
-import org.rocksdb.RocksDBException;
-import org.rocksdb.Slice;
-import org.rocksdb.SstFileReader;
-import org.rocksdb.SstFileReaderIterator;
-import org.rocksdb.RocksIterator;
-import org.rocksdb.SstFileWriter;
-import org.rocksdb.Statistics;
-import org.rocksdb.WriteOptions;
-
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -43,6 +20,30 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Supplier;
+import org.apache.commons.io.FileUtils;
+import org.apache.log4j.Logger;
+import org.rocksdb.BlockBasedTableConfig;
+import org.rocksdb.ColumnFamilyDescriptor;
+import org.rocksdb.ColumnFamilyHandle;
+import org.rocksdb.ColumnFamilyOptions;
+import org.rocksdb.EnvOptions;
+import org.rocksdb.FlushOptions;
+import org.rocksdb.IngestExternalFileOptions;
+import org.rocksdb.Options;
+import org.rocksdb.PlainTableConfig;
+import org.rocksdb.ReadOptions;
+import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
+import org.rocksdb.RocksIterator;
+import org.rocksdb.Slice;
+import org.rocksdb.SstFileReader;
+import org.rocksdb.SstFileReaderIterator;
+import org.rocksdb.SstFileWriter;
+import org.rocksdb.Statistics;
+import org.rocksdb.WriteOptions;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.*;
 
@@ -57,7 +58,7 @@ import static com.linkedin.davinci.store.AbstractStorageEngine.*;
  * operations.
  */
 class RocksDBStoragePartition extends AbstractStoragePartition {
-  private static Logger LOGGER = Logger.getLogger(RocksDBStoragePartition.class);
+  private static final Logger LOGGER = Logger.getLogger(RocksDBStoragePartition.class);
 
   /**
    * This field is being stored during offset checkpointing in {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}.
@@ -70,11 +71,12 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   protected static final String ROCKSDB_LAST_FINISHED_SST_FILE_NO = "rocksdb_last_finished_sst_file_no";
 
   private static final FlushOptions WAIT_FOR_FLUSH_OPTIONS = new FlushOptions().setWaitForFlush(true);
+
   /**
    * Here RocksDB disables WAL, but relies on the 'flush', which will be invoked through {@link #sync()}
    * to avoid data loss during recovery.
    */
-  private final WriteOptions writeOptions;
+  protected final WriteOptions writeOptions;
 
   private int lastFinishedSSTFileNo = -1;
   private int currentSSTFileNo = 0;
@@ -84,8 +86,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private final EnvOptions envOptions;
   private final byte maxUnsignedByte = (byte)255;
 
-  private final String storeName;
-  private final int partitionId;
+  protected final String storeName;
+  protected final int partitionId;
   private final String fullPathForPartitionDB;
 
   /**
@@ -99,7 +101,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    * to guard RocksDB closing behavior.
    * The following {@link #readCloseRWLock} is only used to guard {@link #get} since we don't want to synchronize get requests.
    */
-  private final ReentrantReadWriteLock readCloseRWLock = new ReentrantReadWriteLock();
+  protected final ReentrantReadWriteLock readCloseRWLock = new ReentrantReadWriteLock();
 
   /**
    * This class will be used in {@link #put(byte[], ByteBuffer)} to improve GC.
@@ -133,28 +135,38 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    *
    */
   private final Options options;
-  private RocksDB rocksDB;
+  protected RocksDB rocksDB;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final RocksDBThrottler rocksDBThrottler;
   /**
    * Whether the input is sorted or not.
    */
-  private final boolean deferredWrite;
+  protected final boolean deferredWrite;
 
   /**
    * Whether the database is read only or not.
    */
-  private final boolean readOnly;
-  private final boolean writeOnly;
+  protected final boolean readOnly;
+  protected final boolean writeOnly;
   private final Optional<Statistics> aggStatistics;
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
 
+  /**
+   * Column Family is the concept in RocksDB to create isolation between different value for the same key. All KVs are
+   * stored in `DEFAULT` column family, if no column family is specified.
+   * If we stores timestamp metadata in the RocksDB, we stored it in a separated column family. We will insert all the
+   * column family descriptors into columnFamilyDescriptors and pass it to RocksDB when opening the store, and it will
+   * fill the columnFamilyHandles with handles which will be used when we want to put/get/delete
+   * from different RocksDB column families.
+   */
+  protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
+  protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
 
-  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
-      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
+  protected RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
+      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig, List<byte[]> columnFamilyNameList) {
     super(storagePartitionConfig.getPartitionId());
 
     this.factory = factory;
@@ -164,7 +176,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.aggStatistics = factory.getAggStatistics();
 
-    Options options =  getStoreOptions(storagePartitionConfig);
+    Options options = getStoreOptions(storagePartitionConfig);
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
@@ -189,10 +201,20 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     this.expectedChecksumSupplier = Optional.empty();
     this.rocksDBThrottler = rocksDbThrottler;
     try {
+      /**
+       * There are some possible optimization opportunities for column families. For example, optimizeForSmallDb() option
+       * may be applied if we are sure timestampMetadata column family is smaller in size.
+       */
+      ColumnFamilyOptions columnFamilyOptions = new ColumnFamilyOptions(options);
+      columnFamilyNameList.forEach(name -> columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions)));
+      /**
+       * This new open(ReadOnly)WithColumnFamily API replace original open(ReadOnly) API to reduce code duplication.
+       * In the default case, we will only open DEFAULT_COLUMN_FAMILY, which is what old API does internally.
+       */
       if (this.readOnly) {
-        this.rocksDB = rocksDbThrottler.openReadOnly(options, fullPathForPartitionDB);
+        this.rocksDB = rocksDbThrottler.openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       } else {
-        this.rocksDB = rocksDbThrottler.open(options, fullPathForPartitionDB);
+        this.rocksDB = rocksDbThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       }
     } catch (RocksDBException|InterruptedException e) {
       throw new VeniceException("Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId, e);
@@ -203,7 +225,13 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
         + (this.readOnly ? "read-only" : "read-write") + " mode and " + (this.deferredWrite ? "deferred write" : "non-deferred write") + " mode");
   }
 
-  private void makeSureRocksDBIsStillOpen() {
+  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
+      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
+    // If not specified, RocksDB inserts values into DEFAULT_COLUMN_FAMILY.
+    this(storagePartitionConfig, factory, dbDir, rocksDBMemoryStats, rocksDbThrottler,rocksDBServerConfig, Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY));
+  }
+
+  protected void makeSureRocksDBIsStillOpen() {
     if (isClosed) {
       throw new VeniceException("RocksDB has been closed for store: " + storeName + ", partition id: " + partitionId +
           ", any further operation is disallowed");
@@ -315,6 +343,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
     options.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
     options.setMemtableHugePageSize(rocksDBServerConfig.getMemTableHugePageSize());
+
+    options.setCreateMissingColumnFamilies(true); // This config allows to create new column family automatically.
     return options;
   }
 
@@ -482,6 +512,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
+
+
   @Override
   public byte[] get(byte[] key) {
     readCloseRWLock.readLock().lock();
@@ -574,6 +606,10 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void delete(byte[] key) {
     makeSureRocksDBIsStillOpen();
+    if (readOnly) {
+      throw new VeniceException(
+          "Cannot make deletion while partition is opened in read-only mode" + ", partition=" + storeName + "_" + partitionId);
+    }
     try {
       if (deferredWrite) {
         throw new VeniceException("Deletion is unexpected in 'deferredWrite' mode");
@@ -892,7 +928,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
           rocksDB.close();
           // Reopen the database with auto compaction on
           this.options.setDisableAutoCompactions(false);
-          rocksDB = rocksDBThrottler.open(options, fullPathForPartitionDB);
+          rocksDB = rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
         }
         dbCompactFuture.complete(null);
         LOGGER.info("Manual compaction for database: " + storeName + ", partition: " + partitionId +
