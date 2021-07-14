@@ -8,17 +8,23 @@ package com.linkedin.venice.kafka.protocol;
 @SuppressWarnings("all")
 /** Put payloads contain a record value, and information on how to deserialize it. */
 public class Put extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"Put\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"An identifier used to determine how the PutValue can be deserialized.\"},{\"name\":\"putValue\",\"type\":\"bytes\",\"doc\":\"The record's value to be persisted in the storage engine.\"}]}");
-  /** An identifier used to determine how the PutValue can be deserialized. */
-  public int schemaId;
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"Put\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"putValue\",\"type\":\"bytes\",\"doc\":\"The record's value to be persisted in the storage engine.\"},{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"An identifier used to determine how the PutValue can be deserialized. Also used, in conjunction with the timestampMetadataVersionId, to deserialize the timestampMetadataPayload.\"},{\"name\":\"timestampMetadataVersionId\",\"type\":\"int\",\"doc\":\"The A/A timestamp metadata schema version ID that will be used to deserialize timestampMetadataPayload.\",\"default\":-1},{\"name\":\"timestampMetadataPayload\",\"type\":\"bytes\",\"doc\":\"The serialized value of the timestamp metadata schema.\",\"default\":\"\"}]}");
   /** The record's value to be persisted in the storage engine. */
   public java.nio.ByteBuffer putValue;
+  /** An identifier used to determine how the PutValue can be deserialized. Also used, in conjunction with the timestampMetadataVersionId, to deserialize the timestampMetadataPayload. */
+  public int schemaId;
+  /** The A/A timestamp metadata schema version ID that will be used to deserialize timestampMetadataPayload. */
+  public int timestampMetadataVersionId;
+  /** The serialized value of the timestamp metadata schema. */
+  public java.nio.ByteBuffer timestampMetadataPayload;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
     switch (field$) {
-    case 0: return schemaId;
-    case 1: return putValue;
+    case 0: return putValue;
+    case 1: return schemaId;
+    case 2: return timestampMetadataVersionId;
+    case 3: return timestampMetadataPayload;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -26,8 +32,10 @@ public class Put extends org.apache.avro.specific.SpecificRecordBase implements 
   @SuppressWarnings(value="unchecked")
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
-    case 0: schemaId = (java.lang.Integer)value$; break;
-    case 1: putValue = (java.nio.ByteBuffer)value$; break;
+    case 0: putValue = (java.nio.ByteBuffer)value$; break;
+    case 1: schemaId = (java.lang.Integer)value$; break;
+    case 2: timestampMetadataVersionId = (java.lang.Integer)value$; break;
+    case 3: timestampMetadataPayload = (java.nio.ByteBuffer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

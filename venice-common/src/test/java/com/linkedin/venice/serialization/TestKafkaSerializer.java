@@ -4,11 +4,14 @@ import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.nio.ByteBuffer;
+
+import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
 /**
@@ -74,6 +77,8 @@ public class TestKafkaSerializer {
     Put put = new Put();
     put.schemaId = -1; // TODO: Use valid schema ID.
     put.putValue = ByteBuffer.wrap(val1);
+    put.timestampMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    put.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
     expectedKafkaValue1.payloadUnion = put;
 
     // TODO: Populate producer metadata properly
@@ -103,7 +108,11 @@ public class TestKafkaSerializer {
     /* TEST 2 */
     KafkaMessageEnvelope expectedKafkaValue2 = new KafkaMessageEnvelope();
     expectedKafkaValue2.messageType = MessageType.DELETE.getValue();
-    expectedKafkaValue2.payloadUnion = new Delete();
+    Delete delete = new Delete();
+    delete.schemaId = VENICE_DEFAULT_VALUE_SCHEMA_ID;
+    delete.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    delete.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    expectedKafkaValue2.payloadUnion = delete;
 
     // TODO: Populate producer metadata properly
     ProducerMetadata producerMetadata2 = new ProducerMetadata();

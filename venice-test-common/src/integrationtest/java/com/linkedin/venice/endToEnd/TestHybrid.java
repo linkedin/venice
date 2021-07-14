@@ -1456,6 +1456,8 @@ public class TestHybrid {
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(valueBytes);
     putPayload.schemaId = valueSchemaId;
+    putPayload.timestampMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    putPayload.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
 
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     kafkaValue.messageType = MessageType.PUT.getValue();
