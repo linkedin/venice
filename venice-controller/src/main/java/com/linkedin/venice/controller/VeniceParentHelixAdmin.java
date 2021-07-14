@@ -83,9 +83,9 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.MetadataSchemaAdapter;
-import com.linkedin.venice.schema.MetadataSchemaEntry;
-import com.linkedin.venice.schema.MetadataVersionId;
+import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -632,7 +632,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride, int timestampMetadataVersionId) {
     // Parent controller will always pick the timestampMetadataVersionId from configs.
-    timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getMetadataVersionId();
+    timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
     Version version = veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
         remoteKafkaBootstrapServers, rewindTimeInSecondsOverride, timestampMetadataVersionId);
     if (version.isActiveActiveReplicationEnabled()) {
@@ -919,7 +919,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (pushType.isIncremental()) {
       newVersion = veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName);
     } else {
-      int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getMetadataVersionId();
+      int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
       Pair<Boolean, Version> result = veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId,
           numberOfPartitions, replicationFactor, sendStartOfPush, sorted, pushType, compressionDictionary,
           null, batchStartingFabric, rewindTimeInSecondsOverride, timestampMetadataVersionId);
@@ -1602,7 +1602,7 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       /**
-       * if active-active replication is getting enabled for the store then generate and register the Metadata schema
+       * if active-active replication is getting enabled for the store then generate and register the Timestamp metadata schema
        */
       if (activeActiveReplicationEnabled.isPresent() && activeActiveReplicationEnabled.get() && !store.isActiveActiveReplicationEnabled()) {
         updateActiveActiveSchema(clusterName, storeName, store);
@@ -1687,7 +1687,7 @@ public class VeniceParentHelixAdmin implements Admin {
       SchemaEntry schemaEntry = addValueSchemaEntry(clusterName, storeName, valueSchemaStr, newValueSchemaId);
 
       /**
-       * if active-active replication is enabled for the store then generate and register the new Metadata schema
+       * if active-active replication is enabled for the store then generate and register the new Timestamp metadata schema
        * for this newly added value schema.
        */
       if (store.isActiveActiveReplicationEnabled()) {
@@ -1828,55 +1828,58 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public Collection<MetadataSchemaEntry> getMetadataSchemas(String clusterName, String storeName) {
-    return veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
+  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String clusterName, String storeName) {
+    return veniceHelixAdmin.getTimestampMetadataSchemas(clusterName, storeName);
   }
 
   @Override
-  public MetadataVersionId getMetadataVersionId(String clusterName, String storeName, String metadataSchemaStr) {
-    return veniceHelixAdmin.getMetadataVersionId(clusterName, storeName, metadataSchemaStr);
+  public TimestampMetadataVersionId getTimestampMetadataVersionId(String clusterName, String storeName, String timestampMetadataSchemaStr) {
+    return veniceHelixAdmin.getTimestampMetadataVersionId(clusterName, storeName, timestampMetadataSchemaStr);
   }
 
   @Override
-  public MetadataSchemaEntry addMetadataSchema(String clusterName, String storeName, int valueSchemaId, int timestampMetadataVersionId, String metadataSchemaStr) {
+  public TimestampMetadataSchemaEntry addTimestampMetadataSchema(String clusterName, String storeName, int valueSchemaId, int timestampMetadataVersionId, String timestampMetadataSchemaStr) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      MetadataSchemaEntry metadataSchemaEntry =
-          new MetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
-      if (veniceHelixAdmin.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, metadataSchemaEntry)) {
-        logger.info("Metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + metadataSchemaStr
+      TimestampMetadataSchemaEntry timestampMetadataSchemaEntry =
+          new TimestampMetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
+      if (veniceHelixAdmin.checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId,
+          timestampMetadataSchemaEntry)) {
+        logger.info("Timestamp metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + timestampMetadataSchemaStr
             + " timestampMetadataVersionId:" + timestampMetadataVersionId + " valueSchemaId:" + valueSchemaId);
-        return metadataSchemaEntry;
+        return timestampMetadataSchemaEntry;
       }
 
-      logger.info("Adding Metadata schema: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + metadataSchemaStr
+      logger.info("Adding Timestamp metadata schema: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + timestampMetadataSchemaStr
           + " timestampMetadataVersionId:" + timestampMetadataVersionId + " valueSchemaId:" + valueSchemaId);
 
-      MetadataSchemaCreation metadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.METADATA_SCHEMA_CREATION.getNewInstance();
-      metadataSchemaCreation.clusterName = clusterName;
-      metadataSchemaCreation.storeName = storeName;
-      metadataSchemaCreation.valueSchemaId = valueSchemaId;
+      MetadataSchemaCreation timestampMetadataSchemaCreation = (MetadataSchemaCreation) AdminMessageType.TIMESTAMP_METADATA_SCHEMA_CREATION
+          .getNewInstance();
+      timestampMetadataSchemaCreation.clusterName = clusterName;
+      timestampMetadataSchemaCreation.storeName = storeName;
+      timestampMetadataSchemaCreation.valueSchemaId = valueSchemaId;
       SchemaMeta schemaMeta = new SchemaMeta();
-      schemaMeta.definition = metadataSchemaStr;
+      schemaMeta.definition = timestampMetadataSchemaStr;
       schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-      metadataSchemaCreation.metadataSchema = schemaMeta;
-      metadataSchemaCreation.timestampMetadataVersionId = timestampMetadataVersionId;
+      timestampMetadataSchemaCreation.metadataSchema = schemaMeta;
+      timestampMetadataSchemaCreation.timestampMetadataVersionId = timestampMetadataVersionId;
 
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.METADATA_SCHEMA_CREATION.getValue();
-      message.payloadUnion = metadataSchemaCreation;
+      message.operationType = AdminMessageType.TIMESTAMP_METADATA_SCHEMA_CREATION.getValue();
+      message.payloadUnion = timestampMetadataSchemaCreation;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       //defensive code checking
-      MetadataVersionId actualValueSchemaId = getMetadataVersionId(clusterName, storeName, metadataSchemaStr);
-      if (actualValueSchemaId.getValueSchemaVersion() != valueSchemaId || actualValueSchemaId.getMetadataProtocolVersion() != timestampMetadataVersionId) {
+      TimestampMetadataVersionId
+          actualValueSchemaId = getTimestampMetadataVersionId(clusterName, storeName, timestampMetadataSchemaStr);
+      if (actualValueSchemaId.getValueSchemaVersion() != valueSchemaId || actualValueSchemaId.getTimestampMetadataProtocolVersion() != timestampMetadataVersionId) {
         throw new VeniceException(String.format("Something bad happens, the expected new value schema id pair is:"
                 + "%d_%d, but got: %d_%d", valueSchemaId, timestampMetadataVersionId, actualValueSchemaId.getValueSchemaVersion(),
-            actualValueSchemaId.getMetadataProtocolVersion()));
+            actualValueSchemaId.getTimestampMetadataProtocolVersion()));
       }
 
-      return new MetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
+      return new TimestampMetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
     } finally {
       releaseAdminMessageLock(clusterName);
     }
@@ -1896,9 +1899,9 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private void updateActiveActiveSchema(String clusterName, String storeName, Schema valueSchema, int valueSchemaId) {
-    int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getMetadataVersionId();
-    String metadataSchema = MetadataSchemaAdapter.parse(valueSchema, timestampMetadataVersionId).toString();
-    addMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, metadataSchema);
+    int timestampMetadataVersionId = multiClusterConfigs.getCommonConfig().getTimestampMetadataVersionId();
+    String timestampMetadataSchema = TimestampMetadataSchemaAdapter.parse(valueSchema, timestampMetadataVersionId).toString();
+    addTimestampMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, timestampMetadataSchema);
   }
 
   @Override

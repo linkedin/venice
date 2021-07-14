@@ -40,9 +40,9 @@ import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
 import com.linkedin.venice.meta.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.meta.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
-import com.linkedin.venice.schema.MetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.MetadataVersionId;
+import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.service.ICProvider;
@@ -353,18 +353,18 @@ public abstract class NativeMetadataRepository
   }
 
   @Override
-  public MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr) {
-    throw new VeniceException("Function: getMetadataVersionId is not supported!");
+  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
+    throw new VeniceException("Function: getTimestampMetadataVersionId is not supported!");
   }
 
   @Override
-  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
-    throw new VeniceException("Function: getMetadataSchema is not supported!");
+  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+    throw new VeniceException("Function: getTimestampMetadataSchemas is not supported!");
   }
 
   @Override
-  public Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName) {
-    throw new VeniceException("Function: getMetadataSchemas is not supported!");
+  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
+    throw new VeniceException("Function: getTimestampMetadataSchemas is not supported!");
   }
 
   /**

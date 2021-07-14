@@ -25,11 +25,11 @@ import static org.apache.avro.Schema.Type.*;
  * Currently nested fields are not supported.
  */
 
-public class MetadataSchemaAdapterV1 {
+public class TimestampMetadataSchemaAdapterV1 {
   private static final String METADATA_RECORD_SUFFIX = "MetadataRecord";
   private static final Schema TIMESTAMP_SCHEMA = Schema.create(LONG);
 
-  public MetadataSchemaAdapterV1() {}
+  public TimestampMetadataSchemaAdapterV1() {}
 
   public Schema parse(String schemaStr) {
     return parse(Schema.parse(schemaStr));
@@ -41,7 +41,7 @@ public class MetadataSchemaAdapterV1 {
     if (schema.getType() == RECORD) {
       nameSpace = schema.getNamespace();
     }
-    MetadataSchemaAdapterV1 adapter = new MetadataSchemaAdapterV1();
+    TimestampMetadataSchemaAdapterV1 adapter = new TimestampMetadataSchemaAdapterV1();
     return adapter.createMetadataRecord(origSchemaName, nameSpace, adapter.parse(schema,null));
   }
 
@@ -52,7 +52,7 @@ public class MetadataSchemaAdapterV1 {
    * @return
    */
   private Schema parse(Schema originSchema, String namespace) {
-    MetadataSchemaAdapterV1 adapter = new MetadataSchemaAdapterV1();
+    TimestampMetadataSchemaAdapterV1 adapter = new TimestampMetadataSchemaAdapterV1();
     switch (originSchema.getType()) {
       case RECORD:
         return adapter.parseRecord(originSchema);

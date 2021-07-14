@@ -166,7 +166,7 @@
                     },
                     {"name": "useVersionLevelHybridConfig", "type": "boolean", "default": false, "doc": "Flag to see if hybridConfig at StoreVersion should be used. This is needed during migration of this config from Store level to Version level. We can deprecate this field later."},
                     {"name": "activeActiveReplicationEnabled", "type": "boolean", "default": false, "doc": "Whether or not active/active replication is enabled for hybrid stores; eventually this config will replace native replication flag, when all stores are on A/A"},
-                    {"name": "timestampMetadataVersionId", "type": "int", "default": -1, "doc": "The A/A metadata schema version ID that will be used to deserialize metadataPayload."}
+                    {"name": "timestampMetadataVersionId", "type": "int", "default": -1, "doc": "The A/A timestamp metadata schema version ID that will be used to deserialize metadataPayload."}
                   ]
                 }
               },

@@ -99,9 +99,9 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
-import com.linkedin.venice.schema.MetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.MetadataVersionId;
+import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -3605,26 +3605,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
 
     @Override
-    public Collection<MetadataSchemaEntry> getMetadataSchemas(String clusterName, String storeName) {
+    public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
-        return schemaRepo.getMetadataSchemas(storeName);
+        return schemaRepo.getTimestampMetadataSchemas(storeName);
     }
 
-    public MetadataVersionId getMetadataVersionId(String clusterName, String storeName, String metadataSchemaStr) {
+    public TimestampMetadataVersionId getTimestampMetadataVersionId(String clusterName, String storeName, String timestampMetadataSchemaStr) {
         checkControllerMastership(clusterName);
         ReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
-        return schemaRepo.getMetadataVersionId(storeName, metadataSchemaStr);
+        return schemaRepo.getTimestampMetadataVersionId(storeName, timestampMetadataSchemaStr);
     }
 
     protected boolean checkIfMetadataSchemaAlreadyPresent(String clusterName, String storeName, int valueSchemaId,
-        MetadataSchemaEntry metadataSchemaEntry) {
+        TimestampMetadataSchemaEntry timestampMetadataSchemaEntry) {
         checkControllerMastership(clusterName);
         try {
-            Collection<MetadataSchemaEntry> schemaEntries =
-                getVeniceHelixResource(clusterName).getSchemaRepository().getMetadataSchemas(storeName);
-            for (MetadataSchemaEntry schemaEntry : schemaEntries) {
-                if (schemaEntry.equals(metadataSchemaEntry)) {
+            Collection<TimestampMetadataSchemaEntry> schemaEntries =
+                getVeniceHelixResource(clusterName).getSchemaRepository().getTimestampMetadataSchemas(storeName);
+            for (TimestampMetadataSchemaEntry schemaEntry : schemaEntries) {
+                if (schemaEntry.equals(timestampMetadataSchemaEntry)) {
                     return true;
                 }
             }
@@ -3636,20 +3636,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
 
     @Override
-    public MetadataSchemaEntry addMetadataSchema(String clusterName, String storeName, int valueSchemaId,
-        int timestampMetadataVersionId, String metadataSchemaStr) {
+    public TimestampMetadataSchemaEntry addTimestampMetadataSchema(String clusterName, String storeName, int valueSchemaId,
+        int timestampMetadataVersionId, String timestampMetadataSchemaStr) {
         checkControllerMastership(clusterName);
 
-        MetadataSchemaEntry metadataSchemaEntry =
-            new MetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
-        if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, metadataSchemaEntry)) {
-            logger.info("Metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + metadataSchemaStr
+        TimestampMetadataSchemaEntry timestampMetadataSchemaEntry =
+            new TimestampMetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
+        if (checkIfMetadataSchemaAlreadyPresent(clusterName, storeName, valueSchemaId, timestampMetadataSchemaEntry)) {
+            logger.info("Timestamp metadata schema Already present: for store:" + storeName + " in cluster:" + clusterName + " metadataSchema:" + timestampMetadataSchemaStr
                 + " timestampMetadataVersionId:" + timestampMetadataVersionId + " valueSchemaId:" + valueSchemaId);
-            return metadataSchemaEntry;
+            return timestampMetadataSchemaEntry;
         }
 
         return getVeniceHelixResource(clusterName).getSchemaRepository()
-            .addMetadataSchema(storeName, valueSchemaId, metadataSchemaStr, timestampMetadataVersionId);
+            .addMetadataSchema(storeName, valueSchemaId, timestampMetadataSchemaStr, timestampMetadataVersionId);
     }
 
     @Override

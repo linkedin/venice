@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka.protocol.enums;
 
-import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -12,6 +11,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MetadataSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
@@ -48,7 +48,7 @@ public enum AdminMessageType {
   DERIVED_SCHEMA_CREATION(17, false),
   SUPERSET_SCHEMA_CREATION(18, false),
   CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER(19, true),
-  METADATA_SCHEMA_CREATION(20, false);
+  TIMESTAMP_METADATA_SCHEMA_CREATION(20, false);
 
   private final int value;
   private final boolean batchUpdate;
@@ -81,7 +81,7 @@ public enum AdminMessageType {
       case DERIVED_SCHEMA_CREATION: return new DerivedSchemaCreation();
       case SUPERSET_SCHEMA_CREATION: return new SupersetSchemaCreation();
       case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER: return new ConfigureNativeReplicationForCluster();
-      case METADATA_SCHEMA_CREATION: return new MetadataSchemaCreation();
+      case TIMESTAMP_METADATA_SCHEMA_CREATION: return new MetadataSchemaCreation();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

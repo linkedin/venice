@@ -6,9 +6,9 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.MetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.MetadataVersionId;
+import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -205,18 +205,18 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
 
 
   @Override
-  public MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr) {
-    throw new VeniceException("Function: getMetadataVersionId is not supported!");
+  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
+    throw new VeniceException("Function: getTimestampMetadataVersionId is not supported!");
   }
 
   @Override
-  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
-    throw new VeniceException("Function: getMetadataSchema is not supported!");
+  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+    throw new VeniceException("Function: getTimestampMetadataSchema is not supported!");
   }
 
   @Override
-  public Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName) {
-    throw new VeniceException("Function: getMetadataSchemas is not supported!");
+  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
+    throw new VeniceException("Function: getTimestampMetadataSchemas is not supported!");
   }
 
   private void refreshAllStores() {

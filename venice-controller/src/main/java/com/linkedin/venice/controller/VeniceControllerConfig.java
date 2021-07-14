@@ -544,7 +544,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return isAutoMaterializeMetaSystemStoreEnabled;
   }
 
-  public int getMetadataVersionId() { return timestampMetadataVersionId; }
+  public int getTimestampMetadataVersionId() { return timestampMetadataVersionId; }
 
   /**
    * The config should follow the format below:
