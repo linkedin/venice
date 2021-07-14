@@ -1,21 +1,18 @@
 package com.linkedin.davinci;
 
+import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
-
-import com.linkedin.davinci.config.StoreBackendConfig;
-
-import org.apache.log4j.Logger;
-
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import org.apache.log4j.Logger;
 
 
 public class StoreBackend {
@@ -27,9 +24,9 @@ public class StoreBackend {
   private final StoreBackendConfig config;
   private final Set<Integer> faultyVersions = new HashSet<>();
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
-  private final ConcurrentRef<VersionBackend> currentVersionRef = new ConcurrentRef<>(this::deleteVersion);
-  private VersionBackend currentVersion;
-  private VersionBackend futureVersion;
+  private final ConcurrentRef<VersionBackend> daVinciCurrentVersionRef = new ConcurrentRef<>(this::deleteVersion);
+  private VersionBackend daVinciCurrentVersion;
+  private VersionBackend daVinciFutureVersion;
 
   StoreBackend(DaVinciBackend backend, String storeName) {
     logger.info("Opening local store " + storeName);
@@ -56,17 +53,17 @@ public class StoreBackend {
 
     logger.info("Closing local store " + storeName);
     subscription.clear();
-    currentVersionRef.clear();
+    daVinciCurrentVersionRef.clear();
 
-    if (futureVersion != null) {
-      VersionBackend version = futureVersion;
-      setFutureVersion(null);
+    if (daVinciFutureVersion != null) {
+      VersionBackend version = daVinciFutureVersion;
+      setDaVinciFutureVersion(null);
       version.close();
     }
 
-    if (currentVersion != null) {
-      VersionBackend version = currentVersion;
-      setCurrentVersion(null);
+    if (daVinciCurrentVersion != null) {
+      VersionBackend version = daVinciCurrentVersion;
+      setDaVinciCurrentVersion(null);
       version.close();
     }
 
@@ -77,15 +74,15 @@ public class StoreBackend {
     logger.info("Deleting local store " + storeName);
     config.delete();
     subscription.clear();
-    currentVersionRef.clear();
+    daVinciCurrentVersionRef.clear();
 
-    if (futureVersion != null) {
+    if (daVinciFutureVersion != null) {
       deleteFutureVersion();
     }
 
-    if (currentVersion != null) {
-      VersionBackend version = currentVersion;
-      setCurrentVersion(null);
+    if (daVinciCurrentVersion != null) {
+      VersionBackend version = daVinciCurrentVersion;
+      setDaVinciCurrentVersion(null);
       version.delete();
     }
 
@@ -109,19 +106,19 @@ public class StoreBackend {
     return stats;
   }
 
-  public ReferenceCounted<VersionBackend> getCurrentVersion() {
-    return currentVersionRef.get();
+  public ReferenceCounted<VersionBackend> getDaVinciCurrentVersion() {
+    return daVinciCurrentVersionRef.get();
   }
 
-  private synchronized void setCurrentVersion(VersionBackend version) {
-    logger.info("Switching to new version " + version + ", currentVersion=" + currentVersion);
-    currentVersion = version;
-    currentVersionRef.set(version);
+  private synchronized void setDaVinciCurrentVersion(VersionBackend version) {
+    logger.info("Switching to new version " + version + ", currentVersion=" + daVinciCurrentVersion);
+    daVinciCurrentVersion = version;
+    daVinciCurrentVersionRef.set(version);
     stats.recordCurrentVersion(version);
   }
 
-  private void setFutureVersion(VersionBackend version) {
-    futureVersion = version;
+  private void setDaVinciFutureVersion(VersionBackend version) {
+    daVinciFutureVersion = version;
     stats.recordFutureVersion(version);
   }
 
@@ -130,18 +127,18 @@ public class StoreBackend {
   }
 
   synchronized CompletableFuture subscribe(ComplementSet<Integer> partitions, Optional<Version> bootstrapVersion) {
-    if (currentVersion == null) {
-      setCurrentVersion(new VersionBackend(
+    if (daVinciCurrentVersion == null) {
+      setDaVinciCurrentVersion(new VersionBackend(
           backend,
           bootstrapVersion.orElseGet(
-              () -> backend.getCurrentVersion(storeName, faultyVersions).orElseGet(
-                  () -> backend.getLatestVersion(storeName, faultyVersions).orElseThrow(
+              () -> backend.getVeniceCurrentVersion(storeName, faultyVersions).orElseGet(
+                  () -> backend.getVeniceLatestVersion(storeName, faultyVersions).orElseThrow(
                       () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName)))),
           stats));
 
     } else if (bootstrapVersion.isPresent()) {
       throw new VeniceException("Bootstrap version is already selected, storeName=" + storeName +
-                                    ", currentVersion=" + currentVersion +
+                                    ", currentVersion=" + daVinciCurrentVersion +
                                     ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
     }
 
@@ -152,18 +149,18 @@ public class StoreBackend {
     }
     subscription.addAll(partitions);
 
-    if (futureVersion == null) {
-      trySubscribeFutureVersion();
+    if (daVinciFutureVersion == null) {
+      trySubscribeDaVinciFutureVersion();
     } else {
-      futureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapCurrentVersion(e));
+      daVinciFutureVersion.subscribe(partitions).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
     }
 
-    VersionBackend savedVersion = currentVersion;
-    return currentVersion.subscribe(partitions).exceptionally(e -> {
+    VersionBackend savedVersion = daVinciCurrentVersion;
+    return daVinciCurrentVersion.subscribe(partitions).exceptionally(e -> {
       synchronized (this) {
         addFaultyVersion(savedVersion, e);
         // Don't propagate failure to subscribe() caller, if future version has become current and is ready to serve.
-        if (currentVersion != null && currentVersion.isReadyToServe(subscription)) {
+        if (daVinciCurrentVersion != null && daVinciCurrentVersion.isReadyToServe(subscription)) {
           return null;
         }
       }
@@ -171,7 +168,7 @@ public class StoreBackend {
     }).whenComplete((v, e) -> {
       synchronized (this) {
         if (e == null) {
-          logger.info("Ready to serve partitions " + subscription + " of " + currentVersion);
+          logger.info("Ready to serve partitions " + subscription + " of " + daVinciCurrentVersion);
         } else {
           logger.warn("Failed to subscribe to partitions " + subscription + " of " + savedVersion, e);
         }
@@ -183,50 +180,103 @@ public class StoreBackend {
     logger.info("Unsubscribing from partitions " + partitions + " of " + storeName);
     subscription.removeAll(partitions);
 
-    if (currentVersion != null) {
-      currentVersion.unsubscribe(partitions);
+    if (daVinciCurrentVersion != null) {
+      daVinciCurrentVersion.unsubscribe(partitions);
     }
 
-    if (futureVersion != null) {
-      futureVersion.unsubscribe(partitions);
+    if (daVinciFutureVersion != null) {
+      daVinciFutureVersion.unsubscribe(partitions);
     }
 
     if (subscription.isEmpty()) {
       config.delete();
 
-      if (futureVersion != null) {
+      if (daVinciFutureVersion != null) {
         deleteFutureVersion();
       }
 
-      if (currentVersion != null) {
-        VersionBackend version = currentVersion;
-        currentVersionRef.clear();
-        setCurrentVersion(null);
+      if (daVinciCurrentVersion != null) {
+        VersionBackend version = daVinciCurrentVersion;
+        daVinciCurrentVersionRef.clear();
+        setDaVinciCurrentVersion(null);
         version.delete();
       }
     }
   }
 
-  synchronized void trySubscribeFutureVersion() {
-    if (currentVersion == null || futureVersion != null) {
+  synchronized void trySubscribeDaVinciFutureVersion() {
+    if (daVinciCurrentVersion == null || daVinciFutureVersion != null) {
       return;
     }
 
-    Version version = backend.getLatestVersion(storeName, faultyVersions).orElse(null);
-    if (version == null || version.getNumber() <= currentVersion.getVersion().getNumber()) {
-      return;
+    Version storeCurrentVersion = backend.getVeniceCurrentVersion(storeName, faultyVersions).orElse(null);
+    Version storeLatestVersion = backend.getVeniceLatestVersion(storeName, faultyVersions).orElse(null);
+    Version targetVersion;
+    // Make sure current version in the store config has highest priority.
+    if (storeCurrentVersion != null && storeCurrentVersion.getNumber() != daVinciCurrentVersion.getVersion().getNumber()) {
+      targetVersion = storeCurrentVersion;
+    } else {
+      /**
+       * Before we implement rollback, this condition checking is valid as we should always moving forward. Once we have
+       * rollback, we might need to review it again to make sure it won't block rollback.
+       */
+      if (storeLatestVersion == null || storeLatestVersion.getNumber() <= daVinciCurrentVersion.getVersion().getNumber()) {
+        return;
+      }
+      targetVersion = storeLatestVersion;
     }
+    logger.info("Subscribing to future version " + targetVersion.kafkaTopicName());
+    setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
+    daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+  }
 
-    logger.info("Subscribing to future version " + version.kafkaTopicName());
-    setFutureVersion(new VersionBackend(backend, version, stats));
-    futureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapCurrentVersion(e));
+  synchronized void tryDeleteObsoleteDaVinciFutureVersion() {
+    if (daVinciFutureVersion != null) {
+      Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
+      int versionNumber = daVinciFutureVersion.getVersion().getNumber();
+      if (!store.getVersion(versionNumber).isPresent()) {
+        logger.info("Deleting obsolete future version " + daVinciFutureVersion + ", currentVersion=" + daVinciCurrentVersion);
+        deleteFutureVersion();
+      }
+    }
   }
 
   private synchronized void addFaultyVersion(VersionBackend version, Throwable failure) {
     logger.warn("Failed to subscribe to version " + version +
-                    ", currentVersion=" + currentVersion +
+                    ", currentVersion=" + daVinciCurrentVersion +
                     ", faultyVersions=" + faultyVersions, failure);
     faultyVersions.add(version.getVersion().getNumber());
+  }
+
+  // May be called several times even after version was swapped.
+  synchronized void trySwapDaVinciCurrentVersion(Throwable failure) {
+    if (daVinciFutureVersion != null) {
+      // Fetch current version from store config.
+      Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName, faultyVersions).orElse(null);
+      if (veniceCurrentVersion == null) {
+        logger.warn("Failed to retrieve current version of store: " + storeName);
+        return;
+      }
+      int veniceCurrentVersionNumber = veniceCurrentVersion.getNumber();
+      int daVinciFutureVersionNumber = daVinciFutureVersion.getVersion().getNumber();
+      boolean isDaVinciFutureVersionObsolete = backend.getStoreRepository().getStoreOrThrow(storeName).getVersions().stream().noneMatch(v -> (v.getNumber() == daVinciFutureVersionNumber));
+      /**
+       * We will only swap it to current version slot when it is fully pushed and the version number is (or was) the
+       * current version in store config.
+       */
+      if (daVinciFutureVersion.isReadyToServe(subscription) && !isDaVinciFutureVersionObsolete && daVinciFutureVersionNumber <= veniceCurrentVersionNumber) {
+        logger.info("Ready to serve partitions " + subscription + " of " + daVinciFutureVersion);
+        swapCurrentVersion();
+        trySubscribeDaVinciFutureVersion();
+      } else if (failure != null) {
+        addFaultyVersion(daVinciFutureVersion, failure);
+        logger.info("Deleting faulty Da Vinci future version " + daVinciFutureVersion + ", Da Vinci current version=" + daVinciCurrentVersion);
+        deleteFutureVersion();
+        trySubscribeDaVinciFutureVersion();
+      } else {
+        logger.info("Da Vinci future version " + daVinciFutureVersion + " is not ready to serve traffic, will try again later.");
+      }
+    }
   }
 
   // May be called indirectly by readers via ReferenceCounted::release(), so cannot be blocking.
@@ -235,39 +285,14 @@ public class StoreBackend {
   }
 
   private void deleteFutureVersion() {
-    VersionBackend version = futureVersion;
-    setFutureVersion(null);
+    VersionBackend version = daVinciFutureVersion;
+    setDaVinciFutureVersion(null);
     version.delete();
   }
 
-  synchronized void deleteOldVersions() {
-    if (futureVersion != null) {
-      Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
-      int versionNumber = futureVersion.getVersion().getNumber();
-      if (!store.getVersion(versionNumber).isPresent()) {
-        logger.info("Deleting obsolete future version " + futureVersion + ", currentVersion=" + currentVersion);
-        deleteFutureVersion();
-      }
-    }
-  }
-
-  // May be called several times even after version was swapped.
-  private synchronized void trySwapCurrentVersion(Throwable failure) {
-    if (futureVersion == null) {
-      // Nothing to do here because future version was deleted.
-
-    } else if (futureVersion.isReadyToServe(subscription)) {
-      logger.info("Ready to serve partitions " + subscription + " of " + futureVersion);
-      VersionBackend version = futureVersion;
-      setFutureVersion(null);
-      setCurrentVersion(version);
-      trySubscribeFutureVersion();
-
-    } else if (failure != null) {
-      addFaultyVersion(futureVersion, failure);
-      logger.info("Deleting faulty future version " + futureVersion + ", currentVersion=" + currentVersion);
-      deleteFutureVersion();
-      trySubscribeFutureVersion();
-    }
+  private void swapCurrentVersion() {
+    VersionBackend version = daVinciFutureVersion;
+    setDaVinciFutureVersion(null);
+    setDaVinciCurrentVersion(version);
   }
 }
