@@ -201,7 +201,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   // TODO: This is 'almost' the same logic for the batchGet path.  We could probably wrap this function and adapt it to the
   // batchget api (where sometimes the batchget is just for a single key).  Advantages would be to remove duplicate code.
   private CompletableFuture<V> readFromLocalStorage(K key, V reusableValue) {
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
@@ -233,7 +233,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public CompletableFuture<V> get(K key, V reusableValue) {
     throwIfNotReady();
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
         if (isVeniceQueryAllowed()) {
@@ -254,7 +254,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   CompletableFuture<Map<K,V>> batchGetFromLocalStorage(Iterable<K> keys) {
     // expose underlying getAll functionality.
     Map<K, V> result = new HashMap<>();
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
         if (isVeniceQueryAllowed()) {
@@ -305,7 +305,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
     throwIfNotReady();
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (isOnHeapCacheEnabled()) {
         return cacheBackend.getAll(keys, versionBackend.getVersion(), (ks) -> {
@@ -335,7 +335,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
       Schema resultSchema, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
     throwIfNotReady();
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (null == versionBackend){
         if (isVeniceQueryAllowed()){
@@ -416,7 +416,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
 
     throwIfNotReady();
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (null == versionBackend) {
         if (isVeniceQueryAllowed()) {
@@ -470,7 +470,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public void computeWithKeyPrefixFilter(byte[] prefixBytes, ComputeRequestWrapper computeRequestWrapper, StreamingCallback<GenericRecord, GenericRecord> callback) {
     throwIfNotReady();
-    try(ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()){
+    try(ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()){
       VersionBackend versionBackend = versionRef.get();
       if (null == versionBackend) {
         storeBackend.getStats().recordBadRequest();
@@ -546,7 +546,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   private void dropAllCachePartitions() {
-    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getCurrentVersion()) {
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (null != versionBackend) {
         cacheBackend.clearCachedPartitions(versionBackend.getVersion());
