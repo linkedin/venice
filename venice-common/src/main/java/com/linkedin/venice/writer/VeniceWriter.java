@@ -150,6 +150,27 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private static final long DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS = TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES);
 
+  /**
+   * This sentinel value indicates that the venice samza apps do not support the logical timestamp.
+   */
+  public static final long VENICE_DEFAULT_LOGICAL_TS = -1;
+
+  /**
+   * This sentinel value indicates that the venice samza apps have not provided the logical timestamp.
+   */
+  public static final long APP_DEFAULT_LOGICAL_TS = -2;
+
+  /**
+   * This sentinel value indicates that metadata version id is not present.
+   */
+  public static final int VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID = -1;
+
+  /**
+   * This sentinel value indicates that value schema id is not present.
+   */
+  public static final int VENICE_DEFAULT_VALUE_SCHEMA_ID = -1;
+
+
   // Immutable state
   private final VeniceKafkaSerializer<K> keySerializer;
   private final VeniceKafkaSerializer<V> valueSerializer;
@@ -338,7 +359,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
   public Future<RecordMetadata> delete(K key, Callback callback) {
-    return delete(key, callback, DEFAULT_UPSTREAM_OFFSET);
+    return delete(key, callback, DEFAULT_UPSTREAM_OFFSET, APP_DEFAULT_LOGICAL_TS, Optional.empty());
   }
 
   /**
@@ -356,6 +377,46 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
   public Future<RecordMetadata> delete(K key, Callback callback, long upstreamOffset) {
+    return delete(key, callback, upstreamOffset, APP_DEFAULT_LOGICAL_TS, Optional.empty());
+  }
+
+  /**
+   * Execute a standard "delete" on the key.
+   *
+   * @param key - The key to delete in storage.
+   * @param callback - callback will be executed after Kafka producer completes on sending the message.
+   * @param upstreamOffset - The upstream offset of this message in the source topic:
+   *                             -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
+   *                                  sending the message in H2V plugin to the version topic;
+   *                             >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
+   *                                  is sending this message to version topic with extra info: offset in the real-time topic.
+   * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
+   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
+   * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
+   */
+  public Future<RecordMetadata> delete(K key, Callback callback, long upstreamOffset, long logicalTs) {
+    return delete(key, callback, upstreamOffset, logicalTs, Optional.empty());
+  }
+
+  /**
+   * Execute a standard "delete" on the key.
+   *
+   * @param key - The key to delete in storage.
+   * @param callback - Callback function invoked by Kafka producer after sending the message.
+   * @param upstreamOffset - The upstream offset of this message in the source topic:
+   *                         -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
+   *                              sending the message in H2V plugin to the version topic;
+   *                         >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
+   *                              is sending this message to version topic with extra info: offset in the real-time topic.
+   * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
+   * @param deleteMetadata - an optional DeleteMetadata containing timestamp metadata related fields.
+   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
+   * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
+   */
+  public Future<RecordMetadata> delete(K key, Callback callback, long upstreamOffset, long logicalTs,
+      Optional<DeleteMetadata> deleteMetadata) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     isChunkingFlagInvoked = true;
     if (isChunkingEnabled) {
@@ -369,7 +430,19 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
 
     int partition = getPartition(kafkaKey);
-    return sendMessage(producerMetadata -> kafkaKey, MessageType.DELETE, new Delete(), partition, callback, upstreamOffset);
+
+    Delete delete = new Delete();
+    if (deleteMetadata.isPresent()) {
+      delete.schemaId = deleteMetadata.get().getValueSchemaId();
+      delete.timestampMetadataVersionId = deleteMetadata.get().getTimestampMetadataVersionId();
+      delete.timestampMetadataPayload = deleteMetadata.get().getTimestampMetadataPayload();
+    } else {
+      delete.schemaId = VENICE_DEFAULT_VALUE_SCHEMA_ID;
+      delete.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      delete.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    }
+
+    return sendMessage(producerMetadata -> kafkaKey, MessageType.DELETE, delete, partition, callback, upstreamOffset, Optional.of(logicalTs));
   }
 
   /**
@@ -400,6 +473,49 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *      is sending this message to version topic with extra info: offset in the real-time topic.
    */
   public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, long upstreamOffset) {
+    return put(key, value, valueSchemaId, callback, upstreamOffset, APP_DEFAULT_LOGICAL_TS, Optional.empty());
+  }
+
+  /**
+   * Execute a standard "put" on the key.
+   *
+   * VeniceReducer and VeniceSystemProducer should call this API.
+   *
+   * @param key   - The key to put in storage.
+   * @param value - The value to be associated with the given key
+   * @param valueSchemaId - value schema id for the given value
+   * @param callback - Callback function invoked by Kafka producer after sending the message
+   * @param upstreamOffset - UpstreamOffset is the offset of PUT message in the source topic:
+   *    -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
+   *         sending the message in H2V plugin to the version topic;
+   *    >=0: Leader replica consumes a put message from real-time topic, VeniceWriter in leader
+   *         is sending this message to version topic with extra info: offset in the real-time topic.
+   * @param logicalTs - An optional timestamp field to indicate when this record was produced from apps view.
+   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
+   * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
+   */
+  public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, long upstreamOffset, long logicalTs) {
+    return put(key, value, valueSchemaId, callback, upstreamOffset, logicalTs, Optional.empty());
+  }
+
+  /**
+   * Execute a standard "put" on the key.
+   *
+   * VeniceReducer and VeniceSystemProducer should call this API.
+   *
+   * @param key   - The key to put in storage.
+   * @param value - The value to be associated with the given key
+   * @param valueSchemaId - value schema id for the given value
+   * @param callback - Callback function invoked by Kafka producer after sending the message
+   * @param logicalTs - An timestamp field to indicate when this record was produced from apps view.
+   * @param putMetadata - an optional PutMetadata containing timestamp metadata related fields.
+   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
+   * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
+   */
+  public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, long upstreamOffset,
+      long logicalTs, Optional<PutMetadata> putMetadata) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
@@ -407,7 +523,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     isChunkingFlagInvoked = true;
     if (serializedKey.length + serializedValue.length > maxSizeForUserPayloadPerMessageInBytes) {
       if (isChunkingEnabled) {
-        return putLargeValue(serializedKey, serializedValue, valueSchemaId, callback, partition, upstreamOffset);
+        return putLargeValue(serializedKey, serializedValue, valueSchemaId, callback, partition, upstreamOffset,
+            logicalTs, putMetadata);
       } else {
         throw new RecordTooLargeException("This record exceeds the maximum size. " +
             getSizeReport(serializedKey, serializedValue));
@@ -429,7 +546,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     putPayload.putValue = ByteBuffer.wrap(serializedValue);
     putPayload.schemaId = valueSchemaId;
 
-    return sendMessage(producerMetadata -> kafkaKey, MessageType.PUT, putPayload, partition, callback, upstreamOffset);
+    if (putMetadata.isPresent()) {
+      putPayload.timestampMetadataVersionId = putMetadata.get().getTimestampMetadataVersionId();
+      putPayload.timestampMetadataPayload = putMetadata.get().getTimestampMetadataPayload();
+    } else {
+      putPayload.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    }
+
+    return sendMessage(producerMetadata -> kafkaKey, MessageType.PUT, putPayload, partition, callback, upstreamOffset, Optional.of(logicalTs));
   }
 
   /**
@@ -459,6 +584,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   @Override
   public Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback) {
+    return update(key, update, valueSchemaId, derivedSchemaId, callback, APP_DEFAULT_LOGICAL_TS);
+  }
+
+  public Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback, long logicalTs) {
     isChunkingFlagInvoked = true;
     if (isChunkingEnabled) {
       throw new VeniceException("Chunking is not supported for update operation in VeniceWriter");
@@ -479,7 +608,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     updatePayLoad.schemaId = valueSchemaId;
     updatePayLoad.updateSchemaId = derivedSchemaId;
 
-    return sendMessage(producerMetadata -> kafkaKey, MessageType.UPDATE, updatePayLoad, partition, callback, DEFAULT_UPSTREAM_OFFSET);
+    return sendMessage(producerMetadata -> kafkaKey, MessageType.UPDATE, updatePayLoad, partition, callback, DEFAULT_UPSTREAM_OFFSET, Optional.of(logicalTs));
   }
 
   @Override
@@ -637,15 +766,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * Data message like PUT and DELETE should call this API to enable DIV check.
    */
   private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload,
-      int partition, Callback callback, long upstreamOffset) {
-    return sendMessage(keyProvider, messageType, payload, false, partition, callback, true, upstreamOffset);
+      int partition, Callback callback, long upstreamOffset, Optional<Long> logicalTs) {
+    return sendMessage(keyProvider, messageType, payload, false, partition, callback, true, upstreamOffset, logicalTs);
   }
 
   private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload,
-      boolean isEndOfSegment, int partition, Callback callback, boolean updateDIV, long upstreamOffset) {
+      boolean isEndOfSegment, int partition, Callback callback, boolean updateDIV, long upstreamOffset, Optional<Long> logicalTs) {
     KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
       KafkaMessageEnvelope kafkaValue =
-          getKafkaMessageEnvelope(messageType, isEndOfSegment, partition, updateDIV, upstreamOffset);
+          getKafkaMessageEnvelope(messageType, isEndOfSegment, partition, updateDIV, upstreamOffset, logicalTs);
       kafkaValue.payloadUnion = payload;
       return kafkaValue;
     };
@@ -728,7 +857,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * This function implements chunking of a large value into many small values.
    */
   private Future<RecordMetadata> putLargeValue(byte[] serializedKey, byte[] serializedValue, int valueSchemaId,
-      Callback callback, int partition, long upstreamOffset) {
+      Callback callback, int partition, long upstreamOffset, long logicalTs, Optional<PutMetadata> putMetadata) {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     if (sizeAvailablePerMessage < maxSizeForUserPayloadPerMessageInBytes / 2) {
       /**
@@ -804,6 +933,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       Put putPayload = new Put();
       putPayload.putValue = chunk;
       putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+      putPayload.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
 
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
       if (0 == chunkIndex) {
@@ -821,7 +952,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
          * 3. Infinite blocking means the following 'sendMessage' call will follow the config of the internal Kafka Producer,
          * such as timeout, retries and so on;
          */
-        sendMessage(keyProvider, MessageType.PUT, putPayload, partition, null, DEFAULT_UPSTREAM_OFFSET).get();
+        sendMessage(keyProvider, MessageType.PUT, putPayload, partition, null, DEFAULT_UPSTREAM_OFFSET, Optional.empty()).get();
       } catch (Exception e) {
         throw new VeniceException("Caught an exception while attempting to produce a chunk of a large value into Kafka... "
             + getDetailedSizeReport(chunkIndex, numberOfChunks, sizeAvailablePerMessage, serializedKey, serializedValue), e);
@@ -847,9 +978,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ((ChunkAwareCallback) callback).setChunkingInfo(topLevelKey, chunks, chunkedValueManifest);
     }
 
+    if (putMetadata.isPresent()) {
+      putPayload.timestampMetadataVersionId = putMetadata.get().getTimestampMetadataVersionId();
+      putPayload.timestampMetadataPayload = putMetadata.get().getTimestampMetadataPayload();
+    } else {
+      putPayload.timestampMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putPayload.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    }
+
     // We only return the last future (the one for the manifest) and assume that once this one is finished,
     // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    return sendMessage(manifestKeyProvider, MessageType.PUT, putPayload, partition, callback, upstreamOffset);
+    return sendMessage(manifestKeyProvider, MessageType.PUT, putPayload, partition, callback, upstreamOffset, Optional.of(logicalTs));
   }
 
   private String getDetailedSizeReport(int chunkIndex, int numberOfChunks, int sizeAvailablePerMessage, byte[] serializedKey, byte[] serializedValue) {
@@ -956,7 +1095,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *
    * If the Kafka topic does not exist, this function will back off for {@link #sleepTimeMsWhenTopicMissing}
    * ms and try again for a total of {@link #maxAttemptsWhenTopicMissing} attempts. Note that this back off
-   * and retry behavior does not happen in {@link #sendMessage(KeyProvider, MessageType, Object, int, Callback, long)}
+   * and retry behavior does not happen in {@link #sendMessage(KeyProvider, MessageType, Object, int, Callback, long, Optional<Long>)}
    * because that function returns a {@link Future}, and it is {@link Future#get()} which throws the relevant
    * exception. In any case, the topic should be seeded with a {@link ControlMessageType#START_OF_SEGMENT}
    * at first, and therefore, there should be no cases where a topic has not been created yet and we attempt
@@ -981,7 +1120,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       try {
         boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
         sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment,
-            partition, callback, updateCheckSum, upstreamOffset).get();
+            partition, callback, updateCheckSum, upstreamOffset, Optional.empty()).get();
         return;
       } catch (InterruptedException|ExecutionException e) {
         if (e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
@@ -1019,7 +1158,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     boolean updateCheckSum = true;
     boolean isEndOfSegment = ControlMessageType.valueOf(controlMessage).equals(ControlMessageType.END_OF_SEGMENT);
     return sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, isEndOfSegment,
-        partition, callback, updateCheckSum, upstreamOffset);
+        partition, callback, updateCheckSum, upstreamOffset, Optional.empty());
   }
 
   /**
@@ -1059,7 +1198,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @return A {@link KafkaMessageEnvelope} for producing into Kafka
    */
   protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, boolean isEndOfSegment, int partition,
-      boolean incrementSequenceNumber, long upstreamOffset) {
+      boolean incrementSequenceNumber, long upstreamOffset, Optional<Long> logicalTs) {
     // If single-threaded, the kafkaValue could be re-used (and clobbered). TODO: explore GC tuning later.
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     kafkaValue.messageType = messageType.getValue();
@@ -1076,6 +1215,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
     producerMetadata.messageTimestamp = time.getMilliseconds();
     producerMetadata.upstreamOffset = upstreamOffset;
+    if (logicalTs.isPresent()) {
+      producerMetadata.logicalTimestamp = logicalTs.get();
+    } else {
+      producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
+    }
     kafkaValue.producerMetadata = producerMetadata;
 
     return kafkaValue;

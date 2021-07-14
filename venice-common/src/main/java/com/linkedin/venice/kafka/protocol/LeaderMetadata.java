@@ -7,17 +7,20 @@ package com.linkedin.venice.kafka.protocol;
 
 @SuppressWarnings("all")
 public class LeaderMetadata extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"LeaderMetadata\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"hostName\",\"type\":\"string\",\"doc\":\"The identifier of the host which sends the message.This helps detect the 'split brain' scenario in leader SN. Notice that it is different from GUID. GUID represents the one who produces the message. In 'pass-through' mode, the relaying producer will reuse the same GUID from the upstream message.\"},{\"name\":\"upstreamOffset\",\"type\":\"long\",\"doc\":\"Where this message is located in RT/GF topic. This value will be determined and modified by leader SN at runtime.\",\"default\":-1}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"LeaderMetadata\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"hostName\",\"type\":\"string\",\"doc\":\"The identifier of the host which sends the message.This helps detect the 'split brain' scenario in leader SN. Notice that it is different from GUID. GUID represents the one who produces the message. In 'pass-through' mode, the relaying producer will reuse the same GUID from the upstream message.\"},{\"name\":\"upstreamOffset\",\"type\":\"long\",\"doc\":\"Where this message is located in RT/GF/remote VT topic. This value will be determined and modified by leader SN at runtime.\",\"default\":-1},{\"name\":\"upstreamKafkaClusterId\",\"type\":\"int\",\"doc\":\"Kafka bootstrap server URL of the cluster where RT/GF/remote VT topic exists, represented by an integer to reduce the overhead. This value will be determined and modified by leader SN at runtime.\",\"default\":-1}]}");
   /** The identifier of the host which sends the message.This helps detect the 'split brain' scenario in leader SN. Notice that it is different from GUID. GUID represents the one who produces the message. In 'pass-through' mode, the relaying producer will reuse the same GUID from the upstream message. */
   public java.lang.CharSequence hostName;
-  /** Where this message is located in RT/GF topic. This value will be determined and modified by leader SN at runtime. */
+  /** Where this message is located in RT/GF/remote VT topic. This value will be determined and modified by leader SN at runtime. */
   public long upstreamOffset;
+  /** Kafka bootstrap server URL of the cluster where RT/GF/remote VT topic exists, represented by an integer to reduce the overhead. This value will be determined and modified by leader SN at runtime. */
+  public int upstreamKafkaClusterId;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return hostName;
     case 1: return upstreamOffset;
+    case 2: return upstreamKafkaClusterId;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -27,6 +30,7 @@ public class LeaderMetadata extends org.apache.avro.specific.SpecificRecordBase 
     switch (field$) {
     case 0: hostName = (java.lang.CharSequence)value$; break;
     case 1: upstreamOffset = (java.lang.Long)value$; break;
+    case 2: upstreamKafkaClusterId = (java.lang.Integer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

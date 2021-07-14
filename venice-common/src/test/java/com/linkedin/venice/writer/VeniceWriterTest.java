@@ -5,8 +5,10 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -19,6 +21,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -159,5 +163,85 @@ public class VeniceWriterTest {
         Assert.assertEquals(envelope.producerMetadata.segmentNumber, segmentNumber);
       }
     }
+  }
+
+  @Test
+  public void testTimestampMetadataWrittenCorrectly() {
+    KafkaProducerWrapper mockedProducer = mock(KafkaProducerWrapper.class);
+    Future mockedFuture = mock(Future.class);
+    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
+    when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenReturn(mockedFuture);
+    Properties writerProperties = new Properties();
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test";
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(new VeniceProperties(writerProperties), testTopic, serializer, serializer, serializer,
+            new DefaultVenicePartitioner(), SystemTime.INSTANCE, Optional.empty(), () -> mockedProducer);
+
+    //verify the new veniceWriter API's are able to encode the A/A metadat info correctly.
+    long ctime = System.currentTimeMillis();
+    ByteBuffer timestampMetadata = ByteBuffer.wrap(new byte[]{0xa, 0xb});
+    PutMetadata putMetadata = new PutMetadata(1, timestampMetadata);
+    DeleteMetadata deleteMetadata = new DeleteMetadata(1, 1, timestampMetadata);
+
+    writer.put(Integer.toString(1), Integer.toString(1), 1, null, VeniceWriter.DEFAULT_UPSTREAM_OFFSET, ctime);
+    writer.put(Integer.toString(2), Integer.toString(2), 1, null, 0, VeniceWriter.APP_DEFAULT_LOGICAL_TS, Optional.of(putMetadata));
+    writer.update(Integer.toString(3), Integer.toString(2), 1, 1, null, ctime);
+    writer.delete(Integer.toString(4), null, VeniceWriter.DEFAULT_UPSTREAM_OFFSET, ctime);
+    writer.delete(Integer.toString(5), null, 0, VeniceWriter.APP_DEFAULT_LOGICAL_TS, Optional.of(deleteMetadata));
+    writer.put(Integer.toString(6), Integer.toString(1), 1, null, VeniceWriter.DEFAULT_UPSTREAM_OFFSET);
+
+
+    ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
+        ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(eq(testTopic), any(),
+        kafkaMessageEnvelopeArgumentCaptor.capture(), anyInt(), any());
+
+    //first one will be control message SOS, there should not be any aa metadata.
+    KafkaMessageEnvelope value0 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(0);
+    Assert.assertEquals(value0.producerMetadata.logicalTimestamp, VeniceWriter.VENICE_DEFAULT_LOGICAL_TS);
+
+    //verify timestamp is encoded correctly.
+    KafkaMessageEnvelope value1 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(1);
+    KafkaMessageEnvelope value3 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(3);
+    KafkaMessageEnvelope value4 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(4);
+    for (KafkaMessageEnvelope kme : Arrays.asList(value1, value3, value4)) {
+      Assert.assertEquals(kme.producerMetadata.logicalTimestamp, ctime);
+    }
+
+    //verify default values for timestampMetadata are written correctly
+    Put put = (Put)value1.payloadUnion;
+    Assert.assertEquals(put.schemaId, 1);
+    Assert.assertEquals(put.timestampMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
+    Assert.assertEquals(put.timestampMetadataPayload, ByteBuffer.wrap(new byte[0]));
+
+    Delete delete = (Delete)value4.payloadUnion;
+    Assert.assertEquals(delete.schemaId, VeniceWriter.VENICE_DEFAULT_VALUE_SCHEMA_ID);
+    Assert.assertEquals(delete.timestampMetadataVersionId, VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID);
+    Assert.assertEquals(delete.timestampMetadataPayload, ByteBuffer.wrap(new byte[0]));
+
+    //verify timestampMetadata is encoded correctly for Put.
+    KafkaMessageEnvelope value2 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(2);
+    Assert.assertEquals(value2.messageType, MessageType.PUT.getValue());
+    put = (Put)value2.payloadUnion;
+    Assert.assertEquals(put.schemaId, 1);
+    Assert.assertEquals(put.timestampMetadataVersionId, 1);
+    Assert.assertEquals(put.timestampMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
+    Assert.assertEquals(value2.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+
+    //verify timestampMetadata is encoded correctly for Delete.
+    KafkaMessageEnvelope value5 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(5);
+    Assert.assertEquals(value5.messageType, MessageType.DELETE.getValue());
+    delete = (Delete)value5.payloadUnion;
+    Assert.assertEquals(delete.schemaId, 1);
+    Assert.assertEquals(delete.timestampMetadataVersionId, 1);
+    Assert.assertEquals(delete.timestampMetadataPayload, ByteBuffer.wrap(new byte[]{0xa, 0xb}));
+    Assert.assertEquals(value5.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+
+    //verify default logical_ts is encoded correctly
+    KafkaMessageEnvelope value6 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(6);
+    Assert.assertEquals(value6.messageType, MessageType.PUT.getValue());
+    Assert.assertEquals(value6.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
   }
 }

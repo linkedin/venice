@@ -12,6 +12,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.Properties;
@@ -100,6 +101,8 @@ public class KafkaDataIntegrityValidatorTest {
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap("value".getBytes());
     putPayload.schemaId = 0;
+    putPayload.timestampMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    putPayload.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
     messageEnvelope.payloadUnion = putPayload;
 
     return new ConsumerRecord<>(kafkaTopic, partition, offset, brokerTimestamp, TimestampType.CREATE_TIME,

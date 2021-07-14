@@ -63,16 +63,16 @@
               "type": "bytes"
             }, {
               "name": "schemaId",
-              "doc": "An identifier used to determine how the PutValue can be deserialized. Also used, in conjunction with the metadataVersionId, to deserialize the metadataPayload.",
+              "doc": "An identifier used to determine how the PutValue can be deserialized. Also used, in conjunction with the timestampMetadataVersionId, to deserialize the timestampMetadataPayload.",
               "type": "int"
             }, {
-              "name": "metadataVersionId",
-              "doc": "The A/A metadata schema version ID that will be used to deserialize metadataPayload.",
+              "name": "timestampMetadataVersionId",
+              "doc": "The A/A timestamp metadata schema version ID that will be used to deserialize timestampMetadataPayload.",
               "type": "int",
               "default": -1
             }, {
-              "name": "metadataPayload",
-              "doc": "The serialized value of the metadata schema.",
+              "name": "timestampMetadataPayload",
+              "doc": "The serialized value of the timestamp metadata schema.",
               "type": "bytes",
               "default": ""
             }
@@ -98,22 +98,22 @@
           ]
         }, {
           "name": "Delete",
-          "doc": "Delete payloads contain fields related to metadata of the record.",
+          "doc": "Delete payloads contain fields related to timestamp metadata of the record.",
           "type": "record",
           "fields": [
             {
               "name": "schemaId",
-              "doc": "An identifier used, in conjunction with the metadataVersionId, to deserialize the metadataPayload.",
+              "doc": "An identifier used, in conjunction with the timestampMetadataVersionId, to deserialize the timestampMetadataPayload.",
               "type": "int",
               "default": -1
             }, {
-              "name": "metadataVersionId",
-              "doc": "The A/A metadata schema version ID that will be used to deserialize metadataPayload.",
+              "name": "timestampMetadataVersionId",
+              "doc": "The A/A timestamp metadata schema version ID that will be used to deserialize timestampMetadataPayload.",
               "type": "int",
               "default": -1
             }, {
-              "name": "metadataPayload",
-              "doc": "The serialized value of the metadata schema.",
+              "name": "timestampMetadataPayload",
+              "doc": "The serialized value of the timestamp metadata schema.",
               "type": "bytes",
               "default": ""
             }
@@ -306,7 +306,7 @@
               "type": "long",
               "default": -1
             }, {
-              "name": "upstreamKafkaServerId",
+              "name": "upstreamKafkaClusterId",
               "doc": "Kafka bootstrap server URL of the cluster where RT/GF/remote VT topic exists, represented by an integer to reduce the overhead. This value will be determined and modified by leader SN at runtime.",
               "type": "int",
               "default": -1

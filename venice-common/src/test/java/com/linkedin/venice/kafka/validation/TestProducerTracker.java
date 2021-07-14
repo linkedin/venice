@@ -15,6 +15,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -58,6 +59,7 @@ public class TestProducerTracker {
       producerMetadata.messageSequenceNumber = currentSegment.getAndIncrementSequenceNumber();
     }
     producerMetadata.messageTimestamp = System.currentTimeMillis();
+    producerMetadata.logicalTimestamp = VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
     kafkaValue.producerMetadata = producerMetadata;
     kafkaValue.payloadUnion = payload;
 

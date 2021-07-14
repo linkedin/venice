@@ -10,7 +10,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
-import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -67,6 +67,8 @@ public class TestOptimizedKafkaValueSerializer {
     put.schemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
     byte[] putValueBytes = "put_value".getBytes();
     put.putValue = ByteBuffer.wrap(putValueBytes);
+    put.timestampMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    put.timestampMetadataPayload = ByteBuffer.wrap(new byte[0]);
     record.payloadUnion = put;
 
     OptimizedKafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();

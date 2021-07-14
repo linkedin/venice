@@ -7,7 +7,7 @@ package com.linkedin.venice.kafka.protocol;
 
 @SuppressWarnings("all")
 public class ProducerMetadata extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"ProducerMetadata\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"producerGUID\",\"type\":{\"type\":\"fixed\",\"name\":\"GUID\",\"size\":16},\"doc\":\"A unique identifier for this producer.\"},{\"name\":\"segmentNumber\",\"type\":\"int\",\"doc\":\"A number used to disambiguate between sequential segments sent into a given partition by a given producer. An incremented SegmentNumber should only be sent following an EndOfSegment control message. For finite streams (such as those bulk-loaded from Hadoop), it can be acceptable to have a single SegmentNumber per producer/partition combination, though that is not something that the downstream consumer should assume. For infinite streams, segments should be terminated and begun anew periodically. This number begins at 0.\"},{\"name\":\"messageSequenceNumber\",\"type\":\"int\",\"doc\":\"A monotonically increasing number with no gaps used to distinguish unique messages produced in this segment (i.e.: by this producer into a given partition). This number begins at 0 (with a StartOfSegment ControlMessage) and subsequent messages (such as Put) will have a SequenceNumber of 1 and so forth.\"},{\"name\":\"messageTimestamp\",\"type\":\"long\",\"doc\":\"The time of the producer's local system clock, at the time the message was submitted for production. This is the number of milliseconds from the unix epoch, 1 January 1970 00:00:00.000 UTC.\"},{\"name\":\"upstreamOffset\",\"type\":\"long\",\"doc\":\"this field is deprecated and superseded by the field inside the LeaderMetadata. TODO: Remove this field in the future.\",\"default\":-1}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"ProducerMetadata\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"producerGUID\",\"type\":{\"type\":\"fixed\",\"name\":\"GUID\",\"size\":16},\"doc\":\"A unique identifier for this producer.\"},{\"name\":\"segmentNumber\",\"type\":\"int\",\"doc\":\"A number used to disambiguate between sequential segments sent into a given partition by a given producer. An incremented SegmentNumber should only be sent following an EndOfSegment control message. For finite streams (such as those bulk-loaded from Hadoop), it can be acceptable to have a single SegmentNumber per producer/partition combination, though that is not something that the downstream consumer should assume. For infinite streams, segments should be terminated and begun anew periodically. This number begins at 0.\"},{\"name\":\"messageSequenceNumber\",\"type\":\"int\",\"doc\":\"A monotonically increasing number with no gaps used to distinguish unique messages produced in this segment (i.e.: by this producer into a given partition). This number begins at 0 (with a StartOfSegment ControlMessage) and subsequent messages (such as Put) will have a SequenceNumber of 1 and so forth.\"},{\"name\":\"messageTimestamp\",\"type\":\"long\",\"doc\":\"The time of the producer's local system clock, at the time the message was submitted for production. This is the number of milliseconds from the unix epoch, 1 January 1970 00:00:00.000 UTC.\"},{\"name\":\"upstreamOffset\",\"type\":\"long\",\"doc\":\"this field is deprecated and superseded by the field inside the LeaderMetadata. TODO: Remove this field in the future.\",\"default\":-1},{\"name\":\"logicalTimestamp\",\"type\":\"long\",\"doc\":\"This timestamp may be specified by the user. Sentinel value of -1 => apps are not using latest lib, -2 => apps have not specified the time. In case of negative values messageTimestamp field will be used for Timestamp Metadata.\",\"default\":-1}]}");
   /** A unique identifier for this producer. */
   public com.linkedin.venice.kafka.protocol.GUID producerGUID;
   /** A number used to disambiguate between sequential segments sent into a given partition by a given producer. An incremented SegmentNumber should only be sent following an EndOfSegment control message. For finite streams (such as those bulk-loaded from Hadoop), it can be acceptable to have a single SegmentNumber per producer/partition combination, though that is not something that the downstream consumer should assume. For infinite streams, segments should be terminated and begun anew periodically. This number begins at 0. */
@@ -18,6 +18,8 @@ public class ProducerMetadata extends org.apache.avro.specific.SpecificRecordBas
   public long messageTimestamp;
   /** this field is deprecated and superseded by the field inside the LeaderMetadata. TODO: Remove this field in the future. */
   public long upstreamOffset;
+  /** This timestamp may be specified by the user. Sentinel value of -1 => apps are not using latest lib, -2 => apps have not specified the time. In case of negative values messageTimestamp field will be used for Timestamp Metadata. */
+  public long logicalTimestamp;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -27,6 +29,7 @@ public class ProducerMetadata extends org.apache.avro.specific.SpecificRecordBas
     case 2: return messageSequenceNumber;
     case 3: return messageTimestamp;
     case 4: return upstreamOffset;
+    case 5: return logicalTimestamp;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -39,6 +42,7 @@ public class ProducerMetadata extends org.apache.avro.specific.SpecificRecordBas
     case 2: messageSequenceNumber = (java.lang.Integer)value$; break;
     case 3: messageTimestamp = (java.lang.Long)value$; break;
     case 4: upstreamOffset = (java.lang.Long)value$; break;
+    case 5: logicalTimestamp = (java.lang.Long)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
