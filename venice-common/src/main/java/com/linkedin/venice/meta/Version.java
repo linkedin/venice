@@ -27,7 +27,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
 
   /**
-   * Special number indicating no metadata version is set.
+   * Special number indicating no timestamp metadata version is set.
    */
   int TIMESTAMP_METADATA_VERSION_ID_UNSET = -1;
 

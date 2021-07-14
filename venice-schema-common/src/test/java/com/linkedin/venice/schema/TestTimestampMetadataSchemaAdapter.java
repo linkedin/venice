@@ -8,12 +8,12 @@ import org.testng.annotations.Test;
 import static org.apache.avro.Schema.Type.*;
 
 
-public class TestMetadataSchemaAdapter {
-  private static final Logger logger = Logger.getLogger(TestMetadataSchemaAdapter.class);
+public class TestTimestampMetadataSchemaAdapter {
+  private static final Logger logger = Logger.getLogger(TestTimestampMetadataSchemaAdapter.class);
 
 
   static String primitiveTypedSchemaStr = "{\"type\": \"string\"}";
-  //Expected Metadata schema for above Schema
+  //Expected Timestamp metadata schema for above Schema
   static String aaSchemaPrimitive = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"string_MetadataRecord\",\n"
@@ -45,7 +45,7 @@ public class TestMetadataSchemaAdapter {
       + "    \"default\" : -1\n"
       + "  } ]\n"
       + "}";
-  //Expected Metadata schema for above Schema
+  //Expected Timestamp metadata schema for above Schema
   static String aaSchemaRecord = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"User_MetadataRecord\",\n"
@@ -79,7 +79,7 @@ public class TestMetadataSchemaAdapter {
 
 
   static String arraySchemaStr = "{ \"type\": \"array\", \"items\": \"int\" }";
-  //Expected Metadata schema for above Schema
+  //Expected Timestamp metadata schema for above Schema
   static String aaSchemaArray = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"array_MetadataRecord\",\n"
@@ -94,7 +94,7 @@ public class TestMetadataSchemaAdapter {
 
 
   static String mapSchemaStr = "{ \"type\": \"map\", \"values\": \"int\" }";
-  //Expected Metadata schema for above Schema
+  //Expected Timestamp metadata schema for above Schema
   static String aaSchemaMap = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"map_MetadataRecord\",\n"
@@ -128,7 +128,7 @@ public class TestMetadataSchemaAdapter {
       + "  \"type\" : \"map\",\n"
       + "  \"values\" : \"int\"\n"
       + "}, \"string\" ]";
-  //Expected Metadata schema for above Schema
+  //Expected Timestamp metadata schema for above Schema
   static String aaSchemaUnion = "{\n"
       + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"union_MetadataRecord\",\n"
@@ -145,7 +145,7 @@ public class TestMetadataSchemaAdapter {
   @Test
   public void testMetadataSchemaForPrimitive() {
     Schema origSchema = Schema.create(INT);
-    Schema aaSchema = MetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
 
@@ -155,7 +155,7 @@ public class TestMetadataSchemaAdapter {
   @Test
   public void testMetadataSchemaForPrimitiveTyped() {
     Schema origSchema = Schema.parse(primitiveTypedSchemaStr);
-    Schema aaSchema = MetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(aaSchemaStr);
     Assert.assertEquals(aaSchema, Schema.parse(aaSchema.toString()));
@@ -167,7 +167,7 @@ public class TestMetadataSchemaAdapter {
   public void testMetadataSchemaForRecord() {
     Schema origSchema = Schema.parse(recordSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = MetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
@@ -191,7 +191,7 @@ public class TestMetadataSchemaAdapter {
   public void testMetadataSchemaForArray() {
     Schema origSchema = Schema.parse(arraySchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = MetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
@@ -204,7 +204,7 @@ public class TestMetadataSchemaAdapter {
   public void testMetadataSchemaForMap() {
     Schema origSchema = Schema.parse(mapSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = MetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);
@@ -217,7 +217,7 @@ public class TestMetadataSchemaAdapter {
   public void testMetadataSchemaForUnion() {
     Schema origSchema = Schema.parse(unionSchemaStr);
     String OrigSchemaStr = origSchema.toString(true);
-    Schema aaSchema = MetadataSchemaAdapter.parse(origSchema, 1);
+    Schema aaSchema = TimestampMetadataSchemaAdapter.parse(origSchema, 1);
     String aaSchemaStr = aaSchema.toString(true);
     logger.info(OrigSchemaStr);
     logger.info(aaSchemaStr);

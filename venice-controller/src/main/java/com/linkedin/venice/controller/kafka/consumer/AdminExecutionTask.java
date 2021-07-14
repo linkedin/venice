@@ -214,8 +214,8 @@ public class AdminExecutionTask implements Callable<Void> {
         case CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER:
           handleEnableNativeReplicationForCluster((ConfigureNativeReplicationForCluster) adminOperation.payloadUnion);
           break;
-        case METADATA_SCHEMA_CREATION:
-          handleMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
+        case TIMESTAMP_METADATA_SCHEMA_CREATION:
+          handleTimestampMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
           break;
         default:
           throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -581,16 +581,16 @@ public class AdminExecutionTask implements Callable<Void> {
     return false;
   }
 
-  private void handleMetadataSchemaCreation(MetadataSchemaCreation message) {
+  private void handleTimestampMetadataSchemaCreation(MetadataSchemaCreation message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     int valueSchemaId = message.valueSchemaId;
-    String metadataSchemaStr = message.metadataSchema.definition.toString();
+    String timestampMetadataSchemaStr = message.metadataSchema.definition.toString();
     int timestampMetadataVersionId = message.timestampMetadataVersionId;
 
-    admin.addMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
+    admin.addTimestampMetadataSchema(clusterName, storeName, valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
     logger.info(String.format("Added metedata schema:\n %s\n to store: %s, value schema id: %d, metedata schema id: %d",
-        metadataSchemaStr, storeName, valueSchemaId, timestampMetadataVersionId));
+        timestampMetadataSchemaStr, storeName, valueSchemaId, timestampMetadataVersionId));
   }
 
 }

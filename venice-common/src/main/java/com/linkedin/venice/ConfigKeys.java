@@ -1576,7 +1576,7 @@ public class ConfigKeys {
   public static final String CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE = "controller.auto.materialize.meta.system.store";
 
   /**
-   * This will indicate which MetadataSchemaAdapter version to use to generate metadata schema.
+   * This will indicate which TimestampMetadataSchemaAdapter version to use to generate timestamp metadata schema.
    */
   public static final String TIMESTAMP_METADATA_VERSION_ID = "timestamp.metadata.version.id";
 

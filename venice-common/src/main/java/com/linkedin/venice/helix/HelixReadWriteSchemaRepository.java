@@ -9,9 +9,9 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.MetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.MetadataVersionId;
+import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -48,8 +48,8 @@ import org.apache.log4j.Logger;
  *    {@link DerivedSchemaEntry} for more
  *    details.
  *
- * 3. Metadata schema
- *  *    ZK Path: ${cluster_name}/Stores/${store_name}/metadata-schema/${value_schema_id}_${metadata_version_id}
+ * 3. Timestamp metadata schema
+ *  *    ZK Path: ${cluster_name}/Stores/${store_name}/timestamp-metadata-schema/${value_schema_id}-${timestamp_metadata_version_id}
  *  *
  * Check out {@link SchemaEntrySerializer} and {@link DerivedSchemaEntrySerializer}
  * to see how schemas are ser-ded.
@@ -461,57 +461,57 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName) {
+  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
     preCheckStoreCondition(storeName);
 
-    return accessor.getAllMetadataSchemas(storeName);
+    return accessor.getAllTimestampMetadataSchemas(storeName);
   }
 
   @Override
-  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
     preCheckStoreCondition(storeName);
 
     String idPairStr = valueSchemaId + HelixSchemaAccessor.MULTIPART_SCHEMA_VERSION_DELIMITER + timestampMetadataVersionId;
 
-    return accessor.getMetadataSchema(storeName, idPairStr);
+    return accessor.getTimestampMetadataSchema(storeName, idPairStr);
   }
 
   @Override
-  public MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr) {
-    Schema metadataSchema = Schema.parse(metadataSchemaStr);
-    for (MetadataSchemaEntry metadataSchemaEntry : getMetadataSchemaMap(storeName).values().stream()
+  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
+    Schema timestampMetadataSchema = Schema.parse(timestampMetadataSchemaStr);
+    for (TimestampMetadataSchemaEntry timestampMetadataSchemaEntry : getTimestampMetadataSchemaMap(storeName).values().stream()
         .flatMap(List::stream).collect(Collectors.toList())) {
-      if (metadataSchemaEntry.getSchema().equals(metadataSchema)) {
-        return new MetadataVersionId(metadataSchemaEntry.getValueSchemaId(), metadataSchemaEntry.getId());
+      if (timestampMetadataSchemaEntry.getSchema().equals(timestampMetadataSchema)) {
+        return new TimestampMetadataVersionId(timestampMetadataSchemaEntry.getValueSchemaId(), timestampMetadataSchemaEntry.getId());
       }
     }
 
-    return new MetadataVersionId(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
+    return new TimestampMetadataVersionId(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
   }
 
-  private Map<Integer, List<MetadataSchemaEntry>> getMetadataSchemaMap(String storeName) {
+  private Map<Integer, List<TimestampMetadataSchemaEntry>> getTimestampMetadataSchemaMap(String storeName) {
     preCheckStoreCondition(storeName);
 
-    Map<Integer, List<MetadataSchemaEntry>> metadataSchemaEntryMap = new HashMap<>();
-    accessor.getAllMetadataSchemas(storeName).forEach(metadataSchemaEntry ->
-        metadataSchemaEntryMap.computeIfAbsent(metadataSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
-            .add(metadataSchemaEntry));
+    Map<Integer, List<TimestampMetadataSchemaEntry>> timestampMetadataSchemaEntryMap = new HashMap<>();
+    accessor.getAllTimestampMetadataSchemas(storeName).forEach(timestampMetadataSchemaEntry ->
+        timestampMetadataSchemaEntryMap.computeIfAbsent(timestampMetadataSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
+            .add(timestampMetadataSchemaEntry));
 
-    return metadataSchemaEntryMap;
+    return timestampMetadataSchemaEntryMap;
   }
 
   @Override
-  public MetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String metadataSchemaStr,  int timestampMetadataVersionId) {
-    MetadataSchemaEntry metadataSchemaEntry =
-        new MetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, metadataSchemaStr);
+  public TimestampMetadataSchemaEntry addMetadataSchema(String storeName, int valueSchemaId, String timestampMetadataSchemaStr,  int timestampMetadataVersionId) {
+    TimestampMetadataSchemaEntry timestampMetadataSchemaEntry =
+        new TimestampMetadataSchemaEntry(valueSchemaId, timestampMetadataVersionId, timestampMetadataSchemaStr);
 
     if (timestampMetadataVersionId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      logger.info("metadata schema is already existing. Skip adding it to repository. Schema: " + metadataSchemaStr);
+      logger.info("Timestamp metadata schema already exists. Skip adding it to repository. Schema: " + timestampMetadataSchemaStr);
     } else {
-      accessor.addMetadataSchema(storeName, metadataSchemaEntry);
+      accessor.addMetadataSchema(storeName, timestampMetadataSchemaEntry);
     }
 
-    return metadataSchemaEntry;
+    return timestampMetadataSchemaEntry;
   }
 
   @Override

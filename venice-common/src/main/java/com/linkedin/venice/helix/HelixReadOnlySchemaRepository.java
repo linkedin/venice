@@ -6,9 +6,9 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.schema.MetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
-import com.linkedin.venice.schema.MetadataVersionId;
+import com.linkedin.venice.schema.TimestampMetadataVersionId;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
@@ -63,7 +63,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private IZkChildListener keySchemaChildListener = new KeySchemaChildListener();
   private IZkChildListener valueSchemaChildListener = new ValueSchemaChildListener();
   private IZkChildListener derivedSchemaChildListener = new DerivedSchemaChildListener();
-  private IZkChildListener metadataSchemaChildListener = new MetadataSchemaChildListener();
+  private IZkChildListener timestampMetadataSchemaChildListener = new TimestampMetadataSchemaChildListener();
 
   // Mutex for local cache
   private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();
@@ -122,8 +122,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private void mayRegisterAndPopulateMetadataSchema(Store store, SchemaData schemaData) {
     if (store.isActiveActiveReplicationEnabled()) {
       String storeName = store.getName();
-      accessor.subscribeMetadataSchemaCreationChange(storeName, metadataSchemaChildListener);
-      accessor.getAllMetadataSchemas(storeName).forEach(schemaData::addMetadataSchema);
+      accessor.subscribeTimestampMetadataSchemaCreationChange(storeName, timestampMetadataSchemaChildListener);
+      accessor.getAllTimestampMetadataSchemas(storeName).forEach(schemaData::addTimestampMetadataSchema);
     }
   }
 
@@ -384,22 +384,22 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   @Override
-  public MetadataVersionId getMetadataVersionId(String storeName, String metadataSchemaStr) {
-    return (MetadataVersionId)doSchemaOperation(storeName, ((schemaData) -> {
-      MetadataSchemaEntry metadataSchemaEntry =
-          new MetadataSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID, metadataSchemaStr);
-      return schemaData.getMetadataVersionId(metadataSchemaEntry);
+  public TimestampMetadataVersionId getTimestampMetadataVersionId(String storeName, String timestampMetadataSchemaStr) {
+    return (TimestampMetadataVersionId)doSchemaOperation(storeName, ((schemaData) -> {
+      TimestampMetadataSchemaEntry timestampMetadataSchemaEntry =
+          new TimestampMetadataSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID, timestampMetadataSchemaStr);
+      return schemaData.getTimestampMetadataVersionId(timestampMetadataSchemaEntry);
     }));
   }
 
   @Override
-  public MetadataSchemaEntry getMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
-    return (MetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getMetadataSchema(valueSchemaId, timestampMetadataVersionId)));
+  public TimestampMetadataSchemaEntry getTimestampMetadataSchema(String storeName, int valueSchemaId, int timestampMetadataVersionId) {
+    return (TimestampMetadataSchemaEntry)doSchemaOperation(storeName, ((schemaData) -> schemaData.getTimestampMetadataSchema(valueSchemaId, timestampMetadataVersionId)));
   }
 
   @Override
-  public Collection<MetadataSchemaEntry> getMetadataSchemas(String storeName) {
-    return (Collection<MetadataSchemaEntry>)doSchemaOperation(storeName, ((schemaData) -> schemaData.getMetadataSchemas()));
+  public Collection<TimestampMetadataSchemaEntry> getTimestampMetadataSchemas(String storeName) {
+    return (Collection<TimestampMetadataSchemaEntry>)doSchemaOperation(storeName, ((schemaData) -> schemaData.getTimestampMetadataSchemas()));
   }
 
   /**
@@ -496,7 +496,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       accessor.unsubscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
       accessor.unsubscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
       accessor.unsubscribeDerivedSchemaCreationChanges(storeName, derivedSchemaChildListener);
-      accessor.unsubscribeMetadataSchemaCreationChanges(storeName, metadataSchemaChildListener);
+      accessor.unsubscribeTimestampMetadataSchemaCreationChanges(storeName, timestampMetadataSchemaChildListener);
     } finally {
       schemaLock.writeLock().unlock();
     }
@@ -592,7 +592,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  private class MetadataSchemaChildListener extends SchemaChildListener {
+  private class TimestampMetadataSchemaChildListener extends SchemaChildListener {
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
       SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
@@ -603,8 +603,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
               + " path: " + timestampMetadataVersionIdPairStr);
         }
 
-        if (null == schemaData.getMetadataSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
-          schemaData.addMetadataSchema(accessor.getMetadataSchema(storeName, timestampMetadataVersionIdPairStr));
+        if (null == schemaData.getTimestampMetadataSchema(Integer.valueOf(ids[0]), Integer.valueOf(ids[1]))) {
+          schemaData.addTimestampMetadataSchema(accessor.getTimestampMetadataSchema(storeName, timestampMetadataVersionIdPairStr));
         }
       }
     }

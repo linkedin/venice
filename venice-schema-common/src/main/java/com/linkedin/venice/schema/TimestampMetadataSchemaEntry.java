@@ -6,19 +6,19 @@ import org.apache.avro.Schema;
 /**
  * This holds the schema to perform conflict resolution on records when samza produces data in
  * active active replication mode.
- * More information can be found here {@link MetadataSchemaAdapter} about the structure of the schema.
+ * More information can be found here {@link TimestampMetadataSchemaAdapter} about the structure of the schema.
  */
-public class MetadataSchemaEntry extends GeneratedSchemaEntry {
+public class TimestampMetadataSchemaEntry extends GeneratedSchemaEntry {
 
-  public MetadataSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
+  public TimestampMetadataSchemaEntry(int valueSchemaId, int protocolVersion, String schemaStr) {
     super(valueSchemaId, protocolVersion, schemaStr);
   }
 
-  public MetadataSchemaEntry(int valueSchemaId, int protocolVersion, Schema schema) {
+  public TimestampMetadataSchemaEntry(int valueSchemaId, int protocolVersion, Schema schema) {
     super(valueSchemaId, protocolVersion, schema);
   }
 
-  public MetadataSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
+  public TimestampMetadataSchemaEntry(int valueSchemaId, int protocolVersion, byte[] bytes) {
     super(valueSchemaId, protocolVersion, bytes);
   }
 
@@ -30,7 +30,7 @@ public class MetadataSchemaEntry extends GeneratedSchemaEntry {
       return false;
     if (getClass() != obj.getClass())
       return false;
-    MetadataSchemaEntry other = (MetadataSchemaEntry) obj;
+    TimestampMetadataSchemaEntry other = (TimestampMetadataSchemaEntry) obj;
     if (this.valueSchemaId != other.valueSchemaId) {
       return false;
     }

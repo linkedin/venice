@@ -1,20 +1,20 @@
 package com.linkedin.venice.schema;
 
-public class MetadataVersionId {
+public class TimestampMetadataVersionId {
   int valueSchemaVersion;
-  int metadataProtocolVersion;
+  int timestampMetadataProtocolVersion;
 
-  public MetadataVersionId(int valueSchemaVersion, int metadataProtocolVersion) {
+  public TimestampMetadataVersionId(int valueSchemaVersion, int timestampMetadataProtocolVersion) {
     this.valueSchemaVersion = valueSchemaVersion;
-    this.metadataProtocolVersion = metadataProtocolVersion;
+    this.timestampMetadataProtocolVersion = timestampMetadataProtocolVersion;
   }
 
   public int getValueSchemaVersion() {
     return valueSchemaVersion;
   }
 
-  public int getMetadataProtocolVersion() {
-    return metadataProtocolVersion;
+  public int getTimestampMetadataProtocolVersion() {
+    return timestampMetadataProtocolVersion;
   }
 
   @Override
@@ -22,7 +22,7 @@ public class MetadataVersionId {
     final int PRIME = 31;
     int result = 1;
     result = PRIME * result + valueSchemaVersion;
-    result = PRIME * result + metadataProtocolVersion;
+    result = PRIME * result + timestampMetadataProtocolVersion;
     return result;
   }
 
@@ -31,10 +31,10 @@ public class MetadataVersionId {
     if (this == o) return true;
     if (o == null || getClass() != o.getClass()) return false;
 
-    MetadataVersionId that = (MetadataVersionId)o;
+    TimestampMetadataVersionId that = (TimestampMetadataVersionId)o;
 
     if (valueSchemaVersion != that.valueSchemaVersion) return false;
-    if (metadataProtocolVersion != that.metadataProtocolVersion) return false;
+    if (timestampMetadataProtocolVersion != that.timestampMetadataProtocolVersion) return false;
 
     return true;
   }

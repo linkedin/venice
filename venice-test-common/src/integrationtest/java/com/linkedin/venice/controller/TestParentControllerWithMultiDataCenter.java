@@ -14,8 +14,8 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.schema.MetadataSchemaAdapter;
-import com.linkedin.venice.schema.MetadataSchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collection;
@@ -250,9 +250,9 @@ public class TestParentControllerWithMultiDataCenter {
     String recordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
     String recordSchemaStr3 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
 
-    Schema metadataSchema1 = MetadataSchemaAdapter.parse(recordSchemaStr1, 1);
-    Schema metadataSchema2 = MetadataSchemaAdapter.parse(recordSchemaStr2, 1);
-    Schema metadataSchema3 = MetadataSchemaAdapter.parse(recordSchemaStr3, 1);
+    Schema timestampMetadataSchema1 = TimestampMetadataSchemaAdapter.parse(recordSchemaStr1, 1);
+    Schema timestampMetadataSchema2 = TimestampMetadataSchemaAdapter.parse(recordSchemaStr2, 1);
+    Schema timestampMetadataSchema3 = TimestampMetadataSchemaAdapter.parse(recordSchemaStr3, 1);
 
     VeniceControllerWrapper parentController =
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
@@ -287,21 +287,21 @@ public class TestParentControllerWithMultiDataCenter {
         });
 
         Admin veniceHelixAdmin = childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
-        Collection<MetadataSchemaEntry> metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
-        Assert.assertEquals(metadataSchemas.size(), 1);
-        Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema2);
+        Collection<TimestampMetadataSchemaEntry> timestampMetadataSchemas = veniceHelixAdmin.getTimestampMetadataSchemas(clusterName, storeName);
+        Assert.assertEquals(timestampMetadataSchemas.size(), 1);
+        Assert.assertEquals(timestampMetadataSchemas.iterator().next().getSchema(), timestampMetadataSchema2);
 
         //Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
         SchemaResponse schemaResponse3 =
             parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, recordSchemaStr3));
         Assert.assertFalse(schemaResponse3.isError(), "addValeSchema returned error: " + schemaResponse3.getError());
 
-        metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
-        Assert.assertEquals(metadataSchemas.size(), 2);
+        timestampMetadataSchemas = veniceHelixAdmin.getTimestampMetadataSchemas(clusterName, storeName);
+        Assert.assertEquals(timestampMetadataSchemas.size(), 2);
 
-        Iterator<MetadataSchemaEntry> iterator = metadataSchemas.iterator();
-        Assert.assertEquals(iterator.next().getSchema(), metadataSchema2);
-        Assert.assertEquals(iterator.next().getSchema(), metadataSchema3);
+        Iterator<TimestampMetadataSchemaEntry> iterator = timestampMetadataSchemas.iterator();
+        Assert.assertEquals(iterator.next().getSchema(), timestampMetadataSchema2);
+        Assert.assertEquals(iterator.next().getSchema(), timestampMetadataSchema3);
 
         //Add a new version for the store and make sure all new metadata schema are generated.
         VersionCreationResponse vcr =
@@ -321,13 +321,13 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(versions.get(0).getTimestampMetadataVersionId(), 1);
         });
 
-        metadataSchemas = veniceHelixAdmin.getMetadataSchemas(clusterName, storeName);
-        Assert.assertEquals(metadataSchemas.size(), 3);
+        timestampMetadataSchemas = veniceHelixAdmin.getTimestampMetadataSchemas(clusterName, storeName);
+        Assert.assertEquals(timestampMetadataSchemas.size(), 3);
 
-        Iterator<MetadataSchemaEntry> iterator2 = metadataSchemas.iterator();
-        Assert.assertEquals(iterator2.next().getSchema(), metadataSchema1);
-        Assert.assertEquals(iterator2.next().getSchema(), metadataSchema2);
-        Assert.assertEquals(iterator2.next().getSchema(), metadataSchema3);
+        Iterator<TimestampMetadataSchemaEntry> iterator2 = timestampMetadataSchemas.iterator();
+        Assert.assertEquals(iterator2.next().getSchema(), timestampMetadataSchema1);
+        Assert.assertEquals(iterator2.next().getSchema(), timestampMetadataSchema2);
+        Assert.assertEquals(iterator2.next().getSchema(), timestampMetadataSchema3);
       }
     }
   }
