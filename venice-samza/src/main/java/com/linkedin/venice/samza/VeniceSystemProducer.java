@@ -105,6 +105,7 @@ public class VeniceSystemProducer implements SystemProducer {
   private String kafkaBootstrapServers;
 
   private boolean isWriteComputeEnabled = false;
+  private boolean isChunkingEnabled = false;
 
   private boolean isStarted = false;
 
@@ -184,7 +185,7 @@ public class VeniceSystemProducer implements SystemProducer {
     partitionerProperties.putAll(store.getPartitionerParams());
     VenicePartitioner
         venicePartitioner = PartitionUtils.getVenicePartitioner(store.getPartitionerClass(), amplificationFactor, new VeniceProperties(partitionerProperties));
-    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time, venicePartitioner);
+    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time, venicePartitioner, isChunkingEnabled);
   }
 
   @Override
@@ -259,6 +260,17 @@ public class VeniceSystemProducer implements SystemProducer {
           new D2TransportClient(discoveryResponse.getD2Service(), d2Client), versionTopic, factory, this)
       );
       pushMonitor.get().start();
+    }
+
+    if (pushType.equals(Version.PushType.BATCH) || pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
+      int versionNumber = versionCreationResponse.getVersion();
+      Version version = storeResponse.getStore().getVersion(versionNumber)
+          .orElseThrow(() -> new VeniceException("Version info for version " + versionNumber + " not available in store response"));
+      // For pushes made to VT or SR topic, the producer should chunk the data
+      this.isChunkingEnabled = version.isChunkingEnabled();
+    } else {
+      // For pushes made to RT, the producer should not chunk the data
+      this.isChunkingEnabled = false;
     }
 
     this.veniceWriter = getVeniceWriter(versionCreationResponse);

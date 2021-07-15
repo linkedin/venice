@@ -60,6 +60,11 @@ public class VeniceWriterFactory {
         Optional.empty(), time, partitioner);
   }
 
+  public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName, Time time, VenicePartitioner partitioner, boolean chunkingEnabled) {
+    return createVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), new DefaultSerializer(),
+        Optional.of(chunkingEnabled), time, partitioner);
+  }
+
   public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName, Time time, VenicePartitioner partitioner, Optional<Integer> topicPartitionCount) {
     return createVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), new DefaultSerializer(),
         Optional.empty(), time, partitioner, topicPartitionCount);
