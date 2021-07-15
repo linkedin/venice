@@ -126,6 +126,14 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     Utils.computeIfNotNull(getStats(storeName, version), stat -> stat.recordLeaderBytesProduced(bytes));
   }
 
+  public void setIngestionTaskPushTimeoutGauge(String storeName, int version) {
+    getStats(storeName, version).setIngestionTaskPushTimeoutGauge(1);
+  }
+
+  public void resetIngestionTaskPushTimeoutGauge(String storeName, int version) {
+    getStats(storeName, version).setIngestionTaskPushTimeoutGauge(0);
+  }
+
   static class StorageIngestionStats {
     private static final MetricConfig METRIC_CONFIG = new MetricConfig();
     private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
@@ -133,6 +141,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private StoreIngestionTask ingestionTask;
     private long rtTopicOffsetLagOverThreshold = 0;
     private int ingestionTaskErroredGauge = 0;
+    private int ingestionTaskPushTimeoutGauge = 0;
 
     private final Rate recordsConsumedRate;
     private final Rate bytesConsumedRate;
@@ -356,6 +365,13 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       leaderBytesProducedSensor.record(value);
     }
 
+    public void setIngestionTaskPushTimeoutGauge(int value) {
+      ingestionTaskPushTimeoutGauge = value;
+    }
+
+    public int getIngestionTaskPushTimeoutGauge() {
+      return ingestionTaskPushTimeoutGauge;
+    }
 
   }
 
@@ -385,6 +401,9 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
           (double) getStats().getHybridFollowerOffsetLag(), 0));
       registerSensor("write_compute_operation_failure", new IngestionStatsGauge(this,
           () -> (double) getStats().getWriteComputeErrorCode()));
+
+      registerSensor("ingestion_task_push_timeout_gauge", new IngestionStatsGauge(this,
+          () -> (double) getStats().getIngestionTaskPushTimeoutGauge()));
 
       registerSensor(RECORDS_CONSUMED_METRIC_NAME,
           new IngestionStatsGauge(this, () -> getStats().getRecordsConsumed(), 0));
