@@ -89,7 +89,6 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -1884,17 +1883,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long syncBytesInterval = partitionConsumptionState.isDeferredWrite() ? databaseSyncBytesIntervalForDeferredWriteMode
         : databaseSyncBytesIntervalForTransactionalMode;
 
-    // If the following condition is true, then we want to sync to disk.
-    boolean recordsProcessedAboveSyncIntervalThreshold = false;
-    if (syncBytesInterval > 0 && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval)) {
-      recordsProcessedAboveSyncIntervalThreshold = true;
-      syncOffset(kafkaVersionTopic, partitionConsumptionState);
-    }
-
     reportIfCatchUpBaseTopicOffset(partitionConsumptionState);
 
-    // Check whether it's ready to serve
+    /**
+     * If the following condition is true, then we want to sync to disk. And syncing offset checking in syncOffset() should
+     * be the very last step for processing a record. We also check whether it's ready to serve before syncing for every
+     * message.
+     */
+    boolean recordsProcessedAboveSyncIntervalThreshold =
+        (syncBytesInterval > 0 && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
+    if (recordsProcessedAboveSyncIntervalThreshold) {
+      syncOffset(kafkaVersionTopic, partitionConsumptionState);
+    }
   }
 
   /**
