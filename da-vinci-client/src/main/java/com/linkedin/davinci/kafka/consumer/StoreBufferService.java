@@ -126,9 +126,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private static final Logger LOGGER = Logger.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
+    private final int drainerIndex;
     private final ConcurrentMap<TopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
-    public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue) {
+    public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue, int drainerIndex) {
       this.blockingQueue = blockingQueue;
+      this.drainerIndex = drainerIndex;
     }
 
     public void stop() {
@@ -137,28 +139,31 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     @Override
     public void run() {
-      LOGGER.info("Starting StoreBufferDrainer Thread....");
+      LOGGER.info("Starting StoreBufferDrainer Thread for drainer: " + drainerIndex + "....");
+      QueueNode node = null;
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = null;
+      ProducedRecord producedRecord = null;
+      StoreIngestionTask ingestionTask = null;
+      Optional<CompletableFuture<Void>> recordPersistedFuture = null;
       while (isRunning.get()) {
-        QueueNode node = null;
         try {
           node = blockingQueue.take();
-        } catch (InterruptedException e) {
-          LOGGER.error("Received InterruptedException, will exit");
-          break;
-        }
 
-        VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper = node.getConsumerRecordWrapper();
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
-        ProducedRecord producedRecord = node.getProducedRecord();
-        StoreIngestionTask ingestionTask = node.getIngestionTask();
-        Optional<CompletableFuture<Void>> recordPersistedFuture = node.getQueuedRecordPersistedFuture();
-        try {
+          VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper = node.getConsumerRecordWrapper();
+          consumerRecord = consumerRecordWrapper.consumerRecord();
+          producedRecord = node.getProducedRecord();
+          ingestionTask = node.getIngestionTask();
+          recordPersistedFuture = node.getQueuedRecordPersistedFuture();
+
           long startTime = System.currentTimeMillis();
+
           ingestionTask.processConsumerRecord(consumerRecordWrapper, producedRecord);
+
           //complete the producedRecord future as processing for this producedRecord is done here.
           if (producedRecord != null) {
             producedRecord.completePersistedToDBFuture(null);
           }
+
           /**
            * Complete {@link QueueNode#queuedRecordPersistedFuture} since the processing for the current record is done.
            */
@@ -169,36 +174,45 @@ public class StoreBufferService extends AbstractStoreBufferService {
           TopicPartition topicPartition = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
           topicToTimeSpent.compute(topicPartition, (K,V) ->  (V == null ? 0 : V) + System.currentTimeMillis() - startTime );
         } catch (Throwable e) {
-          LOGGER.error("Received throwable in drainer thread:  ", e);
-          String consumerRecordString = consumerRecord.toString();
-          if (consumerRecordString.length() > 1024) {
-            // Careful not to flood the logs with too much content...
-            LOGGER.error("Got exception during processing consumer record (truncated at 1024 characters) : "
-                + consumerRecordString.substring(0, 1024), e);
-          } else {
-            LOGGER.error("Got exception during processing consumer record: " + consumerRecord, e);
+          if (e instanceof InterruptedException) {
+            LOGGER.error("Drainer " + drainerIndex + "received InterruptedException, will exit");
+            break;
           }
+          LOGGER.error("Drainer " + drainerIndex + "received throwable in drainer thread:  ", e);
+          if (consumerRecord != null) {
+            String consumerRecordString = consumerRecord.toString();
+            if (consumerRecordString.length() > 1024) {
+              // Careful not to flood the logs with too much content...
+              LOGGER.error("Got exception during processing consumer record (truncated at 1024 characters) : "
+                  + consumerRecordString.substring(0, 1024), e);
+            } else {
+              LOGGER.error("Got exception during processing consumer record: " + consumerRecord, e);
+            }
+          }
+
           /**
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.
            */
           if (e instanceof Exception) {
             Exception ee = (Exception)e;
-            ingestionTask.setLastDrainerException(ee);
+            if (ingestionTask != null) {
+              ingestionTask.setLastDrainerException(ee);
+              if (e instanceof VeniceChecksumException) {
+                ingestionTask.recordChecksumVerificationFailure();
+              }
+            }
             if (producedRecord != null) {
               producedRecord.completePersistedToDBFuture(ee);
             }
-            if (recordPersistedFuture.isPresent()) {
+            if (recordPersistedFuture != null && recordPersistedFuture.isPresent()) {
               recordPersistedFuture.get().completeExceptionally(ee);
-            }
-            if (e instanceof VeniceChecksumException) {
-              ingestionTask.recordChecksumVerificationFailure();
             }
           } else {
             break;
           }
         }
       }
-      LOGGER.info("Current StoreBufferDrainer stopped");
+      LOGGER.info("Current StoreBufferDrainer" + drainerIndex + " stopped");
     }
   }
 
@@ -298,7 +312,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {
-      StoreBufferDrainer drainer = new StoreBufferDrainer(this.blockingQueueArr.get(cur));
+      StoreBufferDrainer drainer = new StoreBufferDrainer(this.blockingQueueArr.get(cur), cur);
       this.executorService.submit(drainer);
       drainerList.add(drainer);
     }
