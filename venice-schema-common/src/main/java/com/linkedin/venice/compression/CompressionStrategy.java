@@ -13,7 +13,7 @@ import java.util.Optional;
 public enum CompressionStrategy {
   NO_OP(0, false),
   GZIP(1, true),
-  ZSTD(2, true),
+  // Value 2 has been used in the past and we should not use it in the future.
   ZSTD_WITH_DICT(3, true);
 
   private final int value;
