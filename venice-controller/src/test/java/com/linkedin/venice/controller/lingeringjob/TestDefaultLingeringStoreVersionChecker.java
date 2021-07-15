@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
+import java.security.cert.X509Certificate;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -15,6 +16,7 @@ import static org.mockito.Mockito.*;
 
 public class TestDefaultLingeringStoreVersionChecker {
 
+  private static final X509Certificate DEFAULT_REQUEST_CERT = mock(X509Certificate.class);
   private DefaultLingeringStoreVersionChecker checker;
   private Store store;
   private Version version;
@@ -35,7 +37,7 @@ public class TestDefaultLingeringStoreVersionChecker {
     when(version.getCreatedTime()).thenReturn(1L);
     when(store.getBootstrapToOnlineTimeoutInHours()).thenReturn(1);
     when(time.getMilliseconds()).thenReturn(TimeUnit.HOURS.toMillis(1) + 2);
-    Assert.assertTrue(checker.isStoreVersionLingering(store, version, time, admin, Optional.of("principal")));
+    Assert.assertTrue(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(DEFAULT_REQUEST_CERT)));
   }
 
   @Test
@@ -43,6 +45,6 @@ public class TestDefaultLingeringStoreVersionChecker {
     when(version.getCreatedTime()).thenReturn(3L);
     when(store.getBootstrapToOnlineTimeoutInHours()).thenReturn(1);
     when(time.getMilliseconds()).thenReturn(TimeUnit.HOURS.toMillis(1) + 2);
-    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of("principal")));
+    Assert.assertFalse(checker.isStoreVersionLingering(store, version, time, admin, Optional.of(DEFAULT_REQUEST_CERT)));
   }
 }

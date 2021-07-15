@@ -34,7 +34,7 @@ public class VeniceControllerService extends AbstractVeniceService {
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(multiClusterConfigs, metricsRepository, sslEnabled, sslConfig, accessController, d2Client);
     if (multiClusterConfigs.isParent()) {
 
-      this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig,
+      this.admin = new VeniceParentHelixAdmin(internalAdmin, multiClusterConfigs, sslEnabled, sslConfig, accessController,
           authorizerService, createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository));
       logger.info("Controller works as a parent controller.");
     } else {
