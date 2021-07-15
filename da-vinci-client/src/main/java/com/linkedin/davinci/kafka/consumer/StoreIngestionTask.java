@@ -25,6 +25,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
@@ -1235,6 +1236,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Thread.currentThread().setName("venice-consumer-" + kafkaVersionTopic);
       logger.info("Running " + consumerTaskId);
       versionedStorageIngestionStats.resetIngestionTaskErroredGauge(storeName, versionNumber);
+      versionedStorageIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
       while (isRunning()) {
         processConsumerActions();
@@ -1305,6 +1307,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (t instanceof Exception) {
         reportError(partitionConsumptionStateMap.values(), errorPartitionId,
             "Caught Exception during ingestion.", (Exception) t);
+        if (t instanceof VeniceTimeoutException) {
+          versionedStorageIngestionStats.setIngestionTaskPushTimeoutGauge(storeName, versionNumber);
+        }
       } else {
         reportError(partitionConsumptionStateMap.values(), errorPartitionId,
             "Caught non-exception Throwable during ingestion.", new VeniceException(t));
