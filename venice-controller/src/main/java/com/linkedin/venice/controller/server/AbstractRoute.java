@@ -150,7 +150,7 @@ public class AbstractRoute {
   /**
    * Helper function to get certificate out of Spark request
    */
-  private static X509Certificate getCertificate(Request request) {
+  protected static X509Certificate getCertificate(Request request) {
     HttpServletRequest rawRequest = request.raw();
     Object certificateObject = rawRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
     if (null == certificateObject) {

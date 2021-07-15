@@ -9,6 +9,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
@@ -40,9 +41,9 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       Version version,
       Time time,
       Admin controllerAdmin,
-      Optional<String> optionalRequesterPrincipalId
+      Optional<X509Certificate> requesterCert
   ) {
-    if (isBatchJobHeartbeatEnabled(store, version, time, controllerAdmin, optionalRequesterPrincipalId)) {
+    if (isBatchJobHeartbeatEnabled(store, version, time, controllerAdmin, requesterCert)) {
       LOGGER.info(String.format("Batch job heartbeat is enabled for store %s with version %d", store.getName(), version.getNumber()));
       return batchJobHasHeartbeat(store, version, time, controllerAdmin);
     }
@@ -53,7 +54,7 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
         version,
         time,
         controllerAdmin,
-        optionalRequesterPrincipalId
+        requesterCert
     );
   }
 
@@ -92,11 +93,11 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
       Version version,
       Time time,
       Admin controllerAdmin,
-      Optional<String> optionalRequesterPrincipalId
+      Optional<X509Certificate> requesterCert
   ) {
-    if (!canRequesterAccessHeartbeatStore(controllerAdmin, optionalRequesterPrincipalId)) {
+    if (!canRequesterAccessHeartbeatStore(controllerAdmin, requesterCert)) {
       LOGGER.warn(String.format("Assume the batch job heartbeat is not enabled since it does not have write access to the "
-          + "heartbeat store %s with version %s for requester: %s", store.getName(), version.getNumber(), optionalRequesterPrincipalId.orElse(null)));
+          + "heartbeat store %s with version %s for requester: %s", store.getName(), version.getNumber(), requesterCert.orElse(null)));
       heartbeatBasedCheckerStats.recordCheckJobHasHeartbeatFailed();
       return false;
     }
@@ -136,19 +137,17 @@ public class HeartbeatBasedLingeringStoreVersionChecker implements LingeringStor
 
   private boolean canRequesterAccessHeartbeatStore(
       Admin controllerAdmin,
-      Optional<String> optionalRequesterPrincipalId
+      Optional<X509Certificate> requesterCert
   ) {
-    if (!optionalRequesterPrincipalId.isPresent()) {
-      LOGGER.warn("No requester principal ID is provided. Hence assume the requester has no write permission to the heartbeat store");
+    if (!requesterCert.isPresent()) {
+      LOGGER.warn("No requester cert is provided. Hence assume the requester has no write permission to the heartbeat store");
       return false;
     }
-    boolean canAccess;
     try {
-      canAccess = controllerAdmin.hasWritePermissionToBatchJobHeartbeatStore(optionalRequesterPrincipalId.get());
+      return controllerAdmin.hasWritePermissionToBatchJobHeartbeatStore(requesterCert.get());
     } catch (Exception e) {
       LOGGER.warn("Cannot check access permission. Assume no access permission.", e);
-      return false;
     }
-    return canAccess;
+    return false;
   }
 }
