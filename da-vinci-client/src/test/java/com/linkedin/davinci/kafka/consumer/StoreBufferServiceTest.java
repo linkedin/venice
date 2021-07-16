@@ -57,7 +57,7 @@ public class StoreBufferServiceTest {
     bufferService.start();
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null);
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null);
-    verify(mockTask).setLastDrainerException(e);
+    verify(mockTask).offerDrainerException(e, partition1);
     bufferService.stop();
   }
 
@@ -175,7 +175,7 @@ public class StoreBufferServiceTest {
       // Verify map the cleared out
       Assert.assertTrue(bufferService.getTopicToTimeSpentMap(i).size() == 0);
     }
-    verify(mockTask).setLastDrainerException(e);
+    verify(mockTask).offerDrainerException(e, partition1);
     verify(mockTask).recordChecksumVerificationFailure();
     bufferService.stop();
   }

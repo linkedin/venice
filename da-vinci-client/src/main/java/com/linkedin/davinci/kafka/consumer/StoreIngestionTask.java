@@ -17,6 +17,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.KafkaRecordWrapper;
+import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -101,6 +102,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
@@ -110,6 +112,7 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
@@ -143,6 +146,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
   private static final int SLOPPY_OFFSET_CATCHUP_THRESHOLD = 100;
+  private static final int EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE = 10000;
+  private static final int EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE = 1000;
+  private static final String EXCEPTION_GROUP_DRAINER = "drainer";
+  private static final String EXCEPTION_GROUP_PRODUCER = "producer";
 
   // Final stuff
   /** storage destination for consumption */
@@ -170,12 +177,45 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   protected final AbstractStoreBufferService storeBufferService;
-  /** Persists the exception thrown by {@link StoreBufferService}. */
-  protected Exception lastDrainerException = null;
+  /** Persists partitions that encountered exceptions in other threads. i.e. consumer, producer and drainer */
+  private final Set<Integer> errorPartitions = Collections.synchronizedSet(new HashSet<>());
+  /** Measurable wrapper for exception, partition id pair */
+  private class PartitionExceptionInfo implements Measurable {
+    private Exception e;
+    private Integer partitionId;
+
+    public PartitionExceptionInfo(Exception e, int partitionId) {
+      this. e = e;
+      this.partitionId = partitionId;
+    }
+
+    public Exception getException() {
+      return e;
+    }
+
+    public Integer getPartitionId() {
+      return partitionId;
+    }
+
+    @Override
+    public int getSize() {
+      int size = 4;
+      if (e != null && e.getMessage() != null) {
+        size += e.getMessage().length();
+      }
+      return size;
+    }
+  }
+  /** Persists the exceptions thrown by {@link StoreBufferService}. */
+  private final BlockingQueue<PartitionExceptionInfo> drainerExceptions =
+      new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
+  /** Persists the exception thrown by kafka producer callback for L/F mode */
+  private final BlockingQueue<PartitionExceptionInfo> producerExceptions =
+      new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
-  /** Persists the exception thrown by kafka producer callback for L/F mode */
-  private Exception lastProducerException = null;
+  /** Persists the last exception thrown by any asynchronous component that should terminate the entire ingestion task */
+  private AtomicReference<Exception> lastStoreIngestionException = new AtomicReference<>();
   /** Keeps track of every upstream producer this consumer task has seen so far. */
   protected final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
   protected final AggStoreIngestionStats storeIngestionStats;
@@ -593,8 +633,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (isRunning()) {
       // If task is still running, force close it.
-      reportStatusAdapter.reportError(partitionConsumptionStateMap.values(), "Received the signal to kill this consumer. Topic " + kafkaVersionTopic,
-          new VeniceException("Kill the consumer"));
+      reportStatusAdapter.reportError(partitionConsumptionStateMap.values(), "Received the signal to kill this consumer. Topic "
+              + kafkaVersionTopic, new VeniceException("Kill the consumer"));
       // close can not stop the consumption synchronously, but the status of helix would be set to ERROR after
       // reportError. The only way to stop it synchronously is interrupt the current running thread, but it's an unsafe
       // operation, for example it could break the ongoing db operation, so we should avoid that.
@@ -1094,19 +1134,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  private void drainExceptionQueue(BlockingQueue<PartitionExceptionInfo> exceptionQueue, String exceptionGroup) {
+    while (!exceptionQueue.isEmpty()) {
+      try {
+        PartitionExceptionInfo exceptionPartitionPair = exceptionQueue.take();
+        int exceptionPartition = exceptionPartitionPair.getPartitionId();
+        reportError(exceptionPartitionPair.getException().getMessage(), exceptionPartition,
+            exceptionPartitionPair.getException());
+        if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
+          unSubscribePartition(kafkaVersionTopic, exceptionPartition);
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Interrupted while trying to drain exceptions from " + exceptionGroup
+            + " exception queue for topic: " + kafkaVersionTopic);
+      }
+    }
+  }
+
   protected void processMessages(boolean usingSharedConsumer) throws InterruptedException {
+    Exception ingestionTaskException = lastStoreIngestionException.get();
+    if (null != ingestionTaskException) {
+      throw new VeniceException("Unexpected store ingestion task level exception, will error out the entire" +
+          " ingestion task and all its partitions", ingestionTaskException);
+    }
     if (null != lastConsumerException) {
       throw new VeniceException("Exception thrown by shared consumer", lastConsumerException);
     }
 
-    if (null != lastDrainerException) {
-      // Interrupt the whole ingestion task
-      throw new VeniceException("Exception thrown by store buffer drainer", lastDrainerException);
-    }
+    /**
+     * Drainer and producer exceptions are granular enough for us to achieve partition level exception isolation. We
+     * drain the exception queues here and put partitions into error state accordingly without killing the ingestion task.
+     */
+    drainExceptionQueue(drainerExceptions, EXCEPTION_GROUP_DRAINER);
+    drainExceptionQueue(producerExceptions, EXCEPTION_GROUP_PRODUCER);
 
-    if (null != lastProducerException) {
-      throw new VeniceException("Exception thrown by kafka producer callback", lastProducerException);
-    }
+    errorPartitions.clear();
 
     /**
      * Check whether current consumer has any subscription or not since 'poll' function will throw
@@ -1283,8 +1346,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (isRunning()) {
         // Report ingestion failure if it is not caused by kill operation or server restarts.
         logger.error(consumerTaskId + " has failed.", e);
-        reportStatusAdapter.reportError(partitionConsumptionStateMap.values(),
-            "Caught InterruptException during ingestion.", e);
+        reportStatusAdapter.reportError(partitionConsumptionStateMap.values(), "Caught InterruptException during ingestion.", e);
         storeIngestionStats.recordIngestionFailure(storeName);
         versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
       }
@@ -1309,6 +1371,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       logger.error(consumerTaskId + " has failed.", t);
+      /**
+       * Completed partitions will remain ONLINE without a backing ingestion task. If the partition belongs to a hybrid
+       * store then it will remain stale until the host is restarted. This is because both the auto reset task and Helix
+       * controller doesn't think there is a problem with the replica since it's COMPLETED and ONLINE. Stale replicas is
+       * better than dropping availability and that's why we do not put COMPLETED replicas to ERROR state immediately.
+       */
+      for (PartitionConsumptionState pcs : partitionConsumptionStateMap.values()) {
+        if (pcs.isComplete()) {
+          versionedStorageIngestionStats.recordStalePartitionsWithoutIngestionTask(storeName, versionNumber);
+        }
+      }
       if (t instanceof Exception) {
         reportError(partitionConsumptionStateMap.values(), errorPartitionId,
             "Caught Exception during ingestion.", (Exception) t);
@@ -1393,7 +1466,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void reportError(Collection<PartitionConsumptionState> pcsList, int partitionId, String message, Exception consumerEx) {
+  private void reportError(Collection<PartitionConsumptionState> pcsList, int partitionId, String message,
+      Exception consumerEx) {
     if (pcsList.isEmpty()) {
       reportStatusAdapter.reportError(partitionId, message, consumerEx);
     } else {
@@ -1761,6 +1835,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     int partitionId = record.partition();
     String msg;
+    if (errorPartitions.contains(partitionId)) {
+      msg = "Errors already exist in partition: " + record.partition() + " for resource: " + kafkaVersionTopic
+          + ", skipping this record";
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        logger.info(msg + "that has offset " + record.offset());
+      }
+      return false;
+    }
     if (null == partitionConsumptionState || !partitionConsumptionState.isSubscribed()) {
       msg = "Topic " + kafkaVersionTopic + " Partition " + partitionId + " has been unsubscribed, skip this record";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -1938,16 +2020,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ps.getOffsetRecord().setOffsetLag(offsetLag);
   }
 
-  public void setLastDrainerException(Exception e) {
-    lastDrainerException = e;
+  private void offerExceptionToQueue(Exception e, int partitionId,
+      BlockingQueue<PartitionExceptionInfo> exceptionQueue) {
+    try {
+      errorPartitions.add(partitionId);
+      exceptionQueue.put(new PartitionExceptionInfo(e, partitionId));
+    } catch (InterruptedException interruptedException) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while trying to offer exception to queue for partition id: "
+          + partitionId);
+    }
+  }
+
+  public void offerDrainerException(Exception e, int partitionId) {
+    offerExceptionToQueue(e, partitionId, drainerExceptions);
+  }
+
+  public void offerProducerException(Exception e, int partitionId) {
+    offerExceptionToQueue(e, partitionId, producerExceptions);
   }
 
   public void setLastConsumerException(Exception e) {
     lastConsumerException = e;
   }
 
-  public void setLastProducerException(Exception e) {
-    lastProducerException = e;
+  public void setLastStoreIngestionException(Exception e) {
+    lastStoreIngestionException.set(e);
   }
 
   public void recordChecksumVerificationFailure() {

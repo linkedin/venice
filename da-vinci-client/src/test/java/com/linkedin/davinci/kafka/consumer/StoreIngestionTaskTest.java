@@ -115,6 +115,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -124,6 +127,8 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -1659,10 +1664,10 @@ public class StoreIngestionTaskTest {
         // The speed for a partition to get EOP is non-deterministic, adds the if check here to make this test not flaky.
         if (mockNotifierEOPReveived.isEmpty()) {
           Assert.assertFalse(mockNotifierError.isEmpty(), "Disk Usage should have triggered an ingestion error");
-          String errorMessages = mockNotifierError.stream().map(o -> ((Exception) o[3]).getCause().getMessage()) //elements in object array are 0:store name (String), 1: partition (int), 2: message (String), 3: cause (Exception)
+          String errorMessages = mockNotifierError.stream().map(o -> ((Exception) o[3]).getMessage()) //elements in object array are 0:store name (String), 1: partition (int), 2: message (String), 3: cause (Exception)
               .collect(Collectors.joining());
           Assert.assertTrue(errorMessages.contains("Disk is full"),
-              "Expected disk full error, found following error messages: " + errorMessages);
+              "Expecting disk full error, found following error messages instead: " + errorMessages);
         }
       });
     }, Optional.empty(), Optional.of(diskFullUsage), isLeaderFollowerModelEnabled);
@@ -1815,6 +1820,29 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+    }, isLeaderFollowerModelEnabled);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testPartitionExceptionIsolation(boolean isLeaderFollowerModelEnabled) throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
+    long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    doThrow(new VeniceException("fake storage engine exception")).when(mockAbstractStorageEngine).put(eq(PARTITION_FOO),
+        any(), any(ByteBuffer.class));
+
+    runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT))
+          .completed(eq(topic), eq(PARTITION_BAR), LongEqualOrGreaterThanMatcher.get(barLastOffset));
+
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+      verify(mockLogNotifier, never()).completed(eq(topic), eq(PARTITION_FOO), anyLong());
+      // Error partition should be unsubscribed
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT)).stopped(eq(topic), eq(PARTITION_FOO), anyLong());
+      verify(mockLogNotifier, never()).error(eq(topic), eq(PARTITION_BAR), anyString(), any());
+      assertTrue(storeIngestionTaskUnderTest.isRunning(), "The StoreIngestionTask should still be running");
     }, isLeaderFollowerModelEnabled);
   }
 
