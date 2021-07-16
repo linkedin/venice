@@ -18,7 +18,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
-import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -200,11 +199,10 @@ public class CreateVersion extends AbstractRoute {
                 .equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME))) {
               admin.getRealTimeTopic(clusterName, storeName);
             }
-
-            final Version version =
+            Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric, Optional.of(getCertificate(request)),
-                   rewindTimeInSecondsOverride);
+                   pushType, sendStartOfPush, sorted, dictionaryStr, batchStartingFabric,
+                    Optional.ofNullable(getPrincipalId(request)), rewindTimeInSecondsOverride);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.

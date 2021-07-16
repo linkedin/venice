@@ -4,7 +4,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
-import java.security.cert.X509Certificate;
 import java.util.Optional;
 
 public interface LingeringStoreVersionChecker {
@@ -20,6 +19,6 @@ public interface LingeringStoreVersionChecker {
         Version version,
         Time time,
         Admin controllerAdmin,
-        Optional<X509Certificate> requesterCert
+        Optional<String> optionalRequesterPrincipalId
     );
 }
