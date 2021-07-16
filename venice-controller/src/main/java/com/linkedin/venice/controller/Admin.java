@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -26,7 +25,6 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
-import java.security.cert.X509Certificate;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -119,7 +117,7 @@ public interface Admin extends AutoCloseable, Closeable {
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers,
         long rewindTimeInSecondsOverride, int timestampMetadataVersionId);
 
-    default boolean hasWritePermissionToBatchJobHeartbeatStore(X509Certificate requesterCert) throws AclException {
+    default boolean hasWritePermissionToBatchJobHeartbeatStore(String principalId) {
         return false;
     }
 
@@ -138,7 +136,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary,
-        Optional<String> batchStartingFabric, Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride);
+        Optional<String> batchStartingFabric, Optional<String> optionalRequesterPrincipalId, long rewindTimeInSecondsOverride);
 
     String getRealTimeTopic(String clusterName, String storeName);
 

@@ -1,8 +1,6 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
-import com.linkedin.venice.acl.AclException;
-import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -142,7 +140,6 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.codehaus.jackson.node.ObjectNode;
-import java.security.cert.X509Certificate;
 
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -211,27 +208,24 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final boolean batchJobHeartbeatEnabled;
 
-  Optional<DynamicAccessController> accessController;
-
   private final Optional<AuthorizerService> authorizerService;
 
   private final ExecutorService systemStoreAclSynchronizationExecutor;
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
 
-  // Visible for testing
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty());
   }
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
       boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<AuthorizerService> authorizerService) {
-    this(veniceHelixAdmin, multiClusterConfigs, sslEnabled, sslConfig, Optional.empty(), authorizerService, new DefaultLingeringStoreVersionChecker());
+    this(veniceHelixAdmin, multiClusterConfigs, sslEnabled, sslConfig, authorizerService, new DefaultLingeringStoreVersionChecker());
   }
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
-      boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController,
-      Optional<AuthorizerService> authorizerService, LingeringStoreVersionChecker lingeringStoreVersionChecker) {
+      boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<AuthorizerService> authorizerService,
+      LingeringStoreVersionChecker lingeringStoreVersionChecker) {
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
@@ -241,7 +235,6 @@ public class VeniceParentHelixAdmin implements Admin {
         this.veniceHelixAdmin.getAdapterSerializer());
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
-    this.accessController = accessController;
     this.authorizerService = authorizerService;
     this.systemStoreAclSynchronizationExecutor =
         authorizerService.map(service -> Executors.newSingleThreadExecutor()).orElse(null);
@@ -870,21 +863,21 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean hasWritePermissionToBatchJobHeartbeatStore(X509Certificate requesterCert) throws AclException {
-    if (!accessController.isPresent()) {
-      throw new VeniceException("Cannot check write permission since the access controller does not present for " +
-              "cert " + requesterCert);
+  public boolean hasWritePermissionToBatchJobHeartbeatStore(String principalId) {
+    if (!authorizerService.isPresent()) {
+      throw new VeniceException("Cannot handle ACL operation since the authorizer is not set for principal ID " + principalId);
     }
-    return accessController.get().
-            hasAccess(requesterCert, VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix(), Method.Write.name());
+    AuthorizerService authorizer = authorizerService.get();
+    Resource heartbeatStoreResource = new Resource(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix());
+    Principal batchJobPrincipal = new Principal(principalId);
+    return authorizer.canAccess(Method.Write, heartbeatStoreResource, batchJobPrincipal);
   }
 
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
       boolean sorted, String compressionDictionary, Optional<String> batchStartingFabric,
-      Optional<X509Certificate> requesterCert, long rewindTimeInSecondsOverride) {
-
+      Optional<String> optionalRequesterPrincipalId, long rewindTimeInSecondsOverride) {
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
@@ -898,7 +891,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (existingPushJobId.equals(pushJobId)) {
          return version.get();
       }
-      if (lingeringStoreVersionChecker.isStoreVersionLingering(store, version.get(), timer, this, requesterCert)) {
+      if (lingeringStoreVersionChecker.isStoreVersionLingering(store, version.get(), timer, this, optionalRequesterPrincipalId)) {
         if (pushType.isIncremental()) {
           /**
            * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't

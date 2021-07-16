@@ -136,7 +136,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1822,7 +1821,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
-        String compressionDictionary, Optional<String> batchStartingFabric, Optional<X509Certificate> requesterCert,
+        String compressionDictionary, Optional<String> batchStartingFabric, Optional<String> optionalRequesterPrincipalId,
         long rewindTimeInSecondsOverride) {
         checkControllerMastership(clusterName);
 
