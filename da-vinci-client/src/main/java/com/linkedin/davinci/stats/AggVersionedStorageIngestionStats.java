@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Rate;
 import java.util.function.Supplier;
 import org.apache.log4j.Logger;
@@ -38,6 +39,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
   private static final String FOLLOWER_BYTES_CONSUMED_METRIC_NAME = "follower_bytes_consumed";
   private static final String LEADER_RECORDS_PRODUCED_METRIC_NAME = "leader_records_produced";
   private static final String LEADER_BYTES_PRODUCED_METRIC_NAME = "leader_bytes_produced";
+  private static final String STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME = "stale_partitions_without_ingestion_task";
 
   public AggVersionedStorageIngestionStats(MetricsRepository metricsRepository, ReadOnlyStoreRepository storeRepository) {
     super(metricsRepository, storeRepository, StorageIngestionStats::new, StorageIngestionStatsReporter::new);
@@ -134,6 +136,11 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     getStats(storeName, version).setIngestionTaskPushTimeoutGauge(0);
   }
 
+  public void recordStalePartitionsWithoutIngestionTask(String storeName, int version) {
+    Utils.computeIfNotNull(getTotalStats(storeName), StorageIngestionStats::recordStalePartitionsWithoutIngestionTask);
+    Utils.computeIfNotNull(getStats(storeName, version), StorageIngestionStats::recordStalePartitionsWithoutIngestionTask);
+  }
+
   static class StorageIngestionStats {
     private static final MetricConfig METRIC_CONFIG = new MetricConfig();
     private final MetricsRepository localMetricRepository = new MetricsRepository(METRIC_CONFIG);
@@ -151,6 +158,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Rate followerBytesConsumedRate;
     private final Rate leaderRecordsProducedRate;
     private final Rate leaderBytesProducedRate;
+    private final Count stalePartitionsWithoutIngestionTaskCount;
 
     private final Sensor recordsConsumedSensor;
     private final Sensor bytesConsumedSensor;
@@ -160,6 +168,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
     private final Sensor followerBytesConsumedSensor;
     private final Sensor leaderRecordsProducedSensor;
     private final Sensor leaderBytesProducedSensor;
+    private final Sensor stalePartitionsWithoutIngestionTaskSensor;
 
     public StorageIngestionStats()  {
       recordsConsumedRate = new Rate();
@@ -194,6 +203,11 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       leaderBytesProducedSensor = localMetricRepository.sensor(LEADER_BYTES_PRODUCED_METRIC_NAME);
       leaderBytesProducedSensor.add(LEADER_BYTES_PRODUCED_METRIC_NAME + leaderBytesProducedRate.getClass().getSimpleName(), leaderBytesProducedRate);
 
+      stalePartitionsWithoutIngestionTaskCount = new Count();
+      stalePartitionsWithoutIngestionTaskSensor = localMetricRepository.sensor(
+          STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME);
+      stalePartitionsWithoutIngestionTaskSensor.add(STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME
+          + stalePartitionsWithoutIngestionTaskCount.getClass().getSimpleName(), stalePartitionsWithoutIngestionTaskCount);
     }
 
     public void setIngestionTask(StoreIngestionTask ingestionTask) { this.ingestionTask = ingestionTask; }
@@ -298,6 +312,14 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
         return INACTIVE_STORE_INGESTION_TASK.code;
       }
       return ingestionTask.getWriteComputeErrorCode();
+    }
+
+    public double getStalePartitionsWithoutIngestionTaskCount() {
+      return stalePartitionsWithoutIngestionTaskCount.measure(METRIC_CONFIG, System.currentTimeMillis());
+    }
+
+    public void recordStalePartitionsWithoutIngestionTask() {
+      stalePartitionsWithoutIngestionTaskSensor.record();
     }
 
     public double getRecordsConsumed() {
@@ -421,6 +443,8 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
           new IngestionStatsGauge(this, () -> getStats().getLeaderRecordsProduced(), 0));
       registerSensor(LEADER_BYTES_PRODUCED_METRIC_NAME,
           new IngestionStatsGauge(this, () -> getStats().getLeaderBytesProduced(), 0));
+      registerSensor(STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME,
+          new IngestionStatsGauge(this, () -> getStats().getStalePartitionsWithoutIngestionTaskCount(), 0));
     }
 
     // Only register these stats if the store is hybrid.

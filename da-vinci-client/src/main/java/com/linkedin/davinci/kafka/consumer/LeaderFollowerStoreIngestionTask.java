@@ -2066,7 +2066,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + sourceConsumerRecordWrapper.consumerRecord().partition() + ", Offset: " + sourceConsumerRecordWrapper.consumerRecord().offset() + " exception: ", e);
           //If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
           if (!endOfPushReceived) {
-            ingestionTask.setLastProducerException(oe);
+            try {
+              ingestionTask.offerProducerException(oe, partition);
+            } catch (VeniceException offerToQueueException) {
+              ingestionTask.setLastStoreIngestionException(offerToQueueException);
+            }
           }
           if (oe instanceof InterruptedException) {
             Thread.currentThread().interrupt();

@@ -194,18 +194,22 @@ public class StoreBufferService extends AbstractStoreBufferService {
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.
            */
           if (e instanceof Exception) {
-            Exception ee = (Exception)e;
+            Exception processConsumerRecordException = (Exception) e;
             if (ingestionTask != null) {
-              ingestionTask.setLastDrainerException(ee);
+              try {
+                ingestionTask.offerDrainerException(processConsumerRecordException, consumerRecord.partition());
+              } catch (VeniceException offerToQueueException) {
+                ingestionTask.setLastStoreIngestionException(offerToQueueException);
+              }
               if (e instanceof VeniceChecksumException) {
                 ingestionTask.recordChecksumVerificationFailure();
               }
             }
             if (producedRecord != null) {
-              producedRecord.completePersistedToDBFuture(ee);
+              producedRecord.completePersistedToDBFuture(processConsumerRecordException);
             }
             if (recordPersistedFuture != null && recordPersistedFuture.isPresent()) {
-              recordPersistedFuture.get().completeExceptionally(ee);
+              recordPersistedFuture.get().completeExceptionally(processConsumerRecordException);
             }
           } else {
             break;
