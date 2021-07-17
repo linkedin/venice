@@ -2664,10 +2664,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (config.isLeaderFollowerEnabledForIncrementalPushStores()) {
                     store.setLeaderFollowerModelEnabled(true);
                 }
+                store.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForIncremental());
                 store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForIncremental());
             } else {
                 // Disabling incremental push
                 if (store.isHybrid()) {
+                    store.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForHybrid());
                     store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForHybrid());
                 } else {
                     store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
@@ -3038,6 +3040,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                 store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForBatchOnly());
                             } else {
                                 store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForIncremental());
+                                store.setActiveActiveReplicationEnabled(clusterConfig.isActiveActiveReplicationEnabledAsDefaultForIncremental());
                             }
                         }
                     } else {
@@ -3047,9 +3050,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             if (!store.isIncrementalPushEnabled()) {
                                 // Enable/disable native replication for hybrid stores if the cluster level config for new hybrid stores is on
                                 store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForHybrid());
+                                // Enable/disable active-active replication for hybrid stores if the cluster level config for new hybrid stores is on
+                                store.setActiveActiveReplicationEnabled(clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid());
                             } else {
                                 // The native replication cluster level config for incremental push will cover all incremental push policy
                                 store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForIncremental());
+                                // The active-active replication cluster level config for incremental push will cover all incremental push policy
+                                store.setActiveActiveReplicationEnabled(clusterConfig.isActiveActiveReplicationEnabledAsDefaultForIncremental());
                             }
                         }
                         store.setHybridStoreConfig(finalHybridConfig);

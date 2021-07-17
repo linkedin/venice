@@ -139,6 +139,16 @@ public class ConfigKeys {
   public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID = "enable.native.replication.as.default.for.hybrid";
 
   /**
+   * Cluster-level config to enable active-active replication for new hybrid stores.
+   */
+  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE = "enable.active.active.replication.as.default.for.hybrid.store";
+
+  /**
+   * Cluster-level config to enable active-active replication for new incremental push stores.
+   */
+  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE = "enable.active.active.replication.as.default.for.incremental.push.store";
+
+  /**
    * Controller level config to disable the dependency that L/F mode must be enabled before turning on native replication.
    * This may be set to TRUE in parent controller only, and must always be set to FALSE in child controller.
    * Default value is FALSE.
