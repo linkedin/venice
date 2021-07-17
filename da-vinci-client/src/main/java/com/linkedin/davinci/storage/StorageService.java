@@ -9,10 +9,12 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -26,6 +28,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.log4j.Logger;
@@ -178,8 +181,8 @@ public class StorageService extends AbstractVeniceService {
    * @return StorageEngine that was created for the given store definition.
    */
   public synchronized AbstractStorageEngine openStore(VeniceStoreConfig storeConfig) {
-    String storeName = storeConfig.getStoreName();
-    AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(storeName);
+    String topicName = storeConfig.getStoreName();
+    AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(topicName);
     if (engine != null) {
       return engine;
     }
@@ -192,14 +195,14 @@ public class StorageService extends AbstractVeniceService {
       storeConfig.setStorePersistenceType(storeConfig.getPersistenceType());
     }
 
-    logger.info("Creating/Opening Storage Engine " + storeName + " with type: " + storeConfig.getStorePersistenceType());
+    logger.info("Creating/Opening Storage Engine " + topicName + " with type: " + storeConfig.getStorePersistenceType());
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
-    engine = factory.getStorageEngine(storeConfig);
+    engine = factory.getStorageEngine(storeConfig, isTimestampMetadataEnabled(topicName, factory.getPersistenceType()));
     storageEngineRepository.addLocalStorageEngine(engine);
     // Setup storage engine stats
-    aggVersionedStorageEngineStats.setStorageEngine(storeName, engine);
+    aggVersionedStorageEngineStats.setStorageEngine(topicName, engine);
 
-    logger.info("[DEBUGDEBUG] time spent on creating new storage Engine for store " + storeName + ": " + LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine) + " ms");
+    logger.info("[DEBUGDEBUG] time spent on creating new storage Engine for store " + topicName + ": " + LatencyUtils.getLatencyInMS(startTimeInBuildingNewEngine) + " ms");
     return engine;
   }
 
@@ -329,5 +332,38 @@ public class StorageService extends AbstractVeniceService {
 
   private List<Integer> getSubPartition(String topicName, int partition) {
     return PartitionUtils.getSubPartitions(partition, PartitionUtils.getAmplificationFactor(storeRepository, topicName));
+  }
+
+  private boolean isTimestampMetadataEnabled(String topicName, PersistenceType persistenceType) {
+    // Timestamp metadata will only be used in Server as Da Vinci will never become LEADER.
+    if (serverConfig.isDaVinciClient() || !Objects.equals(persistenceType, ROCKS_DB)) {
+      return false;
+    }
+    String storeName;
+    int versionNum;
+    try {
+      storeName = Version.parseStoreFromVersionTopic(topicName);
+      versionNum = Version.parseVersionFromKafkaTopicName(topicName);
+    } catch (IllegalArgumentException e) {
+      /**
+       * Adding this try-catch block to return false if passed in storeName does not contain a version number.
+       * Our storage engine constructor does not check whether the passed in storeName contains a valid version number.
+       * In our test suite, we wrote some tests that only specify store name but not version number. For these tests,
+       * we should return false as they are aiming at other features and not for this version-level config testing.
+       */
+      return false;
+    }
+    try {
+      Optional<Version> version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNum);
+      if (version.isPresent()) {
+        return version.get().isActiveActiveReplicationEnabled();
+      } else {
+        logger.warn("Version " + versionNum + " of store " + storeName + " does not exist in storeRepository.");
+        return false;
+      }
+    } catch (VeniceNoStoreException e) {
+      logger.warn("Store " + storeName + " does not exist in storeRepository.");
+      return false;
+    }
   }
 }

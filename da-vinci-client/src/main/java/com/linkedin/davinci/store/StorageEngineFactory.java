@@ -1,12 +1,11 @@
 package com.linkedin.davinci.store;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
-
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import java.util.Set;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -17,6 +16,7 @@ import java.util.Set;
  * connection pool reference
  */
 public abstract class StorageEngineFactory {
+  private static final Logger logger = Logger.getLogger(StorageEngineFactory.class.getName());
   /**
    * Get an initialized storage implementation
    *
@@ -25,6 +25,17 @@ public abstract class StorageEngineFactory {
    */
   public abstract AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeDef)
       throws StorageInitializationException;
+
+  /**
+   * Timestamp metadata is only supported in RocksDB storage engine. For other type of the storage engine, we will
+   * throw VeniceException here.
+   */
+  public AbstractStorageEngine getStorageEngine(VeniceStoreConfig storeDef, boolean timestampMetadataEnabled) {
+    if (timestampMetadataEnabled) {
+      throw new VeniceException("Timestamp metadata is only supported in RocksDB storage engine!");
+    }
+    return getStorageEngine(storeDef);
+  }
 
   /**
    * Retrieve all the stores persisted previously
