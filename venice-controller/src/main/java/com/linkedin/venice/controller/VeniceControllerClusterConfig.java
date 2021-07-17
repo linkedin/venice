@@ -105,6 +105,18 @@ public class VeniceControllerClusterConfig {
   private boolean nativeReplicationEnabledAsDefaultForHybrid;
 
   /**
+   * When this option is enabled, all new hybrid stores will have active-active replication enabled in store config so long
+   * as the store has leader follower also enabled.
+   */
+  private boolean activeActiveReplicationEnabledAsDefaultForHybrid;
+
+  /**
+   * When this option is enabled, all new incremental push enabled stores will have active-active replication enabled in store
+   * config so long as the store has leader follower also enabled.
+   */
+  private boolean activeActiveReplicationEnabledAsDefaultForIncremental;
+
+  /**
    * When this option is set to true, we will not check if leader follower mode has been enabled at cluster level or store level.
    * Just enabling native replication should be good enough to turn a cluster or store NR enabled. This should be set to false
    * at child controller and true in parent controller.
@@ -244,6 +256,8 @@ public class VeniceControllerClusterConfig {
     nativeReplicationEnabledAsDefaultForIncremental = props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH, false);
     nativeReplicationEnabledForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, false);
     nativeReplicationEnabledAsDefaultForHybrid = props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, false);
+    activeActiveReplicationEnabledAsDefaultForHybrid = props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
+    activeActiveReplicationEnabledAsDefaultForIncremental = props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE, false);
     leaderFollowerEnabledForHybridStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, false);
     leaderFollowerEnabledForIncrementalPushStores =
         props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, false);
@@ -262,6 +276,14 @@ public class VeniceControllerClusterConfig {
       nativeReplicationEnabledAsDefaultForIncremental = false;
       nativeReplicationEnabledForHybrid = false;
       nativeReplicationEnabledAsDefaultForHybrid = false;
+    }
+
+    if (!leaderFollowerEnabledForAllStores && !lfModelDependencyCheckDisabled
+        && (activeActiveReplicationEnabledAsDefaultForHybrid || activeActiveReplicationEnabledAsDefaultForIncremental)) {
+      logger.error("Cannot enable active-active replication when leader follower is not enabled for all stores. Will revert "
+          + "the cluster-level active-active replication flags to false");
+      activeActiveReplicationEnabledAsDefaultForHybrid = false;
+      activeActiveReplicationEnabledAsDefaultForIncremental = false;
     }
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
@@ -478,6 +500,14 @@ public class VeniceControllerClusterConfig {
 
   public boolean isNativeReplicationEnabledAsDefaultForHybrid() {
     return nativeReplicationEnabledAsDefaultForHybrid;
+  }
+
+  public boolean isActiveActiveReplicationEnabledAsDefaultForHybrid() {
+    return activeActiveReplicationEnabledAsDefaultForHybrid;
+  }
+
+  public boolean isActiveActiveReplicationEnabledAsDefaultForIncremental() {
+    return activeActiveReplicationEnabledAsDefaultForIncremental;
   }
 
   public boolean isLfModelDependencyCheckDisabled() {
