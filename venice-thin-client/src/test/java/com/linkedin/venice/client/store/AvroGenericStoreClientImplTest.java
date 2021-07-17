@@ -51,29 +51,28 @@ import java.util.concurrent.ExecutionException;
 public class AvroGenericStoreClientImplTest {
   private static final Logger LOGGER = Logger.getLogger(AvroGenericStoreClientImplTest.class);
   private static final BatchDeserializerType BATCH_GET_DESERIALIZER_TYPE = BatchDeserializerType.ONE_FUTURE_PER_RECORD;
+
+  private final ObjectMapper mapper = new ObjectMapper();
+  private final String storeName = "test_store";
+  private final String defaultKeySchemaStr = "\"string\"";
+  private final Map<String, AvroGenericStoreClient<String, Object>> storeClients = new HashMap<>();
+  private final Map<AvroGenericStoreClient, MetricsRepository> storeClientMetricsRepositories = new HashMap<>();
+  private AbstractAvroStoreClient<String, Object> someStoreClient;
+
   private MockD2ServerWrapper routerServer;
   private String routerHost;
   private int port;
-
-  private ObjectMapper mapper = new ObjectMapper();
-  private String storeName = "test_store";
-  private String defaultKeySchemaStr = "\"string\"";
-
   private D2Client d2Client;
 
-  private Map<String, AvroGenericStoreClient<String, Object>> storeClients = new HashMap<>();
-  private Map<AvroGenericStoreClient, MetricsRepository> storeClientMetricsRepositories = new HashMap<>();
-  private AbstractAvroStoreClient<String, Object> someStoreClient;
-
   @BeforeTest
-  public void setUp() throws Exception {
+  public void setUp() {
     routerServer = ServiceFactory.getMockD2Server("Mock-router-server");
     routerHost = routerServer.getHost();
     port = routerServer.getPort();
   }
 
   @AfterTest
-  public void cleanUp() throws Exception {
+  public void cleanUp() {
     routerServer.close();
   }
 

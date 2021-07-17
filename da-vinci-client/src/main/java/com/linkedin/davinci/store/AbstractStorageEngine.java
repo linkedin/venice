@@ -12,12 +12,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
-
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Supplier;
-import org.apache.log4j.Logger;
-
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -27,7 +21,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -136,6 +134,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   private boolean isMetadataMigrationCompleted(Partition someMetadataPartition) {
     return null != someMetadataPartition.get(METADATA_MIGRATION_KEY);
+  }
+
+  // For testing purpose only.
+  public AbstractStoragePartition getMetadataPartition() {
+    return metadataPartition;
   }
 
   public synchronized void preparePartitionForReading(int partitionId) {

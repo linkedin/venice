@@ -35,6 +35,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreConfig storeConfig;
+  private final boolean timestampMetadataEnabled;
 
 
   public RocksDBStorageEngine(VeniceStoreConfig storeConfig,
@@ -44,7 +45,8 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
                               RocksDBThrottler rocksDbThrottler,
                               RocksDBServerConfig rocksDBServerConfig,
                               InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
-                              InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+                              InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+                              boolean timestampMetadataEnabled) {
     super(storeConfig.getStoreName(), storeVersionStateSerializer, partitionStateSerializer);
     this.storeConfig = storeConfig;
     this.rocksDbPath = rocksDbPath;
@@ -52,7 +54,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     this.rocksDbThrottler = rocksDbThrottler;
     this.rocksDBServerConfig = rocksDBServerConfig;
     this.factory = factory;
-
+    this.timestampMetadataEnabled = timestampMetadataEnabled;
 
     // Create store folder if it doesn't exist
     storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getName());
@@ -110,7 +112,13 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
 
   @Override
   public RocksDBStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
-    return new RocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler, rocksDBServerConfig);
+    // Metadata partition should not enable timestamp metadata column family.
+    if (storagePartitionConfig.getPartitionId() == METADATA_PARTITION_ID || !timestampMetadataEnabled) {
+      return new RocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler,
+          rocksDBServerConfig);
+    } else {
+      return new TimestampMetadataRocksDBStoragePartition(storagePartitionConfig, factory, rocksDbPath, memoryStats, rocksDbThrottler, rocksDBServerConfig);
+    }
   }
 
   @Override

@@ -1,26 +1,25 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceStoreConfig;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
-import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-
+import java.util.Optional;
+import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import java.util.Optional;
-import java.util.Set;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.*;
 import static org.mockito.Mockito.*;
@@ -28,15 +27,21 @@ import static org.mockito.Mockito.*;
 
 public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
-
-  private String storeName;
   private StorageService storageService;
   private VeniceStoreConfig storeConfig;
-  private VeniceClusterConfig clusterConfig;
+  private final String storeName = TestUtils.getUniqueString("rocksdb_store_test");
+  private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+  private final int versionNumber = 0;
+  private final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
 
   @Override
   public void createStorageEngineForTest() {
-    storeName = TestUtils.getUniqueString("rocksdb_store_test");
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.isActiveActiveReplicationEnabled()).thenReturn(false);
+    Store mockStore = mock(Store.class);
+    when(mockStore.getVersion(versionNumber)).thenReturn(Optional.of(mockVersion));
+    when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
+
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
@@ -44,9 +49,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
         null,
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
-        mock(ReadOnlyStoreRepository.class));
-    clusterConfig = new VeniceClusterConfig(serverProps);
-    storeConfig = new VeniceStoreConfig(storeName, serverProps, PersistenceType.ROCKS_DB);
+        mockReadOnlyStoreRepository);
+    storeConfig = new VeniceStoreConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
     testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
     createStoreForTest();
   }
@@ -175,5 +179,15 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Assert.assertEquals(persistedPartitionIds.size(), 2);
     Assert.assertTrue(persistedPartitionIds.contains(PARTITION_ID));
     Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
+  }
+
+  @Test
+  public void testRocksDBStoragePartitionType() {
+    // Verify that data partition is created as regular RocksDB partition, not a TSMD-RocksDB Partition.
+    Assert.assertFalse(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof TimestampMetadataRocksDBStoragePartition);
+    Assert.assertTrue(testStoreEngine.getPartitionOrThrow(PARTITION_ID) instanceof RocksDBStoragePartition);
+    // Verify that metadata partition is created as regular RocksDB partition, not a TSMD-RocksDB Partition.
+    Assert.assertFalse(testStoreEngine.getMetadataPartition() instanceof TimestampMetadataRocksDBStoragePartition);
+    Assert.assertTrue(testStoreEngine.getMetadataPartition() instanceof RocksDBStoragePartition);
   }
 }
