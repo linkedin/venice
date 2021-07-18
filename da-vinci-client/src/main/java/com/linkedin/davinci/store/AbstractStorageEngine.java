@@ -350,6 +350,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.put(key, value);
   }
 
+  public void putWithReplicationMetadata(int partitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    partition.putWithTimestampMetadata(key, value, replicationMetadata);
+  }
+
   public <K, V> void put(int partitionId, K key, V value) {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     partition.put(key, value);
@@ -383,6 +388,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public void delete(int partitionId, byte[] key) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     partition.delete(key);
+  }
+
+  public void deleteWithReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    partition.deleteWithReplicationMetadata(key, replicationMetadata);
+  }
+
+  public byte[] getReplicationMetadata(int partitionId, byte[] key) {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    return partition.getTimestampMetadata(key);
   }
 
   /**

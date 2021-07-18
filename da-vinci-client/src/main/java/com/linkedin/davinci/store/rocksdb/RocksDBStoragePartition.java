@@ -168,7 +168,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   protected RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, RocksDBStorageEngineFactory factory, String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig, List<byte[]> columnFamilyNameList) {
     super(storagePartitionConfig.getPartitionId());
-
     this.factory = factory;
     this.rocksDBServerConfig = rocksDBServerConfig;
     // Create the folder for storage partition if it doesn't exist

@@ -5,6 +5,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Function;
 import org.apache.commons.lang.ArrayUtils;
 import org.testng.annotations.DataProvider;
 import org.testng.collections.Lists;
@@ -40,12 +41,12 @@ public class DataProviderUtils {
 
   @DataProvider(name = "Three-True-and-False")
   public static Object[][] threeBoolean() {
-    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN);
+    return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
   @DataProvider(name = "Five-True-and-False")
   public static Object[][] fiveBoolean() {
-    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN);
+    return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
   @DataProvider(name = "L/F-and-AmplificationFactor", parallel = false)
@@ -55,6 +56,15 @@ public class DataProviderUtils {
         {true, true},
         {true, false}
     };
+  }
+
+  @DataProvider(name = "L/F-A/A")
+  public static Object[][] leaderFollowerActiveActive() {
+    return allPermutationGenerator((permutation) -> {
+      boolean isLeaderFollowerEnabled = (Boolean) permutation[0];
+      boolean isActiveActiveReplicationEnabled = (Boolean) permutation[1];
+      return isLeaderFollowerEnabled || !isActiveActiveReplicationEnabled;
+    }, BOOLEAN, BOOLEAN);
   }
 
   @DataProvider (name = "dv-client-config-provider")
@@ -92,12 +102,26 @@ public class DataProviderUtils {
    * @return the permutations that can be returned from a {@link DataProvider}
    */
   public static Object[][] allPermutationGenerator(Object[]... parameterSets) {
+    return allPermutationGenerator((permutation) -> true, parameterSets);
+  }
+
+  /**
+   * Generate permutations to be fed to a DataProvider.
+   * For two boolean's we'd pass in allPermutationGenerator(BOOLEAN, BOOLEAN)
+   * @param parameterSets Sets of valid values for each parameter
+   * @param permutationValidator A function that takes the permutation as an input and decides if it is valid
+   * @return the permutations that can be returned from a {@link DataProvider}
+   */
+  public static Object[][] allPermutationGenerator(Function<Object[], Boolean> permutationValidator, Object[]... parameterSets) {
     PermutationIterator permutationIterator = new PermutationIterator(parameterSets);
     int totalPermutations = permutationIterator.size();
     Object[][] permutations = new Object[totalPermutations][];
     int i = 0;
     while (permutationIterator.hasNext()) {
-      permutations[i] = permutationIterator.next();
+      Object[] permutation = permutationIterator.next();
+      if (permutationValidator.apply(permutation)) {
+        permutations[i] = permutation;
+      }
       i++;
     }
     return permutations;

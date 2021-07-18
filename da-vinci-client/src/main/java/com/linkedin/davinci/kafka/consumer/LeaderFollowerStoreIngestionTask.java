@@ -60,6 +60,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -128,6 +129,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private final long newLeaderInactiveTime;
 
+  private final IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
+
   private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceAddress;
 
@@ -140,9 +143,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *    {@link Lazy} to initialize it in a thread safe way and to ensure that only one instance is created for the
    *    entire ingestion task.
    */
-  private final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
+  protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
 
-  private final StorageEngineBackedCompressorFactory compressorFactory;
+  protected final StorageEngineBackedCompressorFactory compressorFactory;
 
   private final Map<String, Integer> kafkaClusterUrlToIdMap;
 
@@ -279,10 +282,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void processStartOfPush(ControlMessage controlMessage, int partition, long offset,
+  protected void processStartOfPush(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
-    super.processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
+    super.processStartOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
 
     // Update chunking flag in VeniceWriter
     if (startOfPush.chunked) {
@@ -972,7 +975,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     offsetRecord.setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, newUpstreamOffset);
   }
 
-  private void produceToLocalKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
+  protected void produceToLocalKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       PartitionConsumptionState partitionConsumptionState, LeaderProducedRecordContext leaderProducedRecordContext, ProduceToTopic produceFunction) {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     int partition = consumerRecord.partition();
@@ -1253,7 +1256,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *
    * The caller {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean)} of this function should
    * not process this consumerRecord any further if it was produced to kafka (returns true),
-   * Otherwise it should continute to process the message as it would.
+   * Otherwise it should continue to process the message as it would.
    *
    * This function assumes {@link #shouldProcessRecord(ConsumerRecord)} has been called which happens in
    * {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, boolean)} before calling this and the it was decided that
@@ -1262,6 +1265,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *
    * Also DIV validation is done here if the message is received from RT topic. For more info please see
    * please see {@literal StoreIngestionTask#internalProcessConsumerRecord(VeniceConsumerRecordWrapper, PartitionConsumptionState, ProducedRecord)}
+   *
+   * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this function.
    *
    * @param consumerRecordWrapper
    * @return true if the message was produced to kafka, Otherwise false.
@@ -1476,172 +1481,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerTaskId + " hasProducedToKafka: Given null Venice Message.  Topic: " + consumerRecord.topic()
                 + " Partition " + consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
-        switch (msgType) {
-          case PUT:
-            Put put = (Put) kafkaValue.payloadUnion;
-            ByteBuffer putValue = put.putValue;
-
-            /**
-             * For WC enabled stores update the transient record map with the latest {key,value}. This is needed only for messages
-             * received from RT. Messages received from VT have been persisted to disk already before switching to RT topic.
-             */
-            if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-              partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, putValue.array(),
-                  putValue.position(), putValue.remaining(), put.schemaId);
-            }
-
-            leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), keyBytes, put);
-            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
-                (callback, leaderMetadataWrapper) -> {
-                  /**
-                   * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
-                   * so we may be forced to do a copy here, if the backing array of the {@link putValue} has padding,
-                   * which is the case when using {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}.
-                   * Since this is in a closure, it is not guaranteed to be invoked.
-                   *
-                   * The {@link OnlineOfflineStoreIngestionTask}, which ignores this closure, will not pay this price.
-                   *
-                   * Conversely, the {@link LeaderFollowerStoreIngestionTask}, which does invoke it, will.
-                   *
-                   * TODO: Evaluate holistically what is the best way to optimize GC for the L/F case.
-                   *
-                   * 2. Enable venice writer "pass-through" mode if we haven't received EOP yet. In pass through mode,
-                   * Leader will reuse upstream producer metadata. This would secures the correctness of DIV states in
-                   * followers when the leadership failover happens.
-                   */
-
-                  if (!partitionConsumptionState.isEndOfPushReceived()) {
-                    return veniceWriter.get().put(kafkaKey, kafkaValue, callback, consumerRecord.partition(), leaderMetadataWrapper);
-                  }
-
-                  /**
-                   * When amplificationFactor != 1 and it is a leaderSubPartition consuming from the Real-time topic,
-                   * VeniceWriter will run VenicePartitioner inside to decide which subPartition of Kafka VT to write to.
-                   * For details about how VenicePartitioner find the correct subPartition,
-                   * please check {@link com.linkedin.venice.partitioner.UserPartitionAwarePartitioner}
-                   */
-                  return veniceWriter.get().put(keyBytes, ByteUtils.extractByteArray(putValue), put.schemaId, callback,
-                      leaderMetadataWrapper);
-                });
-            break;
-
-          case UPDATE:
-            Update update = (Update) kafkaValue.payloadUnion;
-            int valueSchemaId = update.schemaId;
-            int derivedSchemaId = update.updateSchemaId;
-            GenericRecord originalValue = null;
-            boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
-
-            /**
-             *  Few Notes:
-             *  Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
-             *  for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streamign ingestion.
-             *  Also we dont support compression at all for hybrid store.
-             *  So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
-             *  (non chunked) and non-compressed. Decoding should succeed using the the simplified API
-             *  {@link ChunkingAdapter#constructValue(int, byte[], int, boolean, ReadOnlySchemaRepository, String)}
-             */
-            //Find the existing value. If a value for this key is found from the transient map then use that value, otherwise get it from DB.
-            PartitionConsumptionState.TransientRecord transientRecord =
-                partitionConsumptionState.getTransientRecord(keyBytes);
-            if (transientRecord == null) {
-              try {
-                long lookupStartTimeInNS = System.nanoTime();
-                originalValue = GenericRecordChunkingAdapter.INSTANCE.get(
-                    storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
-                    amplificationFactor != 1 && Version.isRealTimeTopic(consumerRecord.topic()) ?
-                        venicePartitioner.getPartitionId(keyBytes, subPartitionCount) : consumerRecord.partition(),
-                    ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
-                    storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
-                    serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName, compressorFactory);
-                storeIngestionStats.recordWriteComputeLookUpLatency(storeName,
-                    LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-              } catch (Exception e) {
-                writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
-                throw e;
-              }
-            } else {
-              storeIngestionStats.recordWriteComputeCacheHitCount(storeName);
-              //construct originalValue from this transient record only if it's not null.
-              if (transientRecord.getValue() != null) {
-                try {
-                  originalValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(), transientRecord.getValue(),
-                      transientRecord.getValueOffset(), transientRecord.getValueLen(),
-                      serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
-                } catch (Exception e) {
-                  writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
-                  throw e;
-                }
-              } else {
-                originalValue = null;
-              }
-            }
-
-            //compute.
-            byte[] updatedValueBytes;
-            try {
-              long writeComputeStartTimeInNS = System.nanoTime();
-              updatedValueBytes =
-                  ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue, update.updateValue,
-                      valueSchemaId, derivedSchemaId);
-              storeIngestionStats.recordWriteComputeUpdateLatency(storeName,
-                  LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
-            } catch (Exception e) {
-              writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
-              throw e;
-            }
-
-            //finally produce and update the transient record map.
-            if (updatedValueBytes == null) {
-              partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes);
-              leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), keyBytes);
-              produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
-                  (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
-            } else {
-              int valueLen = updatedValueBytes.length;
-              partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
-                  valueLen, valueSchemaId);
-
-              ByteBuffer updateValueWithSchemaId = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + valueLen)
-                  .putInt(valueSchemaId)
-                  .put(updatedValueBytes);
-              updateValueWithSchemaId.flip();
-              updateValueWithSchemaId.position(ValueRecord.SCHEMA_HEADER_LENGTH);
-
-              Put updatedPut = new Put();
-              updatedPut.putValue = updateValueWithSchemaId;
-              updatedPut.schemaId = valueSchemaId;
-
-              byte[] updatedKeyBytes = keyBytes;
-              if (isChunkedTopic) {
-                // Samza VeniceWriter doesn't handle chunking config properly. It reads chuncking config
-                // from user's input instead of getting it from store's metadata repo. This causes SN
-                // to der-se of keys a couple of times.
-                updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
-              }
-              leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
-              produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
-                  (callback, leaderMetadataWrapper) -> veniceWriter.get().put(keyBytes, updatedValueBytes, valueSchemaId,
-                      callback, leaderMetadataWrapper));
-            }
-            break;
-
-          case DELETE:
-            /**
-             * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
-             */
-            if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-              partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes);
-            }
-            leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), keyBytes);
-            produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
-                (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
-            break;
-
-          default:
-            throw new VeniceMessageException(
-                consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
-        }
+        // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
+        processMessageAndMaybeProduceToKafka(consumerRecordWrapper, partitionConsumptionState, subPartition);
       }
       return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
     } catch (Exception e) {
@@ -1951,6 +1792,177 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public int getWriteComputeErrorCode() {
     return writeComputeFailureCode;
+  }
+
+  protected int getSubPartitionId(byte[] key, String topic, int partition) {
+    return amplificationFactor != 1 && Version.isRealTimeTopic(topic) ?
+        venicePartitioner.getPartitionId(key, subPartitionCount) : partition;
+  }
+
+  protected void processMessageAndMaybeProduceToKafka(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, PartitionConsumptionState partitionConsumptionState, int subPartition) {
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
+    KafkaKey kafkaKey = consumerRecord.key();
+    KafkaMessageEnvelope kafkaValue = consumerRecord.value();
+    byte[] keyBytes = kafkaKey.getKey();
+    MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
+    boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(kafkaVersionTopic);
+    switch (msgType) {
+      case PUT:
+        Put put = (Put) kafkaValue.payloadUnion;
+        ByteBuffer putValue = put.putValue;
+
+        /**
+         * For WC enabled stores update the transient record map with the latest {key,value}. This is needed only for messages
+         * received from RT. Messages received from VT have been persisted to disk already before switching to RT topic.
+         */
+        if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
+          partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, putValue.array(),
+              putValue.position(), putValue.remaining(), put.schemaId, null);
+        }
+
+        LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), keyBytes, put);
+        produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
+            (callback, leaderMetadataWrapper) -> {
+              /**
+               * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
+               * so we may be forced to do a copy here, if the backing array of the {@link putValue} has padding,
+               * which is the case when using {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}.
+               * Since this is in a closure, it is not guaranteed to be invoked.
+               *
+               * The {@link OnlineOfflineStoreIngestionTask}, which ignores this closure, will not pay this price.
+               *
+               * Conversely, the {@link LeaderFollowerStoreIngestionTask}, which does invoke it, will.
+               *
+               * TODO: Evaluate holistically what is the best way to optimize GC for the L/F case.
+               *
+               * 2. Enable venice writer "pass-through" mode if we haven't received EOP yet. In pass through mode,
+               * Leader will reuse upstream producer metadata. This would secures the correctness of DIV states in
+               * followers when the leadership failover happens.
+               */
+
+              if (!partitionConsumptionState.isEndOfPushReceived()) {
+                return veniceWriter.get().put(kafkaKey, kafkaValue, callback, consumerRecord.partition(), leaderMetadataWrapper);
+              }
+
+              /**
+               * When amplificationFactor != 1 and it is a leaderSubPartition consuming from the Real-time topic,
+               * VeniceWriter will run VenicePartitioner inside to decide which subPartition of Kafka VT to write to.
+               * For details about how VenicePartitioner find the correct subPartition,
+               * please check {@link com.linkedin.venice.partitioner.UserPartitionAwarePartitioner}
+               */
+              return veniceWriter.get().put(keyBytes, ByteUtils.extractByteArray(putValue), put.schemaId, callback,
+                  leaderMetadataWrapper);
+            });
+        break;
+
+      case UPDATE:
+        Update update = (Update) kafkaValue.payloadUnion;
+        int valueSchemaId = update.schemaId;
+        int derivedSchemaId = update.updateSchemaId;
+        GenericRecord originalValue = null;
+
+        /**
+         *  Few Notes:
+         *  Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
+         *  for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streaming ingestion.
+         *  Also we dont support compression at all for hybrid store.
+         *  So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
+         *  (non chunked) and non-compressed. Decoding should succeed using the the simplified API
+         *  {@link ChunkingAdapter#constructValue(int, byte[], int, boolean, ReadOnlySchemaRepository, String)}
+         */
+        //Find the existing value. If a value for this key is found from the transient map then use that value, otherwise get it from DB.
+        PartitionConsumptionState.TransientRecord transientRecord =
+            partitionConsumptionState.getTransientRecord(keyBytes);
+        if (transientRecord == null) {
+          try {
+            long lookupStartTimeInNS = System.nanoTime();
+            originalValue = GenericRecordChunkingAdapter.INSTANCE.get(
+                storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic),
+                getSubPartitionId(keyBytes, consumerRecord.topic(), consumerRecord.partition()),
+                ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
+                storageMetadataService.getStoreVersionCompressionStrategy(kafkaVersionTopic),
+                serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName, compressorFactory);
+            storeIngestionStats.recordWriteComputeLookUpLatency(storeName,
+                LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+          } catch (Exception e) {
+            writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+            throw e;
+          }
+        } else {
+          storeIngestionStats.recordWriteComputeCacheHitCount(storeName);
+          //construct originalValue from this transient record only if it's not null.
+          if (transientRecord.getValue() != null) {
+            try {
+              originalValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(transientRecord.getValueSchemaId(), transientRecord.getValue(),
+                  transientRecord.getValueOffset(), transientRecord.getValueLen(),
+                  serverConfig.isComputeFastAvroEnabled(), schemaRepository, storeName);
+            } catch (Exception e) {
+              writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+              throw e;
+            }
+          } else {
+            originalValue = null;
+          }
+        }
+
+        //compute.
+        byte[] updatedValueBytes;
+        try {
+          long writeComputeStartTimeInNS = System.nanoTime();
+          updatedValueBytes =
+              ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue, update.updateValue,
+                  valueSchemaId, derivedSchemaId);
+          storeIngestionStats.recordWriteComputeUpdateLatency(storeName, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
+        } catch (Exception e) {
+          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
+          throw e;
+        }
+
+        //finally produce and update the transient record map.
+        if (updatedValueBytes == null) {
+          partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, null);
+          leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), keyBytes);
+          produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
+              (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
+        } else {
+          partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
+              updatedValueBytes.length, valueSchemaId, null);
+
+          ByteBuffer updateValueWithSchemaId = ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(updatedValueBytes), valueSchemaId, false);
+
+          Put updatedPut = new Put();
+          updatedPut.putValue = updateValueWithSchemaId;
+          updatedPut.schemaId = valueSchemaId;
+
+          byte[] updatedKeyBytes = keyBytes;
+          if (isChunkedTopic) {
+            // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
+            // from user's input instead of getting it from store's metadata repo. This causes SN
+            // to der-se of keys a couple of times.
+            updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
+          }
+          leaderProducedRecordContext = LeaderProducedRecordContext.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
+          produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
+              (callback, leaderMetadataWrapper) -> veniceWriter.get().put(keyBytes, updatedValueBytes, valueSchemaId,
+                  callback, leaderMetadataWrapper));
+        }
+        break;
+
+      case DELETE:
+        /**
+         * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
+         */
+        if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
+          partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, null);
+        }
+        leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(consumerRecord.offset(), keyBytes);
+        produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, leaderProducedRecordContext,
+            (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
+        break;
+
+      default:
+        throw new VeniceMessageException(consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
+    }
   }
 
   private class LeaderProducerMessageCallback implements ChunkAwareCallback {

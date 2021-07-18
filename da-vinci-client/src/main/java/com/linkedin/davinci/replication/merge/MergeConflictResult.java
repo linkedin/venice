@@ -4,12 +4,11 @@ import java.nio.ByteBuffer;
 
 
 /**
- * A encapsulate the results of conflict resolution to denote how the operation and value that should be applied or if
- * the current update should be ignored.
+ * An object to encapsulate the results of conflict resolution to denote how the operation and value that should be
+ * applied or if the current update should be ignored.
  */
 public class MergeConflictResult {
   private static final MergeConflictResult IGNORED_RESULT = new MergeConflictResult();
-
 
   private ByteBuffer value;
   private int valueSchemaID;
