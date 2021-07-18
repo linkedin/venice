@@ -1,8 +1,9 @@
 package com.linkedin.davinci.store;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
-import java.util.Map;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -132,25 +133,34 @@ public abstract class AbstractStoragePartition {
    * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
    * other storage partition implementation will UnsupportedOperationException.
    */
-  public void putWithTimestampMetadata(byte[] key, ByteBuffer value, ByteBuffer metadata) {
-    throw new UnsupportedOperationException("putWithTimestampMetadata is only supported in RocksDB");
+  public void putWithTimestampMetadata(byte[] key, ByteBuffer value, byte[] metadata) {
+    throw new VeniceUnsupportedOperationException("putWithTimestampMetadata");
   }
 
   /**
    * This API takes in value and metadata as byte array format and put it into RocksDB.
    * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
-   * other storage partition implementation will UnsupportedOperationException.
+   * other storage partition implementation will VeniceUnsupportedOperationException.
    */
   public void putWithTimestampMetadata(byte[] key, byte[] value, byte[] metadata) {
-    throw new UnsupportedOperationException("putWithTimestampMetadata is only supported in RocksDB");
+    throw new VeniceUnsupportedOperationException("putWithTimestampMetadata");
   }
 
   /**
    * This API retrieves timestamp metadata from timestampMetadataColumnFamily.
    * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
-   * other storage partition implementation will UnsupportedOperationException.
+   * other storage partition implementation will VeniceUnsupportedOperationException.
    */
   public byte[] getTimestampMetadata(byte[] key) {
-    throw new UnsupportedOperationException("getTimestampMetadata is only supported in RocksDB");
+    throw new VeniceUnsupportedOperationException("getTimestampMetadata");
+  }
+
+  /**
+   * This API deletes a record from RocksDB but updates the metadata in ByteBuffer format and puts it into RocksDB.
+   * Only {@link com.linkedin.davinci.store.rocksdb.TimestampMetadataRocksDBStoragePartition} will execute this method,
+   * other storage partition implementation will VeniceUnsupportedOperationException.
+   */
+  public void deleteWithReplicationMetadata(byte[] key, byte[] metadata) {
+    throw new VeniceUnsupportedOperationException("deleteWithReplicationMetadata");
   }
 }

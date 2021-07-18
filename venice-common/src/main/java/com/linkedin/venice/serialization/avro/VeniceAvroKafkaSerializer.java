@@ -3,6 +3,7 @@ package com.linkedin.venice.serialization.avro;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import org.apache.avro.Schema;
 
@@ -57,5 +58,9 @@ public class VeniceAvroKafkaSerializer implements VeniceKafkaSerializer<Object> 
 
     public Object deserialize(byte[] bytes) {
         return this.deserializer.deserialize(bytes);
+    }
+
+    public Object deserialize(ByteBuffer byteBuffer) {
+        return this.deserializer.deserialize(byteBuffer);
     }
 }

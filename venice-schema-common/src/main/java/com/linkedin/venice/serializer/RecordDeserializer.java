@@ -1,8 +1,5 @@
 package com.linkedin.venice.serializer;
 
-
-import com.linkedin.venice.exceptions.VeniceException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import org.apache.avro.io.BinaryDecoder;
 

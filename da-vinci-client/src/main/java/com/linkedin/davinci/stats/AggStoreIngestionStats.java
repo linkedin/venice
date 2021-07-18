@@ -82,6 +82,21 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordWriteComputeLookUpLatency(latency);
   }
 
+  public void recordIngestionValueBytesLookUpLatency(String storeName, double latency) {
+    totalStats.recordIngestionValueBytesLookUpLatency(latency);
+    getStoreStats(storeName).recordIngestionValueBytesLookUpLatency(latency);
+  }
+
+  public void recordIngestionValueBytesCacheHitCount(String storeName) {
+    totalStats.recordIngestionValueBytesCacheHitCount();
+    getStoreStats(storeName).recordIngestionValueBytesCacheHitCount();
+  }
+
+  public void recordIngestionReplicationMetadataLookUpLatency(String storeName, double latency) {
+    totalStats.recordIngestionReplicationMetadataLookUpLatency(latency);
+    getStoreStats(storeName).recordIngestionReplicationMetadataLookUpLatency(latency);
+  }
+
   public void recordWriteComputeUpdateLatency(String storeName, double latency) {
     totalStats.recordWriteComputeUpdateLatency(latency);
     getStoreStats(storeName).recordWriteComputeUpdateLatency(latency);
@@ -134,6 +149,21 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
   public void recordWriteComputeCacheHitCount(String storeName) {
     totalStats.recordWriteComputeCacheHitCount();
     getStoreStats(storeName).recordWriteComputeCacheHitCount();
+  }
+
+  public void recordIngestionReplicationMetadataCacheHitCount(String storeName) {
+    totalStats.recordIngestionReplicationMetadataCacheHitCount();
+    getStoreStats(storeName).recordIngestionReplicationMetadataCacheHitCount();
+  }
+
+  public void recordConflictResolutionUpdateIgnored(String storeName) {
+    totalStats.recordConflictResolutionUpdateIgnored();
+    getStoreStats(storeName).recordConflictResolutionUpdateIgnored();
+  }
+
+  public void recordConflictResolutionTombstoneCreated(String storeName) {
+    totalStats.recordConflictResolutionTombstoneCreated();
+    getStoreStats(storeName).recordConflictResolutionTombstoneCreated();
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {

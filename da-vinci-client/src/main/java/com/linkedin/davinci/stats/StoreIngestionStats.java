@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.LambdaStat;
@@ -115,6 +115,36 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   private final Sensor checksumVerificationFailureSensor;
 
+  /**
+   * Measure the number of times replication metadata was found in {@link PartitionConsumptionState#transientRecordMap}
+   */
+  private final Sensor leaderIngestionReplicationMetadataCacheHitCount;
+
+  /**
+   * Measure the avg/max latency for value bytes lookup
+   */
+  private final Sensor leaderIngestionValueBytesLookUpLatencySensor;
+
+  /**
+   * Measure the number of times value bytes were found in {@link PartitionConsumptionState#transientRecordMap}
+   */
+  private final Sensor leaderIngestionValueBytesCacheHitCount;
+
+  /**
+   * Measure the avg/max latency for replication metadata data lookup
+   */
+  private final Sensor leaderIngestionReplicationMetadataLookUpLatencySensor;
+
+  /**
+   * Measure the count of ignored updates due to conflict resolution
+   */
+  private final Sensor conflictResolutionUpdateIgnoredSensor;
+
+  /**
+   * Measure the count of tombstones created
+   */
+  private final Sensor conflictResolutionTombstoneCreationSensor;
+
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
     super(metricsRepository, storeName);
@@ -188,6 +218,12 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
     checksumVerificationFailureSensor = registerSensor("checksum_verification_failure", new Count());
 
+    leaderIngestionValueBytesLookUpLatencySensor = registerSensor("leader_ingestion_value_bytes_lookup_latency", new Avg(), new Max());
+    leaderIngestionValueBytesCacheHitCount = registerSensor("leader_ingestion_value_bytes_cache_hit_count", new Rate());
+    leaderIngestionReplicationMetadataCacheHitCount = registerSensor("leader_ingestion_replication_metadata_cache_hit_count", new Rate());
+    leaderIngestionReplicationMetadataLookUpLatencySensor = registerSensor("leader_ingestion_replication_metadata_lookup_latency", new Avg(), new Max());
+    conflictResolutionUpdateIgnoredSensor = registerSensor("conflict_resolution_update_ignored", new Rate());
+    conflictResolutionTombstoneCreationSensor = registerSensor("conflict_resolution_tombstone_creation", new Rate());
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -255,6 +291,18 @@ public class StoreIngestionStats extends AbstractVeniceStats {
     leaderWriteComputeLookUpLatencySensor.record(latency);
   }
 
+  public void recordIngestionValueBytesLookUpLatency(double latency) {
+    leaderIngestionValueBytesLookUpLatencySensor.record(latency);
+  }
+
+  public void recordIngestionValueBytesCacheHitCount() {
+    leaderIngestionValueBytesCacheHitCount.record();
+  }
+
+  public void recordIngestionReplicationMetadataLookUpLatency(double latency) {
+    leaderIngestionReplicationMetadataLookUpLatencySensor.record(latency);
+  }
+
   public void recordWriteComputeUpdateLatency(double latency) {
     leaderWriteComputeUpdateLatencySensor.record(latency);
   }
@@ -294,6 +342,18 @@ public class StoreIngestionStats extends AbstractVeniceStats {
 
   public void recordWriteComputeCacheHitCount() {
     writeComputeCacheHitCount.record();
+  }
+
+  public void recordIngestionReplicationMetadataCacheHitCount() {
+    leaderIngestionReplicationMetadataCacheHitCount.record();
+  }
+
+  public void recordConflictResolutionUpdateIgnored() {
+    conflictResolutionUpdateIgnoredSensor.record();
+  }
+
+  public void recordConflictResolutionTombstoneCreated() {
+    conflictResolutionTombstoneCreationSensor.record();
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {

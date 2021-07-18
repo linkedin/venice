@@ -52,15 +52,9 @@ public class TimestampMetadataRocksDBStoragePartition extends RocksDBStoragePart
    * TODO: Rewrite this implementation after we adopt the thread-local direct bytebuffer approach.
    */
   @Override
-  public synchronized void putWithTimestampMetadata(byte[] key, ByteBuffer value, ByteBuffer metadata) {
-    makeSureRocksDBIsStillOpen();
-    if (readOnly) {
-      throw new VeniceException(
-          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_" + partitionId);
-    }
+  public synchronized void putWithTimestampMetadata(byte[] key, ByteBuffer value, byte[] metadata) {
     byte[] valueBytes = ByteUtils.extractByteArray(value);
-    byte[] metadataBytes = ByteUtils.extractByteArray(metadata);
-    putWithTimestampMetadata(key, valueBytes, metadataBytes);
+    putWithTimestampMetadata(key, valueBytes, metadata);
   }
 
   @Override
@@ -73,6 +67,29 @@ public class TimestampMetadataRocksDBStoragePartition extends RocksDBStoragePart
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
       readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  /**
+   * This API deletes a record from RocksDB but updates the metadata in ByteBuffer format and puts it into RocksDB.
+   */
+  @Override
+  public synchronized void deleteWithReplicationMetadata(byte[] key, byte[] replicationMetadata) {
+    makeSureRocksDBIsStillOpen();
+    if (readOnly) {
+      throw new VeniceException(
+          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_" + partitionId);
+    }
+    if (deferredWrite) {
+      throw new VeniceException("Deletion is unexpected in 'deferredWrite' mode");
+    } else {
+      try (WriteBatch writeBatch = new WriteBatch()) {
+        writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
+        writeBatch.put(columnFamilyHandleList.get(TIMESTAMP_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
+        rocksDB.write(writeOptions, writeBatch);
+      } catch (RocksDBException e) {
+        throw new VeniceException("Failed to delete entry to store: " + storeName + ", partition id: " + partitionId, e);
+      }
     }
   }
 }

@@ -89,7 +89,7 @@ public class PartitionConsumptionState {
 
   /**
    * This hash map will keep a temporary mapping between a key and it's value.
-   * get {@link #getTransientRecord(byte[])} and put {@link ##setTransientRecord(long, byte[], byte[], int, int, int)}
+   * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(long, byte[], byte[], int, int, int)}
    * operation on this map will be invoked from from kafka consumer thread.
    * delete {@link #mayRemoveTransientRecord(long, byte[])} operation will be invoked from drainer thread after persisting it in DB.
    * because of the properties of the above operations the caller is guaranteed to get the latest value for a key either from
@@ -379,12 +379,12 @@ public class PartitionConsumptionState {
     return consumptionStartTimeInMs;
   }
 
-  public void setTransientRecord(long kafkaConsumedOffset, byte[] key) {
-    setTransientRecord(kafkaConsumedOffset, key, null, -1, -1, -1);
+  public void setTransientRecord(long kafkaConsumedOffset, byte[] key, ByteBuffer replicationMetadata) {
+    setTransientRecord(kafkaConsumedOffset, key, null, -1, -1, -1, replicationMetadata);
   }
 
-  public void setTransientRecord(long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId) {
-    transientRecordMap.put(ByteBuffer.wrap(key), new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaConsumedOffset));
+  public void setTransientRecord(long kafkaConsumedOffset, byte[] key, byte[] value, int valueOffset, int valueLen, int valueSchemaId, ByteBuffer replicationMetadata) {
+    transientRecordMap.put(ByteBuffer.wrap(key), new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaConsumedOffset, replicationMetadata));
   }
 
   public TransientRecord getTransientRecord(byte[] key) {
@@ -449,19 +449,22 @@ public class PartitionConsumptionState {
     private final int valueLen;
     private final int valueSchemaId;
     private final long kafkaConsumedOffset;
+    private final ByteBuffer replicationMetadata;
 
-    TransientRecord(byte[] value, int valueOffset, int valueLen, int valueSchemaId, long kafkaConsumedOffset) {
+    TransientRecord(byte[] value, int valueOffset, int valueLen, int valueSchemaId, long kafkaConsumedOffset, ByteBuffer replicationMetadata) {
       this.value = value;
       this.valueOffset = valueOffset;
       this.valueLen = valueLen;
       this.valueSchemaId = valueSchemaId;
       this.kafkaConsumedOffset = kafkaConsumedOffset;
+      this.replicationMetadata = replicationMetadata;
     }
 
     public byte[] getValue() {return value;}
     public int getValueOffset() {return valueOffset;}
     public int getValueLen() {return valueLen;}
     public int getValueSchemaId() {return valueSchemaId;}
+    public ByteBuffer getReplicationMetadata() {return replicationMetadata;}
 
   }
 }

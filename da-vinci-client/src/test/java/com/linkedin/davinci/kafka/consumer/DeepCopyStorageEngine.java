@@ -1,13 +1,13 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.AbstractStoragePartition;
-import com.linkedin.davinci.store.StoragePartitionConfig;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
@@ -106,6 +106,11 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
     this.delegate.put(logicalPartitionId, key, value);
   }
 
+  @Override
+  public void deleteWithReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) {
+    this.delegate.deleteWithReplicationMetadata(partitionId, key, replicationMetadata);
+  }
+
   /**
    * Deep copy implementation.
    *
@@ -124,6 +129,19 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
     value.reset();
     deepCopyByteBuffer.reset();
     this.delegate.put(logicalPartitionId, key, deepCopyByteBuffer);
+  }
+
+  @Override
+  public void putWithReplicationMetadata(int logicalPartitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata) {
+    ByteBuffer deepCopyByteBuffer = ByteBuffer.allocate(value.remaining());
+    // Record the original position for recovery
+    deepCopyByteBuffer.mark();
+    value.mark();
+    deepCopyByteBuffer.put(value);
+    // Recover the original position
+    value.reset();
+    deepCopyByteBuffer.reset();
+    this.delegate.putWithReplicationMetadata(logicalPartitionId, key, deepCopyByteBuffer, replicationMetadata);
   }
 
   @Override

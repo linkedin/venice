@@ -57,10 +57,14 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.TimestampMetadataSchemaAdapter;
+import com.linkedin.venice.schema.TimestampMetadataSchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
@@ -79,6 +83,7 @@ import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Pair;
@@ -121,6 +126,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -130,7 +137,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -213,6 +219,16 @@ public class StoreIngestionTaskTest {
   private static final byte[] putValueToCorrupt = "Please corrupt me!".getBytes(StandardCharsets.UTF_8);
   private static final byte[] deleteKeyFoo = getRandomKey(PARTITION_FOO);
 
+  private static final int REPLICATION_METADATA_VERSION_ID = 1;
+  private static final Schema REPLICATION_METADATA_SCHEMA = TimestampMetadataSchemaAdapter.parse(STRING_SCHEMA, 1);
+  private static final RecordSerializer REPLICATION_METADATA_SERIALIZER = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(REPLICATION_METADATA_SCHEMA);
+
+  private static final long putKeyFooTimestamp = 1L;
+  private static final long deleteKeyFooTimestamp = 2L;
+
+  private static final byte[] putKeyFooReplicationMetadataWithValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(putKeyFooTimestamp, EXISTING_SCHEMA_ID);
+  private static final byte[] deleteKeyFooReplicationMetadataWithValueSchemaIdBytes = getReplicationMetadataWithValueSchemaId(deleteKeyFooTimestamp, EXISTING_SCHEMA_ID);
+
   private boolean databaseChecksumVerificationEnabled = false;
 
   private static byte[] getRandomKey(Integer partition) {
@@ -221,6 +237,16 @@ public class StoreIngestionTaskTest {
         .put(partition.byteValue())
         .put(randomString.getBytes())
         .array();
+  }
+
+  private static byte[] getReplicationMetadataWithValueSchemaId(long timestamp, int valueSchemaId) {
+    GenericRecord replicationMetadataRecord = new GenericData.Record(REPLICATION_METADATA_SCHEMA);
+    replicationMetadataRecord.put("timestamp", timestamp);
+    byte[] replicationMetadata = REPLICATION_METADATA_SERIALIZER.serialize(replicationMetadataRecord);
+
+    ByteBuffer replicationMetadataWithValueSchemaId = ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(replicationMetadata), valueSchemaId, false);
+    replicationMetadataWithValueSchemaId.position(replicationMetadataWithValueSchemaId.position() - ByteUtils.SIZE_OF_INT);
+    return ByteUtils.extractByteArray(replicationMetadataWithValueSchemaId);
   }
 
   @BeforeClass(alwaysRun = true)
@@ -295,6 +321,12 @@ public class StoreIngestionTaskTest {
     hybridStoreConfig = Optional.<HybridStoreConfig>empty();
     databaseChecksumVerificationEnabled = false;
     rocksDBServerConfig = mock(RocksDBServerConfig.class);
+
+    doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+    doReturn(false).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
+
+    doReturn(new TimestampMetadataSchemaEntry(EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID, REPLICATION_METADATA_SCHEMA))
+        .when(mockSchemaRepo).getTimestampMetadataSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID);
   }
 
   private VeniceWriter getVeniceWriter(String topic, Supplier<KafkaProducerWrapper> producerSupplier, int amplificationFactor) {
@@ -345,52 +377,48 @@ public class StoreIngestionTaskTest {
     return recordMetadataFuture.get().offset();
   }
 
-  private void runTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
-    runTest(partitions, () -> {}, assertions, isLeaderFollowerModelEnabled);
+  private void runTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
+    runTest(partitions, () -> {}, assertions, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
+  private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
         Optional.of(new HybridStoreConfigImpl(100, 100,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP)),
-        Optional.empty(), isLeaderFollowerModelEnabled);
-  }
-
-  private void runTest(Set<Integer> partitions,
-      Runnable beforeStartingConsumption,
-      Runnable assertions,
-      boolean isLeaderFollowerModelEnabled) throws Exception {
-    runTest(partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled, Collections.emptyMap());
+        Optional.empty(), isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   private void runTest(Set<Integer> partitions,
       Runnable beforeStartingConsumption,
       Runnable assertions,
       boolean isLeaderFollowerModelEnabled,
-      Map<String, Object> extraServerProperties) throws Exception {
-    runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled, extraServerProperties);
-  }
-
-  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
-      Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty(), isLeaderFollowerModelEnabled, Collections.emptyMap());
-  }
-
-  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
-      Runnable assertions, boolean isLeaderFollowerModelEnabled, Map<String, Object> extraServerProperties) throws Exception {
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty(), isLeaderFollowerModelEnabled, extraServerProperties);
+      boolean isActiveActiveReplicationEnabled) throws Exception {
+    runTest(partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, Collections.emptyMap());
   }
 
   private void runTest(PollStrategy pollStrategy,
       Set<Integer> partitions,
       Runnable beforeStartingConsumption,
       Runnable assertions,
-      Optional<HybridStoreConfig> hybridStoreConfig,
-      Optional<DiskUsage> diskUsageForTest,
-      boolean isLeaderFollowerModelEnabled) throws Exception {
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest,
-        isLeaderFollowerModelEnabled, 1, Collections.emptyMap());
+      boolean isLeaderFollowerModelEnabled,
+      boolean isActiveActiveReplicationEnabled) throws Exception {
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, Collections.emptyMap());
+  }
+
+  private void runTest(Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      boolean isLeaderFollowerModelEnabled,
+      boolean isActiveActiveReplicationEnabled,
+      Map<String, Object> extraServerProperties) throws Exception {
+    runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, extraServerProperties);
+  }
+
+  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
+      Runnable assertions, boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled,
+      Map<String, Object> extraServerProperties) throws Exception {
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, false, Optional.empty(), isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, 1, extraServerProperties);
   }
 
   private void runTest(PollStrategy pollStrategy,
@@ -400,14 +428,22 @@ public class StoreIngestionTaskTest {
       Optional<HybridStoreConfig> hybridStoreConfig,
       Optional<DiskUsage> diskUsageForTest,
       boolean isLeaderFollowerModelEnabled,
-      Map<String, Object> extraServerProperties) throws Exception {
+      boolean isActiveActiveReplicationEnabled) throws Exception {
     runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest,
-        isLeaderFollowerModelEnabled, 1, extraServerProperties);
+        isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, 1, Collections.emptyMap());
   }
 
-  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
-      Runnable assertions, Optional<HybridStoreConfig> hybridStoreConfig, boolean incrementalPushEnabled,
-      Optional<DiskUsage> diskUsageForTest, boolean isLeaderFollowerModelEnabled, int amplificationFactor, Map<String, Object> extraServerProperties) throws Exception {
+  private void runTest(PollStrategy pollStrategy,
+      Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      Optional<HybridStoreConfig> hybridStoreConfig,
+      boolean incrementalPushEnabled,
+      Optional<DiskUsage> diskUsageForTest,
+      boolean isLeaderFollowerModelEnabled,
+      boolean isActiveActiveReplicationEnabled,
+      int amplificationFactor,
+      Map<String, Object> extraServerProperties) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
     kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryKafkaBroker.getKafkaBootstrapServer());
@@ -496,6 +532,10 @@ public class StoreIngestionTaskTest {
     doReturn(-1).when(mockStore).getCurrentVersion();
     doReturn(1).when(mockStore).getBootstrapToOnlineTimeoutInHours();
 
+    version.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled);
+    doReturn(isActiveActiveReplicationEnabled).when(mockStore).isActiveActiveReplicationEnabled();
+    version.setTimestampMetadataVersionId(REPLICATION_METADATA_VERSION_ID);
+
     doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
@@ -579,11 +619,11 @@ public class StoreIngestionTaskTest {
    * 2. A VeniceMessage with DELETE requests leads to invoking of AbstractStorageEngine#delete.
    * 3. A VeniceMessage with a Kafka offset that was already processed is ignored.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceMessagesProcessing(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessing(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
-    RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
-    RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo, null).get();
+    RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
+    RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo, deleteKeyFooTimestamp, null).get();
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
@@ -599,25 +639,27 @@ public class StoreIngestionTaskTest {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
-      // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-
-      // Verify StorageEngine#Delete is invoked only once and with appropriate key.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(PARTITION_FOO, deleteKeyFoo);
+      verifyPutAndDelete(1, isActiveActiveReplicationEnabled, true);
 
       // Verify it commits the offset to Offset Manager
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test
-  public void testAmplificationFactor() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAmplificationFactor(boolean isActiveActiveReplicationEnabled) throws Exception {
     int amplificationFactor = 2;
     inMemoryKafkaBroker.createTopic(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), PARTITION_COUNT / amplificationFactor);
     mockStorageMetadataService = new InMemoryStorageMetadataService();
+
+    AbstractStoragePartition mockPartition = mock(AbstractStoragePartition.class);
+    doReturn(mockPartition).when(mockAbstractStorageEngine).getPartitionOrThrow(anyInt());
+
+    doReturn(putKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockPartition).getTimestampMetadata(putKeyFoo);
+    doReturn(deleteKeyFooReplicationMetadataWithValueSchemaIdBytes).when(mockPartition).getTimestampMetadata(deleteKeyFoo);
+
     VeniceWriter vtWriter = getVeniceWriter(topic, () -> new MockInMemoryProducer(inMemoryKafkaBroker), amplificationFactor);
     VeniceWriter rtWriter = getVeniceWriter(Version.composeRealTimeTopic(storeNameWithoutVersionInfo), () -> new MockInMemoryProducer(inMemoryKafkaBroker), 1);
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100,
@@ -640,16 +682,10 @@ public class StoreIngestionTaskTest {
               new HashMap<>());
           storeIngestionTaskUnderTest.promoteToLeader(topic, PARTITION_FOO, new LeaderFollowerParticipantModel.LeaderSessionIdChecker(1, new AtomicLong(1)));
           try {
-            rtWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
-            rtWriter.delete(deleteKeyFoo, null).get();
+            rtWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, putKeyFooTimestamp, null).get();
+            rtWriter.delete(deleteKeyFoo, deleteKeyFooTimestamp, null).get();
 
-            // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-            VenicePartitioner partitioner = getVenicePartitioner(amplificationFactor);
-            int targetPartition = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
-            verify(mockAbstractStorageEngine, timeout(100000))
-                .put(targetPartition, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-            // Verify StorageEngine#Delete is invoked only once and with appropriate key.
-            verify(mockAbstractStorageEngine, timeout(100000)).delete(targetPartition, deleteKeyFoo);
+            verifyPutAndDelete(amplificationFactor, isActiveActiveReplicationEnabled, false);
           } catch (Exception e) {
             e.printStackTrace();
           }
@@ -657,13 +693,14 @@ public class StoreIngestionTaskTest {
         Optional.of(hybridStoreConfig),
         false,
         Optional.empty(), true,
+        isActiveActiveReplicationEnabled,
         amplificationFactor,
         Collections.singletonMap(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 3L)
     );
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testMissingMessagesForTopicWithLogCompactionEnabled(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testMissingMessagesForTopicWithLogCompactionEnabled(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     // enable log compaction
     when(mockTopicManager.isTopicCompactionEnabled(topic)).thenReturn(true);
 
@@ -704,11 +741,11 @@ public class StoreIngestionTaskTest {
       OffsetRecord expectedOffsetRecordForLastMessage = getOffsetRecord(putMetadata4.offset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForLastMessage);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceMessagesProcessingWithExistingSchemaId(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithExistingSchemaId(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
 
@@ -726,15 +763,15 @@ public class StoreIngestionTaskTest {
       // Verify it commits the offset to Offset Manager
       OffsetRecord expected = getOffsetRecord(fooLastOffset);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).put(topic, PARTITION_FOO, expected);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   /**
    * Test the situation where records arrive faster than the schemas.
    * In this case, Venice would keep polling schemaRepo until schemas arrive.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, NON_EXISTING_SCHEMA_ID);
     long existingSchemaOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
@@ -759,14 +796,14 @@ public class StoreIngestionTaskTest {
 
       OffsetRecord expected = getOffsetRecord(existingSchemaOffset);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).put(topic, PARTITION_FOO, expected);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   /**
    * Test the situation where records' schemas never arrive. In the case, the StoreIngestionTask will keep being blocked.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceMessagesProcessingWithNonExistingSchemaId(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithNonExistingSchemaId(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, NON_EXISTING_SCHEMA_ID);
     veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
@@ -786,11 +823,11 @@ public class StoreIngestionTaskTest {
 
       // Only two records(start_of_segment, start_of_push) offset were able to be recorded before 'NON_EXISTING_SCHEMA_ID' blocks #putConsumerRecord
       verify(mockStorageMetadataService, atMost(2)).put(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testReportStartWhenRestarting(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testReportStartWhenRestarting(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     final long STARTING_OFFSET = 2;
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
@@ -798,11 +835,11 @@ public class StoreIngestionTaskTest {
     }, () -> {
       // Verify STARTED is NOT reported when offset is 0
       verify(mockLogNotifier, never()).started(topic, PARTITION_BAR);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testNotifier(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testNotifier(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
@@ -860,11 +897,11 @@ public class StoreIngestionTaskTest {
       verify(mockPartitionStatusNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
       verify(mockPartitionStatusNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
       verify(mockPartitionStatusNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testReadyToServePartition(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testReadyToServePartition(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
@@ -880,11 +917,11 @@ public class StoreIngestionTaskTest {
           verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
           verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).preparePartitionForReading(PARTITION_FOO);
         },
-        isLeaderFollowerModelEnabled);
+        isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testReadyToServePartitionValidateIngestionSuccess(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testReadyToServePartitionValidateIngestionSuccess(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.broadcastEndOfPush(new HashMap<>());
     Store mockStore = mock(Store.class);
@@ -899,11 +936,11 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testReadyToServePartitionWriteOnly(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testReadyToServePartitionWriteOnly(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.broadcastEndOfPush(new HashMap<>());
     Store mockStore = mock(Store.class);
@@ -920,11 +957,11 @@ public class StoreIngestionTaskTest {
     runTest(getSet(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
       verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_BAR);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testResetPartition(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testResetPartition(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
@@ -936,11 +973,11 @@ public class StoreIngestionTaskTest {
 
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).times(2))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testResetPartitionAfterUnsubscription(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testResetPartitionAfterUnsubscription(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
@@ -957,7 +994,7 @@ public class StoreIngestionTaskTest {
       // StoreIngestionTask won't invoke consumer.resetOffset() if it already unsubscribe from that topic/partition
       verify(mockKafkaConsumer, timeout(TEST_TIMEOUT).times(0)).resetOffset(topic, PARTITION_FOO);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   /**
@@ -965,8 +1002,8 @@ public class StoreIngestionTaskTest {
    *
    * The {@link VeniceNotifier} should see the completion and error reported for the appropriate partitions.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testDetectionOfMissingRecord(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testDetectionOfMissingRecord(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barOffsetToSkip = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
@@ -986,15 +1023,15 @@ public class StoreIngestionTaskTest {
 
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   /**
    * In this test, partition FOO will complete normally, but partition BAR will contain a duplicate record. The
    * {@link VeniceNotifier} should see the completion for both partitions.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testSkippingOfDuplicateRecord(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testSkippingOfDuplicateRecord(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barOffsetToDupe = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
@@ -1012,11 +1049,11 @@ public class StoreIngestionTaskTest {
 
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testThrottling(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testThrottling(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     veniceWriter.delete(deleteKeyFoo, null);
@@ -1025,7 +1062,7 @@ public class StoreIngestionTaskTest {
       // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
       verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT).times(4)).maybeThrottle(anyDouble());
       verify(mockRecordsThrottler, timeout(TEST_TIMEOUT).times(4)).maybeThrottle(1);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   /**
@@ -1033,8 +1070,8 @@ public class StoreIngestionTaskTest {
    * message in {@link #PARTITION_FOO} will receive a bad message type, whereas the message in {@link #PARTITION_BAR}
    * will receive a bad control message type.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBadMessageTypesFailFast(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testBadMessageTypesFailFast(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     int badMessageTypeId = 99; // Venice got 99 problems, but a bad message type ain't one.
 
     // Dear future maintainer,
@@ -1094,7 +1131,7 @@ public class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(VeniceException.class)));
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   /**
@@ -1102,8 +1139,8 @@ public class StoreIngestionTaskTest {
    * including a corrupt message followed by a good one. We expect the Notifier to not report any errors after the
    * EOP.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testCorruptMessagesDoNotFailFastAfterEOP(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testCorruptMessagesDoNotFailFastAfterEOP(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     VeniceWriter veniceWriterForDataDuringPush = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
     VeniceWriter veniceWriterForDataAfterPush = getCorruptedVeniceWriter(putValueToCorrupt);
 
@@ -1151,7 +1188,7 @@ public class StoreIngestionTaskTest {
                   && args[3] instanceof CorruptDataException);
         }
 
-      }, isLeaderFollowerModelEnabled);
+      }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
     } catch (VerifyError e) {
       StringBuilder msg = new StringBuilder();
       ClassLoader cl = ClassLoader.getSystemClassLoader();
@@ -1169,8 +1206,8 @@ public class StoreIngestionTaskTest {
    * including a corrupt message followed by a missing message and a good one.
    * We expect the Notifier to not report any errors after the EOP.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testDIVErrorMessagesNotFailFastAfterEOP(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testDIVErrorMessagesNotFailFastAfterEOP(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     VeniceWriter veniceWriterCorrupted = getCorruptedVeniceWriter(putValueToCorrupt);
 
     // do a batch push
@@ -1204,7 +1241,7 @@ public class StoreIngestionTaskTest {
                 && ((String)args[2]).length() > 0
                 && args[3] instanceof FatalDataValidationException);
       }
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
 
@@ -1216,8 +1253,8 @@ public class StoreIngestionTaskTest {
    * should ensure that if this test is ever made flaky again, it will be detected right away. The skipFailedInvocations
    * annotation parameter makes the test skip any invocation after the first failure.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, invocationCount = 100, skipFailedInvocations = true)
-  public void testCorruptMessagesFailFast(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class, invocationCount = 100, skipFailedInvocations = true)
+  public void testCorruptMessagesFailFast(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt);
 
     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -1244,11 +1281,11 @@ public class StoreIngestionTaskTest {
        * this test is to detect this edge case.
        */
       verify(mockLogNotifier, never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testSubscribeCompletedPartition(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testSubscribeCompletedPartition(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     final int offset = 100;
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     runTest(getSet(PARTITION_FOO),
@@ -1256,12 +1293,12 @@ public class StoreIngestionTaskTest {
         () -> {
           verify(mockLogNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
         },
-        isLeaderFollowerModelEnabled
+        isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled
     );
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testSubscribeCompletedPartitionUnsubscribe(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testSubscribeCompletedPartitionUnsubscribe(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     final int offset = 100;
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     Map<String, Object> extraServerProperties = new HashMap<>();
@@ -1283,12 +1320,13 @@ public class StoreIngestionTaskTest {
           verify(mockKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
         },
         isLeaderFollowerModelEnabled,
+        isActiveActiveReplicationEnabled,
         extraServerProperties
     );
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testCompleteCalledWhenUnsubscribeAfterBatchpushDisabled(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testCompleteCalledWhenUnsubscribeAfterBatchpushDisabled(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     final int offset = 10;
     veniceWriter.broadcastStartOfPush(new HashMap<>());
 
@@ -1306,12 +1344,12 @@ public class StoreIngestionTaskTest {
           waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
               () -> !storeIngestionTaskUnderTest.isRunning());
         },
-        isLeaderFollowerModelEnabled
+        isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled
     );
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testUnsubscribeConsumption(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testUnsubscribeConsumption(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
 
@@ -1321,11 +1359,11 @@ public class StoreIngestionTaskTest {
       storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.isRunning() == false);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testKillConsumption(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testKillConsumption(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     final Thread writingThread = new Thread(() -> {
       while (true) {
         veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
@@ -1358,14 +1396,14 @@ public class StoreIngestionTaskTest {
 
         waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
             () -> storeIngestionTaskUnderTest.isRunning() == false);
-      }, isLeaderFollowerModelEnabled);
+      }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
     } finally {
       writingThread.interrupt();
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testKillActionPriority(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testKillActionPriority(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     runTest(getSet(PARTITION_FOO), () -> {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
       veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
@@ -1392,7 +1430,7 @@ public class StoreIngestionTaskTest {
 
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.isRunning() == false);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   private byte[] getNumberedKey(int number) {
@@ -1402,13 +1440,8 @@ public class StoreIngestionTaskTest {
     return ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(number).array();
   }
 
-  @DataProvider(name = "sortedInput_isLeaderFollowerModelEnabled")
-  public static Object[][] sortedInputAndStateTransitionModel() {
-    return new Object[][]{{false, false}, {true, false}, {false, true}, {true, true}};
-  }
-
-  @Test(dataProvider = "sortedInput_isLeaderFollowerModelEnabled", invocationCount = 3, skipFailedInvocations = true)
-  public void testDataValidationCheckPointing(boolean sortedInput, boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "Three-True-and-False", invocationCount = 3, skipFailedInvocations = true, dataProviderClass = DataProviderUtils.class)
+  public void testDataValidationCheckPointing(boolean sortedInput, boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
@@ -1498,11 +1531,11 @@ public class StoreIngestionTaskTest {
         byte[] value = ValueRecord.create(SCHEMA_ID, entry.getValue().get()).serialize();
         verify(mockAbstractStorageEngine, atLeastOnce()).put(partition, key, ByteBuffer.wrap(value));
       });
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testKillAfterPartitionIsCompleted(boolean isLeaderFollowerModelEnabled)
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testKillAfterPartitionIsCompleted(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled)
       throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
@@ -1514,11 +1547,11 @@ public class StoreIngestionTaskTest {
 
       storeIngestionTaskUnderTest.kill();
       verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testNeverReportProgressBeforeStart(boolean isLeaderFollowerModelEnabled)
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testNeverReportProgressBeforeStart(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled)
       throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Read one message for each poll.
@@ -1529,11 +1562,11 @@ public class StoreIngestionTaskTest {
       // of messages in bytes, since control message is being counted as 0 bytes (no data persisted in disk),
       // then no progress will be reported during start, but only for processed messages.
       verify(mockLogNotifier, after(TEST_TIMEOUT).never()).progress(any(), anyInt(), anyInt());
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testOffsetPersistent(boolean isLeaderFollowerModelEnabled)
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testOffsetPersistent(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled)
       throws Exception {
     // Do not persist every message.
     List<Long> offsets = new ArrayList<>();
@@ -1554,17 +1587,17 @@ public class StoreIngestionTaskTest {
           () -> {
             verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(3)).put(eq(topic), eq(PARTITION_FOO), any());
           },
-          isLeaderFollowerModelEnabled);
+          isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
     }finally {
       databaseSyncBytesIntervalForTransactionalMode = 1;
     }
 
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceMessagesProcessingWithSortedInput(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithSortedInput(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+    RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID).get();
     RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo, null).get();
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
@@ -1572,12 +1605,7 @@ public class StoreIngestionTaskTest {
       // Verify it retrieves the offset from the Offset Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
-      // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-
-      // Verify StorageEngine#Delete is invoked only once and with appropriate key.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(PARTITION_FOO, deleteKeyFoo);
+      verifyPutAndDelete(1, isActiveActiveReplicationEnabled, true);
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset() + 1, true);
@@ -1595,11 +1623,11 @@ public class StoreIngestionTaskTest {
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, times(1))
           .endBatchWrite(transactionalPartitionConfig);
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceMessagesProcessingWithSortedInputVerifyChecksum(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithSortedInputVerifyChecksum(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     databaseChecksumVerificationEnabled = true;
     doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
     veniceWriter.broadcastStartOfPush(true, new HashMap<>());
@@ -1631,11 +1659,11 @@ public class StoreIngestionTaskTest {
       Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
       Assert.assertTrue(checksumSupplier.isPresent());
       Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.get().getCheckSum()));
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testDelayedTransitionToOnlineInHybridMode(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testDelayedTransitionToOnlineInHybridMode(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     final long MESSAGES_BEFORE_EOP = 100;
     final long MESSAGES_AFTER_EOP = 100;
 
@@ -1686,7 +1714,7 @@ public class StoreIngestionTaskTest {
 
           verify(mockLogNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).completed(anyString(), anyInt(), anyLong());
         },
-        isLeaderFollowerModelEnabled
+        isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled
     );
   }
 
@@ -1696,8 +1724,8 @@ public class StoreIngestionTaskTest {
    * the record, it will receive a disk full error.  This test checks for that disk full error on the Notifier object.
    * @throws Exception
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void StoreIngestionTaskRespectsDiskUsage(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void StoreIngestionTaskRespectsDiskUsage(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1720,11 +1748,11 @@ public class StoreIngestionTaskTest {
               "Expecting disk full error, found following error messages instead: " + errorMessages);
         }
       });
-    }, Optional.empty(), Optional.of(diskFullUsage), isLeaderFollowerModelEnabled);
+    }, Optional.empty(), Optional.of(diskFullUsage), isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testIncrementalPush(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testIncrementalPush(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(true, new HashMap<>());
     long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1753,12 +1781,12 @@ public class StoreIngestionTaskTest {
         verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
         verify(mockLogNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), true, Optional.empty(), isLeaderFollowerModelEnabled, 1, Collections.emptyMap());
+    }, Optional.empty(), true, Optional.empty(), isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, 1, Collections.emptyMap());
   }
 
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testCacheWarming(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testCacheWarming(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(true, new HashMap<>());
     long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1783,12 +1811,12 @@ public class StoreIngestionTaskTest {
               longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
           );
           verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
-        }), Optional.empty(), false, Optional.empty(), isLeaderFollowerModelEnabled, 1, extraServerProperties
+        }), Optional.empty(), false, Optional.empty(), isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, 1, extraServerProperties
     );
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testSchemaCacheWarming(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testSchemaCacheWarming(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(true, new HashMap<>());
     long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1812,12 +1840,12 @@ public class StoreIngestionTaskTest {
               longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
           );
         }), Optional.empty(), false, Optional.empty(),
-        isLeaderFollowerModelEnabled, 1, Collections.singletonMap(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP, 1)
+        isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, 1, Collections.singletonMap(SERVER_NUM_SCHEMA_FAST_CLASS_WARMUP, 1)
     );
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testDelayCompactionForSamzaReprocessingWorkload(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testDelayCompactionForSamzaReprocessingWorkload(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(false, new HashMap<>());
     long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1851,24 +1879,24 @@ public class StoreIngestionTaskTest {
           verify(mockLogNotifier).completed(eq(topic), eq(PARTITION_FOO),
               longThat(completionOffset ->  (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2))
           );
-        }), Optional.empty(), false, Optional.empty(), isLeaderFollowerModelEnabled, 1, Collections.singletonMap(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, false)
+        }), Optional.empty(), false, Optional.empty(), isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled, 1, Collections.singletonMap(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, false)
     );
   }
 
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testReportErrorWithEmptyPcsMap(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testReportErrorWithEmptyPcsMap(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
     doThrow(new VeniceException("fake exception")).when(mockVersionedStorageIngestionStats).resetIngestionTaskErroredGauge(anyString(), anyInt());
 
     runTest(getSet(PARTITION_FOO), () -> {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testPartitionExceptionIsolation(boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "L/F-A/A", dataProviderClass = DataProviderUtils.class)
+  public void testPartitionExceptionIsolation(boolean isLeaderFollowerModelEnabled, boolean isActiveActiveReplicationEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
@@ -1887,7 +1915,7 @@ public class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT)).stopped(eq(topic), eq(PARTITION_FOO), anyLong());
       verify(mockLogNotifier, never()).error(eq(topic), eq(PARTITION_BAR), anyString(), any());
       assertTrue(storeIngestionTaskUnderTest.isRunning(), "The StoreIngestionTask should still be running");
-    }, isLeaderFollowerModelEnabled);
+    }, isLeaderFollowerModelEnabled, isActiveActiveReplicationEnabled);
   }
 
   private static class TestVeniceWriter<K,V> extends VeniceWriter{
@@ -1914,4 +1942,41 @@ public class StoreIngestionTaskTest {
     extraProperties.forEach(propertyBuilder::put);
     return new VeniceServerConfig(propertyBuilder.build());
   }
+
+  private void verifyPutAndDelete(int amplificationFactor, boolean isActiveActiveReplicationEnabled, boolean recordsInBatchPush) {
+    VenicePartitioner partitioner = getVenicePartitioner(amplificationFactor);
+    int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
+    int targetPartitionDeleteKeyFoo = partitioner.getPartitionId(deleteKeyFoo, PARTITION_COUNT);
+
+    // Batch push records for Active/Active do not persist replication metadata.
+    if (isActiveActiveReplicationEnabled && !recordsInBatchPush) {
+      // Verify StorageEngine#putWithReplicationMetadata is invoked only once and with appropriate key & value.
+      verify(mockAbstractStorageEngine, timeout(100000))
+          .putWithReplicationMetadata(targetPartitionPutKeyFoo, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()), putKeyFooReplicationMetadataWithValueSchemaIdBytes);
+      // Verify StorageEngine#deleteWithReplicationMetadata is invoked only once and with appropriate key.
+      verify(mockAbstractStorageEngine, timeout(100000))
+          .deleteWithReplicationMetadata(targetPartitionDeleteKeyFoo, deleteKeyFoo, deleteKeyFooReplicationMetadataWithValueSchemaIdBytes);
+
+      // Verify StorageEngine#put is never invoked for put operation.
+      verify(mockAbstractStorageEngine, never()).put(eq(targetPartitionPutKeyFoo), eq(putKeyFoo), any(ByteBuffer.class));
+      // Verify StorageEngine#Delete is never invoked for delete operation.
+      verify(mockAbstractStorageEngine, never()).delete(eq(targetPartitionDeleteKeyFoo), eq(deleteKeyFoo));
+    } else {
+      // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+      verify(mockAbstractStorageEngine, timeout(100000))
+          .put(targetPartitionPutKeyFoo, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
+      // Verify StorageEngine#Delete is invoked only once and with appropriate key.
+      verify(mockAbstractStorageEngine, timeout(100000)).delete(targetPartitionDeleteKeyFoo, deleteKeyFoo);
+
+      // Verify StorageEngine#putWithReplicationMetadata is never invoked for put operation.
+      verify(mockAbstractStorageEngine, never())
+          .putWithReplicationMetadata(targetPartitionPutKeyFoo, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()), putKeyFooReplicationMetadataWithValueSchemaIdBytes);
+      // Verify StorageEngine#deleteWithReplicationMetadata is never invoked for delete operation..
+      verify(mockAbstractStorageEngine, never())
+          .deleteWithReplicationMetadata(targetPartitionDeleteKeyFoo, deleteKeyFoo, deleteKeyFooReplicationMetadataWithValueSchemaIdBytes);
+    }
+
+
+  }
+
 }

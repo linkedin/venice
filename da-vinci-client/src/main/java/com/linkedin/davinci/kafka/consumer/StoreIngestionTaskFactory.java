@@ -51,7 +51,42 @@ public class StoreIngestionTaskFactory {
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend
   ) {
-    if (version.isLeaderFollowerModelEnabled()) {
+    if (version.isActiveActiveReplicationEnabled()) {
+      return new ActiveActiveStoreIngestionTask(
+          store,
+          version,
+          builder.veniceWriterFactory,
+          builder.kafkaClientFactory,
+          kafkaConsumerProperties,
+          builder.storageEngineRepository,
+          builder.storageMetadataService,
+          builder.leaderFollowerNotifiers,
+          builder.bandwidthThrottler,
+          builder.recordsThrottler,
+          builder.unorderedBandwidthThrottler,
+          builder.unorderedRecordsThrottler,
+          builder.schemaRepo,
+          builder.metadataRepo,
+          builder.topicManagerRepository,
+          builder.topicManagerRepositoryJavaBased,
+          builder.ingestionStats,
+          builder.versionedDIVStats,
+          builder.versionedStorageIngestionStats,
+          builder.storeBufferService,
+          isCurrentVersion,
+          storeConfig,
+          builder.diskUsage,
+          builder.rocksDBMemoryStats,
+          builder.aggKafkaConsumerService,
+          builder.serverConfig,
+          partitionId,
+          builder.cacheWarmingThreadPool,
+          builder.startReportingReadyToServeTimestamp,
+          builder.partitionStateSerializer,
+          isIsolatedIngestion,
+          compressorFactory,
+          cacheBackend);
+    } else if (version.isLeaderFollowerModelEnabled()) {
       return new LeaderFollowerStoreIngestionTask(
           store,
           version,
@@ -161,7 +196,6 @@ public class StoreIngestionTaskFactory {
     private ExecutorService cacheWarmingThreadPool;
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
-    private boolean isIsolatedIngestion;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -340,13 +374,6 @@ public class StoreIngestionTaskFactory {
     public Builder setPartitionStateSerializer(InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
       if (!built) {
         this.partitionStateSerializer = partitionStateSerializer;
-      }
-      return this;
-    }
-
-    public Builder setIsIsolatedIngestion(boolean isolatedIngestion) {
-      if (!built) {
-        this.isIsolatedIngestion = isolatedIngestion;
       }
       return this;
     }

@@ -301,7 +301,7 @@ public class ByteUtils {
    * @param originalBuffer The buffer to which the header should be prepended.
    * @param header The header value to prepend to the buffer provided.
    * @param reuseOriginalBuffer If the original ByteBuffer should be reused.
-   * @return The ByteBuffer that has the header prepended. If {@param reuseOriginalBuffer} is true, then return value is
+   * @return The ByteBuffer that has the header prepended. If {@param reuseOriginalBuffer} is true, then return object is
    * the same as original buffer.
    */
   public static ByteBuffer prependIntHeaderToByteBuffer(ByteBuffer originalBuffer, int header, boolean reuseOriginalBuffer) {

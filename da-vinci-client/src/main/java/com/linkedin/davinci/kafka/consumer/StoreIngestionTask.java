@@ -38,6 +38,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -274,7 +275,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Optional<HybridStoreQuotaEnforcement> hybridQuotaEnforcer;
   protected volatile Optional<Map<Integer, Integer>> subscribedPartitionToSize;
 
-  protected IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final AggKafkaConsumerService aggKafkaConsumerService;
@@ -484,6 +484,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.errorPartitionId = errorPartitionId;
     this.cacheWarmingThreadPool = cacheWarmingThreadPool;
     this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
+
+    this.isWriteComputationEnabled = store.isWriteComputationEnabled();
 
     buildRocksDBMemoryEnforcer();
 
@@ -876,6 +878,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * This function is in charge of producing the consumer records to the writer buffers maintained by {@link StoreBufferService}.
+   *
+   * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
+   *
    * @param records : received consumer records
    * @param whetherToApplyThrottling : whether to apply throttling in this function or not.
    * @throws InterruptedException
@@ -1038,6 +1043,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       waitReadyToProcessRecord(record);
       processedRecords.add(recordWrapper);
       long kafkaProduceStartTimeInNS = System.nanoTime();
+      // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
       switch (delegateConsumerRecord(recordWrapper)) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = System.nanoTime();
@@ -2162,7 +2168,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
 
-  protected void processStartOfPush(ControlMessage controlMessage, int partition, long offset,
+  protected void processStartOfPush(KafkaMessageEnvelope startOfPushKME, ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
     /**
@@ -2179,6 +2185,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       newStoreVersionState.chunked = startOfPush.chunked;
       newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
       newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
+      newStoreVersionState.batchConflictResolutionPolicy = startOfPush.timestampPolicy;
+      newStoreVersionState.startOfPushTimestamp = startOfPushKME.producerMetadata.messageTimestamp;
+
       storageMetadataService.put(kafkaVersionTopic, newStoreVersionState);
     } else if (storeVersionState.get().sorted != startOfPush.sorted) {
       // Something very wrong is going on ): ...
@@ -2286,7 +2295,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
    * offset is stale and is not updated until the very end
    */
-  private ControlMessageType processControlMessage(ControlMessage controlMessage, int partition, long offset,
+  private ControlMessageType processControlMessage(KafkaMessageEnvelope kafkaMessageEnvelope, ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState)
       throws InterruptedException {
     /**
@@ -2302,7 +2311,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     switch(type) {
       case START_OF_PUSH:
-        processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
+        processStartOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_PUSH:
         processEndOfPush(controlMessage, partition, offset, partitionConsumptionState);
@@ -2403,7 +2412,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (leaderProducedRecordContext == null ? (ControlMessage) kafkaValue.payloadUnion : (ControlMessage) leaderProducedRecordContext.getValueUnion());
-        ControlMessageType controlMessageType = processControlMessage(controlMessage, consumerRecord.partition(),
+        ControlMessageType controlMessageType = processControlMessage(kafkaValue, controlMessage, consumerRecord.partition(),
             consumerRecord.offset(), partitionConsumptionState);
         /**
          * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
@@ -2560,7 +2569,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * in order to insert the {@param schemaId} there. This avoids a byte array copy, which can be beneficial in terms
    * of GC.
    */
-  private void prependHeaderAndWriteToStorageEngine(String topic, int partition, byte[] keyBytes, ByteBuffer putValue, int schemaId) {
+  private void prependHeaderAndWriteToStorageEngine(String topic, int partition, byte[] keyBytes, Put put) {
+    ByteBuffer putValue = put.putValue;
     /**
      * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
@@ -2574,21 +2584,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       int backupBytes = putValue.getInt();
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
-      ByteUtils.writeInt(putValue.array(), schemaId, putValue.position());
+      ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
 
-      writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, putValue);
+      writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, put);
 
       /** We still want to recover the original position to make this function idempotent. */
       putValue.putInt(backupBytes);
     }
   }
 
-  private void writeToStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes, ByteBuffer putValue) {
+  private void writeToStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes, Put put) {
     long putStartTimeNs = System.nanoTime();
-    storageEngine.put(partition, keyBytes, putValue);
+    putInStorageEngine(storageEngine, partition, keyBytes, put);
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
-        cacheBackend.get().getStorageEngine(kafkaVersionTopic).put(partition, keyBytes, putValue);
+        cacheBackend.get().getStorageEngine(kafkaVersionTopic).put(partition, keyBytes, put.putValue);
       }
     }
     if (logger.isTraceEnabled()) {
@@ -2598,6 +2608,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (emitMetrics.get()) {
       storeIngestionStats.recordStorageEnginePutLatency(storeName, LatencyUtils.getLatencyInMS(putStartTimeNs));
     }
+  }
+
+  /**
+   * Persist Put record to storage engine.
+   */
+  protected void putInStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes, Put put) {
+    storageEngine.put(partition, keyBytes, put.putValue);
+  }
+
+  protected void removeFromStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes,
+      Delete delete) {
+    storageEngine.delete(partition, keyBytes);
   }
 
   /**
@@ -2737,8 +2759,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           keyBytes = leaderProducedRecordContext.getKeyBytes();
           put = (Put) leaderProducedRecordContext.getValueUnion();
         }
-        ByteBuffer putValue = put.putValue;
-        valueLen = putValue.remaining();
+        valueLen = put.putValue.remaining();
         keyLen = keyBytes.length;
 
         //update checksum for this PUT message if needed.
@@ -2747,7 +2768,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             // Leaders might consume from a RT topic and immediately write into StorageEngine,
             // so we need to re-calculate partition.
             // Followers are not affected since they are always consuming from VTs.
-            producedPartition, keyBytes, putValue, put.schemaId);
+            producedPartition, keyBytes, put);
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
         if (put.schemaId > 0) {
@@ -2756,15 +2777,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
 
       case DELETE:
+        Delete delete;
         if (leaderProducedRecordContext == null) {
           keyBytes = kafkaKey.getKey();
+          delete = ((Delete) kafkaValue.payloadUnion);
         } else {
           keyBytes = leaderProducedRecordContext.getKeyBytes();
+          delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
         keyLen = keyBytes.length;
 
         long deleteStartTimeNs = System.nanoTime();
-        storageEngine.delete(producedPartition, keyBytes);
+
+        removeFromStorageEngine(storageEngine, producedPartition, keyBytes, delete);
         if (cacheBackend.isPresent()) {
           if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
             cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(producedPartition, keyBytes);
