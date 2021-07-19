@@ -287,16 +287,18 @@ public class TestParentControllerWithMultiDataCenter {
         });
 
         Admin veniceHelixAdmin = childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
-        Collection<TimestampMetadataSchemaEntry> timestampMetadataSchemas = veniceHelixAdmin.getTimestampMetadataSchemas(clusterName, storeName);
-        Assert.assertEquals(timestampMetadataSchemas.size(), 1);
-        Assert.assertEquals(timestampMetadataSchemas.iterator().next().getSchema(), timestampMetadataSchema2);
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+              Collection<TimestampMetadataSchemaEntry> timestampMetadataSchemas = veniceHelixAdmin.getTimestampMetadataSchemas(clusterName, storeName);
+              Assert.assertEquals(timestampMetadataSchemas.size(), 1);
+              Assert.assertEquals(timestampMetadataSchemas.iterator().next().getSchema(), timestampMetadataSchema2);
+        });
 
         //Add a new value schema for the store and make sure the corresponding new metadata schema is generated.
         SchemaResponse schemaResponse3 =
             parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, recordSchemaStr3));
         Assert.assertFalse(schemaResponse3.isError(), "addValeSchema returned error: " + schemaResponse3.getError());
 
-        timestampMetadataSchemas = veniceHelixAdmin.getTimestampMetadataSchemas(clusterName, storeName);
+        Collection<TimestampMetadataSchemaEntry> timestampMetadataSchemas = veniceHelixAdmin.getTimestampMetadataSchemas(clusterName, storeName);
         Assert.assertEquals(timestampMetadataSchemas.size(), 2);
 
         Iterator<TimestampMetadataSchemaEntry> iterator = timestampMetadataSchemas.iterator();
