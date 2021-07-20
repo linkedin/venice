@@ -1406,7 +1406,8 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       boolean isLeaderFollowerModelEnabled = (!leaderFollowerModelEnabled.isPresent() && store.isLeaderFollowerModelEnabled())
                                              || (leaderFollowerModelEnabled.isPresent() && leaderFollowerModelEnabled.get());
-      if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !isLeaderFollowerModelEnabled)  {
+      boolean isLfModelDependencyCheckDisabled = veniceHelixAdmin.getVeniceHelixResource(clusterName).getConfig().isLfModelDependencyCheckDisabled();
+      if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !isLeaderFollowerModelEnabled && !isLfModelDependencyCheckDisabled)  {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for store " + storeName + " since it's not on L/F state model");
       }
       setStore.nativeReplicationEnabled = nativeReplicationEnabled
