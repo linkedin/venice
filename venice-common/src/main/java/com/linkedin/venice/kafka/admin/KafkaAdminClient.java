@@ -208,6 +208,11 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   }
 
   @Override
+  public Map<String, KafkaFuture<TopicDescription>> describeTopics(Collection<String> topicNames) {
+    return kafkaAdminClient.describeTopics(topicNames).values();
+  }
+
+  @Override
   public void close() throws IOException {
     if (null != this.kafkaAdminClient) {
       try {

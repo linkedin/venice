@@ -2,9 +2,11 @@ package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import java.io.Closeable;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
 
 
@@ -35,4 +37,6 @@ public interface KafkaAdminWrapper extends Closeable {
   boolean isTopicDeletionUnderway();
 
   String getClassName();
+
+  Map<String, KafkaFuture<TopicDescription>> describeTopics(Collection<String> topicNames);
 }
