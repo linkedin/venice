@@ -1244,14 +1244,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
     }
     producerMetadata.messageTimestamp = time.getMilliseconds();
-    producerMetadata.upstreamOffset = upstreamOffset;
     if (logicalTs.isPresent()) {
       producerMetadata.logicalTimestamp = logicalTs.get();
     } else {
       producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
     }
     kafkaValue.producerMetadata = producerMetadata;
-
+    kafkaValue.leaderMetadataFooter = new LeaderMetadata();
+    kafkaValue.leaderMetadataFooter.hostName = writerId;
+    kafkaValue.leaderMetadataFooter.upstreamOffset = upstreamOffset;
     return kafkaValue;
   }
 
