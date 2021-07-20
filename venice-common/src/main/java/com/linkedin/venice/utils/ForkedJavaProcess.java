@@ -1,15 +1,8 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
-
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
-import java.util.Optional;
-import nonapi.io.github.classgraph.utils.JarUtils;
-
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -25,11 +18,15 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import nonapi.io.github.classgraph.utils.JarUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -71,15 +68,12 @@ public final class ForkedJavaProcess extends Process {
 
   private final Logger logger;
   private final Process process;
-  private final Thread processReaper;
   private final ExecutorService executorService;
   private final AtomicBoolean isDestroyed = new AtomicBoolean();
 
-  public static ForkedJavaProcess exec(Class appClass, String... args) throws IOException {
-    return exec(appClass, Arrays.asList(args), Collections.emptyList(), Optional.empty());
-  }
+  private Thread processReaper;
 
-  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName) throws IOException {
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName, boolean registerShutdownHook) throws IOException {
     LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs +
         " extraLoggerName: " + (extraLoggerName.isPresent() ? extraLoggerName.get() : ""));
 
@@ -97,7 +91,15 @@ public final class ForkedJavaProcess extends Process {
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
     Logger logger = Logger.getLogger((extraLoggerName.isPresent() ? extraLoggerName.get() + ", " : "") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
-    return new ForkedJavaProcess(process, logger);
+    return new ForkedJavaProcess(process, logger, registerShutdownHook);
+  }
+
+  public static ForkedJavaProcess exec(Class appClass, List<String> args, List<String> jvmArgs, Optional<String> extraLoggerName) throws IOException {
+    return exec(appClass, args, jvmArgs, extraLoggerName, true);
+  }
+
+  public static ForkedJavaProcess exec(Class appClass, String... args) throws IOException {
+    return exec(appClass, Arrays.asList(args), Collections.emptyList(), Optional.empty());
   }
 
   public static String getClasspath() {
@@ -139,11 +141,13 @@ public final class ForkedJavaProcess extends Process {
   /**
    * Construction should happen via {@link #exec(Class, String...)}
    */
-  private ForkedJavaProcess(Process process, Logger logger) {
+  private ForkedJavaProcess(Process process, Logger logger, boolean registerShutdownHook) {
     this.logger = logger;
     this.process = process;
-    this.processReaper = new Thread(this::destroy);
-    Runtime.getRuntime().addShutdownHook(processReaper);
+    if (registerShutdownHook) {
+      this.processReaper = new Thread(this::destroy);
+      Runtime.getRuntime().addShutdownHook(processReaper);
+    }
 
     this.executorService = Executors.newSingleThreadExecutor();
     executorService.submit(() -> {
@@ -185,13 +189,15 @@ public final class ForkedJavaProcess extends Process {
         if (!process.waitFor(60, TimeUnit.SECONDS)) {
           logger.info("Destroying forked process forcibly.");
           process.destroyForcibly().waitFor();
-          logger.info("Forked process has been terminated forcibly");
+          logger.info("Forked process has been terminated forcibly.");
         }
-        Runtime.getRuntime().removeShutdownHook(processReaper);
+        if (processReaper != null) {
+          Runtime.getRuntime().removeShutdownHook(processReaper);
+        }
       } else {
         logger.info("Destroying forked process forcibly.");
         process.destroyForcibly().waitFor();
-        logger.info("Forked process has been terminated forcibly");
+        logger.info("Forked process has been terminated forcibly by process reaper.");
       }
 
     } catch (InterruptedException e) {
