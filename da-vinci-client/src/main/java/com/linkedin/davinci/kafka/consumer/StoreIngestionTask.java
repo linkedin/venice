@@ -87,6 +87,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -1810,7 +1811,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
       String errorMessage;
-      if (Version.isRealTimeTopic(record.topic()) && amplificationFactor != 1) {
+      if (amplificationFactor != 1 && Version.isRealTimeTopic(record.topic())) {
         errorMessage = "Fatal data validation problem with in RT topic partition " + faultyPartition
             + ", offset " + record.offset() + ", leaderSubPartition: " + subPartition;
       } else {
@@ -1820,7 +1821,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
       if (needToUnsub) {
         errorMessage +=  ". Consumption will be halted.";
-        reportStatusAdapter.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
+        reportStatusAdapter.reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(kafkaVersionTopic, faultyPartition);
       } else {
         logger.warn(errorMessage + ". However, " + kafkaVersionTopic

@@ -64,6 +64,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -714,10 +715,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * If buffer replay is disable, all replicas will stick to version topic, no one is going to produce any message.
    */
   private boolean shouldProduceToVersionTopic(PartitionConsumptionState partitionConsumptionState) {
-    boolean isLeader = partitionConsumptionState.getLeaderState().equals(LEADER);
+    if (!bufferReplayEnabledForHybrid) {
+      return false;
+    }
+    if (!Objects.equals(partitionConsumptionState.getLeaderState(), LEADER)) {
+      return false; // Not leader
+    }
     String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-    return isLeader && bufferReplayEnabledForHybrid &&
-        (!kafkaVersionTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
+    return (!kafkaVersionTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
   }
 
   @Override
@@ -776,8 +781,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           ControlMessageType.START_OF_PUSH.name() + " control message.");
     }
 
-
-    if (partitionConsumptionState.getLeaderState().equals(LEADER)) {
+    if (Objects.equals(partitionConsumptionState.getLeaderState(), LEADER)) {
       /**
        * Leader shouldn't switch topic here (drainer thread), which would conflict with the ingestion thread which would
        * also access consumer.
@@ -838,8 +842,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (kafkaValue.producerMetadata.upstreamOffset >= 0
           || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
 
-        long newUpstreamOffset =
-            kafkaValue.leaderMetadataFooter != null ? kafkaValue.leaderMetadataFooter.upstreamOffset : kafkaValue.producerMetadata.upstreamOffset;
+        final long newUpstreamOffset =
+            kafkaValue.leaderMetadataFooter == null ? kafkaValue.producerMetadata.upstreamOffset : kafkaValue.leaderMetadataFooter.upstreamOffset;
 
         long previousUpstreamOffset = offsetRecord.getUpstreamOffset();
 
@@ -940,11 +944,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
          * to the true leader when the old leader doesn't stop producing.
          */
-        if (kafkaValue.leaderMetadataFooter != null) {
-          offsetRecord.setLeaderUpstreamOffset(kafkaValue.leaderMetadataFooter.upstreamOffset);
-        } else {
-          offsetRecord.setLeaderUpstreamOffset(kafkaValue.producerMetadata.upstreamOffset);
-        }
+        offsetRecord.setLeaderUpstreamOffset(newUpstreamOffset);
       }
       // update leader producer GUID
       offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
@@ -1257,7 +1257,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       /**
-       * return early if it need not be produced to local VT such as cases like
+       * return early if it needs not be produced to local VT such as cases like
        * (i) it's a follower or (ii) leader is consuming from VT
        */
       if (!produceToLocalKafka) {

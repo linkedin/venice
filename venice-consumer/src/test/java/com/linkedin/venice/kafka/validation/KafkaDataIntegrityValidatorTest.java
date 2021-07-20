@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -95,8 +96,9 @@ public class KafkaDataIntegrityValidatorTest {
     producerMetadata.segmentNumber = currentSegment.getSegmentNumber();
     producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
     producerMetadata.messageTimestamp = brokerTimestamp;
-    producerMetadata.upstreamOffset = -1;
     messageEnvelope.producerMetadata = producerMetadata;
+    messageEnvelope.leaderMetadataFooter = new LeaderMetadata();
+    messageEnvelope.leaderMetadataFooter.upstreamOffset = -1;
 
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap("value".getBytes());

@@ -25,6 +25,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -1468,9 +1469,9 @@ public class TestHybrid {
     producerMetadata.segmentNumber = segmentNumber;
     producerMetadata.messageSequenceNumber = sequenceNumber;
     producerMetadata.messageTimestamp = System.currentTimeMillis();
-    producerMetadata.upstreamOffset = upstreamOffset;
     kafkaValue.producerMetadata = producerMetadata;
-
+    kafkaValue.leaderMetadataFooter = new LeaderMetadata();
+    kafkaValue.leaderMetadataFooter.upstreamOffset = upstreamOffset;
     return Pair.create(kafkaKey, kafkaValue);
   }
   /**
