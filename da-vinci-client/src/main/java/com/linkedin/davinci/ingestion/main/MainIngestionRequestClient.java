@@ -65,8 +65,14 @@ public class MainIngestionRequestClient implements Closeable {
         }
         // Start forking child ingestion process.
         long heartbeatTimeoutMs = configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
-        forkedIngestionProcess = ForkedJavaProcess.exec(IsolatedIngestionServer.class,
-            Arrays.asList(String.valueOf(ingestionServicePort), String.valueOf(heartbeatTimeoutMs)), jvmArgs, Optional.empty());
+        /**
+         * Do not register shutdown hook for forked ingestion process, as it will be taken care of by graceful shutdown of
+         * Da Vinci client and server.
+         * In the worst case that above graceful shutdown does not happen, forked ingestion process should also shut itself
+         * down after specified timeout SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS (By default 1 min.)
+         */
+        forkedIngestionProcess = ForkedJavaProcess.exec(IsolatedIngestionServer.class, Arrays.asList(String.valueOf(ingestionServicePort),
+            String.valueOf(heartbeatTimeoutMs)), jvmArgs, Optional.empty(), false);
         // Wait for server in forked child process to bind the listening port.
         IsolatedIngestionUtils.waitPortBinding(ingestionServicePort, 100);
         // Wait for server in forked child process to pass health check.
@@ -125,7 +131,8 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.topicName = topicName;
     logger.info("Sending request: " + KILL_CONSUMPTION + " to forked process for topic: " + topicName);
     try {
-      httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, ingestionTaskCommand, REQUEST_MAX_ATTEMPT);
+      // We do not need retry here. Retry will slow down DaVinciBackend's shutdown speed severely.
+      httpClientTransport.sendRequest(IngestionAction.COMMAND, ingestionTaskCommand);
     } catch (Exception e) {
       throw new VeniceException("Exception caught during killConsumptionTask of topic: " + topicName, e);
     }
