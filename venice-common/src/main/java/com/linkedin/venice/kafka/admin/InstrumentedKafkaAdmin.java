@@ -7,9 +7,11 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
 
 
@@ -164,5 +166,16 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   @Override
   public String getClassName() {
     return String.format("%s delegated by %s", kafkaAdmin.getClassName(), InstrumentedKafkaAdmin.class.getName());
+  }
+
+  @Override
+  public Map<String, KafkaFuture<TopicDescription>> describeTopics(Collection<String> topicNames) {
+    final long startTimeMs = time.getMilliseconds();
+    final Map<String, KafkaFuture<TopicDescription>> res = kafkaAdmin.describeTopics(topicNames);
+    kafkaAdminWrapperStats.recordLatency(
+        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.DESCRIBE_TOPICS,
+        Utils.calculateDurationMs(time, startTimeMs)
+    );
+    return res;
   }
 }

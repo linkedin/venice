@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.Time;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -19,11 +20,11 @@ import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
+import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.internals.Topic;
 import org.apache.log4j.Logger;
-
 import scala.collection.JavaConversions;
 
 
@@ -159,6 +160,11 @@ public class ScalaAdminUtils implements KafkaAdminWrapper {
   @Override
   public String getClassName() {
     return ScalaAdminUtils.class.getName();
+  }
+
+  @Override
+  public Map<String, KafkaFuture<TopicDescription>> describeTopics(Collection<String> topicNames) {
+    throw new UnsupportedOperationException("describeTopics is not supported by " + getClassName());
   }
 
   /**
