@@ -160,8 +160,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, ProducedRecord producedRecord) {
-    offsetRecord.setOffset(consumerRecord.offset());
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, ProducedRecord producedRecord) {
+    offsetRecord.setOffset(consumerRecordWrapper.consumerRecord().offset());
   }
 
   /**
