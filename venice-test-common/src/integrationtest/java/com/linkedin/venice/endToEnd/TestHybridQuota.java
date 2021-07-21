@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -84,16 +83,22 @@ public class TestHybridQuota {
   @DataProvider(name = "testHybridQuotaPermutations", parallel = false)
   public static Object[][] testHybridQuotaPermutations() {
     return new Object[][]{
-        {false, false, false},
-        {true, false, true},
-        {true, false, false},
-        {true, true, true},
-        {true, true, false}
+        {false, false, false, true},
+        {true, false, true, true},
+        {true, false, false, true},
+        {true, true, true, true},
+        {true, true, false, true},
+        {false, false, false, false},
+        {true, false, true, false},
+        {true, false, false, false},
+        {true, true, true, false},
+        {true, true, false, false}
     };
   }
 
   @Test(dataProvider = "testHybridQuotaPermutations", timeOut = 180 * Time.MS_PER_SECOND)
-  public void testHybridStoreQuota(boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled, boolean isStreamReprocessing) throws Exception {
+  public void testHybridStoreQuota(boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled, boolean isStreamReprocessing,
+    boolean recoverFromViolation) throws Exception {
     SystemProducer veniceProducer = null;
 
     long streamingRewindSeconds = 10L;
@@ -199,9 +204,43 @@ public class TestHybridQuota {
             HybridStoreQuotaStatus.QUOTA_VIOLATED);
         assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion3));
       }
-      sendStreamingRecord(veniceProducer, storeName, 21);
-      Assert.fail("Exception should be thrown because quota violation happens.");
+
+      if (!recoverFromViolation) {
+        sendStreamingRecord(veniceProducer, storeName, 21);
+        Assert.fail("Exception should be thrown because quota violation happens.");
+      } else {
+        //  Increase the quota to 100x so that disk quota is not violated.
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuotaInByte * 100));
+        Utils.sleep(normalTimeForConsuming);
+        // Previous venice producer get exception thrown by quota violation. Need to create a new venice producer.
+        if (null != veniceProducer) {
+          veniceProducer.stop();
+        }
+        if (isStreamReprocessing) {
+          veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new producer, new DIV segment.
+        } else {
+          veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV segment.
+        }
+
+        sendStreamingRecord(veniceProducer, storeName, 21);
+        if (isStreamReprocessing) {
+          // Version 4 does not exist anymore, new version created.
+          String topicForStoreVersion5 = Version.composeKafkaTopic(storeName, 5);
+          assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion5),
+              HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
+          assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion5));
+        } else {
+          assertEquals(hybridStoreQuotaOnlyRepository.getHybridStoreQuotaStatus(topicForStoreVersion3),
+              HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
+          assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion3));
+        }
+      }
+
     } catch (VeniceException e) {
+      if (recoverFromViolation) {
+        logger.error("Exception got during test of recovering exception: " + e.getStackTrace());
+        throw e;
+      }
       // Expected
     } finally {
       if (null != veniceProducer) {
@@ -218,4 +257,5 @@ public class TestHybridQuota {
       }
     }
   }
+
 }

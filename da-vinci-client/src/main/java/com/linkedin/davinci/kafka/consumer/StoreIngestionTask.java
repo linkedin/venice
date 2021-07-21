@@ -18,6 +18,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.KafkaRecordWrapper;
 import com.linkedin.venice.common.Measurable;
+import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -379,6 +380,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String localKafkaServer;
   private int valueSchemaId = -1;
 
+  private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap = new HashMap<>();
+
   public StoreIngestionTask(
       Store store,
       Version version,
@@ -548,6 +551,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           storageEngine,
           storeRepository.getStoreOrThrow(storeName), kafkaVersionTopic,
           topicManagerRepository.getTopicManager().partitionsFor(kafkaVersionTopic).size(),
+          partitionConsumptionSizeMap,
           partitionConsumptionStateMap));
       this.storeRepository.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
       // subscribedPartitionToSize can be accessed by multiple threads, when shared consumer is enabled.
@@ -1103,6 +1107,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (elapsedTimeForProducingToKafka > 0) {
         storeIngestionStats.recordProduceToKafkaLatency(storeName, elapsedTimeForProducingToKafka);
       }
+
+      // Emit disk quota usage metric
+      Store store = storeRepository.getStoreOrThrow(storeName);
+      long diskQuota = store.getStorageQuotaInByte();
+      long diskPartitionNum = store.getPartitionCount();
+      long diskQuotaPerPartition = diskPartitionNum != 0 ? diskQuota / diskPartitionNum : 0;
+      for (Integer partition : partitionConsumptionSizeMap.keySet()) {
+        long partitionQuotaUsage = partitionConsumptionSizeMap.get(partition).getUsage();
+        storeIngestionStats.recordStorageQuotaUsed(storeName, diskQuotaPerPartition > 0 ? (partitionQuotaUsage / diskQuota) : 0);
+      }
+
     }
 
     if (whetherToApplyThrottling) {
@@ -1695,6 +1710,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         String topicToSubscribe = leaderState.equals(LeaderFollowerStateType.LEADER) ? newPartitionConsumptionState.getOffsetRecord().getLeaderTopic() : topic;
         consumerSubscribe(topicToSubscribe, newPartitionConsumptionState, record.getOffset());
+        partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)));
         logger.info(consumerTaskId + " subscribed to: Topic " + topicToSubscribe + " Partition Id " + partition + " Offset "
             + record.getOffset());
         break;
@@ -1738,6 +1754,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * two variables to avoid the race condition.
          */
         partitionConsumptionStateMap.remove(partition);
+        partitionConsumptionSizeMap.remove(partition);
         kafkaDataIntegrityValidator.clearPartition(partition);
 
         // Clean up the db compaction state.
@@ -1768,6 +1785,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionStateMap.put(partition,
               new PartitionConsumptionState(partition, amplificationFactor, new OffsetRecord(partitionStateSerializer), hybridStoreConfig.isPresent(),
                   isIncrementalPushEnabled, incrementalPushPolicy));
+          partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic)));
         } else {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);
