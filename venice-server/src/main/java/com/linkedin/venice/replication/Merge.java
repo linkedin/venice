@@ -37,21 +37,21 @@ import org.apache.avro.generic.GenericRecord;
  * different schemas) and it is therefore possible that new objects will be instantiated to replace the old ones,
  * rather than mutating them.
  */
-public interface Merge {
+public interface Merge<T> {
   /**
    * @param oldValueAndTimestampMetadata the old value and TSMD which are persisted in the server prior to the write operation
    * @param newValue a record with all fields populated and with one of the registered value schemas
    * @param writeOperationTimestamp the timestamp of the incoming write operation
    * @return the resulting {@link ValueAndTimestampMetadata} after merging the old one with the incoming write operation
    */
-  ValueAndTimestampMetadata put(ValueAndTimestampMetadata oldValueAndTimestampMetadata, GenericRecord newValue, long writeOperationTimestamp);
+  ValueAndTimestampMetadata<T> put(ValueAndTimestampMetadata<T> oldValueAndTimestampMetadata, T newValue, long writeOperationTimestamp);
 
   /**
    * @param oldValueAndTimestampMetadata the old value and TSMD which are persisted in the server prior to the write operation
    * @param writeOperationTimestamp the timestamp of the incoming write operation
    * @return the resulting {@link ValueAndTimestampMetadata} after merging the old one with the incoming write operation
    */
-  ValueAndTimestampMetadata delete(ValueAndTimestampMetadata oldValueAndTimestampMetadata, long writeOperationTimestamp);
+  ValueAndTimestampMetadata<T> delete(ValueAndTimestampMetadata<T> oldValueAndTimestampMetadata, long writeOperationTimestamp);
 
   /**
    * @param oldValueAndTimestampMetadata the old value and TSMD which are persisted in the server prior to the write operation
@@ -59,5 +59,5 @@ public interface Merge {
    * @param writeOperationTimestamp the timestamp of the incoming write operation
    * @return the resulting {@link ValueAndTimestampMetadata} after merging the old one with the incoming write operation
    */
-  ValueAndTimestampMetadata update(ValueAndTimestampMetadata oldValueAndTimestampMetadata, GenericRecord writeOperation, long writeOperationTimestamp);
+  ValueAndTimestampMetadata<T> update(ValueAndTimestampMetadata<T> oldValueAndTimestampMetadata, GenericRecord writeOperation, long writeOperationTimestamp);
 }

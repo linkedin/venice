@@ -18,10 +18,10 @@ import static com.linkedin.venice.VeniceConstants.*;
  * 2. scehma evolution is not supported, so it assumes incoming and old schema are same else else throws VeniceException
  * 3. Assumes new value to be GenericRecord type, does not support non-record values.
  */
-public class MergeImplV1 implements Merge {
+class MergeGenericRecord implements Merge<GenericRecord> {
 
   @Override
-  public ValueAndTimestampMetadata put(ValueAndTimestampMetadata oldValueAndTimestampMetadata, GenericRecord newValue,
+  public ValueAndTimestampMetadata<GenericRecord> put(ValueAndTimestampMetadata<GenericRecord> oldValueAndTimestampMetadata, GenericRecord newValue,
       long writeOperationTimestamp) {
     GenericRecord oldTimestampMetadata = oldValueAndTimestampMetadata.getTimestampMetadata();
     GenericRecord oldValue = oldValueAndTimestampMetadata.getValue();
@@ -90,7 +90,7 @@ public class MergeImplV1 implements Merge {
   }
 
   @Override
-  public ValueAndTimestampMetadata delete(ValueAndTimestampMetadata oldValueAndTimestampMetadata,
+  public ValueAndTimestampMetadata<GenericRecord> delete(ValueAndTimestampMetadata<GenericRecord> oldValueAndTimestampMetadata,
       long writeOperationTimestamp) {
     GenericRecord oldTimestampMetadata = oldValueAndTimestampMetadata.getTimestampMetadata();
 
@@ -137,24 +137,9 @@ public class MergeImplV1 implements Merge {
   }
 
   @Override
-  public ValueAndTimestampMetadata update(ValueAndTimestampMetadata oldValueAndTimestampMetadata,
+  public ValueAndTimestampMetadata<GenericRecord> update(ValueAndTimestampMetadata<GenericRecord> oldValueAndTimestampMetadata,
       GenericRecord writeComputeRecord, long writeOperationTimestamp) {
     throw new VeniceUnsupportedOperationException("update operation not yet supported.");
-  }
-
-  private long getTimestampFromTSMD(Object tsObject, TSMDType tsmdType, String fieldName) {
-    switch (tsmdType) {
-      case RECORDLEVEL_TS:
-        return (long) tsObject;
-      case PERFIELD_TS:
-        return (long)((GenericRecord) tsObject).get(fieldName);
-      default:
-        throw new VeniceException("Invalid TSMD type"  + tsmdType);
-    }
-  }
-
-  private void updateTSMD(GenericRecord tsRecord, String fieldName, long writeTs) {
-    tsRecord.put(fieldName, writeTs);
   }
 
   private TSMDType getTSMDType(Object tsObject) {
