@@ -36,8 +36,9 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
-  public void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+  public void putConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       StoreIngestionTask ingestionTask, ProducedRecord producedRecord) throws InterruptedException {
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     Optional<PartitionConsumptionState> partitionConsumptionState = ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
 
     boolean sortedInput = false;
@@ -60,9 +61,9 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       }
     }
     if (sortedInput) {
-      sortedServiceDelegate.putConsumerRecord(consumerRecord, ingestionTask, producedRecord);
+      sortedServiceDelegate.putConsumerRecord(consumerRecordWrapper, ingestionTask, producedRecord);
     } else {
-      unsortedServiceDelegate.putConsumerRecord(consumerRecord, ingestionTask, producedRecord);
+      unsortedServiceDelegate.putConsumerRecord(consumerRecordWrapper, ingestionTask, producedRecord);
     }
   }
 

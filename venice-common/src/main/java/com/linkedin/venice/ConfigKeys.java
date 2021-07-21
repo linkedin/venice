@@ -1606,5 +1606,10 @@ public class ConfigKeys {
    */
   public static final String SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED = "server.kafka.consumer.offset.collection.enabled";
 
+  /**
+   * Kafka bootstrap server id to url map
+   * e.g. 0:kafka.venice.kafka.ei-ltx1.atd.stg.linkedin.com:16637,1:kafka.venice.kafka.ei4.atd.int.linkedin.com:16637
+   */
+  public static final String SERVER_KAFKA_CLUSTER_ID_TO_URL = "server.kafka.cluster.id.to.url";
 
 }

@@ -16,6 +16,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.utils.KafkaRecordWrapper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -264,7 +265,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean isWriteComputationEnabled = false;
 
   //This flag is introduced to help write integration test to exercise code path during UPDATE message processing in
-  //{@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}. This must be always set to true except
+  //{@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(VeniceConsumerRecordWrapper)}. This must be always set to true except
   //as needed in integration test.
   private boolean purgeTransientRecordCache = true;
 
@@ -818,13 +819,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * This function will produce a pair of consumer record and a it's derived produced record to the writer buffers maintained by {@link StoreBufferService}.
-   * @param consumedrecord : received consumer record
+   * @param consumedrecordWrapper : received consumer record
    * @param producedRecord : derived produced record
    * @throws InterruptedException
    */
-  protected void produceToStoreBufferService(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumedrecord, ProducedRecord producedRecord) throws InterruptedException {
+  protected void produceToStoreBufferService(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumedrecordWrapper, ProducedRecord producedRecord) throws InterruptedException {
     long queuePutStartTimeInNS = System.nanoTime();
-    storeBufferService.putConsumerRecord(consumedrecord, this, producedRecord); // blocking call
+    storeBufferService.putConsumerRecord(consumedrecordWrapper, this, producedRecord); // blocking call
     storeIngestionStats.recordProduceToDrainQueueRecordNum(storeName, 1);
     if (emitMetrics.get()) {
       storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeName, LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
@@ -837,11 +838,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param whetherToApplyThrottling : whether to apply throttling in this function or not.
    * @throws InterruptedException
    */
-  protected void produceToStoreBufferServiceOrKafka(Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records,
+  protected void produceToStoreBufferServiceOrKafka(Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> records,
       boolean whetherToApplyThrottling) throws InterruptedException {
     long totalBytesRead = 0;
     double elapsedTimeForPuttingIntoQueue = 0;
-    List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> processedRecord = new LinkedList<>();
+    List<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> processedRecord = new LinkedList<>();
     long beforeProcessingTimestamp = System.currentTimeMillis();
     int recordQueuedToDrainer = 0;
     int recordProducedToKafka = 0;
@@ -853,7 +854,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     Set<Integer> compactingPartitions = new HashSet<>();
 
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+    for (VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> recordWrapper : records) {
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordWrapper.consumerRecord();
       if (!shouldProcessRecord(record)) {
         continue;
       }
@@ -993,12 +995,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
-      processedRecord.add(record);
+      processedRecord.add(recordWrapper);
       long kafkaProduceStartTimeInNS = System.nanoTime();
-      switch (delegateConsumerRecord(record)) {
+      switch (delegateConsumerRecord(recordWrapper)) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = System.nanoTime();
-          storeBufferService.putConsumerRecord(record, this, null); // blocking call
+          storeBufferService.putConsumerRecord(recordWrapper, this, null); // blocking call
           elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
           ++recordQueuedToDrainer;
           break;
@@ -1059,7 +1061,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (whetherToApplyThrottling) {
       /**
        * We would like to throttle the ingestion by batch ({@link ConsumerRecords} return by each poll.
-       * The batch shouldn't be too big, otherwise, the {@link StoreBufferService#putConsumerRecord(ConsumerRecord, StoreIngestionTask)}
+       * The batch shouldn't be too big, otherwise, the {@link StoreBufferService#putConsumerRecord(VeniceConsumerRecordWrapper, StoreIngestionTask)}
        * could be blocked when the buffer is full, and the throttling could be inaccurate.
        * So every record returned from {@link KafkaConsumerWrapper#poll(long)} should be processed
        * as fast as possible to avoid long-lasting objects in JVM to minimize the 'object copy' time
@@ -1180,10 +1182,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long beforePollingTimestamp = System.currentTimeMillis();
 
     boolean wasIdle = (recordCount == 0);
-    List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = consumerPoll(readCycleDelayMs);
+    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = consumerPoll(readCycleDelayMs);
     recordCount = 0;
     long estimatedSize = 0;
-    for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : records) {
+    for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : records.values()) {
       recordCount += ((consumerRecords == null) ? 0 : consumerRecords.count());
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : consumerRecords) {
         estimatedSize += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
@@ -1216,8 +1218,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : records) {
-      produceToStoreBufferServiceOrKafka(consumerRecords, true);
+    for (Map.Entry<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> entry : records.entrySet()) {
+      Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper.wrap(entry.getKey(), entry.getValue());
+      produceToStoreBufferServiceOrKafka(veniceConsumerRecords, true);
     }
   }
 
@@ -1792,10 +1795,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * This function will be invoked in {@link StoreBufferService} to process buffered {@link ConsumerRecord}.
-   * @param record
+   * This function will be invoked in {@link StoreBufferService} to process buffered {@link VeniceConsumerRecordWrapper}.
+   * @param recordWrapper
    */
-  public void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, ProducedRecord producedRecord) throws InterruptedException {
+  public void processConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> recordWrapper, ProducedRecord producedRecord) throws InterruptedException {
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordWrapper.consumerRecord();
     int subPartition = PartitionUtils.getSubPartition(record.topic(), record.partition(), amplificationFactor);
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when unsubscribing)
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
@@ -1807,7 +1811,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     int recordSize = 0;
     try {
-      recordSize = internalProcessConsumerRecord(record, partitionConsumptionState, producedRecord);
+      recordSize = internalProcessConsumerRecord(recordWrapper, partitionConsumptionState, producedRecord);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
       String errorMessage;
@@ -2177,7 +2181,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
         /**
-         * Nothing to do here as all of the processing is being done in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(ConsumerRecord)}.
+         * Nothing to do here as all of the processing is being done in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)}.
          */
         break;
       case START_OF_BUFFER_REPLAY:
@@ -2204,17 +2208,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * of version topic, "leaderOffset" which indicates the last successfully consumed message offset from leader topic.
    */
   protected abstract void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, ProducedRecord producedRecord);
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper, ProducedRecord producedRecord);
 
   /**
    * Process the message consumed from Kafka by de-serializing it and persisting it with the storage engine.
    *
-   * @param consumerRecord {@link ConsumerRecord} consumed from Kafka.
+   * @param consumerRecordWrapper {@link VeniceConsumerRecordWrapper} consumed from Kafka.
    * @return the size of the data written to persistent storage.
    */
-  private int internalProcessConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+  private int internalProcessConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
                                             PartitionConsumptionState partitionConsumptionState, ProducedRecord producedRecord) throws InterruptedException {
     // De-serialize payload into Venice Message format
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     int sizeOfPersistedData = 0;
@@ -2233,7 +2238,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *  2. L/F model: Follower: All messages received from any topic. ProducedRecord will be null.
        *  3. L/F model: Leader: All messages received from VT before it switches to consume from RT.
        *
-       * DIV happens in consumer thread in following case {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(ConsumerRecord)}
+       * DIV happens in consumer thread in following case {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)}
        *  4. L/F model: Leader: All messages received from RT.
        *
        *  Specific notes for Leader:
@@ -2242,7 +2247,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        *      executed properly and in order becuase we queue this pair <consumerRecord, producerRecord> from kafka callback thread only.
        *      If there were any problems with callback thread then that will be caught by this DIV here.
        *
-       *  2. For DIV non pass-through mode (RT messages) we are doing DIV in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(ConsumerRecord)}
+       *  2. For DIV non pass-through mode (RT messages) we are doing DIV in {@link LeaderFollowerStoreIngestionTask#delegateConsumerRecord(VeniceConsumerRecordWrapper)}
        *      in consumer thread and no further DIV happens for the producedRecord. The main challenege to do DIV for producedRecord
        *      here is that VeniceWriter internally produces SOS/EOS for non-passthrough mode which is not fed into our DIV pipiline currently.
        *      TODO: Explore DIV check for produced record in non pass-through mode which also validates the kafka producer calllback like pass through mode.
@@ -2289,7 +2294,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
-        Pair<Integer, Integer> kvSize = processVeniceMessage(consumerRecord, partitionConsumptionState, producedRecord);
+        Pair<Integer, Integer> kvSize = processVeniceMessage(consumerRecordWrapper, partitionConsumptionState, producedRecord);
         int keySize = kvSize.getFirst();
         int valueSize = kvSize.getSecond();
         if (emitMetrics.get()) {
@@ -2345,7 +2350,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link com.linkedin.venice.exceptions.validation.DataValidationException} */
 
       // Potentially update the offset metadata in the OffsetRecord
-      updateOffset(partitionConsumptionState, offsetRecord, consumerRecord, producedRecord);
+      updateOffset(partitionConsumptionState, offsetRecord, consumerRecordWrapper, producedRecord);
 
       partitionConsumptionState.setOffsetRecord(offsetRecord);
       if (syncOffset) {
@@ -2509,17 +2514,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     consumer.resetOffset(topic, partitionConsumptionState.getSourceTopicPartition(topic));
   }
 
-  public List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeout) {
+  public Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeout) {
     if (!storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber).isPresent()) {
       //If the version is not found, it must have been retired/deleted by controller, Let's kill this ingestion task.
       throw new VeniceIngestionTaskKilledException("Version " + versionNumber + " does not exist. Should not poll.");
     }
-    List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = new ArrayList<>(consumerMap.size());
-    consumerMap.values().stream().forEach(consumer -> {
+    Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = new HashMap<>();
+    consumerMap.entrySet().forEach(entry -> {
+      KafkaConsumerWrapper consumer = entry.getValue();
       if (consumer.hasSubscription()) {
         ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = consumer.poll(pollTimeout);
         if (consumerRecords != null) {
-          records.add(consumerRecords);
+          records.put(entry.getKey(), consumerRecords);
         }
       }
     });
@@ -2541,8 +2547,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * @return the size of the data which was written to persistent storage.
    */
-  private Pair<Integer, Integer> processVeniceMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+  private Pair<Integer, Integer> processVeniceMessage(
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       PartitionConsumptionState partitionConsumptionState, ProducedRecord producedRecord) {
+
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = consumerRecordWrapper.consumerRecord();
     int keyLen = 0;
     int valueLen = 0;
     KafkaKey kafkaKey = consumerRecord.key();
@@ -2854,13 +2863,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * these partitions need to be resumed.
    * @param records
    */
-  private void refillPartitionToSizeMap(List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records) {
+  private void refillPartitionToSizeMap(List<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> records) {
     // Prepare the temporary subscribedPartitionToSize map.
     Map<Integer, Integer> tmpSubscribedPartitionToSize = new HashMap<>();
     for (int partition : partitionConsumptionStateMap.keySet()) {
       tmpSubscribedPartitionToSize.put(partition, 0);
     }
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+    for (VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> recordWrapper : records) {
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordWrapper.consumerRecord();
       int partition = record.partition();
       int recordSize = record.serializedKeySize() + record.serializedValueSize();
       tmpSubscribedPartitionToSize.put(partition, tmpSubscribedPartitionToSize.getOrDefault(partition, 0) + recordSize);
@@ -3246,12 +3256,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
   }
 
-  protected DelegateConsumerRecordResult delegateConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+  protected DelegateConsumerRecordResult delegateConsumerRecord(
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper) {
     return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
   }
 
   /**
-   * This enum represents all potential results after calling {@link #delegateConsumerRecord(ConsumerRecord)}.
+   * This enum represents all potential results after calling {@link #delegateConsumerRecord(VeniceConsumerRecordWrapper)}.
    */
   protected enum DelegateConsumerRecordResult {
     /**

@@ -3,12 +3,13 @@ package com.linkedin.davinci.config;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
-import com.linkedin.venice.meta.AbstractStore;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
@@ -45,6 +46,9 @@ public class VeniceClusterConfig {
   private long kafkaFetchMaxSizePerSecond;
   private long kafkaFetchMaxTimeMS;
   private long kafkaFetchPartitionMaxSizePerSecond;
+
+  private Map<Integer, String> kafkaClusterIdToUrlMap;
+  private Map<String, Integer> kafkaClusterUrlToIdMap;
 
   private final VeniceProperties clusterProperties;
 
@@ -105,6 +109,9 @@ public class VeniceClusterConfig {
     kafkaFetchMaxSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_FETCH_MAX_BYTES);
     kafkaFetchMaxTimeMS = clusterProps.getLong(KAFKA_FETCH_MAX_WAIT_TIME_MS, 500);
     kafkaFetchPartitionMaxSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
+
+    kafkaClusterIdToUrlMap = clusterProps.getIntegerToStringMap(SERVER_KAFKA_CLUSTER_ID_TO_URL, Collections.emptyMap());
+    kafkaClusterUrlToIdMap = kafkaClusterIdToUrlMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
   }
 
   public int getStatusMessageRetryCount() {
@@ -197,6 +204,14 @@ public class VeniceClusterConfig {
 
   public long getKafkaFetchQuotaUnorderedRecordPerSecond() {
     return kafkaFetchQuotaUnorderedRecordPerSecond;
+  }
+
+  public Map<Integer, String> getKafkaClusterIdToUrlMap() {
+    return Collections.unmodifiableMap(kafkaClusterIdToUrlMap);
+  }
+
+  public Map<String, Integer> getKafkaClusterUrlToIdMap() {
+    return Collections.unmodifiableMap(kafkaClusterUrlToIdMap);
   }
 
   public VeniceProperties getClusterProperties() {

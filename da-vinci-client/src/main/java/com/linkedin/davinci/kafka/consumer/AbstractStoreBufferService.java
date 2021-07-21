@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.service.AbstractVeniceService;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 
 /**
@@ -11,7 +10,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
  */
 public abstract class AbstractStoreBufferService extends AbstractVeniceService {
 
-  public abstract void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+  public abstract void putConsumerRecord(VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       StoreIngestionTask ingestionTask, ProducedRecord producedRecord)
       throws InterruptedException;
 

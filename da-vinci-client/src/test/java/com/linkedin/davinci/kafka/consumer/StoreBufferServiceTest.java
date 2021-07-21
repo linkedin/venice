@@ -22,8 +22,10 @@ public class StoreBufferServiceTest {
     String topic = TestUtils.getUniqueString("test_topic");
     int partition1 = 1;
     int partition2 = 2;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr1 = new ConsumerRecord<>(topic, partition1, -1, null, null);
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr2 = new ConsumerRecord<>(topic, partition2, -1, null, null);
+    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+        cr1 = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition1, -1, null, null));
+    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+        cr2 = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition2, -1, null, null));
     bufferService.putConsumerRecord(cr1, mockTask, null);
     bufferService.putConsumerRecord(cr2, mockTask, null);
 
@@ -41,8 +43,10 @@ public class StoreBufferServiceTest {
     String topic = TestUtils.getUniqueString("test_topic");
     int partition1 = 1;
     int partition2 = 2;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr1 = new ConsumerRecord<>(topic, partition1, -1, null, null);
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr2 = new ConsumerRecord<>(topic, partition2, -1, null, null);
+    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+        cr1 = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition1, -1, null, null));
+    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+        cr2 = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition2, -1, null, null));
     Exception e = new VeniceException("test_exception");
     doThrow(e).when(mockTask)
         .processConsumerRecord(cr1, null);
@@ -63,7 +67,8 @@ public class StoreBufferServiceTest {
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = TestUtils.getUniqueString("test_topic");
     int partition = 1;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr = new ConsumerRecord<>(topic, partition, -1, null, null);
+    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+        cr = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, -1, null, null));
     bufferService.putConsumerRecord(cr, mockTask, null);
     int nonExistingPartition = 2;
     bufferService.internalDrainBufferedRecordsFromTopicPartition(topic, nonExistingPartition, 3, 50);
@@ -75,7 +80,8 @@ public class StoreBufferServiceTest {
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = TestUtils.getUniqueString("test_topic");
     int partition = 1;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr = new ConsumerRecord<>(topic, partition, 100, null, null);
+    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+        cr = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, 100, null, null));
     bufferService.putConsumerRecord(cr, mockTask, null);
     bufferService.internalDrainBufferedRecordsFromTopicPartition(topic, partition, 3, 50);
     Assert.fail("Exception should be thrown here");
@@ -99,7 +105,8 @@ public class StoreBufferServiceTest {
 
     SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig);
     for (int partition = 0; partition < partitionCount; ++partition) {
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr = new ConsumerRecord<>(topic, partition, 100, null, null);
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+          cr = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, 100, null, null));
       int drainerIndex;
       if (partition < 16) {
         drainerIndex = bufferService.sortedServiceDelegate.getDrainerIndexForConsumerRecord(cr);
@@ -113,7 +120,7 @@ public class StoreBufferServiceTest {
     for (int i = 0; i < drainerNum; i++) {
       Assert.assertNotNull(bufferService.getDrainerQueueMemoryUsage(i));
     }
-     
+
     int avgPartitionCountPerDrainer = partitionCount / drainerNum;
     for (int i = 0; i < drainerNum; ++i) {
       Assert.assertEquals(drainerPartitionCount[i], avgPartitionCountPerDrainer);
@@ -131,7 +138,8 @@ public class StoreBufferServiceTest {
     }
     StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000);
     for (int partition = 0; partition < partitionCount; ++partition) {
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr = new ConsumerRecord<>(topic, partition, 100, null, null);
+      VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+          cr = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition, 100, null, null));
       int drainerIndex = bufferService.getDrainerIndexForConsumerRecord(cr);
       ++drainerPartitionCount[drainerIndex];
     }
@@ -148,8 +156,10 @@ public class StoreBufferServiceTest {
     String topic = TestUtils.getUniqueString("test_topic");
     int partition1 = 1;
     int partition2 = 2;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr1 = new ConsumerRecord<>(topic, partition1, -1, null, null);
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr2 = new ConsumerRecord<>(topic, partition2, -1, null, null);
+    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+        cr1 = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition1, -1, null, null));
+    VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>
+        cr2 = new VeniceConsumerRecordWrapper<>(new ConsumerRecord<>(topic, partition2, -1, null, null));
     Exception e = new VeniceChecksumException("test_exception");
     doThrow(e).when(mockTask)
         .processConsumerRecord(cr1, null);

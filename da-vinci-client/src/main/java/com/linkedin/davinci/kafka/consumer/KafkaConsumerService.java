@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.davinci.utils.KafkaRecordWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
@@ -86,7 +87,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
       SharedKafkaConsumer newConsumer = new SharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties), this, sharedConsumerNonExistingTopicCleanupDelayMS, topicExistenceChecker);
-      consumerExecutor.submit(new ConsumptionTask(newConsumer));
+      consumerExecutor.submit(new ConsumptionTask(kafkaUrl, newConsumer));
       consumers.add(newConsumer);
       consumerPartitionsNumSubscribed.add(0);
     }
@@ -235,9 +236,11 @@ public class KafkaConsumerService extends AbstractVeniceService {
   }
 
   private class ConsumptionTask implements Runnable {
+    private final String kafkaUrl;
     private final SharedKafkaConsumer consumer;
 
-    public ConsumptionTask(final SharedKafkaConsumer consumer) {
+    public ConsumptionTask(final String kafkaUrl, final SharedKafkaConsumer consumer) {
+      this.kafkaUrl = kafkaUrl;
       this.consumer = consumer;
     }
 
@@ -307,7 +310,9 @@ public class KafkaConsumerService extends AbstractVeniceService {
                  * all the buffered messages for the paused partitions, but just slightly more complicate.
                  *
                  */
-                ingestionTask.produceToStoreBufferServiceOrKafka(topicRecords, false);
+                Iterable<VeniceConsumerRecordWrapper<KafkaKey, KafkaMessageEnvelope>> veniceConsumerRecords = KafkaRecordWrapper
+                    .wrap(kafkaUrl, topicRecords);
+                ingestionTask.produceToStoreBufferServiceOrKafka(veniceConsumerRecords, false);
               } catch (Exception e) {
                 LOGGER.error("Received exception when StoreIngestionTask is processing the polled consumer record for topic: " + topic, e);
                 ingestionTask.setLastConsumerException(e);
