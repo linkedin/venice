@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class InMemoryStoragePartition extends AbstractStoragePartition {
   private final ConcurrentMap<ByteArray, ByteArray> partitionDb;
+  private long partitionSize = 0;
 
   public InMemoryStoragePartition(Integer partitionId) {
     super(partitionId);
@@ -36,6 +37,8 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   public void put(byte[] key, byte[] value) {
     ByteArray k = new ByteArray(key);
     ByteArray v = new ByteArray(value);
+    partitionSize += key.length;
+    partitionSize += value.length;
     partitionDb.put(k, v);
   }
 
@@ -87,7 +90,13 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
 
   public void delete(byte[] key) {
     ByteArray k = new ByteArray(key);
-    partitionDb.remove(k);
+    ByteArray v = partitionDb.remove(k);
+    if (k != null) {
+      partitionSize -= k.length();
+    }
+    if (v != null) {
+      partitionSize -= v.length();
+    }
   }
 
   @Override
@@ -114,6 +123,6 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
 
   @Override
   public long getPartitionSizeInBytes() {
-    throw new UnsupportedOperationException("Operation Not Supported");
+    return partitionSize;
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
@@ -67,11 +68,13 @@ public class HybridStoreQuotaEnforcementTest {
     when(storeIngestionTask.isMetricsEmissionEnabled()).thenReturn(false);
     when(storeIngestionTask.getReportStatusAdapter()).thenReturn(reportStatusAdapter);
 
+    Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap = new HashMap<>();
     quotaEnforcer = new HybridStoreQuotaEnforcement(storeIngestionTask,
                                                     storageEngine,
                                                     store,
                                                     topic,
                                                     storePartitionCount,
+                                                    partitionConsumptionSizeMap,
                                                     partitionConsumptionStateMap);
   }
 

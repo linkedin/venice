@@ -9,7 +9,6 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -56,6 +55,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
 
   public HybridStoreQuotaEnforcement(StoreIngestionTask storeIngestionTask, AbstractStorageEngine storageEngine,
       Store store, String versionTopic, int storePartitionCount,
+      Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap,
       ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap) {
     this.storeIngestionTask = storeIngestionTask;
     this.partitionConsumptionStateMap = partitionConsumptionStateMap;
@@ -63,7 +63,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     this.storeName = store.getName();
     this.versionTopic = versionTopic;
     this.storePartitionCount = storePartitionCount;
-    this.partitionConsumptionSizeMap = new HashMap<>();
+    this.partitionConsumptionSizeMap = partitionConsumptionSizeMap;
     this.pausedPartitions = new HashSet<>();
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
     this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
@@ -125,6 +125,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     if (!partitionConsumptionSizeMap.containsKey(partition)) {
       partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngine));
     }
+
     partitionConsumptionSizeMap.get(partition).add(recordSize);
     PartitionConsumptionState pcs = null;
     if (partitionConsumptionStateMap.containsKey(partition)) {
