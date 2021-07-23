@@ -1211,25 +1211,25 @@ public class TestHybrid {
           Pair<KafkaKey, KafkaMessageEnvelope> record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
               stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 1, -1);
           realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
-              new CompletableFuture<>()), 0, -1);
+              new CompletableFuture<>()), 0, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
 
           // Send <key1, value2, seq: 2>
           record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
               stringSerializer.serialize(value2), 1, realTimeTopicWriter.getProducerGUID(), 100, 2, -1);
           realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
-              new CompletableFuture<>()), 0, -1);
+              new CompletableFuture<>()), 0, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
 
           // Send <key1, value1, seq: 1 (Duplicated message)>
           record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key1),
               stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 1, -1);
           realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
-              new CompletableFuture<>()), 0, -1);
+              new CompletableFuture<>()), 0, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
 
           // Send <key2, value1, seq: 3>
           record = getKafkaKeyAndValueEnvelope(stringSerializer.serialize(key2),
               stringSerializer.serialize(value1), 1, realTimeTopicWriter.getProducerGUID(), 100, 3, -1);
           realTimeTopicWriter.put(record.getFirst(), record.getSecond(), new VeniceWriter.CompletableFutureCallback(
-              new CompletableFuture<>()), 0, -1);
+              new CompletableFuture<>()), 0, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
         }
 
         try (CloseableHttpAsyncClient storageNodeClient = HttpAsyncClients.createDefault()) {

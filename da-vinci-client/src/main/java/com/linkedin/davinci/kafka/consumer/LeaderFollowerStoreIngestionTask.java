@@ -57,6 +57,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Lazy;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
@@ -145,8 +146,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
-  private final Map<Integer, String> kafkaServerIdToUrlMap;
-  private final Map<String, Integer> kafkaServerUrlToIdMap;
+  private final Map<Integer, String> kafkaClusterIdToUrlMap;
+  private final Map<String, Integer> kafkaClusterUrlToIdMap;
 
   /**
    * A set of boolean that check if partitions owned by this task have released the latch.
@@ -274,8 +275,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     });
 
-    this.kafkaServerIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
-    this.kafkaServerUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
+    this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
+    this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
   }
 
   @Override
@@ -990,10 +991,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int partition = consumerRecord.partition();
     String leaderTopic = consumerRecord.topic();
     long sourceTopicOffset = consumerRecord.offset();
+    int sourceKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(consumerRecordWrapper.kafkaUrl(), -1);
+    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, sourceKafkaClusterId);
     LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(this, consumerRecordWrapper, partitionConsumptionState, leaderTopic,
         kafkaVersionTopic, partition, versionedDIVStats, logger, producedRecord, System.nanoTime());
     partitionConsumptionState.setLastLeaderPersistFuture(producedRecord.getPersistedToDBFuture());
-    produceFunction.apply(callback, sourceTopicOffset);
+    produceFunction.apply(callback, leaderMetadataWrapper);
   }
 
   /**
@@ -1356,8 +1359,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * after successfully producing to kafka.
              */
             produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> veniceWriter.get().put(consumerRecord.key(), consumerRecord.value(),
-                    callback, consumerRecord.partition(), sourceTopicOffset));
+                (callback, leaderMetadataWrapper) -> veniceWriter.get().put(consumerRecord.key(), consumerRecord.value(),
+                    callback, consumerRecord.partition(), leaderMetadataWrapper));
             break;
           case START_OF_SEGMENT:
           case END_OF_SEGMENT:
@@ -1376,8 +1379,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             if (!Version.isRealTimeTopic(consumerRecord.topic())) {
               produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
-                  (callback, sourceTopicOffset) -> veniceWriter.get().put(consumerRecord.key(), consumerRecord.value(),
-                      callback, consumerRecord.partition(), sourceTopicOffset));
+                  (callback, leaderMetadataWrapper) -> veniceWriter.get().put(consumerRecord.key(), consumerRecord.value(),
+                      callback, consumerRecord.partition(), leaderMetadataWrapper));
             } else {
               /**
                * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -1414,8 +1417,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * allow that.
              */
             produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
-                    new HashMap<>(), callback, sourceTopicOffset));
+                (callback, leaderMetadataWrapper) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
+                    new HashMap<>(), callback, leaderMetadataWrapper));
             break;
           case TOPIC_SWITCH:
             /**
@@ -1425,8 +1428,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             producedRecord = ProducedRecord.newControlMessageRecord(-1, kafkaKey.getKey(), controlMessage);
             produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
-                    new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET));
+                (callback, leaderMetadataWrapper) -> veniceWriter.get().asyncSendControlMessage(controlMessage, consumerRecord.partition(),
+                    new HashMap<>(), callback, DEFAULT_LEADER_METADATA_WRAPPER));
             break;
         }
         if (!isSegmentControlMsg(controlMessageType)) {
@@ -1461,7 +1464,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
             producedRecord = ProducedRecord.newPutRecord(consumerRecord.offset(), keyBytes, put);
             produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> {
+                (callback, leaderMetadataWrapper) -> {
                   /**
                    * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
                    * so we may be forced to do a copy here, if the backing array of the {@link putValue} has padding,
@@ -1480,7 +1483,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                    */
 
                   if (!partitionConsumptionState.isEndOfPushReceived()) {
-                    return veniceWriter.get().put(kafkaKey, kafkaValue, callback, consumerRecord.partition(), sourceTopicOffset);
+                    return veniceWriter.get().put(kafkaKey, kafkaValue, callback, consumerRecord.partition(), leaderMetadataWrapper);
                   }
 
                   /**
@@ -1490,7 +1493,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                    * please check {@link com.linkedin.venice.partitioner.UserPartitionAwarePartitioner}
                    */
                   return veniceWriter.get().put(keyBytes, ByteUtils.extractByteArray(putValue), put.schemaId, callback,
-                      sourceTopicOffset);
+                      leaderMetadataWrapper);
                 });
             break;
 
@@ -1565,7 +1568,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes);
               producedRecord = ProducedRecord.newDeleteRecord(consumerRecord.offset(), keyBytes);
               produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
-                  (callback, sourceTopicOffset) -> veniceWriter.get().delete(keyBytes, callback, sourceTopicOffset));
+                  (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
             } else {
               int valueLen = updatedValueBytes.length;
               partitionConsumptionState.setTransientRecord(consumerRecord.offset(), keyBytes, updatedValueBytes, 0,
@@ -1590,8 +1593,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               }
               producedRecord = ProducedRecord.newPutRecord(consumerRecord.offset(), updatedKeyBytes, updatedPut);
               produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
-                  (callback, sourceTopicOffset) -> veniceWriter.get().put(keyBytes, updatedValueBytes, valueSchemaId,
-                      callback, sourceTopicOffset));
+                  (callback, leaderMetadataWrapper) -> veniceWriter.get().put(keyBytes, updatedValueBytes, valueSchemaId,
+                      callback, leaderMetadataWrapper));
             }
             break;
 
@@ -1604,7 +1607,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
             producedRecord = ProducedRecord.newDeleteRecord(consumerRecord.offset(), keyBytes);
             produceToLocalKafka(consumerRecordWrapper, partitionConsumptionState, producedRecord,
-                (callback, sourceTopicOffset) -> veniceWriter.get().delete(keyBytes, callback, sourceTopicOffset));
+                (callback, leaderMetadataWrapper) -> veniceWriter.get().delete(keyBytes, callback, leaderMetadataWrapper));
             break;
 
           default:
