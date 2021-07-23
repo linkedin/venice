@@ -66,10 +66,10 @@ public class SharedKafkaProducerServiceTest {
   public void testSharedProducerWithNonExistingTopic() throws Exception {
     setUp();
 
-    String topicName1 = "test-topic-1";
-    String topicName2 = "test-topic-2";
+    String existingTopic = "test-topic-1";
+    String nonExistingTopic = "test-topic-2";
 
-    topicManager.createTopic(topicName1, 1, 1, true);
+    topicManager.createTopic(existingTopic, 1, 1, true);
     Properties properties = new Properties();
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
@@ -80,9 +80,9 @@ public class SharedKafkaProducerServiceTest {
     SharedKafkaProducerService sharedKafkaProducerService = TestUtils.getSharedKafkaProducerService(properties);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactoryWithSharedProducer(properties, Optional.of(sharedKafkaProducerService));
 
-    VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter1 = veniceWriterFactory.createVeniceWriter(topicName1, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
+    VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter1 = veniceWriterFactory.createVeniceWriter(existingTopic, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
         Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1));
-    VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter2 = veniceWriterFactory.createVeniceWriter(topicName2, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
+    VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter2 = veniceWriterFactory.createVeniceWriter(nonExistingTopic, new KafkaKeySerializer(), new DefaultSerializer(), new DefaultSerializer(),
         Optional.empty(), SystemTime.INSTANCE, new DefaultVenicePartitioner(), Optional.of(1));
 
 
@@ -95,7 +95,7 @@ public class SharedKafkaProducerServiceTest {
           veniceWriter1.put(new KafkaKey(MessageType.PUT, "topic1".getBytes()), "topic1".getBytes(), 1, new Callback() {
             public void onCompletion(RecordMetadata metadata, Exception e) {
               if(e != null) {
-                LOGGER.error("Error when producing to an existing topic " + topicName1, e);
+                LOGGER.error("Error when producing to an existing topic " + existingTopic, e);
               } else {
                 LOGGER.info("produced offset test-topic-1: " + metadata.offset());
                 producedTopicPresent.getAndIncrement();
@@ -119,7 +119,7 @@ public class SharedKafkaProducerServiceTest {
           veniceWriter2.put(new KafkaKey(MessageType.PUT, "topic2".getBytes()), "topic2".getBytes(), 1, new Callback() {
             public void onCompletion(RecordMetadata metadata, Exception e) {
               if(e != null) {
-                LOGGER.error("Error when producing to a non-existing topic " + topicName1, e);
+                LOGGER.error("Error when producing to a non-existing topic " + nonExistingTopic, e);
               } else {
                 LOGGER.info("produced offset test-topic-2: " + metadata.offset());
                 producedTopicNotPresent.getAndIncrement();
@@ -149,7 +149,7 @@ public class SharedKafkaProducerServiceTest {
     consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
     consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
     try (KafkaConsumer<KafkaKey, KafkaMessageEnvelope> consumer = kafkaClientFactory.getKafkaConsumer(consumerProps)) {
-      List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName1, 0));
+      List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(existingTopic, 0));
       consumer.assign(partitions);
       Long end = consumer.endOffsets(partitions).get(partitions.get(0));
       Assert.assertTrue(end > 100L); //to account for the SOP that VW sends internally.

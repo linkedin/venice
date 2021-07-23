@@ -98,8 +98,8 @@ public abstract class TopicReplicator {
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(destinationTopic)){
       throw new TopicDoesNotExistException(errorPrefix + " topic " + destinationTopic + " does not exist.");
     }
-    int sourcePartitionCount = getTopicManager().getPartitions(sourceTopic).size();
-    int destinationPartitionCount = getTopicManager().getPartitions(destinationTopic).size();
+    int sourcePartitionCount = getTopicManager().partitionsFor(sourceTopic).size();
+    int destinationPartitionCount = getTopicManager().partitionsFor(destinationTopic).size();
     if (sourcePartitionCount != destinationPartitionCount){
       LOGGER.info("Topic " + sourceTopic + " has " + sourcePartitionCount + " partitions"
           + " and topic " + destinationTopic + " has " + destinationPartitionCount + " partitions."  );

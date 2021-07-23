@@ -1587,7 +1587,7 @@ public class StoreIngestionTaskTest {
     // This does not entirely make sense, but we can do better when we have a real integration test which includes buffer replay
     // TODO: We now have a real integration test which includes buffer replay, maybe fix up this test?
     final long TOTAL_MESSAGES_PER_PARTITION = (MESSAGES_BEFORE_EOP + MESSAGES_AFTER_EOP) / ALL_PARTITIONS.size();
-    when(mockTopicManager.getLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
+    when(mockTopicManager.getPartitionLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
 
     mockStorageMetadataService = new InMemoryStorageMetadataService();
     hybridStoreConfig = Optional.of(new HybridStoreConfigImpl(10, 20,

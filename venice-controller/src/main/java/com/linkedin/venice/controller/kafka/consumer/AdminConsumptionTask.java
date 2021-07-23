@@ -826,7 +826,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
        *  the last successfully replicated message plus one), so subtract 1 from the max offset result.
        */
-      long sourceAdminTopicEndOffset = sourceKafkaClusterTopicManager.getLatestOffsetAndRetry(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, 10) - 1;
+      long sourceAdminTopicEndOffset = sourceKafkaClusterTopicManager.getPartitionLatestOffsetAndRetry(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, 10) - 1;
       /**
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.

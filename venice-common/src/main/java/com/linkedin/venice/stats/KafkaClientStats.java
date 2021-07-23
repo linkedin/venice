@@ -35,7 +35,7 @@ public class KafkaClientStats extends AbstractVeniceStats {
   private Sensor sharedProducerActiveCountSensor;
 
 
-  public KafkaClientStats(MetricsRepository metricsRepository, String name, Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
+  private KafkaClientStats(MetricsRepository metricsRepository, String name, Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
     super(metricsRepository, name);
     this.sharedKafkaProducerService = sharedKafkaProducerService;
 
@@ -52,4 +52,11 @@ public class KafkaClientStats extends AbstractVeniceStats {
     }
   }
 
+  public static void registerKafkaClientStats(
+      MetricsRepository metricsRepository,
+      String name,
+      Optional<SharedKafkaProducerService> sharedKafkaProducerService
+  ) {
+    new KafkaClientStats(metricsRepository, name, sharedKafkaProducerService);
+  }
 }

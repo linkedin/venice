@@ -509,7 +509,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           this,
           storageEngine,
           storeRepository.getStoreOrThrow(storeName), kafkaVersionTopic,
-          topicManagerRepository.getTopicManager().getPartitions(kafkaVersionTopic).size(),
+          topicManagerRepository.getTopicManager().partitionsFor(kafkaVersionTopic).size(),
           partitionConsumptionStateMap));
       this.storeRepository.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
       // subscribedPartitionToSize can be accessed by multiple threads, when shared consumer is enabled.
@@ -3120,7 +3120,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long getOffset(String sourceKafkaServer, String topicName, int partitionId) {
       try {
         return fetchMetadata(new KafkaMetadataCacheKey(sourceKafkaServer, topicName, Optional.of(partitionId)), offsetCache, () -> {
-          long latestOffset = getTopicManager(sourceKafkaServer).getLatestOffsetAndRetry(topicName, partitionId, 10);
+          long latestOffset = getTopicManager(sourceKafkaServer).getPartitionLatestOffsetAndRetry(topicName, partitionId, 10);
           // Get a new TTL start time after fetching fresh metadata.
           return new Pair<>(System.nanoTime() + ttl, latestOffset);
         });

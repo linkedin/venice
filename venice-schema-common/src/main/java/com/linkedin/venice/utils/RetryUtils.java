@@ -7,8 +7,6 @@ import java.util.function.Supplier;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
 import net.jodah.failsafe.event.ExecutionAttemptedEvent;
-import net.jodah.failsafe.function.CheckedRunnable;
-import net.jodah.failsafe.function.CheckedSupplier;
 import org.apache.log4j.Logger;
 
 public class RetryUtils {
@@ -29,7 +27,7 @@ public class RetryUtils {
      *                          in this list is thrown, it gets thrown to the caller.
      */
     public static void executeWithMaxAttempt(
-            CheckedRunnable runnable,
+            VeniceCheckedRunnable runnable,
             final int maxAttempt,
             Duration delay,
             List<Class<? extends Throwable>> retryFailureTypes
@@ -48,7 +46,7 @@ public class RetryUtils {
      *                          in this list is thrown, it gets thrown to the caller.
      */
     public static void executeWithMaxAttemptNoIntermediateLogging(
-        CheckedRunnable runnable,
+        VeniceCheckedRunnable runnable,
         final int maxAttempt,
         Duration delay,
         List<Class<? extends Throwable>> retryFailureTypes
@@ -68,7 +66,7 @@ public class RetryUtils {
      * @param intermediateFailureHandler A handler for intermediate failure(s).
      */
     public static void executeWithMaxAttempt(
-            CheckedRunnable runnable,
+            VeniceCheckedRunnable runnable,
             final int maxAttempt,
             Duration delay,
             List<Class<? extends Throwable>> retryFailureTypes,
@@ -80,7 +78,7 @@ public class RetryUtils {
                 .withMaxAttempts(maxAttempt);
 
         retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-        Failsafe.with(retryPolicy).run(runnable);
+        Failsafe.with(retryPolicy).run(() -> runnable.run());
     }
 
     /**
@@ -97,7 +95,7 @@ public class RetryUtils {
      *                           in this list is thrown, it gets thrown to the caller.
      */
     public static void executeWithMaxAttemptAndExponentialBackoff(
-            CheckedRunnable runnable,
+            VeniceCheckedRunnable runnable,
             final int maxAttempt,
             Duration initialDelay,
             Duration maxDelay,
@@ -122,7 +120,7 @@ public class RetryUtils {
      * @param intermediateFailureHandler A handler for intermediate failure(s).
      */
     public static void executeWithMaxAttemptAndExponentialBackoff(
-            CheckedRunnable runnable,
+            VeniceCheckedRunnable runnable,
             final int maxAttempt,
             Duration initialDelay,
             Duration maxDelay,
@@ -137,7 +135,7 @@ public class RetryUtils {
                 .withMaxAttempts(maxAttempt);
 
         retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-        Failsafe.with(retryPolicy).run(runnable);
+        Failsafe.with(retryPolicy).run(() -> runnable.run());
     }
 
     /**
@@ -151,7 +149,7 @@ public class RetryUtils {
      *                          in this list is thrown, it gets thrown to the caller.
      */
     public static <T> T executeWithMaxAttempt(
-            CheckedSupplier<T> supplier,
+            VeniceCheckedSupplier<T> supplier,
             final int maxAttempt,
             Duration delay,
             List<Class<? extends Throwable>> retryFailureTypes
@@ -171,7 +169,7 @@ public class RetryUtils {
      * @param intermediateFailureHandler A handler for intermediate failure(s).
      */
     public static <T> T executeWithMaxAttempt(
-            CheckedSupplier<T> supplier,
+            VeniceCheckedSupplier<T> supplier,
             final int maxAttempt,
             Duration delay,
             List<Class<? extends Throwable>> retryFailureTypes,
@@ -183,7 +181,7 @@ public class RetryUtils {
                 .withMaxAttempts(maxAttempt);
 
         retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-        return Failsafe.with(retryPolicy).get(supplier);
+        return Failsafe.with(retryPolicy).get(() -> supplier.get());
     }
 
     /**
@@ -200,7 +198,7 @@ public class RetryUtils {
      *                          in this list is thrown, it gets thrown to the caller.
      */
     public static <T> T executeWithMaxAttemptAndExponentialBackoff(
-            CheckedSupplier<T> supplier,
+            VeniceCheckedSupplier<T> supplier,
             final int maxAttempt,
             Duration initialDelay,
             Duration maxDelay,
@@ -225,7 +223,7 @@ public class RetryUtils {
      * @param intermediateFailureHandler A handler for intermediate failure(s).
      */
     public static <T> T executeWithMaxAttemptAndExponentialBackoff(
-            CheckedSupplier<T> supplier,
+            VeniceCheckedSupplier<T> supplier,
             final int maxAttempt,
             Duration initialDelay,
             Duration maxDelay,
@@ -240,7 +238,7 @@ public class RetryUtils {
                 .withMaxAttempts(maxAttempt);
 
         retryPolicy.onFailedAttempt(intermediateFailureHandler::handle);
-        return Failsafe.with(retryPolicy).get(supplier);
+        return Failsafe.with(retryPolicy).get(() -> supplier.get());
     }
 
     private static<T> void logAttemptWithFailure(ExecutionAttemptedEvent<T> executionAttemptedEvent) {

@@ -35,17 +35,17 @@ public class JobRoutesTest {
     map.put(0, 100L);
     map.put(1, 110L);
     map.put(2, 120L);
-    doReturn(Collections.unmodifiableMap(map)).when(mockTopicManager).getLatestOffsets(anyString());
+    doReturn(Collections.unmodifiableMap(map)).when(mockTopicManager).getTopicLatestOffsets(anyString());
     doReturn(mockTopicManager).when(mockAdmin).getTopicManager();
 
     doReturn(2).when(mockAdmin).getReplicationFactor(anyString(), anyString());
     Map<String, Long> jobProgress = new HashMap<>();
     List<String> clusters = Arrays.asList("cluster1", "cluster2", "cluster3");
     for (String cluster : clusters){
-      for (int partition=0; partition < mockTopicManager.getLatestOffsets("").size(); partition ++){
+      for (int partition = 0; partition < mockTopicManager.getTopicLatestOffsets("").size(); partition ++){
         for (int replica=0; replica < mockAdmin.getReplicationFactor("",""); replica++){
           String worker = cluster + "_p" + partition+"-r"+replica;
-          jobProgress.put(worker, mockTopicManager.getLatestOffsets("").get(partition)); // all workers complete
+          jobProgress.put(worker, mockTopicManager.getTopicLatestOffsets("").get(partition)); // all workers complete
         }
       }
     }

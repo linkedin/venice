@@ -12,7 +12,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -316,7 +315,7 @@ public class TopicCleanupService extends AbstractVeniceService {
       /**
        * Find out the total number of partition of version topic, and we will use this info to clean up replica statuses for each partition.
        */
-      int partitionCount = topicManager.getPartitions(topic).size();
+      int partitionCount = topicManager.partitionsFor(topic).size();
 
       MetaStoreWriter metaStoreWriter = admin.getMetaStoreWriter();
       for (int i = 0; i < partitionCount; ++i) {
