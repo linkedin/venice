@@ -35,7 +35,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -94,11 +93,11 @@ public class PushJobDetailsTest {
 
   @AfterClass
   public void cleanup() {
-    IOUtils.closeQuietly(controllerClient);
-    IOUtils.closeQuietly(parentControllerClient);
-    IOUtils.closeQuietly(parentController);
-    IOUtils.closeQuietly(venice);
-    IOUtils.closeQuietly(zkWrapper);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(parentControllerClient);
+    Utils.closeQuietlyWithErrorLogged(parentController);
+    Utils.closeQuietlyWithErrorLogged(venice);
+    Utils.closeQuietlyWithErrorLogged(zkWrapper);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

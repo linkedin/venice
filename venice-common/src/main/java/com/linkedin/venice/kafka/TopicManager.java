@@ -25,7 +25,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -732,10 +731,8 @@ public class TopicManager implements Closeable {
 
   @Override
   public synchronized void close() throws IOException {
-    IOUtils.closeQuietly(partitionOffsetFetcher, logger::error);
-    if (kafkaAdmin.isPresent()) {
-      IOUtils.closeQuietly(kafkaAdmin.get(), logger::error);
-    }
+    Utils.closeQuietlyWithErrorLogged(partitionOffsetFetcher);
+    kafkaAdmin.ifPresent(Utils::closeQuietlyWithErrorLogged);
   }
 
   // For testing only

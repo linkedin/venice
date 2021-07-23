@@ -26,6 +26,7 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
@@ -40,7 +41,6 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificRecord;
-import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.codehaus.jackson.node.JsonNodeFactory;
 import org.testng.Assert;
@@ -159,13 +159,13 @@ public class ConsumerIntegrationTest {
 
   @AfterMethod
   public void testCleanUp() {
-    IOUtils.closeQuietly(client);
+    Utils.closeQuietlyWithErrorLogged(client);
   }
 
   @AfterClass
   public void sharedCleanUp() {
-    IOUtils.closeQuietly(cluster);
-    IOUtils.closeQuietly(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(cluster);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

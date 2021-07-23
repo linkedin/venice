@@ -14,7 +14,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -42,7 +41,7 @@ public class TestConnectionWarmingForApacheAsyncClient {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    IOUtils.closeQuietly(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

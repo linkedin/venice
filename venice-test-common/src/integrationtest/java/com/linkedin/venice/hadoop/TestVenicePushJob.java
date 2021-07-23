@@ -23,7 +23,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
-import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -139,8 +138,8 @@ public class TestVenicePushJob {
 
   @AfterClass
   public void cleanUp() {
-    IOUtils.closeQuietly(controllerClient);
-    IOUtils.closeQuietly(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   /**

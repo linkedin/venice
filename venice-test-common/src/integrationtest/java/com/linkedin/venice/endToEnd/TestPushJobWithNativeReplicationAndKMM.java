@@ -16,6 +16,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.List;
@@ -24,7 +25,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -96,7 +96,7 @@ public class TestPushJobWithNativeReplicationAndKMM {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    IOUtils.closeQuietly(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")

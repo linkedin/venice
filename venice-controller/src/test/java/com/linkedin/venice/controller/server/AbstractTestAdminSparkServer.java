@@ -8,9 +8,9 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.IOUtils;
 
 
 /**
@@ -44,9 +44,9 @@ public class AbstractTestAdminSparkServer {
   }
 
   public void tearDown() {
-    IOUtils.closeQuietly(controllerClient);
-    IOUtils.closeQuietly(cluster);
-    IOUtils.closeQuietly(parentController);
-    IOUtils.closeQuietly(parentZk);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(cluster);
+    Utils.closeQuietlyWithErrorLogged(parentController);
+    Utils.closeQuietlyWithErrorLogged(parentZk);
   }
 }

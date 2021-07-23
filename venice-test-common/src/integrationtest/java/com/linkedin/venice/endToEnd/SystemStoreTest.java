@@ -142,9 +142,9 @@ public class SystemStoreTest {
 
   @AfterClass
   public void cleanup() {
-    IOUtils.closeQuietly(controllerClient);
-    IOUtils.closeQuietly(parentControllerClient);
-    IOUtils.closeQuietly(parentController);
+    Utils.closeQuietlyWithErrorLogged(controllerClient);
+    Utils.closeQuietlyWithErrorLogged(parentControllerClient);
+    Utils.closeQuietlyWithErrorLogged(parentController);
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }

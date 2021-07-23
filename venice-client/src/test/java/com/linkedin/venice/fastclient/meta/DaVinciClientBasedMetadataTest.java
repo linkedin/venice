@@ -28,6 +28,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
@@ -38,7 +39,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -161,16 +161,16 @@ public class DaVinciClientBasedMetadataTest {
 
   @AfterClass
   public void cleanUp() {
-    IOUtils.closeQuietly(daVinciClientBasedMetadata);
-    IOUtils.closeQuietly(daVinciClientForMetaStore);
-    IOUtils.closeQuietly(daVinciClientFactory);
+    Utils.closeQuietlyWithErrorLogged(daVinciClientBasedMetadata);
+    Utils.closeQuietlyWithErrorLogged(daVinciClientForMetaStore);
+    Utils.closeQuietlyWithErrorLogged(daVinciClientFactory);
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }
     if (r2Client != null) {
       r2Client.shutdown(null);
     }
-    IOUtils.closeQuietly(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
 }

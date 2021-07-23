@@ -8,7 +8,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 
 import com.linkedin.venice.utils.Time;
-import org.apache.commons.io.IOUtils;
+import com.linkedin.venice.utils.Utils;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -40,7 +40,7 @@ public class TestStartMultiControllers {
     if (null != helixManager) {
       helixManager.disconnect();
     }
-    IOUtils.closeQuietly(cluster);
+    Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
   /**

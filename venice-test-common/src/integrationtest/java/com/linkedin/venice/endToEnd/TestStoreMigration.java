@@ -41,6 +41,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.Arrays;
@@ -51,7 +52,6 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -332,7 +332,7 @@ public abstract class TestStoreMigration {
         assertEquals(srcReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
       });
     } finally {
-      IOUtils.closeQuietly(srcReader);
+      Utils.closeQuietlyWithErrorLogged(srcReader);
       D2ClientUtils.shutdownClient(srcD2Client);
     }
 
@@ -350,7 +350,7 @@ public abstract class TestStoreMigration {
         assertEquals(destReader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1);
       });
     } finally {
-      IOUtils.closeQuietly(destReader);
+      Utils.closeQuietlyWithErrorLogged(destReader);
       D2ClientUtils.shutdownClient(destD2Client);
     }
   }

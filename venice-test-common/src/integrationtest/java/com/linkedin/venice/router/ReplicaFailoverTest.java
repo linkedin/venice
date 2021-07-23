@@ -15,8 +15,6 @@ import com.linkedin.venice.utils.Utils;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
-
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -66,7 +64,7 @@ public class ReplicaFailoverTest {
 
   @AfterClass
   public void cleanup() {
-    IOUtils.closeQuietly(cluster);
+    Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
   @BeforeMethod

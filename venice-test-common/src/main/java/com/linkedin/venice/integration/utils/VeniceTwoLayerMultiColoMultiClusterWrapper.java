@@ -6,7 +6,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
 import org.apache.commons.io.IOUtils;
 
 import java.io.File;

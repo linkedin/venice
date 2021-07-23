@@ -24,6 +24,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
@@ -44,7 +45,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -125,9 +125,9 @@ public class StorageNodeComputeTest {
     if (veniceCluster != null) {
       veniceCluster.close();
     }
-    IOUtils.closeQuietly(regularStoreClient);
-    IOUtils.closeQuietly(fastAvroStoreClient);
-    IOUtils.closeQuietly(compressorFactory);
+    Utils.closeQuietlyWithErrorLogged(regularStoreClient);
+    Utils.closeQuietlyWithErrorLogged(fastAvroStoreClient);
+    Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
   @DataProvider(name = "testPermutations")

@@ -55,7 +55,6 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.IOUtils;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -191,8 +190,8 @@ public class AvroStoreClientEndToEndTest {
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }
-    IOUtils.closeQuietly(veniceCluster);
-    IOUtils.closeQuietly(veniceWriter);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(veniceWriter);
   }
 
   // Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.

@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.systemstore.schemas.TargetVersionStates;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -33,7 +34,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.apache.commons.io.IOUtils;
 
 import static com.linkedin.venice.common.VeniceSystemStoreType.*;
 import static com.linkedin.venice.schema.SchemaData.*;
@@ -272,7 +272,7 @@ public class MetadataStoreWriter implements Closeable {
 
   @Override
   public void close() {
-    metadataStoreWriterMap.forEach((k, v) -> IOUtils.closeQuietly(v));
+    metadataStoreWriterMap.forEach((k, v) -> Utils.closeQuietlyWithErrorLogged(v));
     metadataStoreWriterMap.clear();
   }
 }

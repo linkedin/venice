@@ -13,6 +13,7 @@ import com.linkedin.venice.router.stats.DnsLookupStats;
 import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -162,7 +163,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   @Override
   public void close() {
     if (perNodeClientEnabled) {
-      nodeIdToClientMap.forEach((k,v) ->  IOUtils.closeQuietly(v.getClient()));
+      nodeIdToClientMap.forEach((k,v) ->  Utils.closeQuietlyWithErrorLogged(v.getClient()));
       if (clientConnectionWarmingService != null) {
         try {
           clientConnectionWarmingService.stop();
@@ -171,7 +172,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
         }
       }
     } else {
-      clientPool.stream().forEach(client -> IOUtils.closeQuietly(client));
+      clientPool.stream().forEach(client -> Utils.closeQuietlyWithErrorLogged(client));
     }
   }
 
@@ -383,7 +384,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
             connectionWarmingSleepIntervalMs);
         logger.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
       } catch (Exception e) {
-        IOUtils.closeQuietly(clientWithConnManager.getClient());
+        Utils.closeQuietlyWithErrorLogged(clientWithConnManager.getClient());
         throw new VeniceException("Received exception while warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl
             + ", and closed the new created httpasyncclient, and exception: " + e);
       }

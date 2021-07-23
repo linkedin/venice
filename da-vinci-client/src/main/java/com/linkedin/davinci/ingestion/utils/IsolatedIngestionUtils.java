@@ -268,9 +268,9 @@ public class IsolatedIngestionUtils {
         logger.info("Exit code " + exitCode + " when executing shell command: " + command);
         return "";
       }
-      IOUtils.closeQuietly(process.getInputStream());
-      IOUtils.closeQuietly(process.getOutputStream());
-      IOUtils.closeQuietly(process.getErrorStream());
+      Utils.closeQuietlyWithErrorLogged(process.getInputStream());
+      Utils.closeQuietlyWithErrorLogged(process.getOutputStream());
+      Utils.closeQuietlyWithErrorLogged(process.getErrorStream());
       return output;
     } catch (Exception e) {
       logger.info("Encounter exception when executing shell command: " + command, e);

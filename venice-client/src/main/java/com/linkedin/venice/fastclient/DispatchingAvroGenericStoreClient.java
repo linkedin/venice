@@ -15,6 +15,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
@@ -24,7 +25,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.*;
@@ -229,8 +229,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     } catch (Exception e) {
       throw new VeniceClientException("Failed to close store metadata", e);
     }
-
-    IOUtils.closeQuietly(compressorFactory);
+    Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
   @Override

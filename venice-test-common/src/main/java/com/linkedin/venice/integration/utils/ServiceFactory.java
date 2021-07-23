@@ -32,7 +32,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 import java.io.Closeable;
@@ -586,21 +585,21 @@ public class ServiceFactory {
       } catch (NoSuchMethodError e) {
         LOGGER.error("Got a " + e.getClass().getSimpleName() + " while trying to start " + serviceName + ". Will print the jar containing the bad class and then bubble up.");
         ReflectUtils.printJarContainingBadClass(e);
-        IOUtils.closeQuietly(wrapper);
+        Utils.closeQuietlyWithErrorLogged(wrapper);
         throw e;
       } catch (LinkageError e) {
         LOGGER.error("Got a " + e.getClass().getSimpleName() + " while trying to start " + serviceName + ". Will print the classpath and then bubble up.");
         ReflectUtils.printClasspath();
-        IOUtils.closeQuietly(wrapper);
+        Utils.closeQuietlyWithErrorLogged(wrapper);
         throw e;
       } catch (InterruptedException e) {
         // This should mean that TestNG has timed out the test. We'll try to sneak a fast one and still close
         // the process asynchronously, so it doesn't leak.
         final S finalWrapper = wrapper;
-        CompletableFuture.runAsync(() -> IOUtils.closeQuietly(finalWrapper));
+        CompletableFuture.runAsync(() -> Utils.closeQuietlyWithErrorLogged(finalWrapper));
         throw new VeniceException("Interrupted!", e);
       } catch (Exception e) {
-        IOUtils.closeQuietly(wrapper);
+        Utils.closeQuietlyWithErrorLogged(wrapper);
         if (ExceptionUtils.recursiveMessageContains(e, "Too many open files")) {
           throw new VeniceException("Too many open files!\nVM args: " + VM_ARGS + "\n$ ulimit -a\n" + ULIMIT, e);
         }

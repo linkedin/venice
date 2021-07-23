@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.utils.Utils;
 import com.sun.management.UnixOperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
@@ -7,7 +8,6 @@ import java.util.List;
 import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -57,7 +57,7 @@ public class TestFileDescriptorLeak {
 
   @AfterClass
   public void tearDownReusableCluster() {
-    IOUtils.closeQuietly(this.veniceClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(this.veniceClusterWrapper);
   }
 
   @Test(invocationCount = 20, groups = {"flaky"})

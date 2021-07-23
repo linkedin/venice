@@ -19,7 +19,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
-import org.apache.commons.io.IOUtils;
 import org.apache.samza.SamzaException;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
@@ -50,7 +49,7 @@ public class VeniceSystemFactoryTest {
 
   @AfterClass
   private void tearDown() {
-    IOUtils.closeQuietly(cluster);
+    Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
   /**

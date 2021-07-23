@@ -6,7 +6,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
 import org.apache.commons.io.IOUtils;
 
 import java.io.File;
@@ -116,11 +115,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       return (serviceName) -> new VeniceMultiClusterWrapper(null, finalZkServerWrapper, finalKafkaBrokerWrapper,
           finalBrooklinWrapper, clusterWrapperMap, controllerMap, finalClusterToD2);
     } catch (Exception e) {
-      controllerMap.values().forEach(IOUtils::closeQuietly);
-      clusterWrapperMap.values().forEach(IOUtils::closeQuietly);
-      IOUtils.closeQuietly(brooklinWrapper);
-      IOUtils.closeQuietly(kafkaBrokerWrapper);
-      IOUtils.closeQuietly(zkServerWrapper);
+      controllerMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      clusterWrapperMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      Utils.closeQuietlyWithErrorLogged(brooklinWrapper);
+      Utils.closeQuietlyWithErrorLogged(kafkaBrokerWrapper);
+      Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
       throw e;
     }
   }

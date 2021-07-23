@@ -163,8 +163,8 @@ public abstract class TestRead {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    IOUtils.closeQuietly(veniceCluster);
-    IOUtils.closeQuietly(veniceWriter);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(veniceWriter);
   }
 
   @Test(timeOut = 50000, groups = {"flaky"})

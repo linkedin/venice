@@ -25,7 +25,6 @@ import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
-import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -70,9 +69,9 @@ public class ProducerConsumerReaderIntegrationTest {
 
   @AfterMethod
   public void cleanUp() {
-    IOUtils.closeQuietly(storeClient);
-    IOUtils.closeQuietly(veniceWriter);
-    IOUtils.closeQuietly(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(storeClient);
+    Utils.closeQuietlyWithErrorLogged(veniceWriter);
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   @Test

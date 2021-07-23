@@ -5,11 +5,11 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpPost;
@@ -54,7 +54,7 @@ public class HttpClientTransport implements AutoCloseable {
 
   @Override
   public void close() {
-    IOUtils.closeQuietly(this.httpClient);
+    Utils.closeQuietlyWithErrorLogged(this.httpClient);
   }
 
   /**
